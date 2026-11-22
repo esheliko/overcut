@@ -16,6 +16,8 @@ pub enum MediaError {
     Io(String),
     /// The file is malformed or truncated (demuxers never panic on hostile input).
     Invalid(String),
+    /// A newer request superseded this one (scrubbing): the host dropped the work. Not a failure; callers ignore it.
+    Cancelled,
 }
 
 impl std::fmt::Display for MediaError {
@@ -25,6 +27,7 @@ impl std::fmt::Display for MediaError {
             MediaError::Unsupported(s) => write!(f, "unsupported: {s}"),
             MediaError::Io(s) => write!(f, "i/o error: {s}"),
             MediaError::Invalid(s) => write!(f, "invalid media: {s}"),
+            MediaError::Cancelled => write!(f, "cancelled"),
         }
     }
 }

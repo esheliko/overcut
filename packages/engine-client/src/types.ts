@@ -27,6 +27,69 @@ export interface Engine {
    * entries (thumbnails, peaks, journal) survive. Rejects with code `read_only` when `previous` came from a newer app.
    */
   saveProject(project: Project, previous?: Uint8Array): Promise<Uint8Array>;
+  /** Opens video/audio files for decoding (M1-016). */
+  readonly media: MediaApi;
+}
+
+export { MediaDecodeError, type MediaErrorKind } from "./decode/errors";
+
+export interface OpenMediaOptions {
+  /** Sample rate `audio()` returns (the project rate). Default 48000. */
+  audioRate?: number;
+  /** Ask for GPU-resident frames (`VideoFrame` handles). Default true; falls back to CPU RGBA when the host cannot. */
+  gpu?: boolean;
+}
+
+export interface TrackInfo {
+  /** WebCodecs codec string. */
+  codec: string;
+  width: number;
+  height: number;
+  /** Clockwise degrees to apply when displaying (frames are returned in coded orientation). */
+  rotation: number;
+  sampleRate: number;
+  channels: number;
+  durationTicks: number;
+  /** Frames (video) or packets (audio). */
+  packets: number;
+  fps?: { num: number; den: number };
+  vfr: boolean;
+}
+
+export interface MediaFileInfo {
+  container: string;
+  durationTicks: number;
+  video?: TrackInfo;
+  audio?: TrackInfo;
+}
+
+/** One decoded video frame. Call `release()` when done: a GPU frame holds decoder/GPU memory until then. */
+export type DecodedFrame = { index: number; ptsTicks: number; width: number; height: number; release(): void } & (
+  | { kind: "gpu"; /** The WebCodecs `VideoFrame`; valid until `release()`. */ frame: VideoFrame }
+  | { kind: "cpu"; /** RGBA8, row-major, no padding. */ rgba: Uint8Array }
+);
+
+/** An open media file. */
+export interface MediaHandle {
+  readonly info: MediaFileInfo;
+  /** Which kind `videoFrame` returns. */
+  readonly frameKind: "gpu" | "cpu";
+  readonly audioRate: number;
+  /**
+   * Frame-accurate decode of frame `index` (presentation order). Latest wins: a call made while an older one is running or queued
+   * makes the older reject with `MediaDecodeError` kind `cancelled` (scrubbing). Rejects `unsupported` naming the codec.
+   */
+  videoFrame(index: number): Promise<DecodedFrame>;
+  /** Interleaved f32 PCM at `audioRate`, `count` frames from `startSample` (silence past the end of the stream). */
+  audio(startSample: number, count: number): Promise<Float32Array>;
+  /** Decoder frame accounting (`open` must be 0 once every result is released: the no-leak check). */
+  stats(): { received: number; closed: number; open: number };
+  close(): Promise<void>;
+}
+
+export interface MediaApi {
+  /** Opens a `File`/`Blob`; bytes are read on demand with range reads, never loaded whole. Rejects `MediaDecodeError`. */
+  open(file: Blob, opts?: OpenMediaOptions): Promise<MediaHandle>;
 }
 
 /** Result of `Engine.openProject`. Mirrors `app_model::open_json`. */

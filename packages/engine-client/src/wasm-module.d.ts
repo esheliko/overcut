@@ -7,6 +7,29 @@ declare module "@app/wasm-pkg" {
   export function project_open(bytes: Uint8Array): string;
   export function project_save(project_json: string, previous: Uint8Array): Uint8Array;
   /** An open project plus its undo history. Mirrors `Editor` in crates/wasm/src/lib.rs; all data is JSON strings. */
+  /** Decoded frame held by the engine; `free()` releases the host frame. Mirrors `FrameRef` in crates/wasm/src/media.rs. */
+  export class FrameRef {
+    index(): number;
+    ptsTicks(): number;
+    width(): number;
+    height(): number;
+    gpuId(): number | undefined;
+    pixels(): Uint8Array | undefined;
+    free(): void;
+  }
+  /** Opened media file (probe + `HostDecoder`). Mirrors `MediaFile` in crates/wasm/src/media.rs. */
+  export class MediaFile {
+    static open(source: { length: number; read(offset: number, len: number): Promise<Uint8Array> }): Promise<MediaFile>;
+    info(): string;
+    videoPacketsJson(): string;
+    videoDescription(): Uint8Array;
+    audioDescription(): Uint8Array;
+    attach(host: object, audioRate: number): void;
+    setGpu(gpu: boolean): void;
+    videoFrame(index: number): Promise<FrameRef>;
+    audio(startSample: number, count: number): Promise<Float32Array>;
+    free(): void;
+  }
   export class Editor {
     constructor(projectJson: string);
     free(): void;
