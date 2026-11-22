@@ -4,6 +4,7 @@
 use crate::evaluate::{evaluate_into, FrameDescription};
 use crate::history::{journal_to_jsonl, History};
 use crate::op::Op;
+use crate::recovery::Record;
 use app_model::{Id, Project, Time};
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +33,10 @@ pub struct Editor {
     revision: u64,
     /// Reused by every `evaluate_json` call so the hot path does not allocate.
     frame: FrameDescription,
+    /// Commit records applied so far (the sequence number of the latest record). See `recovery`.
+    seq: u64,
+    /// Records not yet handed to the host by `take_log`.
+    pending: String,
 }
 
 impl Editor {
@@ -48,7 +53,64 @@ impl Editor {
             history: History::new(),
             revision: 0,
             frame: FrameDescription::default(),
+            seq: 0,
+            pending: String::new(),
         }
+    }
+
+    /// Appends the commit record for a change that just succeeded.
+    fn record(&mut self, r: Record) {
+        self.seq += 1;
+        self.pending.push_str(&r.to_line(self.seq));
+    }
+
+    /// Sequence number of the latest commit record (0 for a freshly opened project).
+    pub fn seq(&self) -> u64 {
+        self.seq
+    }
+
+    /// The commit records produced since the last call, as JSON Lines (empty when nothing changed). The host appends them
+    /// to durable storage after every edit; `Editor::recover` replays them (`docs/features/persistence.md`).
+    pub fn take_log(&mut self) -> String {
+        std::mem::take(&mut self.pending)
+    }
+
+    /// `{"seq": n, "project": {...}}`: a snapshot of the state after record `n`, for the periodic checkpoint.
+    pub fn checkpoint_json(&self) -> String {
+        format!(
+            r#"{{"seq":{},"project":{}}}"#,
+            self.seq,
+            self.project_json()
+        )
+    }
+
+    pub(crate) fn from_parts(
+        project: Project,
+        history: History,
+        seq: u64,
+        revision: u64,
+    ) -> Editor {
+        Editor {
+            project,
+            history,
+            revision,
+            seq,
+            pending: String::new(),
+            frame: FrameDescription::default(),
+        }
+    }
+
+    pub(crate) fn parts_mut(&mut self) -> (&mut Project, &mut History) {
+        (&mut self.project, &mut self.history)
+    }
+
+    pub(crate) fn revision_hint(&self) -> u64 {
+        self.revision
+    }
+
+    pub(crate) fn set_progress(&mut self, seq: u64, revision: u64) {
+        self.seq = seq;
+        self.revision = revision;
     }
 
     pub fn project(&self) -> &Project {
@@ -74,10 +136,12 @@ impl Editor {
             OneOrMany::One(op) => vec![op],
             OneOrMany::Many(ops) => ops,
         };
+        let key = coalesce.map(u64::from);
         self.history
-            .apply_batch(&mut self.project, ops, coalesce.map(u64::from))
+            .apply_batch(&mut self.project, ops.clone(), key)
             .map_err(|e| e.to_string())?;
         self.revision += 1;
+        self.record(Record::Apply { ops, key });
         Ok(self.outcome_json(true))
     }
 
@@ -87,6 +151,9 @@ impl Editor {
             .undo(&mut self.project)
             .map_err(|e| e.to_string())?;
         self.revision += u64::from(changed);
+        if changed {
+            self.record(Record::Undo);
+        }
         Ok(self.outcome_json(changed))
     }
 
@@ -96,6 +163,9 @@ impl Editor {
             .redo(&mut self.project)
             .map_err(|e| e.to_string())?;
         self.revision += u64::from(changed);
+        if changed {
+            self.record(Record::Redo);
+        }
         Ok(self.outcome_json(changed))
     }
 

@@ -28,4 +28,4 @@ Codes: `corrupt` (not a zip / damaged entry), `missing_project`, `bad_project` (
 Relink (host side, using `fingerprint_size` for a free pre-check): (1) resolve `uri` against the project folder and compare size, then fingerprint; (2) if missing or different, scan the project folder and any folder the user points at for files of the same size and compare fingerprints; (3) on a match update `uri` through an op; (4) otherwise the media is **offline**: the reference and every clip stay, never deleted. No fingerprint yet (`hash: None`): match on relative uri only.
 
 ## Open points / follow-ups
-Tauri passes bytes as JSON number arrays (fine for KB-sized projects; switch to raw IPC bodies when thumbnails grow). The journal entry is reserved for M1-003. Nothing computes fingerprints in the UI/host yet.
+Tauri passes bytes as JSON number arrays (fine for KB-sized projects; switch to raw IPC bodies when thumbnails grow). The journal entry stays reserved: the live journal is a sidecar (`persistence.md`). Fingerprints are computed by the host on import (`fingerprintFile`) and relink is `relinkMedia` + the `SetMedia` op (`persistence.md`).

@@ -1,7 +1,9 @@
 //! `apply`: validate, then mutate. Every check runs before the first write, so an error leaves the project untouched.
 
 use crate::op::{Inverse, Op};
-use app_model::{Clip, ClipId, MediaKind, Project, Rational, Time, Track, TrackId, TrackKind};
+use app_model::{
+    Clip, ClipId, MediaId, MediaKind, Project, Rational, Time, Track, TrackId, TrackKind,
+};
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -9,6 +11,10 @@ pub enum OpError {
     UnknownClip(ClipId),
     UnknownTrack(TrackId),
     UnknownMedia(ClipId),
+    /// `SetMedia` names a media id the project does not have.
+    UnknownMediaId(MediaId),
+    /// `SetMedia` with an empty uri, or a hash that is not a `b3-64k` fingerprint.
+    BadMediaRef,
     /// The id of a new clip is already used by something in the document.
     IdInUse(String),
     TrackLocked(TrackId),
@@ -200,6 +206,26 @@ fn restore_geometry(loc_clip: &Clip) -> Op {
 /// Applies `op` and returns the ops that undo it. On `Err` the project is exactly as it was.
 pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
     match op {
+        Op::SetMedia { media, uri, hash } => {
+            if uri.is_empty()
+                || hash
+                    .as_deref()
+                    .is_some_and(|h| app_model::fingerprint_size(h).is_none())
+            {
+                return Err(OpError::BadMediaRef);
+            }
+            let m = p
+                .media
+                .iter_mut()
+                .find(|m| m.id == media)
+                .ok_or(OpError::UnknownMediaId(media))?;
+            let old = Op::SetMedia {
+                media,
+                uri: std::mem::replace(&mut m.uri, uri),
+                hash: std::mem::replace(&mut m.hash, hash),
+            };
+            Ok(Inverse(vec![old]))
+        }
         Op::InsertClip { track, clip } => {
             let (si, ti) = find_track(p, track).ok_or(OpError::UnknownTrack(track))?;
             let t = &p.sequences[si].tracks[ti];

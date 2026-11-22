@@ -777,7 +777,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 7, "one example per Op variant");
+    assert_eq!(ops.len(), 8, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -800,4 +800,208 @@ fn editor_evaluate_json_reports_layers_and_rejects_bad_input() {
     assert!(v["layers"].is_array() && v["audio"].is_array());
     assert!(e.evaluate_json("nope", 0, 0).is_err());
     assert!(e.evaluate_json(&"0".repeat(32), 0, 0).is_err());
+}
+
+// ---- M1-040: commit log, recovery, torn writes ----
+
+fn pj(p: &Project) -> String {
+    serde_json::to_string(p).unwrap()
+}
+
+/// A scripted session with edits, a coalesced drag, undo and redo. Returns the base, the log, and the project JSON after each record.
+fn session() -> (Project, String, Vec<String>, Editor) {
+    let (p, tr, a, b) = two_clips();
+    let mut e = Editor::open(&pj(&p)).unwrap();
+    let mut states = vec![pj(e.project())];
+    let mut log = String::new();
+    let mut step = |e: &mut Editor, f: &dyn Fn(&mut Editor)| {
+        f(e);
+        let new = e.take_log();
+        for _ in new.lines() {
+            states.push(pj(e.project()));
+        }
+        log.push_str(&new);
+    };
+    let mv = |c: ClipId, s: i64| {
+        serde_json::to_string(&Op::Move {
+            clip: c,
+            track: tr,
+            start: t(s),
+        })
+        .unwrap()
+    };
+    for s in [3, 4, 5] {
+        step(&mut e, &|e| drop(e.apply_json(&mv(a, s), Some(9)).unwrap()));
+    }
+    step(&mut e, &|e| drop(e.apply_json(&mv(b, 40), None).unwrap()));
+    step(&mut e, &|e| drop(e.undo_json().unwrap()));
+    step(&mut e, &|e| drop(e.redo_json().unwrap()));
+    step(&mut e, &|e| drop(e.undo_json().unwrap()));
+    step(&mut e, &|e| {
+        drop(
+            e.apply_json(&format!("[{},{}]", mv(a, 6), mv(b, 50)), None)
+                .unwrap(),
+        )
+    });
+    (p, log, states, e)
+}
+
+#[test]
+fn recovery_restores_the_document_and_the_whole_undo_history() {
+    let (p, log, states, mut live) = session();
+    assert_eq!(states.len(), 9);
+    assert_eq!(live.seq(), 8);
+    let (mut rec, info) = Editor::recover(Some(&pj(&p)), None, &log).unwrap();
+    assert_eq!(
+        (info.replayed, info.dropped, info.full_history),
+        (8, 0, true)
+    );
+    assert_eq!(pj(rec.project()), pj(live.project()));
+    assert_eq!(info.valid_log, log);
+    // the recovered editor keeps logging where the crashed one stopped
+    assert_eq!(rec.seq(), 8);
+    assert_eq!(rec.take_log(), "");
+    // undo walks back through the same steps the live editor would: the batch, then the (undone) step is gone from redo, etc.
+    for _ in 0..8 {
+        let l = live.undo_json().unwrap();
+        let r = rec.undo_json().unwrap();
+        assert_eq!(l, r);
+        assert_eq!(pj(rec.project()), pj(live.project()));
+    }
+    assert_eq!(
+        *rec.project(),
+        p,
+        "undo reached the start of the crashed session"
+    );
+}
+
+#[test]
+fn a_log_cut_at_every_byte_recovers_a_prefix_state() {
+    let (p, log, states, _) = session();
+    let base = pj(&p);
+    for cut in 0..=log.len() {
+        if !log.is_char_boundary(cut) {
+            continue;
+        }
+        let part = &log[..cut];
+        let (e, info) = Editor::recover(Some(&base), None, part).unwrap();
+        let whole = part.matches('\n').count() as u64;
+        // a final line cut exactly before its newline is still complete JSON and counts
+        assert!(
+            info.replayed == whole || info.replayed == whole + 1,
+            "cut {cut}"
+        );
+        assert_eq!(pj(e.project()), states[info.replayed as usize], "cut {cut}");
+        assert_eq!(e.seq(), info.replayed);
+        assert!(log.starts_with(&info.valid_log));
+    }
+}
+
+#[test]
+fn corruption_in_the_middle_keeps_the_valid_prefix_and_reports_the_rest() {
+    let (p, log, states, _) = session();
+    let mut lines: Vec<String> = log.lines().map(String::from).collect();
+    lines[4] = "{\"n\":5,\"r\":\"app".into(); // garbage
+    let bad = lines.join("\n") + "\n";
+    let (e, info) = Editor::recover(Some(&pj(&p)), None, &bad).unwrap();
+    assert_eq!((info.replayed, info.dropped), (4, 4));
+    assert_eq!(pj(e.project()), states[4]);
+    // an out-of-sequence record ends the replay too
+    let skipped = format!("{}\n{}\n", lines[0], lines[2]);
+    let (_, info) = Editor::recover(Some(&pj(&p)), None, &skipped).unwrap();
+    assert_eq!((info.replayed, info.dropped), (1, 1));
+}
+
+#[test]
+fn a_checkpoint_stands_in_when_the_log_cannot_be_replayed_from_the_base() {
+    let (p, log, states, live) = session();
+    // checkpoint after record 7, then the log is damaged at record 3
+    let (rec6, _) = Editor::recover(
+        Some(&pj(&p)),
+        None,
+        &log.lines()
+            .take(7)
+            .map(|l| format!("{l}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    let cp = rec6.checkpoint_json();
+    let mut lines: Vec<String> = log.lines().map(String::from).collect();
+    lines[2] = "junk".into();
+    let damaged = lines.join("\n") + "\n";
+    // damaged log: records 3.. are unreachable even with a checkpoint (the log is not trustworthy past the damage)
+    let (_, info) = Editor::recover(Some(&pj(&p)), Some(&cp), &damaged).unwrap();
+    assert_eq!(info.replayed, 2);
+    // intact log but a base that is gone: checkpoint + tail, undo reaches the checkpoint only
+    let (e, info) = Editor::recover(None, Some(&cp), &log).unwrap();
+    assert_eq!(
+        (info.replayed, info.dropped, info.full_history),
+        (8, 0, false)
+    );
+    assert_eq!(pj(e.project()), pj(live.project()));
+    assert_eq!(states.len(), 9);
+    // neither base nor checkpoint: a clear error, not a panic
+    assert!(Editor::recover(None, None, &log).is_err());
+    assert!(Editor::recover(Some("{}"), Some("nope"), &log).is_err());
+}
+
+#[test]
+fn set_media_records_a_fingerprint_and_relinks_and_undoes() {
+    let (mut p, mut ids) = base();
+    let m = p.media[0].id;
+    let fp = format!("b3-64k:100:{}", "0".repeat(64));
+    let mut h = History::new();
+    let op = |uri: &str, hash: Option<&str>| Op::SetMedia {
+        media: m,
+        uri: uri.into(),
+        hash: hash.map(String::from),
+    };
+    h.apply(&mut p, op("media/a.mp4", Some(&fp)), None).unwrap();
+    h.apply(&mut p, op("elsewhere/a.mp4", Some(&fp)), None)
+        .unwrap();
+    assert_eq!(p.media[0].uri, "elsewhere/a.mp4");
+    h.undo(&mut p).unwrap();
+    assert_eq!(p.media[0].uri, "media/a.mp4");
+    assert_eq!(p.media[0].hash.as_deref(), Some(fp.as_str()));
+    for bad in [op("", None), op("x", Some("not-a-fingerprint"))] {
+        assert!(
+            matches!(h.apply(&mut p, bad, None), Err(OpError::Batch { cause, .. }) if *cause == OpError::BadMediaRef)
+        );
+    }
+    let ghost = Op::SetMedia {
+        media: MediaId::new(&mut ids),
+        uri: "x".into(),
+        hash: None,
+    };
+    assert!(
+        matches!(h.apply(&mut p, ghost, None), Err(OpError::Batch { cause, .. }) if matches!(*cause, OpError::UnknownMediaId(_)))
+    );
+}
+
+/// M1-040 recovery cost: replaying a long session. Numbers print with `--nocapture`; the bound is generous, the number is what matters.
+#[test]
+fn recovery_time_for_a_long_session() {
+    let (p, tr, a, _) = two_clips();
+    let mut e = Editor::open(&pj(&p)).unwrap();
+    let mut log = String::new();
+    for i in 0..20_000i64 {
+        let op = serde_json::to_string(&Op::Move {
+            clip: a,
+            track: tr,
+            start: t(i % 7 + 1),
+        })
+        .unwrap();
+        e.apply_json(&op, Some(1 + (i / 50) as u32)).unwrap();
+        log.push_str(&e.take_log());
+    }
+    let t0 = std::time::Instant::now();
+    let (r, info) = Editor::recover(Some(&pj(&p)), None, &log).unwrap();
+    let ms = t0.elapsed().as_secs_f64() * 1000.0;
+    println!(
+        "recovered {} records ({} KiB of log) in {ms:.0} ms",
+        info.replayed,
+        log.len() / 1024
+    );
+    assert_eq!(pj(r.project()), pj(e.project()));
+    assert!(ms < 20_000.0);
 }
