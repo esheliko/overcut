@@ -72,3 +72,40 @@ test("transport and timeline: play advances the playhead, the aspect ratio chang
   await expect.poll(async () => (await canvas.boundingBox())!.height > (await canvas.boundingBox())!.width).toBe(true);
   expect(wide.width).toBeGreaterThan(wide.height);
 });
+
+test("theme: follows the system, the toggle overrides it, the choice is remembered, and the page never scrolls sideways", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("data-theme", "light");
+  const toggle = page.getByTestId("theme-toggle");
+  // system -> dark -> light -> high-contrast -> system
+  await toggle.click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  await toggle.click();
+  await toggle.click();
+  await expect(html).toHaveAttribute("data-theme", "high-contrast");
+  await expect(page.locator("[data-announcer=polite]")).toContainText("High contrast");
+  await page.reload();
+  await expect(html).toHaveAttribute("data-theme", "high-contrast");
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("language and direction: the page declares lang and dir, and a right-to-left locale mirrors without overflow", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await page.evaluate(() => localStorage.setItem("overcut.locale", "en-XB"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en-XB");
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  if ((page.viewportSize()?.width ?? 0) >= 720) {
+    // the tool rail moves to the right edge; the preview is on its left
+    const rail = (await page.getByRole("navigation").first().boundingBox())!;
+    const stage = (await page.getByTestId("panel-preview").boundingBox())!;
+    expect(rail.x).toBeGreaterThan(stage.x);
+  }
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});

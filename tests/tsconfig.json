@@ -5,9 +5,11 @@
     "rootDir": "..",
     "tsBuildInfoFile": "../node_modules/.cache/tsc/tests.tsbuildinfo",
     "types": ["node"],
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
     "allowJs": false,
     "paths": { "@app/wasm-pkg": ["../packages/engine-client/src/wasm-module.d.ts"] }
   },
-  "include": ["unit", "smoke", "../playwright.config.ts", "../apps/web/src/timecode.ts", "../apps/web/src/timeline/scene.ts", "../apps/web/src/timeline/view.ts", "../apps/web/src/timeline/hit.ts", "../apps/web/src/timeline/fixture.ts"],
+  "include": ["unit", "smoke", "../playwright.config.ts", "../apps/web/src/timecode.ts", "../apps/web/src/timeline/scene.ts", "../apps/web/src/timeline/view.ts", "../apps/web/src/timeline/hit.ts", "../apps/web/src/timeline/fixture.ts", "../apps/web/src/i18n", "../apps/web/src/i18n/*.json", "../apps/web/src/theme", "../apps/web/src/a11y"],
   "references": [{ "path": "../packages/engine-client" }]
 }
