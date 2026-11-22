@@ -1,4 +1,4 @@
-import { createEngine, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
+import { createEngine, type Editing, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
@@ -9,7 +9,7 @@ import { END_FRAME, Timeline } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { FPS, timecode } from "./timecode";
 
-type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend } | { status: "error"; message: string };
+type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; editing: Editing } | { status: "error"; message: string };
 
 type Tool = { id: string; icon: IconName; soon?: string };
 /** CapCut-style tool strip: the left rail on desktop and tablet, the bottom bar on a phone. */
@@ -133,7 +133,7 @@ export function App() {
   useEffect(() => {
     let alive = true;
     createEngine()
-      .then(async (e) => ({ info: await e.info(), backend: e.backend, e }))
+      .then(async (e) => ({ info: await e.info(), backend: e.backend, editing: e.editing, e }))
       .then(({ e, ...r }) => alive && (setEngine({ status: "ready", ...r }), setCore(e)))
       .catch((e: unknown) => alive && setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }));
     return () => { alive = false; };
@@ -254,7 +254,7 @@ export function App() {
 
         {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
-        <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onSoon={soon} />
+        <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onNotice={soon} editing={engine.status === "ready" ? engine.editing : undefined} />
       </main>
 
       <PersistenceNotes state={persistence} />

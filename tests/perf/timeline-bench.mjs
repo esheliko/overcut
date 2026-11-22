@@ -24,6 +24,7 @@ for (const [label, viewport, rate, dsf] of [['desktop 1280x800', { width: 1280, 
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate });
   results[label] = await page.evaluate(() => globalThis.__timelineBench(240));
+  results[label].drag = await page.evaluate(() => globalThis.__timelineDragBench()); // input-to-paint while dragging clips (M1-034)
   await ctx.close();
 }
 await browser.close();
@@ -34,5 +35,10 @@ for (const [label, r] of Object.entries(results)) for (const p of r.phases) {
   const bar = label.includes('throttle') ? 30 : 60;
   console.log(`${label.padEnd(40)} ${p.name.padEnd(9)} ${p.fps.toFixed(1).padStart(6)} fps  p95 ${p.p95Ms.toFixed(1)} ms  JS draw ${p.drawAvgMs.toFixed(2)} ms, +raster ${p.flushAvgMs.toFixed(2)} ms  clips drawn <= ${p.clipsDrawn}`);
   if (p.fps < bar * 0.97) fail = true;
+}
+for (const [label, r] of Object.entries(results)) for (const k of ['single', 'all']) {
+  const d = r.drag[k];
+  console.log(`${label.padEnd(40)} drag ${k.padEnd(6)} (${d.selected} selected)  input-to-paint p50 ${d.p50Ms.toFixed(2)} ms  p95 ${d.p95Ms.toFixed(2)} ms  max ${d.maxMs.toFixed(2)} ms`);
+  if (d.p95Ms > 16) fail = true;
 }
 process.exit(fail && process.env.BENCH_STRICT ? 1 : 0);
