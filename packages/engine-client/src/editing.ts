@@ -1,4 +1,4 @@
-import type { Editing, EditOutcome, Op } from "./types";
+import type { Editing, EditOutcome, FrameDescription, Op } from "./types";
 import type { Project } from "./model.generated";
 
 /** What each backend supplies: the engine's string-in, string-out editor calls. Rejections/throws carry the engine's message. */
@@ -9,6 +9,8 @@ export interface RawEditing {
   redo(): Promise<string> | string;
   project(): Promise<string> | string;
   journal(): Promise<string> | string;
+  /** `ticks` is an exact integer (i64 on the engine side). */
+  evaluate(sequence: string, ticks: bigint, audioSamples: number): Promise<string> | string;
 }
 
 export function parseEditOutcome(json: string): EditOutcome {
@@ -46,5 +48,11 @@ export function createEditing(raw: RawEditing): Editing {
     redo: () => call(async () => parseEditOutcome(await raw.redo())),
     project: () => call(async () => JSON.parse(await raw.project()) as Project),
     journal: () => call(async () => raw.journal()),
+    evaluate: (sequence: string, ticks: number, audioSamples = 0) =>
+      call(async () => {
+        if (!Number.isSafeInteger(ticks)) throw new Error("ticks must be a safe integer");
+        if (!Number.isInteger(audioSamples) || audioSamples < 0 || audioSamples > 0xffff_ffff) throw new Error("audioSamples must be an integer in 0..2^32-1");
+        return JSON.parse(await raw.evaluate(sequence, BigInt(ticks), audioSamples)) as FrameDescription;
+      }),
   };
 }

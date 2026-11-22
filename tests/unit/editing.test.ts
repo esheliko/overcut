@@ -23,6 +23,7 @@ function fake(over: Partial<RawEditing> = {}) {
     redo: () => (calls.push(["redo", []]), outcome),
     project: () => '{"schema_version":1}',
     journal: () => '{"op":"delete"}\n',
+    evaluate: () => "{}",
     ...over,
   };
   return { editing: createEditing(raw), calls };
@@ -76,4 +77,21 @@ test("parseEditOutcome rejects the wrong shape", () => {
   assert.deepEqual(parseEditOutcome(JSON.stringify(contract.outcome)), contract.outcome);
   assert.throws(() => parseEditOutcome("null"), /not an object/);
   assert.throws(() => parseEditOutcome('{"revision":1}'), /wrong shape/);
+});
+
+test("evaluate sends the sequence, an exact tick count (bigint) and the audio window, and parses the frame description", async () => {
+  const desc = { time: 5, frame: 0, video_time: 0, sample: 0, audio_samples: 8, layers: [], audio: [] };
+  const { editing, calls } = fake({ evaluate: (...a) => (calls.push(["evaluate", a]), JSON.stringify(desc)) });
+  assert.deepEqual(await editing.evaluate("seq", 5, 8), desc);
+  assert.deepEqual(argsOf(calls, 0), ["seq", 5n, 8]);
+  await editing.evaluate("seq", 9);
+  assert.equal(argsOf(calls, 1)[2], 0);
+});
+
+test("evaluate refuses ticks that are not exact integers and bad window sizes", async () => {
+  const { editing, calls } = fake();
+  await assert.rejects(editing.evaluate("s", 1.5), /safe integer/);
+  await assert.rejects(editing.evaluate("s", 2 ** 60), /safe integer/);
+  await assert.rejects(editing.evaluate("s", 0, -1), /audioSamples/);
+  assert.equal(calls.length, 0);
 });
