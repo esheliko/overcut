@@ -1,6 +1,7 @@
 import type { Engine } from "./types";
 
 export * from "./types";
+export { createEditing, parseEditOutcome, type RawEditing } from "./editing";
 export { probeHost } from "./probe";
 
 /** True inside a Tauri shell (desktop or mobile app), false in a plain browser. */

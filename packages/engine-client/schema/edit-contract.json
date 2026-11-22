@@ -1,0 +1,59 @@
+{
+  "_comment": "Wire contract between app-timeline (Rust) and @app/engine-client (TS). Both test against this file; edit it with the Op type in both places.",
+  "ops": [
+    {
+      "op": "insert_clip",
+      "track": "00000000000000000000000000000003",
+      "clip": {
+        "id": "00000000000000000000000000000064",
+        "media": "00000000000000000000000000000005",
+        "start": 0,
+        "source_in": 0,
+        "duration": 705600000,
+        "speed": {
+          "num": 1,
+          "den": 1
+        }
+      }
+    },
+    {
+      "op": "split",
+      "clip": "00000000000000000000000000000064",
+      "at": 352800000,
+      "new_id": "00000000000000000000000000000065"
+    },
+    {
+      "op": "trim_in",
+      "clip": "00000000000000000000000000000065",
+      "start": 400000000
+    },
+    {
+      "op": "trim_out",
+      "clip": "00000000000000000000000000000065",
+      "end": 700000000
+    },
+    {
+      "op": "move",
+      "clip": "00000000000000000000000000000065",
+      "track": "00000000000000000000000000000004",
+      "start": 1000
+    },
+    {
+      "op": "delete",
+      "clip": "00000000000000000000000000000064"
+    },
+    {
+      "op": "set_clip",
+      "clip": "00000000000000000000000000000064",
+      "start": 0,
+      "source_in": 10,
+      "duration": 20
+    }
+  ],
+  "outcome": {
+    "revision": 3,
+    "can_undo": true,
+    "can_redo": false,
+    "changed": true
+  }
+}
