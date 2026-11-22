@@ -4,6 +4,8 @@
 declare module "@app/wasm-pkg" {
   export default function init(module?: unknown): Promise<unknown>;
   export function engine_info(): string;
+  export function project_open(bytes: Uint8Array): string;
+  export function project_save(project_json: string, previous: Uint8Array): Uint8Array;
   /** An open project plus its undo history. Mirrors `Editor` in crates/wasm/src/lib.rs; all data is JSON strings. */
   export class Editor {
     constructor(projectJson: string);

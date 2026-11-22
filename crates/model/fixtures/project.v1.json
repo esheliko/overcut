@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "00000000000000000000000000000001",
+  "name": "Fixture v1",
+  "media": [
+    {
+      "id": "00000000000000000000000000000010",
+      "kind": "video",
+      "name": "clip.mp4",
+      "uri": "media/clip.mp4",
+      "hash": "b3-64k:1000:00",
+      "duration": 2540160000
+    }
+  ],
+  "sequences": [
+    {
+      "id": "00000000000000000000000000000002",
+      "name": "Sequence 1",
+      "frame_rate": { "num": 30, "den": 1 },
+      "resolution": { "width": 1920, "height": 1080 },
+      "sample_rate": 48000,
+      "tracks": [
+        {
+          "id": "00000000000000000000000000000003",
+          "kind": "video",
+          "name": "V1",
+          "muted": false,
+          "locked": false,
+          "clips": [
+            {
+              "id": "00000000000000000000000000000020",
+              "media": "00000000000000000000000000000010",
+              "start": 0,
+              "source_in": 0,
+              "duration": 1411200000,
+              "speed": { "num": 1, "den": 1 }
+            }
+          ]
+        },
+        {
+          "id": "00000000000000000000000000000004",
+          "kind": "audio",
+          "name": "A1",
+          "muted": false,
+          "locked": false,
+          "clips": []
+        }
+      ]
+    }
+  ]
+}

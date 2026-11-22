@@ -2,11 +2,35 @@
 
 use crate::traits::*;
 use app_model::{Rational, Time};
+use std::any::Any;
+use std::cell::Cell;
+use std::rc::Rc;
 
 pub struct FakeDecoder {
     info: MediaInfo,
     /// Number of `video_frame` calls that actually decoded (cache tests assert on it).
     pub decode_calls: u64,
+    kind: FrameKind,
+    /// Fake GPU frames currently alive (created minus dropped): tests assert that eviction closes them.
+    live_gpu: Rc<Cell<i64>>,
+}
+
+/// The "GPU resource" behind a fake GPU frame: it just remembers its frame number and counts itself while alive.
+pub struct FakeGpuFrame {
+    pub index: i64,
+    live: Rc<Cell<i64>>,
+}
+
+impl GpuResource for FakeGpuFrame {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Drop for FakeGpuFrame {
+    fn drop(&mut self) {
+        self.live.set(self.live.get() - 1);
+    }
 }
 
 impl FakeDecoder {
@@ -29,12 +53,24 @@ impl FakeDecoder {
                 }),
             },
             decode_calls: 0,
+            kind: FrameKind::Cpu,
+            live_gpu: Rc::new(Cell::new(0)),
         }
     }
 
-    /// Frame number stored in a fake frame's first 8 bytes (little endian).
+    /// Number of fake GPU frames not yet dropped.
+    pub fn live_gpu_frames(&self) -> i64 {
+        self.live_gpu.get()
+    }
+
+    /// Frame number of a fake frame: stored in the first 8 bytes (little endian) on the CPU variant, in the resource on the GPU one.
     pub fn frame_number(frame: &VideoFrame) -> i64 {
-        i64::from_le_bytes(frame.data[..8].try_into().expect("frame has >= 8 bytes"))
+        match &frame.data {
+            FrameData::Cpu(f) => {
+                i64::from_le_bytes(f.data[..8].try_into().expect("frame has >= 8 bytes"))
+            }
+            FrameData::Gpu(h) => h.downcast_ref::<FakeGpuFrame>().map_or(-1, |g| g.index),
+        }
     }
 
     /// Sample `n` of the 440 Hz-ish triangle tone (integer math only, so it is bit-identical everywhere).
@@ -50,24 +86,38 @@ impl Decoder for FakeDecoder {
         &self.info
     }
 
+    fn frame_kinds(&self) -> FrameKinds {
+        FrameKinds::BOTH
+    }
+
+    fn set_frame_kind(&mut self, kind: FrameKind) -> Result<(), MediaError> {
+        self.kind = kind;
+        Ok(())
+    }
+
     async fn video_frame(&mut self, index: i64) -> Result<VideoFrame, MediaError> {
         let v = self.info.video.as_ref().ok_or(MediaError::OutOfRange)?;
         if index < 0 || index >= v.frame_count {
             return Err(MediaError::OutOfRange);
         }
         self.decode_calls += 1;
+        let pts = Time::from_frame_index(index, v.fps).ok_or(MediaError::OutOfRange)?;
+        if self.kind == FrameKind::Gpu {
+            self.live_gpu.set(self.live_gpu.get() + 1);
+            let res = FakeGpuFrame {
+                index,
+                live: self.live_gpu.clone(),
+            };
+            let est = GpuFrameHandle::estimate_bytes(v.width, v.height);
+            let handle = GpuFrameHandle::new(res, est);
+            return Ok(VideoFrame::gpu(index, pts, v.width, v.height, handle));
+        }
         let len = (v.width as usize) * (v.height as usize) * 4;
         let mut data = vec![(index % 251) as u8; len];
         if len >= 8 {
             data[..8].copy_from_slice(&index.to_le_bytes());
         }
-        Ok(VideoFrame {
-            index,
-            pts: Time::from_frame_index(index, v.fps).ok_or(MediaError::OutOfRange)?,
-            width: v.width,
-            height: v.height,
-            data: data.into(),
-        })
+        Ok(VideoFrame::cpu(index, pts, v.width, v.height, data.into()))
     }
 
     async fn audio(&mut self, start_sample: i64, count: usize) -> Result<AudioChunk, MediaError> {

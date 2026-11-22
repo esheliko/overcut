@@ -25,6 +25,66 @@ export interface Engine {
   capabilities(): Promise<Capabilities>;
   /** Edit the open project: apply ops, undo, redo (M1-003). The UI wiring comes with the timeline (M1-034). */
   readonly editing: Editing;
+  /** Reads a `.overcut` file (M1-005). Rejects with `ProjectFileError` (corrupt, too new to display, ...). */
+  openProject(bytes: Uint8Array): Promise<OpenedProject>;
+  /**
+   * Writes a `.overcut` file. Pass the bytes you opened as `previous` (omit for a new file) so unknown fields and extra
+   * entries (thumbnails, peaks, journal) survive. Rejects with code `read_only` when `previous` came from a newer app.
+   */
+  saveProject(project: Project, previous?: Uint8Array): Promise<Uint8Array>;
+}
+
+/** Result of `Engine.openProject`. Mirrors `app_model::open_json`. */
+export interface OpenedProject {
+  project: Project;
+  /** True when the file is from a newer app: show it, never save it. */
+  readOnly: boolean;
+  /** Schema version found on disk, before migration. */
+  foundVersion: number;
+  /** The file was older and has been upgraded in memory (saving rewrites it in the current format). */
+  migrated: boolean;
+  /** Names of the extra container entries (thumbnails, peaks, ...). */
+  entries: string[];
+}
+
+export type ProjectFileErrorCode = "corrupt" | "missing_project" | "bad_project" | "newer_version" | "read_only" | "limits" | "invalid" | "unknown";
+
+/** A failure to read or write a `.overcut` file; `message` is fit to show the user. */
+export class ProjectFileError extends Error {
+  constructor(readonly code: ProjectFileErrorCode, message: string) {
+    super(message);
+    this.name = "ProjectFileError";
+  }
+}
+
+const FILE_ERROR_CODES: readonly string[] = ["corrupt", "missing_project", "bad_project", "newer_version", "read_only", "limits", "invalid"];
+
+/** Turns what a backend threw (a `{code, message}` JSON string, or anything else) into a `ProjectFileError`. */
+export function toProjectFileError(thrown: unknown): ProjectFileError {
+  if (thrown instanceof ProjectFileError) return thrown;
+  const text = typeof thrown === "string" ? thrown : thrown instanceof Error ? thrown.message : String(thrown);
+  try {
+    const v: unknown = JSON.parse(text);
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      if (typeof o.code === "string" && typeof o.message === "string") {
+        return new ProjectFileError(FILE_ERROR_CODES.includes(o.code) ? (o.code as ProjectFileErrorCode) : "unknown", o.message);
+      }
+    }
+  } catch {
+    /* not JSON: fall through */
+  }
+  return new ProjectFileError("unknown", text);
+}
+
+export function parseOpenedProject(json: string): OpenedProject {
+  const v: unknown = JSON.parse(json);
+  if (!v || typeof v !== "object") throw new Error("opened project is not an object");
+  const o = v as Record<string, unknown>;
+  if (!o.project || typeof o.project !== "object" || typeof o.read_only !== "boolean" || typeof o.found_version !== "number" || typeof o.migrated !== "boolean" || !Array.isArray(o.entries)) {
+    throw new Error("opened project has the wrong shape");
+  }
+  return { project: o.project as Project, readOnly: o.read_only, foundVersion: o.found_version, migrated: o.migrated, entries: o.entries.map(String) };
 }
 
 /**

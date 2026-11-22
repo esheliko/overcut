@@ -1,13 +1,28 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEditing } from "./editing";
 import { probeHost } from "./probe";
-import { parseCapabilities, parseEngineInfo, type Engine } from "./types";
+import { parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
 /** Native backend: the Rust engine runs in the Tauri shell process; commands are defined in apps/desktop/src-tauri/src/lib.rs. */
 export function createTauriEngine(): Engine {
   return {
     backend: "tauri",
     info: async () => parseEngineInfo(await invoke<string>("engine_info")),
+    openProject: async (bytes) => {
+      try {
+        return parseOpenedProject(await invoke<string>("project_open", { bytes: Array.from(bytes) }));
+      } catch (e) {
+        throw toProjectFileError(e);
+      }
+    },
+    saveProject: async (project, previous) => {
+      try {
+        const out = await invoke<number[]>("project_save", { projectJson: JSON.stringify(project), previous: Array.from(previous ?? []) });
+        return Uint8Array.from(out);
+      } catch (e) {
+        throw toProjectFileError(e);
+      }
+    },
     editing: createEditing({
       open: (projectJson) => invoke<void>("editor_open", { projectJson }),
       apply: (opsJson, coalesce) => invoke<string>("editor_apply", { opJson: opsJson, coalesce: coalesce ?? null }),

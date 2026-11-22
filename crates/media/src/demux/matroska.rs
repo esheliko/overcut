@@ -1,5 +1,5 @@
 //! WebM / Matroska (EBML) demuxer. Reads `Info` and `Tracks`, then walks `Cluster` headers; block payloads are never read, only
-//! each block's 4-byte header. Not supported (`Unsupported`): laced blocks (virtually never used for video or Opus/WebM).
+//! each block's 4-byte header. Not supported (`Unsupported`): laced blocks (virtually never used for video or Opus/WebM; see docs/features/media-io.md).
 
 use super::codec;
 use super::reader::{invalid, Reader};

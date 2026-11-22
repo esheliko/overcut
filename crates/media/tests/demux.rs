@@ -248,13 +248,139 @@ fn huge_counts_are_rejected_without_allocating() {
 }
 
 #[test]
-fn fragmented_and_unknown_formats_are_reported_plainly() {
-    let mut d = fixture("h264_aac.mp4");
-    let at = d.windows(4).position(|w| w == b"moov").unwrap();
-    d[at..at + 4].copy_from_slice(b"moof");
-    assert!(matches!(probe_bytes(&d), Err(MediaError::Unsupported(_))));
+fn unknown_formats_are_reported_plainly() {
     assert!(matches!(
         probe_bytes(b"RIFF\0\0\0\0AVI LIST\0\0\0\0"),
         Err(MediaError::Unsupported(_))
     ));
+}
+
+/// What must survive fragmentation: timing relative to the first presented frame, sync flags and sizes of every packet. (A fragmented
+/// muxer writes no negative composition offsets, so it shifts the whole timeline by the B-frame delay; offsets differ by design.)
+fn timing(t: &Track) -> Vec<(i64, i64, i64, u32, bool)> {
+    let base = t.packets.iter().map(|p| p.pts.ticks()).min().unwrap_or(0);
+    t.packets
+        .iter()
+        .map(|p| {
+            (
+                p.pts.ticks() - base,
+                p.dts.ticks() - base,
+                p.duration.ticks(),
+                p.size,
+                p.keyframe,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn fragmented_mp4_matches_the_plain_file() {
+    let plain = probe_bytes(&fixture("h264_aac.mp4")).unwrap();
+    for name in ["frag.mp4", "frag_legacy.mp4"] {
+        let d = fixture(name);
+        let p = probe_bytes(&d).unwrap();
+        assert_eq!(p.format, ContainerFormat::Mp4);
+        assert_eq!(p.tracks.len(), 2, "{name}");
+        for (a, b) in [
+            (video(&p), video(&plain)),
+            (p.audio().unwrap(), plain.audio().unwrap()),
+        ] {
+            assert_eq!(
+                (a.codec.as_str(), a.width, a.height),
+                (b.codec.as_str(), b.width, b.height),
+                "{name}"
+            );
+            assert_eq!(a.codec_description, b.codec_description, "{name}");
+            if a.kind == TrackKind::Video {
+                assert_eq!(timing(a), timing(b), "{name}");
+            } else {
+                // ffmpeg writes AAC priming as an edit list in the plain file and as a longer first sample here: compare what is
+                // exact in both (count, sizes, and the steady-state durations).
+                let sizes = |t: &Track| t.packets.iter().map(|p| p.size).collect::<Vec<_>>();
+                assert_eq!(sizes(a), sizes(b), "{name}");
+                let mid = |t: &Track| {
+                    t.packets[1..t.packets.len() - 1]
+                        .iter()
+                        .map(|p| p.duration)
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(mid(a), mid(b), "{name}");
+            }
+            // Every sample lies inside the file and the bytes are the ones the plain file has.
+            let plain_bytes = fixture("h264_aac.mp4");
+            for (pa, pb) in a.packets.iter().zip(&b.packets) {
+                let (x, y) = (pa.offset as usize, pb.offset as usize);
+                assert_eq!(
+                    d[x..x + pa.size as usize],
+                    plain_bytes[y..y + pb.size as usize],
+                    "{name}"
+                );
+            }
+        }
+        let v = video(&p);
+        assert_eq!(v.nominal_fps, Some(Rational::FPS_30), "{name}");
+        assert!(!v.vfr, "{name}");
+        assert_eq!(p.media_info().video.unwrap().frame_count, 30, "{name}");
+        // No `mvhd` duration in a fragmented file: it is the end of the longest track (shifted by the B-frame delay).
+        assert!(
+            p.duration >= plain.duration
+                && p.duration.ticks() <= plain.duration.ticks() + 3 * FRAME_30,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn fragmented_mp4_cut_short_keeps_the_complete_fragments() {
+    let d = fixture("frag.mp4");
+    let full = video(&probe_bytes(&d).unwrap()).packets.len();
+    let mut prev = 0;
+    for cut in 0..d.len() {
+        if let Ok(p) = probe_bytes(&d[..cut]) {
+            let n = p.video().map_or(0, |t| t.packets.len());
+            assert!(n <= full);
+            assert!(n >= prev, "more data never means fewer frames (cut {cut})");
+            prev = n;
+        }
+    }
+    // A recording that lost its tail still imports what is complete.
+    let cut = d.len() * 7 / 10;
+    let p = probe_bytes(&d[..cut]).unwrap();
+    let n = video(&p).packets.len();
+    assert!(n > 0 && n < full, "{n} of {full}");
+}
+
+#[test]
+fn fragmented_mp4_corruption_never_panics() {
+    let mut x = 0x9E37_79B9_7F4A_7C15u64;
+    let mut next = move || {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        x
+    };
+    for name in ["frag.mp4", "frag_legacy.mp4"] {
+        let d = fixture(name);
+        for _ in 0..1500 {
+            let mut m = d.clone();
+            for _ in 0..=(next() % 6) {
+                let span = if next() % 3 == 0 {
+                    m.len()
+                } else {
+                    m.len().min(2048)
+                } as u64;
+                let i = (next() % span) as usize;
+                m[i] = next() as u8;
+            }
+            let _ = probe_bytes(&m);
+        }
+    }
+}
+
+#[test]
+fn huge_trun_count_is_rejected_without_allocating() {
+    let mut d = fixture("frag.mp4");
+    let at = d.windows(4).position(|w| w == b"trun").unwrap() + 4;
+    d[at + 4..at + 8].copy_from_slice(&u32::MAX.to_be_bytes());
+    assert!(matches!(probe_bytes(&d), Err(MediaError::Invalid(_))));
 }

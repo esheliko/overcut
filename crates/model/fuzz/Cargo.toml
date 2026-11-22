@@ -1,0 +1,23 @@
+# cargo-fuzz target for the .overcut reader. Own workspace on purpose; not built or run in CI.
+# Run: cargo install cargo-fuzz && cd crates/model && cargo +nightly fuzz run project_file
+[workspace]
+
+[package]
+name = "app-model-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+app-model = { path = ".." }
+
+[[bin]]
+name = "project_file"
+path = "fuzz_targets/project_file.rs"
+test = false
+doc = false
+bench = false
