@@ -1,9 +1,10 @@
 //! `Editor`: a project plus its history behind a JSON-string API. This is what `crates/wasm` and the Tauri shell expose,
 //! so both platforms share one tested implementation and bindings stay logic-free.
 
+use crate::evaluate::{evaluate_into, FrameDescription};
 use crate::history::{journal_to_jsonl, History};
 use crate::op::Op;
-use app_model::Project;
+use app_model::{Id, Project, Time};
 use serde::{Deserialize, Serialize};
 
 /// What the UI learns after every edit (the full patch stream arrives with the timeline UI, M1-034).
@@ -29,6 +30,8 @@ pub struct Editor {
     project: Project,
     history: History,
     revision: u64,
+    /// Reused by every `evaluate_json` call so the hot path does not allocate.
+    frame: FrameDescription,
 }
 
 impl Editor {
@@ -44,6 +47,7 @@ impl Editor {
             project,
             history: History::new(),
             revision: 0,
+            frame: FrameDescription::default(),
         }
     }
 
@@ -106,5 +110,23 @@ impl Editor {
     /// Everything applied so far as JSON Lines (for autosave; see `history::journal_to_jsonl`).
     pub fn journal_jsonl(&self) -> String {
         journal_to_jsonl(self.history.journal())
+    }
+
+    /// `evaluate` for the sequence with this id (32 hex chars) at `ticks`, plus an audio window of `audio_samples`; returns the `FrameDescription` JSON.
+    pub fn evaluate_json(
+        &mut self,
+        sequence: &str,
+        ticks: i64,
+        audio_samples: u32,
+    ) -> Result<String, String> {
+        let id = Id::parse(sequence).ok_or("sequence id is not 32 hex characters")?;
+        let seq = self
+            .project
+            .sequences
+            .iter()
+            .find(|s| s.id.0 == id)
+            .ok_or("unknown sequence")?;
+        evaluate_into(seq, Time::from_ticks(ticks), audio_samples, &mut self.frame);
+        serde_json::to_string(&self.frame).map_err(|e| e.to_string())
     }
 }

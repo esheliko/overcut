@@ -41,6 +41,16 @@ impl Editor {
     pub fn journal(&self) -> String {
         self.0.journal_jsonl()
     }
+
+    /// `FrameDescription` JSON for a sequence at `ticks` (i64: a BigInt in JS) with an audio window of `audio_samples`.
+    pub fn evaluate(
+        &mut self,
+        sequence: &str,
+        ticks: i64,
+        audio_samples: u32,
+    ) -> Result<String, String> {
+        self.0.evaluate_json(sequence, ticks, audio_samples)
+    }
 }
 
 /// Opens a `.overcut` container: JSON `{project, read_only, found_version, migrated, entries}`.

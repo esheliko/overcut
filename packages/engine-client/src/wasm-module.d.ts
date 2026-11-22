@@ -15,5 +15,7 @@ declare module "@app/wasm-pkg" {
     redo(): string;
     project(): string;
     journal(): string;
+    /** `FrameDescription` JSON; `ticks` is a BigInt (i64 in Rust). */
+    evaluate(sequence: string, ticks: bigint, audioSamples: number): string;
   }
 }

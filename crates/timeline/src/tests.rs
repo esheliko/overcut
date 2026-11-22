@@ -789,3 +789,15 @@ fn wire_format_matches_the_checked_in_contract() {
     let out: EditOutcome = serde_json::from_value(fixture["outcome"].clone()).unwrap();
     assert_eq!(serde_json::to_value(out).unwrap(), fixture["outcome"]);
 }
+
+#[test]
+fn editor_evaluate_json_reports_layers_and_rejects_bad_input() {
+    let mut e = Editor::from_project(base().0);
+    let seq = e.project().sequences[0].id.to_string();
+    let v: serde_json::Value =
+        serde_json::from_str(&e.evaluate_json(&seq, 0, 16).unwrap()).unwrap();
+    assert_eq!(v["frame"], 0);
+    assert!(v["layers"].is_array() && v["audio"].is_array());
+    assert!(e.evaluate_json("nope", 0, 0).is_err());
+    assert!(e.evaluate_json(&"0".repeat(32), 0, 0).is_err());
+}
