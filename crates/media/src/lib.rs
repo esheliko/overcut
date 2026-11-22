@@ -9,3 +9,13 @@
 //! demuxers and parsers are fuzzed; see ADR 0004 for what may and may not be linked (no GPL/patent-encumbered encoders).
 //!
 //! Status: M0 skeleton, empty. First content: `M1-011`, `M1-012`, `M1-013`.
+
+mod cache;
+mod fake;
+mod traits;
+
+pub use cache::{CacheStats, FrameCache};
+pub use fake::FakeDecoder;
+pub use traits::{
+    AudioChunk, AudioInfo, Decoder, MediaError, MediaInfo, Source, VideoFrame, VideoInfo,
+};
