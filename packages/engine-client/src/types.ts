@@ -1,3 +1,7 @@
+import type { Capabilities } from "./capabilities";
+
+export * from "./capabilities";
+
 /** What the engine says about itself. Mirrors `app_core::EngineInfo` (crates/core/src/lib.rs). */
 export interface EngineInfo {
   name: string;
@@ -16,6 +20,8 @@ export type EngineBackend = "wasm" | "tauri";
 export interface Engine {
   readonly backend: EngineBackend;
   info(): Promise<EngineInfo>;
+  /** What this device can do (codecs, GPU, storage, cores). Never rejects for a partly failed probe; unknowns are reported as such. */
+  capabilities(): Promise<Capabilities>;
 }
 
 export const EXPECTED_ABI = 1;

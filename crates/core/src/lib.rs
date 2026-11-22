@@ -7,6 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 
+mod capabilities;
+pub use capabilities::*;
+
 /// Bumped when the shape of anything crossing the JS boundary changes incompatibly.
 pub const ABI_VERSION: u32 = 1;
 

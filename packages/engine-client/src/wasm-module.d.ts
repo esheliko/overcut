@@ -4,4 +4,5 @@
 declare module "@app/wasm-pkg" {
   export default function init(module?: unknown): Promise<unknown>;
   export function engine_info(): string;
+  export function capabilities(probe_json: string): string;
 }

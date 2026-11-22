@@ -93,6 +93,26 @@ function Details() {
   );
 }
 
+/** The "..." menu: small, out of the way. Holds About / Diagnostics for now. */
+function AppMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  return (
+    <div className="menu" ref={ref}>
+      <button className="icon-btn" aria-label="Menu" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
+      {open && <div className="menu-pop" role="menu"><a role="menuitem" href="/diagnostics">About / Diagnostics</a></div>}
+    </div>
+  );
+}
+
 export function App() {
   const [engine, setEngine] = useState<EngineState>({ status: "loading" });
   const [tool, setTool] = useState("media");
@@ -186,6 +206,7 @@ export function App() {
           <button className="primary" onClick={() => soon("Export arrives in the first alpha (M1): 1080p H.264, no watermark")}>
             <Icon name="export" size={18} /><span>Export</span>
           </button>
+          <AppMenu />
         </div>
       </header>
 

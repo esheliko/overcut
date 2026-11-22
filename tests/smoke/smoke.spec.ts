@@ -59,3 +59,34 @@ test("transport and timeline: play advances the playhead, the aspect ratio chang
   await expect.poll(async () => (await canvas.boundingBox())!.height > (await canvas.boundingBox())!.width).toBe(true);
   expect(wide.width).toBeGreaterThan(wide.height);
 });
+
+test("device check: reachable from the menu, shows capabilities, runs the test, fits the screen, makes no outside requests", async ({ page }) => {
+  const outside: string[] = [];
+  const origin = new URL(page.url() === "about:blank" ? "http://localhost" : page.url()).origin;
+  page.on("request", (r) => { const u = new URL(r.url()); if (/^https?:$/.test(u.protocol) && u.hostname !== new URL(test.info().project.use.baseURL ?? origin).hostname) outside.push(r.url()); });
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("menuitem", { name: "About / Diagnostics" }).click();
+  await expect(page.getByTestId("diagnostics")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What this device supports" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Video formats" })).toBeVisible({ timeout: 30_000 });
+
+  const run = page.getByTestId("run-test");
+  expect((await run.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  await run.click();
+  // headless CI often has no GPU or hardware codecs: every test must still END with a readable answer, never hang or crash
+  await expect(page.getByTestId("copy")).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByTestId("results").locator("li")).toHaveCount(4);
+  const report = JSON.parse(await page.getByTestId("report").inputValue());
+  expect(report.overcut_device_report).toBe(1);
+  expect(Object.keys(report.tests)).toEqual(["decode", "seek", "gpuUpload", "fillRate"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  expect(errors).toEqual([]);
+  expect(outside).toEqual([]);
+});

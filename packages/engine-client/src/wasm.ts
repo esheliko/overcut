@@ -1,4 +1,5 @@
-import { parseEngineInfo, type Engine } from "./types";
+import { probeHost } from "./probe";
+import { parseCapabilities, parseEngineInfo, type Engine } from "./types";
 
 /** Browser backend: loads the WebAssembly build once. Run the engine inside a Web Worker when it starts doing real work (see docs). */
 export async function createWasmEngine(): Promise<Engine> {
@@ -7,5 +8,6 @@ export async function createWasmEngine(): Promise<Engine> {
   return {
     backend: "wasm",
     info: async () => parseEngineInfo(wasm.engine_info()),
+    capabilities: async () => parseCapabilities(wasm.capabilities(await probeHost())),
   };
 }

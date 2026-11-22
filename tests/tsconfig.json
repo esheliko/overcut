@@ -8,6 +8,6 @@
     "allowJs": false,
     "paths": { "@app/wasm-pkg": ["../packages/engine-client/src/wasm-module.d.ts"] }
   },
-  "include": ["unit", "smoke", "../playwright.config.ts", "../apps/web/src/timecode.ts"],
+  "include": ["unit", "smoke", "../playwright.config.ts", "../apps/web/src/timecode.ts", "../apps/web/src/diagnostics/stats.ts", "../apps/web/src/diagnostics/types.ts", "../apps/web/src/diagnostics/report.ts"],
   "references": [{ "path": "../packages/engine-client" }]
 }
