@@ -20,22 +20,42 @@ test("the page is cross-origin isolated (needed for threaded WebAssembly)", asyn
   expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
 });
 
-test("the editor shell adapts: tabs on a phone, all four areas on larger screens", async ({ page }, info) => {
+test("the editor shell adapts: tool bar and sheet on a phone, tool panel always open on larger screens", async ({ page }, info) => {
   await page.goto("/");
   const phone = (page.viewportSize()?.width ?? 0) < 720;
-  const panels = ["media", "preview", "timeline", "inspector"];
+  await expect(page.getByTestId("panel-preview")).toBeVisible();
+  await expect(page.getByTestId("panel-timeline")).toBeVisible();
+  const tools = page.getByRole("navigation", { name: "Tools" });
+  await expect(tools).toBeVisible();
+  const box = await tools.getByRole("button", { name: "Media" }).boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44); // touch target
   if (phone) {
-    await expect(page.getByRole("tablist")).toBeVisible();
-    await expect(page.getByTestId("panel-preview")).toBeVisible();
-    await expect(page.getByTestId("panel-timeline")).toBeHidden();
-    await page.getByRole("tab", { name: "Timeline" }).click();
-    await expect(page.getByTestId("panel-timeline")).toBeVisible();
-    await expect(page.getByTestId("panel-preview")).toBeHidden();
-    const box = await page.getByRole("tab", { name: "Timeline" }).boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44); // touch target
+    await expect(page.getByTestId("panel-tool")).toBeHidden();
+    await tools.getByRole("button", { name: "Media" }).click();
+    await expect(page.getByTestId("panel-tool")).toBeVisible();
+    await page.getByRole("button", { name: "Close panel" }).click();
+    await expect(page.getByTestId("panel-tool")).toBeHidden();
   } else {
-    await expect(page.getByRole("tablist")).toBeHidden();
-    for (const p of panels) await expect(page.getByTestId(`panel-${p}`)).toBeVisible();
+    await expect(page.getByTestId("panel-tool")).toBeVisible();
+    await tools.getByRole("button", { name: "Effects" }).click();
+    await expect(page.getByTestId("panel-tool").getByRole("heading", { name: "Effects" })).toBeVisible();
   }
   expect(info.project.name).toMatch(/desktop|phone/);
+});
+
+test("transport and timeline: play advances the playhead, the aspect ratio changes the preview", async ({ page }) => {
+  await page.goto("/");
+  const playhead = page.getByRole("slider", { name: "Playhead position" });
+  await expect(playhead).toHaveAttribute("aria-valuenow", "0");
+  await playhead.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(playhead).toHaveAttribute("aria-valuenow", "1");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect.poll(async () => Number(await playhead.getAttribute("aria-valuenow"))).toBeGreaterThan(5);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  const canvas = page.locator(".canvas");
+  const wide = (await canvas.boundingBox())!;
+  await page.getByLabel("Aspect ratio").selectOption("9:16");
+  await expect.poll(async () => (await canvas.boundingBox())!.height > (await canvas.boundingBox())!.width).toBe(true);
+  expect(wide.width).toBeGreaterThan(wide.height);
 });
