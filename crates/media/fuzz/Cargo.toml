@@ -1,0 +1,22 @@
+[package]
+name = "app-media-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+app-media = { path = ".." }
+
+# Not part of the engine workspace: cargo-fuzz needs nightly and is not run in CI.
+[workspace]
+
+[[bin]]
+name = "demux"
+path = "fuzz_targets/demux.rs"
+test = false
+doc = false
+bench = false

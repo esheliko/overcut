@@ -8,13 +8,18 @@
 //! **Rules**: decoders are traits implemented by the host (WebCodecs on the web, libav/OS codecs natively) so the engine tests with fakes;
 //! demuxers and parsers are fuzzed; see ADR 0004 for what may and may not be linked (no GPL/patent-encumbered encoders).
 //!
-//! Status: M0 skeleton, empty. First content: `M1-011`, `M1-012`, `M1-013`.
+//! Status: `M1-011` traits + frame cache, `M1-012` MP4/MOV + WebM demux and probe (`probe`). Next: `M1-013`.
 
 mod cache;
+mod demux;
 mod fake;
 mod traits;
 
 pub use cache::{CacheStats, FrameCache};
+pub use demux::{
+    probe, ContainerFormat, MemSource, Packet, Probe, Track, TrackKind, MAX_PACKETS_PER_TRACK,
+    MAX_TRACKS,
+};
 pub use fake::FakeDecoder;
 pub use traits::{
     AudioChunk, AudioInfo, Decoder, MediaError, MediaInfo, Source, VideoFrame, VideoInfo,

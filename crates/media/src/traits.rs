@@ -12,6 +12,8 @@ pub enum MediaError {
     Unsupported(String),
     /// Read or decode failure reported by the host.
     Io(String),
+    /// The file is malformed or truncated (demuxers never panic on hostile input).
+    Invalid(String),
 }
 
 impl std::fmt::Display for MediaError {
@@ -20,6 +22,7 @@ impl std::fmt::Display for MediaError {
             MediaError::OutOfRange => write!(f, "out of range"),
             MediaError::Unsupported(s) => write!(f, "unsupported: {s}"),
             MediaError::Io(s) => write!(f, "i/o error: {s}"),
+            MediaError::Invalid(s) => write!(f, "invalid media: {s}"),
         }
     }
 }
