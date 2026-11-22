@@ -1,7 +1,7 @@
 // Pure logic of the deploy board (scripts/deploy-board.mjs writes it into a GitHub issue). No I/O here, so every rule is unit tested (tests/unit/deploy-board.test.ts).
 // The board is STATELESS: everything is derived from GitHub (CI runs of `main`, their `deploy-web` job, open PRs, releases), so there is no history to lose.
 export const BOARD_VERSION = 1;
-export const REPO = 'owner/overcut';
+export const REPO = process.env.GITHUB_REPOSITORY || 'esheliko/overcut'; // Actions sets GITHUB_REPOSITORY; the literal is the fallback for local runs
 export const CHECK = 'verify';
 export const DEPLOY_JOB = 'deploy-web';
 /** Commits that only touch these never go live (same list as the `changed` step of the deploy-web job in .github/workflows/ci.yml). */
