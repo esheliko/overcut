@@ -61,6 +61,7 @@ version = "0.1.0"
 dependencies = [
  "app-core",
  "app-model",
+ "app-store",
  "app-timeline",
  "tauri",
  "tauri-build",
@@ -77,6 +78,10 @@ dependencies = [
  "serde_json",
  "zip",
 ]
+
+[[package]]
+name = "app-store"
+version = "0.1.0"
 
 [[package]]
 name = "app-timeline"

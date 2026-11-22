@@ -1,4 +1,4 @@
-import type { Clip, ClipId, Project, Time, TrackId } from "./model.generated";
+import type { Clip, ClipId, MediaId, Project, Time, TrackId } from "./model.generated";
 
 /** What the engine says about itself. Mirrors `app_core::EngineInfo` (crates/core/src/lib.rs). */
 export interface EngineInfo {
@@ -27,6 +27,11 @@ export interface Engine {
    * entries (thumbnails, peaks, journal) survive. Rejects with code `read_only` when `previous` came from a newer app.
    */
   saveProject(project: Project, previous?: Uint8Array): Promise<Uint8Array>;
+  /**
+   * Content fingerprint `b3-64k:<size>:<hash>` of a media file, from its size and its first and last 64 KiB (the whole file when
+   * smaller): cheap for multi-GB files. Used on import and to relink moved media (`fingerprintFile`, `relinkMedia`).
+   */
+  fingerprintMedia(size: number, first: Uint8Array, last: Uint8Array): Promise<string>;
   /** Opens video/audio files for decoding (M1-016). */
   readonly media: MediaApi;
 }
@@ -157,7 +162,8 @@ export type Op =
   | { op: "trim_out"; clip: ClipId; end: Time }
   | { op: "move"; clip: ClipId; track: TrackId; start: Time }
   | { op: "delete"; clip: ClipId }
-  | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time };
+  | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
+  | { op: "set_media"; media: MediaId; uri: string; hash: string | null };
 
 /** What the engine reports after every edit. Re-read `project()` when `revision` moved. */
 export interface EditOutcome {
@@ -180,13 +186,26 @@ export interface Editing {
   redo(): Promise<EditOutcome>;
   /** The current project document. */
   project(): Promise<Project>;
-  /** Every applied op as JSON Lines (autosave / crash recovery). */
+  /** Every applied op as JSON Lines (the raw op journal; autosave uses `takeLog`). */
   journal(): Promise<string>;
   /**
    * What is visible and audible in a sequence at `ticks` (integer ticks, ADR 0010), plus an audio window of `audioSamples`
    * samples starting there (0 = video only). See docs/features/evaluate.md.
    */
   evaluate(sequence: string, ticks: number, audioSamples?: number): Promise<FrameDescription>;
+  /**
+   * The commit records (edits, undos, redos) produced since the last call, as JSON Lines; empty when nothing changed.
+   * Autosave appends them to durable storage after every edit (`docs/features/persistence.md`).
+   */
+  takeLog(): Promise<string>;
+  /** `{"seq","project"}` JSON: a full snapshot of the current state for the periodic checkpoint. */
+  checkpoint(): Promise<string>;
+  /**
+   * Replaces the open editor with one rebuilt after a crash: `base` is the project as the session began, `log` the commit log
+   * (a torn tail is dropped), `checkpoint` an optional `checkpoint()` string. Undo reaches back to the start of the session.
+   * Rejects when neither the base nor the checkpoint is usable.
+   */
+  recover(base: Project | null, checkpoint: string | null, log: string): Promise<Recovery>;
 }
 
 export interface Transform {
@@ -230,6 +249,18 @@ export interface FrameDescription {
   audio: AudioSegment[];
 }
 
+/** What `Editing.recover` did. Mirrors `app_timeline::Recovery`. */
+export interface Recovery {
+  /** Log records applied. */
+  replayed: number;
+  /** Non-empty log lines that could not be applied (torn tail, corruption). */
+  dropped: number;
+  /** False when a checkpoint stood in for a base that could not be replayed: undo then reaches back to the checkpoint only. */
+  fullHistory: boolean;
+  /** The valid prefix of the log, to write back so the next crash recovers from a clean file. */
+  validLog: string;
+}
+
 export const EXPECTED_ABI = 1;
 
 export function parseEngineInfo(json: string): EngineInfo {
@@ -239,4 +270,12 @@ export function parseEngineInfo(json: string): EngineInfo {
   if (typeof o.name !== "string" || typeof o.version !== "string" || typeof o.abi !== "number") throw new Error("engine info has the wrong shape");
   if (o.abi !== EXPECTED_ABI) throw new Error(`engine ABI ${o.abi} does not match the UI (${EXPECTED_ABI}): rebuild the engine`);
   return { name: o.name, version: o.version, abi: o.abi };
+}
+
+export function parseRecovery(json: string): Recovery {
+  const o = JSON.parse(json) as Record<string, unknown>;
+  if (typeof o.replayed !== "number" || typeof o.dropped !== "number" || typeof o.full_history !== "boolean" || typeof o.valid_log !== "string") {
+    throw new Error("recovery report has the wrong shape");
+  }
+  return { replayed: o.replayed, dropped: o.dropped, fullHistory: o.full_history, validLog: o.valid_log };
 }

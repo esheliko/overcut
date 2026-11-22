@@ -76,5 +76,8 @@
   "theme.light": "Light",
   "theme.high-contrast": "High contrast",
   "timeline.summary": "Timeline of {name}: {tracks, plural, one {# track} other {# tracks}}, {clips, plural, one {# clip} other {# clips}}, {seconds, plural, one {# second} other {# seconds}} of media. {sample, select, yes {Sample clips shown until you add media.} other {}}",
-  "timeline.keys": "Arrow keys move the playhead, Shift with arrows by a second, plus and minus zoom, 0 fits the project, Page Up and Page Down scroll, Up and Down arrows scroll tracks."
+  "timeline.keys": "Arrow keys move the playhead, Shift with arrows by a second, plus and minus zoom, 0 fits the project, Page Up and Page Down scroll, Up and Down arrows scroll tracks.",
+  "persist.recovered": "Recovered unsaved changes",
+  "persist.undo-recovery": "Undo recovery",
+  "persist.dismiss": "Dismiss"
 }

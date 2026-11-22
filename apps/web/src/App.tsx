@@ -1,9 +1,10 @@
-import { createEngine, type EngineBackend, type EngineInfo } from "@app/engine-client";
+import { createEngine, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
 import { Icon, type IconName } from "./icons";
+import { PersistenceNotes, usePersistence } from "./persistence";
 import { END_FRAME, Timeline } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { FPS, timecode } from "./timecode";
@@ -106,6 +107,8 @@ export function App() {
   const { t } = useI18n();
   const [themePref, setThemePref] = useState<ThemePref>(loadPref);
   const [engine, setEngine] = useState<EngineState>({ status: "loading" });
+  const [core, setCore] = useState<Engine | null>(null);
+  const persistence = usePersistence(core);
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
@@ -130,8 +133,8 @@ export function App() {
   useEffect(() => {
     let alive = true;
     createEngine()
-      .then(async (e) => ({ info: await e.info(), backend: e.backend }))
-      .then((r) => alive && setEngine({ status: "ready", ...r }))
+      .then(async (e) => ({ info: await e.info(), backend: e.backend, e }))
+      .then(({ e, ...r }) => alive && (setEngine({ status: "ready", ...r }), setCore(e)))
       .catch((e: unknown) => alive && setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }));
     return () => { alive = false; };
   }, []);
@@ -254,6 +257,7 @@ export function App() {
         <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onSoon={soon} />
       </main>
 
+      <PersistenceNotes state={persistence} />
       <div className="toast" role="status">{toast}</div>
     </div>
   );

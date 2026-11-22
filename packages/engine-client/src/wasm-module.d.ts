@@ -6,6 +6,7 @@ declare module "@app/wasm-pkg" {
   export function engine_info(): string;
   export function project_open(bytes: Uint8Array): string;
   export function project_save(project_json: string, previous: Uint8Array): Uint8Array;
+  export function media_fingerprint(size: number, first: Uint8Array, last: Uint8Array): string;
   /** An open project plus its undo history. Mirrors `Editor` in crates/wasm/src/lib.rs; all data is JSON strings. */
   /** Decoded frame held by the engine; `free()` releases the host frame. Mirrors `FrameRef` in crates/wasm/src/media.rs. */
   export class FrameRef {
@@ -40,5 +41,9 @@ declare module "@app/wasm-pkg" {
     journal(): string;
     /** `FrameDescription` JSON; `ticks` is a BigInt (i64 in Rust). */
     evaluate(sequence: string, ticks: bigint, audioSamples: number): string;
+    take_log(): string;
+    checkpoint(): string;
+    static recover(baseJson: string | undefined, checkpointJson: string | undefined, log: string): Editor;
+    recovery(): string | undefined;
   }
 }

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEditing } from "./editing";
+import { toStorageError, type ProjectStorage } from "./persist/storage";
 import { MediaDecodeError, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
 /** Native backend: the Rust engine runs in the Tauri shell process; commands are defined in apps/desktop/src-tauri/src/lib.rs. */
@@ -26,6 +27,13 @@ export function createTauriEngine(): Engine {
         throw toProjectFileError(e);
       }
     },
+    fingerprintMedia: async (size, first, last) => {
+      try {
+        return await invoke<string>("media_fingerprint", { size, first: Array.from(first), last: Array.from(last) });
+      } catch (e) {
+        throw toProjectFileError(e);
+      }
+    },
     editing: createEditing({
       open: (projectJson) => invoke<void>("editor_open", { projectJson }),
       apply: (opsJson, coalesce) => invoke<string>("editor_apply", { opJson: opsJson, coalesce: coalesce ?? null }),
@@ -35,6 +43,31 @@ export function createTauriEngine(): Engine {
       journal: () => invoke<string>("editor_journal"),
       // Tauri serializes JSON numbers: ticks are safe integers (checked in createEditing), so Number is exact.
       evaluate: (sequence, ticks, audioSamples) => invoke<string>("editor_evaluate", { sequence, ticks: Number(ticks), audioSamples }),
+      takeLog: () => invoke<string>("editor_take_log"),
+      checkpoint: () => invoke<string>("editor_checkpoint"),
+      recover: (baseJson, checkpointJson, log) => invoke<string>("editor_recover", { baseJson, checkpointJson, log }),
     }),
+  };
+}
+
+/** The project folder inside the app's data directory, through the `store_*` Tauri commands (`crates/store`: real rename, fsync on append). */
+export function createTauriStorage(project: string): ProjectStorage {
+  const run = async <T>(cmd: string, args: Record<string, unknown>): Promise<T> => {
+    try {
+      return await invoke<T>(cmd, { project, ...args });
+    } catch (e) {
+      throw toStorageError(e);
+    }
+  };
+  return {
+    kind: "folder",
+    read: async (name) => {
+      const b = await run<number[] | null>("store_read", { name });
+      return b ? Uint8Array.from(b) : null;
+    },
+    writeAtomic: (name, bytes) => run("store_write_atomic", { name, bytes: Array.from(bytes) }),
+    append: (name, bytes) => run("store_append", { name, bytes: Array.from(bytes) }),
+    truncate: (name, size) => run("store_truncate", { name, size }),
+    remove: (name) => run("store_remove", { name }),
   };
 }

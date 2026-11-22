@@ -29,6 +29,13 @@ export async function createWasmEngine(): Promise<Engine> {
         throw toProjectFileError(e);
       }
     },
+    fingerprintMedia: async (size, first, last) => {
+      try {
+        return wasm.media_fingerprint(size, first, last);
+      } catch (e) {
+        throw toProjectFileError(e);
+      }
+    },
     editing: createEditing({
       open: (projectJson) => {
         const next = new wasm.Editor(projectJson); // throws on an invalid project, keeping the old one
@@ -41,6 +48,14 @@ export async function createWasmEngine(): Promise<Engine> {
       project: () => open().project(),
       journal: () => open().journal(),
       evaluate: (sequence, ticks, audioSamples) => open().evaluate(sequence, ticks, audioSamples),
+      takeLog: () => open().take_log(),
+      checkpoint: () => open().checkpoint(),
+      recover: (baseJson, checkpointJson, log) => {
+        const next = wasm.Editor.recover(baseJson ?? undefined, checkpointJson ?? undefined, log); // throws, keeping the old editor
+        editor?.free();
+        editor = next;
+        return next.recovery() ?? "{}";
+      },
     }),
   };
 }
