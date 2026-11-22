@@ -1,11 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEditing } from "./editing";
-import { parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
+import { MediaDecodeError, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
 /** Native backend: the Rust engine runs in the Tauri shell process; commands are defined in apps/desktop/src-tauri/src/lib.rs. */
 export function createTauriEngine(): Engine {
   return {
     backend: "tauri",
+    media: {
+      // Native decode (libav) is M1-015; until then a typed error the UI can show.
+      open: () => Promise.reject(new MediaDecodeError("unsupported", "Opening media files in the desktop app is not available yet (native decoder, M1-015). Use the web app for now.")),
+    },
     info: async () => parseEngineInfo(await invoke<string>("engine_info")),
     openProject: async (bytes) => {
       try {

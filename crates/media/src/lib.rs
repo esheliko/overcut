@@ -8,11 +8,12 @@
 //! **Rules**: decoders are traits implemented by the host (WebCodecs on the web, libav/OS codecs natively) so the engine tests with fakes;
 //! demuxers and parsers are fuzzed; see ADR 0004 for what may and may not be linked (no GPL/patent-encumbered encoders).
 //!
-//! Status: `M1-011` traits + frame cache, `M1-012` MP4/MOV (incl. fragmented) + WebM demux and probe (`probe`), CPU/GPU frame variants. Next: `M1-013`.
+//! Status: `M1-011` traits + frame cache, `M1-012` MP4/MOV (incl. fragmented) + WebM demux and probe (`probe`), CPU/GPU frame variants. `M1-016` host decoder planner (`HostDecoder`, the web backend lives in `engine-client`). Next: `M1-013`.
 
 mod cache;
 mod demux;
 mod fake;
+mod host;
 mod traits;
 
 pub use cache::{CacheStats, FrameCache};
@@ -21,6 +22,10 @@ pub use demux::{
     MAX_TRACKS,
 };
 pub use fake::{FakeDecoder, FakeGpuFrame};
+pub use host::{
+    cpu_out, packet_ref, ticks_to_us, AudioRequest, HostDecoder, PacketDecoder, PacketRef,
+    VideoOut, VideoRequest,
+};
 pub use traits::{
     AudioChunk, AudioInfo, Decoder, FrameData, FrameKind, FrameKinds, GpuFrameHandle, GpuResource,
     MediaError, MediaInfo, RgbaFrame, Source, VideoFrame, VideoInfo,

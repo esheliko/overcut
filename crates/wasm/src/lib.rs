@@ -1,6 +1,8 @@
 //! Browser bindings. Keep this file thin: logic belongs in `app-core`, where it is testable natively.
 //! Build with `npm run build:wasm` (output: packages/engine-client/wasm-pkg, git-ignored).
 
+mod media;
+
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// JSON of `app_core::EngineInfo`.

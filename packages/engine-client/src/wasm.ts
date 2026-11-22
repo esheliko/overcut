@@ -1,4 +1,5 @@
 import { createEditing } from "./editing";
+import { createWebMedia, type WasmMediaClass } from "./decode/media";
 import { parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
 /** Browser backend: loads the WebAssembly build once. Run the engine inside a Web Worker when it starts doing real work (see docs). */
@@ -12,6 +13,7 @@ export async function createWasmEngine(): Promise<Engine> {
   };
   return {
     backend: "wasm",
+    media: createWebMedia(wasm.MediaFile as unknown as WasmMediaClass),
     info: async () => parseEngineInfo(wasm.engine_info()),
     openProject: async (bytes) => {
       try {

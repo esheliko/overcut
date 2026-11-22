@@ -12,3 +12,4 @@ export async function createEngine(): Promise<Engine> {
   return (await import("./wasm")).createWasmEngine();
 }
 export * from "./model.generated";
+export { codecName } from "./decode/errors";
