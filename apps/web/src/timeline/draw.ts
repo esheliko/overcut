@@ -1,5 +1,6 @@
 /** Canvas painter for the timeline. `drawTimeline` allocates nothing per frame: typed arrays and constants only,
  *  one fillStyle per track pass (no paths: software rasterizers are slow on thousands of sub-rects), ruler labels cached by second. Only clips intersecting the viewport are touched (binary search per visible track). */
+import { readColors } from "../theme/tokens";
 import { firstEndingAfter, type Scene } from "./scene";
 import { GUTTER, LANE, RULER, tickStep, timeToX, type View } from "./view";
 
@@ -11,11 +12,16 @@ export const DARK: Palette = {
   bg: "#08080a", surface: "#131316", line: "rgba(255,255,255,0.08)", lineStrong: "rgba(255,255,255,0.18)", fg: "#f4f4f6", muted: "#9a9aa6", accent: "#2de2d6",
   videoBody: "#17403f", videoTile: "#1d5654", videoStrip: "#2de2d6", audioBody: "#1f2c4d", audioWave: "#5a74d6", audioStrip: "#6c8cff",
 };
-/** Reads the CSS design tokens so the canvas follows the theme (falls back to DARK). */
+/** Reads the design tokens (theme/tokens.ts) so the canvas follows the active theme, including light and high contrast. */
 export function paletteFromCss(el: Element): Palette {
-  const cs = getComputedStyle(el);
-  const get = (name: string, fb: string) => cs.getPropertyValue(name).trim() || fb;
-  return { ...DARK, bg: get("--bg", DARK.bg), surface: get("--surface", DARK.surface), line: get("--line", DARK.line), lineStrong: get("--line-strong", DARK.lineStrong), fg: get("--fg", DARK.fg), muted: get("--muted", DARK.muted), accent: get("--accent", DARK.accent), videoStrip: get("--accent", DARK.accent) };
+  const c = readColors(el.ownerDocument.documentElement);
+  const get = (v: string, fb: string) => v || fb;
+  return {
+    bg: get(c.bg, DARK.bg), surface: get(c.surface, DARK.surface), line: get(c.line, DARK.line), lineStrong: get(c["line-strong"], DARK.lineStrong),
+    fg: get(c.fg, DARK.fg), muted: get(c.muted, DARK.muted), accent: get(c.accent, DARK.accent),
+    videoBody: get(c.clip, DARK.videoBody), videoTile: get(c["accent-soft"], DARK.videoTile), videoStrip: get(c.accent, DARK.videoStrip),
+    audioBody: get(c["surface-3"], DARK.audioBody), audioWave: get(c.muted, DARK.audioWave), audioStrip: get(c.muted, DARK.audioStrip),
+  };
 }
 
 const labels = new Map<number, string>();
