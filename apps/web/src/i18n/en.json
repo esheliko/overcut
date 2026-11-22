@@ -68,11 +68,6 @@
   "timeline.zoom": "Timeline zoom",
   "timeline.playhead": "Playhead position",
   "timeline.playheadText": "{seconds, plural, one {# second} other {# seconds}}",
-  "timeline.addMedia": "Add media to start",
-  "timeline.addMediaSoon": "Adding clips arrives in M1: import, then drag to the timeline",
-  "timeline.lane.text": "Text and overlays",
-  "timeline.lane.video": "Video",
-  "timeline.lane.audio": "Audio",
   "theme.label": "Theme",
   "theme.change": "Theme: {theme}. Change theme",
   "theme.changed": "Theme changed to {theme}",
@@ -80,5 +75,6 @@
   "theme.dark": "Dark",
   "theme.light": "Light",
   "theme.high-contrast": "High contrast",
-  "timeline.summary": "Timeline of {name}: {tracks, plural, one {# track} other {# tracks}}, {clips, plural, one {# clip} other {# clips}}, {seconds, plural, one {# second} other {# seconds}} of media. {sample, select, yes {Sample clips shown until you add media.} other {}}"
+  "timeline.summary": "Timeline of {name}: {tracks, plural, one {# track} other {# tracks}}, {clips, plural, one {# clip} other {# clips}}, {seconds, plural, one {# second} other {# seconds}} of media. {sample, select, yes {Sample clips shown until you add media.} other {}}",
+  "timeline.keys": "Arrow keys move the playhead, Shift with arrows by a second, plus and minus zoom, 0 fits the project, Page Up and Page Down scroll, Up and Down arrows scroll tracks."
 }
