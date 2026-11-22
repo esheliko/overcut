@@ -108,6 +108,25 @@
       "claudeMd": [],
       "sessionHook": "SCREENSHOTS: show one (node scripts/shot.mjs, SendUserFile) for any visual complaint or visual choice of yours; skip only if the owner dictated the exact look or nothing visible changes (CLAUDE.md).",
       "promptHook": "screenshot any visual change you chose or were told about"
+    },
+    {
+      "id": "orchestration",
+      "title": "Orchestrators cap parallel workers; workers save work when paused",
+      "added": "2026-11-22",
+      "decidedBy": "owner",
+      "enforcedBy": [
+        "hook"
+      ],
+      "reviewed": "2026-11-22",
+      "why": "On 2026-11-22 seven workers at once used the whole 5-hour quota in 73 minutes, and five workers lost unpushed work at the pause (esheliko/overcut#27).",
+      "claudeMd": [
+        "> ## ⚠️ STANDING RULE: orchestrators cap parallel workers, paused workers save their work",
+        "> Owner, 2026-11-22. A session that spawns workers runs at most **3 at a time**. Before each spawn read your own `rate_limit_info` (`get_session`); at `allowed_warning` start no new worker and let running ones finish.",
+        "> - **Pause** (quota, or the owner says pause): every worker commits and pushes its WIP to its own branch (no PR) before stopping, then ignores CI and PR events until told to resume. Unpushed work in a container is lost.",
+        "> - One worker per vertical slice or set of related items; a follow-up goes to the session that holds the context; a docs-only edit is done directly, not by a new session."
+      ],
+      "sessionHook": "ORCHESTRATORS: max 3 workers at once, none new once rate_limit is allowed_warning; on pause every worker pushes its WIP branch (no PR) first.",
+      "promptHook": "orchestrators: max 3 workers; push WIP before any pause"
     }
   ]
 }

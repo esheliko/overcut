@@ -1,15 +1,25 @@
-import { lazy, StrictMode, Suspense } from "react";
+import { StrictMode, Suspense, createElement, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { applyLocale, initialLocale, I18nProvider } from "./i18n";
+import { applyTheme, loadPref } from "./theme/theme";
+import "./theme/tokens.css";
 import "./styles.css";
 
-// Two pages, no router needed: the editor, and the device check at /diagnostics.
+// Set theme, language and direction before the first paint so there is no flash of the wrong theme.
+applyTheme(loadPref());
+applyLocale(initialLocale());
+
+// `/#timeline-bench` opens the S8 benchmark page (lazy chunk, not linked from the UI).
 const Diagnostics = lazy(() => import("./diagnostics/Diagnostics"));
 const onDiagnostics = location.pathname.replace(/\/+$/, "") === "/diagnostics";
+const bench = location.hash === "#timeline-bench" ? lazy(() => import("./TimelineBench").then((m) => ({ default: m.TimelineBench }))) : null;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {onDiagnostics ? <Suspense fallback={null}><Diagnostics /></Suspense> : <App />}
+    {bench ? <Suspense fallback={null}>{createElement(bench)}</Suspense> : (
+      <I18nProvider>{onDiagnostics ? <Suspense fallback={null}><Diagnostics /></Suspense> : <App />}</I18nProvider>
+    )}
   </StrictMode>,
 );
 

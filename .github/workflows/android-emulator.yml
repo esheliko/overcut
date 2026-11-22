@@ -1,0 +1,39 @@
+name: Android emulator (proxy)
+# Non-blocking: never part of `verify`. A low-end Android profile (ADR 0013 emulator proxy). Untested until its first run; fix forward from the artifact.
+on:
+  schedule: [{ cron: '17 1 * * *' }]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    name: android-emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+      - name: wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version "$(grep -oP 'wasm-bindgen\s*=\s*"=?\K[0-9.]+' crates/wasm/Cargo.toml | head -1)" --locked
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -skin 720x1600
+          disable-animations: true
+          script: node scripts/emulator-probe.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: emulator-proxy-results, path: emulator-proxy.json, if-no-files-found: warn }

@@ -124,6 +124,52 @@ export interface Editing {
   project(): Promise<Project>;
   /** Every applied op as JSON Lines (autosave / crash recovery). */
   journal(): Promise<string>;
+  /**
+   * What is visible and audible in a sequence at `ticks` (integer ticks, ADR 0010), plus an audio window of `audioSamples`
+   * samples starting there (0 = video only). See docs/features/evaluate.md.
+   */
+  evaluate(sequence: string, ticks: number, audioSamples?: number): Promise<FrameDescription>;
+}
+
+export interface Transform {
+  center: [number, number];
+  scale: [number, number];
+  rotation: number;
+}
+
+export interface VideoLayer {
+  track: string;
+  clip: string;
+  media: string;
+  /** Source time in ticks (floor to the media's own frame grid). */
+  source_time: number;
+  transform: Transform;
+  opacity: number;
+}
+
+export interface AudioSegment {
+  track: string;
+  clip: string;
+  media: string;
+  /** First sample of the segment, relative to the window start. */
+  out_start: number;
+  len: number;
+  /** Source time in ticks of the segment's first sample. */
+  source_start: number;
+  speed: { num: number; den: number };
+  gain: number;
+}
+
+export interface FrameDescription {
+  time: number;
+  frame: number;
+  video_time: number;
+  sample: number;
+  audio_samples: number;
+  /** Bottom to top; empty = black. */
+  layers: VideoLayer[];
+  /** Samples not covered are silence. */
+  audio: AudioSegment[];
 }
 
 export const EXPECTED_ABI = 1;

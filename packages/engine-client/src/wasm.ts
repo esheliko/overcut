@@ -39,6 +39,7 @@ export async function createWasmEngine(): Promise<Engine> {
       redo: () => open().redo(),
       project: () => open().project(),
       journal: () => open().journal(),
+      evaluate: (sequence, ticks, audioSamples) => open().evaluate(sequence, ticks, audioSamples),
     }),
     capabilities: async () => parseCapabilities(wasm.capabilities(await probeHost())),
   };

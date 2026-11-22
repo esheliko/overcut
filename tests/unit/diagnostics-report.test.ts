@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { percentile, rng, summarize } from "../../apps/web/src/diagnostics/stats";
 import { buildReport, sentence, verdict } from "../../apps/web/src/diagnostics/report";
+import { createTranslator } from "../../apps/web/src/i18n/core";
+import en from "../../apps/web/src/i18n/en.json";
 import type { TestResult } from "../../apps/web/src/diagnostics/types";
 
 const ok = (id: TestResult["id"], metrics: TestResult["metrics"]): TestResult => ({ id, status: "ok", metrics, took_ms: 10 });
@@ -12,6 +14,8 @@ test("percentiles and the seeded generator are deterministic", () => {
   assert.deepEqual([rng(1)(), rng(1)()], [rng(1)(), rng(1)()]);
 });
 
+const { t } = createTranslator("en", en);
+
 test("verdicts follow the rough thresholds, and failed tests have none", () => {
   assert.equal(verdict(ok("decode", { fps: 120 })), "good");
   assert.equal(verdict(ok("decode", { fps: 20 })), "slow");
@@ -20,8 +24,8 @@ test("verdicts follow the rough thresholds, and failed tests have none", () => {
 });
 
 test("a failed or unsupported test is explained, never blank", () => {
-  assert.match(sentence({ id: "gpuUpload", status: "unsupported", reason: "No WebGPU.", metrics: {}, took_ms: 0 }), /Not supported.*No WebGPU/);
-  assert.match(sentence({ id: "seek", status: "timeout", metrics: {}, took_ms: 0 }), /too long/);
+  assert.match(sentence({ id: "gpuUpload", status: "unsupported", reason: "No WebGPU.", metrics: {}, took_ms: 0 }, t), /Not supported.*No WebGPU/);
+  assert.match(sentence({ id: "seek", status: "timeout", metrics: {}, took_ms: 0 }, t), /too long/);
 });
 
 test("the copied report is one compact JSON line that survives with no capabilities and carries every test", () => {
@@ -32,4 +36,12 @@ test("the copied report is one compact JSON line that survives with no capabilit
   assert.equal(r.tests.decode.fps, 100);
   assert.equal(r.tests.seek.status, "error");
   assert.equal(r.tests.seek.why, "boom");
+});
+
+test("every test has a title, an explanation and a result sentence in the catalog", () => {
+  for (const id of ["decode", "seek", "gpuUpload", "fillRate"]) {
+    assert.ok((en as Record<string, string>)[`diag.t.${id}.title`] && (en as Record<string, string>)[`diag.t.${id}.what`], id);
+    assert.ok((en as Record<string, string>)[`diag.s.${id}`], id);
+  }
+  assert.match(sentence(ok("decode", { fps: 120 }), t), /120 full-HD frames/);
 });

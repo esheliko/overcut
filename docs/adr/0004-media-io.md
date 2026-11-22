@@ -58,3 +58,48 @@ Spike: `spikes/s1-webcodecs/` (page, clip generator, runner; README there). Ques
 5. Colour: `importExternalTexture` colour-space handling for BT.709 vs BT.601 and limited vs full range (the spike's flat white/black blocks do not test it).
 
 Success bar status: **not yet confirmed**. If hardware shows the direct path failing or > 50 ms warm on Chrome or Safari, the plan's fallback applies: CPU-upload path plus a larger prefetch and short-GOP proxies; document the per-browser matrix above.
+
+## S3 results (M1-014, browser encode and mux)
+Spike: `spikes/s3-encode/` (Worker harness, runner, ffmpeg-based verifier; README there). Question and bar: WebCodecs encode + MP4/WebM mux in a Worker, 1080p30 5 min at >= 1x on a reference phone browser, A/V sync drift < 1 frame.
+
+**What was measured, and where.** Chromium 153 (Playwright build), headless, Linux, 4 shared vCPU, **no GPU, no hardware encoder** (`prefer-hardware` unsupported for every codec). All speeds below are **software encode in a sandbox and are not representative** of any reference device. Scene: 1080p30 synthetic (moving bar, frame counter, gradient), one all-white flash frame each second; audio: 48 kHz stereo, 3 ms click starting at the exact timestamp of each flash frame; 8 Mbps target, keyframe every 2 s, `latencyMode: quality`. Output verified by decoding with ffmpeg as a player would and comparing flash-frame pts with click onsets, once per second.
+
+| Output | Length | Encode speed (x realtime / fps) | File size | Sync (max abs offset, drift) | Frames out |
+|---|---|---|---|---|---|
+| H.264 High 4.0 + Opus, MP4 | 5 min | 2.17x / 65 fps (138 s) | 249 MB | 0.31 ms (0.01 frame), 0 ms/min | 9000 of 9000 |
+| VP9 + Opus, WebM | 5 min | 2.34x / 70 fps (128 s) | 198 MB | 0.31 ms, 0 ms/min | 9000 of 9000 |
+| VP9 + Opus, MP4 | 1 min | 2.15x / 65 fps | 39 MB | 0.31 ms, 0 ms/min | 1800 of 1800 |
+| AV1 + Opus, MP4 and WebM | 1 min | 1.55x / 46 fps | 16 MB | 0.31 ms, 0 ms/min | 1800 of 1800 |
+
+All 300 (or 60) flashes and clicks were found in every run. The constant 0.31 ms is the click-onset detector's own bias (same value in every file), not drift. The scene generator cost about 0.4 s of the 130 s (0.3%), so the numbers are encoder-bound. File sizes reflect a noisy synthetic scene at a fixed target and say nothing about real footage.
+
+**Findings.**
+1. **Sync is correct by construction, drift is zero.** Timestamps are integer microseconds `round(i * 1e6 / fps)` for video and `round(samples / 48000 * 1e6)` for audio, both from 0, muxed with `firstTimestampBehavior: strict`. No edit list was needed or written (video and audio both start at 0). Video and audio durations agree (300.00 s vs 300.02 s, the last Opus frame). Caveat: ffmpeg decodes Opus honouring the pre-skip; a player that ignores `dOps` pre-skip would shift audio by up to 6.5 ms, still far under one frame (33 ms).
+2. **Codecs that exist in this Chromium:** H.264 (via the browser's bundled OpenH264, High 4.0 yes, Constrained Baseline 3.1 `avc1.42001f` no), VP8, VP9, AV1, Opus. **Not available: AAC (`mp4a.40.2`), HEVC, FLAC.** So the "MP4 with AAC" default could not be exercised here; the MP4 files carry Opus (valid per spec, but weak player support, see presets). The spike code selects AAC automatically where `AudioEncoder.isConfigSupported` says yes; that path is untested.
+3. **Progress and cancel work.** One progress event per second (fraction, frames, fps). Cancel closes both encoders without a flush and drops the muxer: 2.5 ms to close in the encoder-bound steady state, no output produced. Backpressure (`encodeQueueSize > 4` waits for `dequeue`) kept memory flat while encoding.
+4. **Memory is the real constraint, not speed.** An in-memory muxer target held the whole 249 MB file, and handing it to `fetch` as one body crashed the tab (Target crashed; slicing the upload into 8 MB parts fixed the harness). A shipped exporter must **stream the muxer output to OPFS or disk** (`StreamTarget` + `FileSystemSyncAccessHandle` in the Worker, with `fastStart: false` or fragmented MP4, accepting moov-at-end unless a second pass moves it), and never hold the file in a JS heap, least of all on a phone.
+5. **Muxing cost is negligible:** `finalize()` took 0.1 to 0.6 s for a 5 min file.
+
+**Muxer decision.** Use **`mp4-muxer` and `webm-muxer` (Vanilagy, MIT, pure TypeScript, no dependencies)** for M1, behind a narrow `Muxer` interface in `engine-client` so the implementation can be swapped. Why: the encoded chunks are born in JS (`EncodedVideoChunk`), crossing into WASM would copy every frame for no gain; the libraries already do B-frame composition offsets, AV1/VP9/AVC/AAC/Opus boxes and streaming targets; MIT is compatible with "free means free". A Rust muxer in `crates/export` stays the plan for desktop and for the later libav-free native path; it is not needed to answer S3. Check before pinning: the author's README now points users to a successor library (Mediabunny); confirm its licence (we believe MPL-2.0, file-level copyleft) and maintenance before choosing between them. Dev-only: the spike's `package.json` is not a workspace member, so these libraries are not in the root lockfile or the bundle yet.
+
+**Recommended default export presets** (probe with `VideoEncoder.isConfigSupported` / `AudioEncoder.isConfigSupported` at startup and offer only what passes; hardware first; follows the policy above: never bundle a patent-encumbered software encoder, rely on codecs the browser or OS has licensed).
+
+| Platform | Default | Why / fallback |
+|---|---|---|
+| Chrome / Edge desktop | **H.264 High + AAC in MP4** when the probe passes (hardware where present); else **VP9 + Opus in WebM** | Most compatible file; VP9/Opus is the royalty-free fallback and encodes at 2.3x even in software here. AV1 + Opus as an optional "smaller file" preset only if hardware AV1 encode is present (software AV1 was the slowest, 1.55x). |
+| Android Chrome | **H.264 + AAC MP4**, hardware (MediaCodec) | Software VP9/AV1 on a phone is expected to be < 1x; do not default to them. If H.264 fails the probe, offer VP9/WebM with a "slow" warning and a time estimate. |
+| Safari macOS / iOS | **H.264 + AAC MP4** (VideoToolbox) | Expected to be the only supported encode path; VP9/AV1 WebCodecs encode is not assumed. Unmeasured. |
+| Firefox | Whatever the probe reports; default **VP9 + Opus WebM** if H.264 is absent | Unmeasured. |
+| Any browser, no AAC | MP4 with H.264 + **Opus** is spec-valid but poorly supported by phones, TVs and some editors: default to **WebM (VP9 + Opus)** and label MP4/Opus "limited compatibility" | This is exactly the situation in the sandbox. |
+| Desktop app | Platform hardware H.264/HEVC encoders, openh264 fallback, AV1/VP9/Opus software | Unchanged from the Decision above. |
+
+Always show an estimated time before export (from a short measured trial encode), keep the preset list free of codecs the probe rejected, and keep resolution/bitrate choices in the preset, not in per-codec UI.
+
+**Must be confirmed on reference hardware** (S24 Chrome, iPhone 14 Safari, M1 Mac Safari and Chrome, i5 laptop Chrome and Firefox, and a low-end Android as proxy for the worst case). Run `node spikes/s3-encode/run.mjs --hw prefer-hardware ...` or call `window.__start` from `spikes/s3-encode/index.html` per browser:
+1. 1080p30 5 min speed with **hardware** H.264 (and AAC) vs the >= 1x bar; also 1080p60 and 4K to find the ceiling; whether software VP9 ever reaches 1x on a phone.
+2. Whether AAC (`mp4a.40.2`) encode is offered on each browser, and Safari's H.264 profile/level constraints.
+3. Sync with **B-frames** and with real AAC priming (1024-sample delay, edit list expected): this spike's encoders produced no B-frames and Opus only.
+4. Memory and thermal behaviour on a phone over a 5 min export, with a streaming target (OPFS) and with the tab backgrounded (Safari and Android suspend workers); resume/cancel behaviour.
+5. Real footage (not a synthetic scene): bitrate control (`bitrateMode` constant vs variable), quality at the preset bitrates, and the frame-upload cost from the render path (`VideoFrame` from a WebGPU canvas or `copyTo`, S2), which this spike did not include.
+
+Success bar status: **sync < 1 frame: met** (0.01 frame, no drift, 5 min H.264 and VP9). **>= 1x on a reference phone: not confirmed** (software sandbox only, 1.5x to 2.3x on 4 shared vCPU). If hardware H.264 fails the bar or is absent, the plan's fallback applies: narrow default presets (VP9/WebM or lower resolution) and WASM software encoders only as an explicit, opt-in fallback.

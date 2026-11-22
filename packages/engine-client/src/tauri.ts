@@ -30,6 +30,8 @@ export function createTauriEngine(): Engine {
       redo: () => invoke<string>("editor_redo"),
       project: () => invoke<string>("editor_project"),
       journal: () => invoke<string>("editor_journal"),
+      // Tauri serializes JSON numbers: ticks are safe integers (checked in createEditing), so Number is exact.
+      evaluate: (sequence, ticks, audioSamples) => invoke<string>("editor_evaluate", { sequence, ticks: Number(ticks), audioSamples }),
     }),
     capabilities: async () => parseCapabilities(await invoke<string>("capabilities", { probeJson: await probeHost() })),
   };

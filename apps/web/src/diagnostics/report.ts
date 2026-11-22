@@ -1,5 +1,5 @@
 import type { Capabilities } from "@app/engine-client";
-import type { TestId, TestResult, Verdict } from "./types";
+import type { TestResult, Verdict } from "./types";
 
 const num = (r: TestResult, k: string): number | null => { const v = r.metrics[k]; return typeof v === "number" ? v : null; };
 const grade = (v: number | null, good: number, ok: number, higherIsBetter: boolean): Verdict =>
@@ -16,20 +16,23 @@ export function verdict(r: TestResult): Verdict {
   }
 }
 
-/** One plain sentence of what the numbers mean. */
-export function sentence(r: TestResult): string {
-  if (r.status === "unsupported") return `Not supported on this device. ${r.reason ?? ""}`.trim();
-  if (r.status === "timeout") return "This test took too long and was stopped. That is itself a sign of a slow device.";
-  if (r.status === "error") return `This test could not finish (${r.reason ?? "unknown error"}).`;
+type T = (key: string, values?: Record<string, string | number>) => string;
+
+/** One plain sentence of what the numbers mean. `t` is the app translator. */
+export function sentence(r: TestResult, t: T): string {
+  if (r.status === "unsupported") return t("diag.s.unsupported", { reason: r.reason ?? "" }).trim();
+  if (r.status === "timeout") return t("diag.s.timeout");
+  if (r.status === "error") return t("diag.s.error", { reason: r.reason ?? t("diag.s.errorUnknown") });
   const m = r.metrics;
+  const n = (k: string) => (typeof m[k] === "number" ? Number(m[k]) : 0);
   switch (r.id) {
-    case "decode": return `${m.fps} full-HD frames per second (a smooth video needs 30 to 60).`;
-    case "seek": return `Typical jump: ${m.gop30_p50_ms} ms on an editor-friendly video, ${m.gop150_p50_ms} ms on a phone-style video (worst 1 in 20: ${m.gop150_p95_ms} ms).`;
+    case "decode": return t("diag.s.decode", { fps: n("fps") });
+    case "seek": return t("diag.s.seek", { a: n("gop30_p50_ms"), b: n("gop150_p50_ms"), c: n("gop150_p95_ms") });
     case "gpuUpload": {
-      const f = (k: string) => (typeof m[`${k}_p50_ms`] === "number" ? `${m[`${k}_p50_ms`]} ms` : "failed");
-      return `Per frame: direct ${f("direct")}, copy ${f("copy")}, through the processor ${f("cpu")}.`;
+      const f = (k: string) => (typeof m[`${k}_p50_ms`] === "number" ? t("diag.s.ms", { n: n(`${k}_p50_ms`) }) : t("diag.s.failed"));
+      return t("diag.s.gpuUpload", { direct: f("direct"), copy: f("copy"), cpu: f("cpu") });
     }
-    case "fillRate": return `${m.frame_p50_ms} ms to draw ${m.layers} full-HD layers: room for about ${m.layers_at_60fps} layers at 60 frames per second.`;
+    case "fillRate": return t("diag.s.fillRate", { ms: n("frame_p50_ms"), layers: n("layers"), at60: n("layers_at_60fps") });
   }
 }
 
@@ -59,4 +62,3 @@ export function buildReport(caps: Capabilities | null, results: readonly TestRes
   return JSON.stringify(data);
 }
 
-export const TEST_ORDER: TestId[] = ["decode", "seek", "gpuUpload", "fillRate"];

@@ -10,15 +10,19 @@
 //! `replay(journal) == state`); `evaluate` is pure and allocation-light (it runs every frame).
 //!
 //! Status: `Op`, `apply`, `History`, journal and the JSON `Editor` are in (M1-003, `docs/features/timeline-ops.md`);
-//! selection, snapping and `evaluate` are `M1-004`.
+//! `evaluate` is in (M1-004, `docs/features/evaluate.md`); selection and snapping are still to come.
 
 mod apply;
 mod editor;
+mod evaluate;
 mod history;
 mod op;
 
 pub use apply::{apply, apply_all, OpError};
 pub use editor::{EditOutcome, Editor};
+pub use evaluate::{
+    evaluate, evaluate_into, AudioSegment, FrameDescription, Transform, VideoLayer,
+};
 pub use history::{journal_from_jsonl, journal_to_jsonl, replay, CoalesceKey, History};
 pub use op::{Inverse, Op};
 

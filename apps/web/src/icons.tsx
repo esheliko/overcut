@@ -29,6 +29,7 @@ const PATHS = {
   video: "M3 6h12v12H3zM15 10l6-3v10l-6-3z",
   search: `${c(11, 11, 6)}M20 20l-4.5-4.5`,
   upload: "M12 16V4M7 9l5-5 5 5M4 20h16",
+  theme: `${c(12, 12, 9)}M12 3v18M12 3a9 9 0 0 1 0 18`,
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
 } as const;
 

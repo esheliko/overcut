@@ -1,0 +1,11 @@
+{
+  "name": "s3-encode-spike",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Throwaway S3 spike (M1-014). Not a workspace, not in the app bundle. `npm install` here, then see README.md.",
+  "type": "module",
+  "dependencies": {
+    "mp4-muxer": "5.2.2",
+    "webm-muxer": "5.1.4"
+  }
+}

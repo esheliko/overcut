@@ -79,6 +79,16 @@ fn project_save(project_json: String, previous: Vec<u8>) -> Result<Vec<u8>, Stri
     app_model::save_bytes(&project_json, &previous).map_err(|e| e.to_json())
 }
 
+#[tauri::command]
+fn editor_evaluate(
+    state: State<'_, EditorState>,
+    sequence: String,
+    ticks: i64,
+    audio_samples: u32,
+) -> Result<String, String> {
+    with_editor(&state, |e| e.evaluate_json(&sequence, ticks, audio_samples))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -93,7 +103,8 @@ pub fn run() {
             editor_journal,
             capabilities,
             project_open,
-            project_save
+            project_save,
+            editor_evaluate
         ])
         .run(tauri::generate_context!())
         .expect("error while running the application");

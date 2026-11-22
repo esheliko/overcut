@@ -1,0 +1,67 @@
+name: Preview
+# A Vercel preview for every branch push (not main), so the owner can open any branch's work, including WIP without a PR. See DEPLOYING.md.
+on:
+  push:
+    branches-ignore: [main]
+    paths-ignore: ['docs/**', 'process/**', '.claude/**', '**.md']
+  workflow_dispatch:
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  preview:
+    name: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      BRANCH: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: 'Idle: VERCEL_TOKEN missing'
+        if: env.VERCEL_TOKEN == ''
+        run: 'echo "::warning::VERCEL_TOKEN secret missing, preview deploy is idle (see DEPLOYING.md)"'
+      - uses: actions/checkout@v4
+        if: env.VERCEL_TOKEN != ''
+      - uses: actions/setup-node@v4
+        if: env.VERCEL_TOKEN != ''
+        with: { node-version: 22, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+        if: env.VERCEL_TOKEN != ''
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        if: env.VERCEL_TOKEN != ''
+      - name: wasm-bindgen CLI (version pinned in crates/wasm/Cargo.toml; cached)
+        if: env.VERCEL_TOKEN != ''
+        id: wbg
+        run: echo "v=$(grep -oP 'wasm-bindgen\s*=\s*"=?\K[0-9.]+' crates/wasm/Cargo.toml | head -1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        if: env.VERCEL_TOKEN != ''
+        id: wbgcache
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          key: wasm-bindgen-${{ runner.os }}-${{ steps.wbg.outputs.v }}
+      - if: env.VERCEL_TOKEN != '' && steps.wbgcache.outputs.cache-hit != 'true'
+        run: cargo install wasm-bindgen-cli --version ${{ steps.wbg.outputs.v }} --locked
+      - if: env.VERCEL_TOKEN != ''
+        run: npm ci --no-audit --no-fund
+      - name: Build (WebAssembly engine + web app)
+        if: env.VERCEL_TOKEN != ''
+        run: npm run build
+      - name: Deploy preview to Vercel
+        if: env.VERCEL_TOKEN != ''
+        run: |
+          node scripts/vercel-output.mjs
+          url=$(npx --yes vercel@66 deploy --prebuilt --token "$VERCEL_TOKEN" | tail -1)
+          slug=$(echo "$BRANCH" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]\+/-/g; s/^-//; s/-$//' | cut -c1-40 | sed 's/-$//')
+          alias="${GITHUB_REPOSITORY#*/}-${slug}.vercel.app"
+          if npx --yes vercel@66 alias set "$url" "$alias" --token "$VERCEL_TOKEN"; then link="https://$alias"; else echo "::warning::alias failed, using the plain preview URL"; link="$url"; fi
+          echo "### Preview for \`$BRANCH\`: $link" >> "$GITHUB_STEP_SUMMARY"
+          body="Preview for \`$BRANCH\` (commit ${GITHUB_SHA::7}): $link"
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$pr" ]; then gh pr comment "$pr" --edit-last --create-if-none --body "$body" || gh pr comment "$pr" --body "$body"; fi

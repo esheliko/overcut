@@ -34,6 +34,11 @@
 > 6. Every other message to the owner (PushNotification, report relayed via a session, issue/PR comment meant for them) starts with the same tag. Peer messages need none.
 > 7. **Change summary.** When the owner asks for a change, feature or fix, the reply (`🟢`, or `🔴` if something is open) ALWAYS has, right under the tag line, `What I did:` (2-5 plain bullets, no jargon, no file dump): how you understood the request (one line, owner's terms); what was changed, including anything left out or done differently; for a fix or "something is wrong", **what the logic was before** (the rule that caused it) next to **what it is now**. Never just "fixed". Not for pure questions or `⚙️ AUTO` turns.
 > Generated from `process/rules.json` (edit there, then `npm run rules:build`; lint fails when out of sync). The hooks print the short form of these rules every session.
+
+> ## ⚠️ STANDING RULE: orchestrators cap parallel workers, paused workers save their work
+> Owner, 2026-11-22. A session that spawns workers runs at most **3 at a time**. Before each spawn read your own `rate_limit_info` (`get_session`); at `allowed_warning` start no new worker and let running ones finish.
+> - **Pause** (quota, or the owner says pause): every worker commits and pushes its WIP to its own branch (no PR) before stopping, then ignores CI and PR events until told to resume. Unpushed work in a container is lost.
+> - One worker per vertical slice or set of related items; a follow-up goes to the session that holds the context; a docs-only edit is done directly, not by a new session.
 <!-- rules:end -->
 
 ## What this project is

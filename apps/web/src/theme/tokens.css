@@ -1,0 +1,61 @@
+/* OverCut design tokens (M1-036). One source of truth for colour roles, spacing, radius, type and motion.
+   Themes: dark (default), light, high-contrast. `theme/apply.ts` sets <html data-theme>; the contrast unit test
+   (tests/unit/theme-contrast.test.ts) parses THIS file, so every text/background pair is checked against WCAG 2.2 AA.
+   Components use roles (--fg, --surface, --accent), never raw colours. */
+:root {
+  /* colour roles: dark (the default shell look) */
+  color-scheme: dark;
+  --bg: #08080a; --surface: #131316; --surface-2: #1b1b20; --surface-3: #26262d;
+  --line: rgba(255, 255, 255, 0.08); --line-strong: rgba(255, 255, 255, 0.18);
+  --fg: #f4f4f6; --muted: #9a9aa6;
+  --accent: #2de2d6; --accent-ink: #04211f; --accent-soft: rgba(45, 226, 214, 0.14);
+  --danger: #ff6b6b; --ok: #3ddc97;
+  --stage: #050506; --stage-fg: rgba(255, 255, 255, 0.5); --clip: #1f4f4c;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  /* focus ring */
+  --focus-ring: var(--accent); --focus-ring-width: 2px; --focus-ring-offset: 2px;
+
+  /* spacing scale (4px base) */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  /* radius */
+  --radius-sm: 8px; --radius-md: 10px; --radius: 14px; --radius-lg: 18px; --radius-full: 999px;
+  /* type scale */
+  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 11px; --text-sm: 12px; --text-base: 14px; --text-md: 15px; --text-lg: 18px;
+  /* motion (zeroed under prefers-reduced-motion) */
+  --dur-instant: 0.1s; --dur-fast: 0.15s; --dur-base: 0.2s; --dur-slow: 0.25s;
+  --ease-out: ease-out;
+  /* layout */
+  --top: 52px; --gutter: 48px; --lane: 52px; --ruler: 30px; --target: 44px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f1f1f4; --surface: #ffffff; --surface-2: #eceef2; --surface-3: #dfe1e7;
+  --line: rgba(0, 0, 0, 0.12); --line-strong: rgba(0, 0, 0, 0.3);
+  --fg: #14141a; --muted: #565664;
+  --accent: #00695f; --accent-ink: #ffffff; --accent-soft: rgba(0, 105, 95, 0.12);
+  --danger: #b3261e; --ok: #0b7a4d;
+  --stage-fg: rgba(255, 255, 255, 0.6); --clip: #8fd6cf;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme="high-contrast"] {
+  color-scheme: dark;
+  --bg: #000000; --surface: #000000; --surface-2: #121212; --surface-3: #242424;
+  --line: rgba(255, 255, 255, 0.7); --line-strong: #ffffff;
+  --fg: #ffffff; --muted: #e6e6e6;
+  --accent: #5ff5ea; --accent-ink: #000000; --accent-soft: rgba(95, 245, 234, 0.22);
+  --danger: #ff9a9a; --ok: #6dffb8;
+  --stage: #000000; --stage-fg: rgba(255, 255, 255, 0.9); --clip: #0b6b66;
+  --shadow: 0 0 0 1px #ffffff;
+  --focus-ring: #ffffff; --focus-ring-width: 3px; --focus-ring-offset: 3px;
+}
+
+@media (pointer: fine) { :root { --target: 36px; } }
+@media (min-width: 720px) { :root { --gutter: 56px; --lane: 56px; } }
+@media (min-width: 720px) and (max-height: 520px) { :root { --top: 44px; --lane: 36px; --ruler: 24px; } }
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-instant: 0s; --dur-fast: 0s; --dur-base: 0s; --dur-slow: 0s; }
+}
