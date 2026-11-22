@@ -18,7 +18,7 @@ M0 Foundations ──► M1 First cut ──► M2 Real editing ──► M3 Sou
 
 ## M1 First cut (~8-10 weeks) **Alpha**
 **Goal**: cut a clip and export it, on web and desktop, fast.
-- Spikes S1-S4, S7 done and their ADRs accepted (see [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)).
+- Spikes S1-S4, S7 done and their ADRs accepted (see [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)). "Done" means code merged; hardware bars count only once proven on the reference devices (plan section 4a).
 - PM-01/02/03/06/07/12, TL-02/06, PV-01, EX-01/02/04, AU-01 (waveform), UX-01/05, XT-06.
 - One video track + one audio track; import, trim, split, delete, undo/redo, play/scrub, export 1080p30 H.264 (WebCodecs on web, native on desktop).
 - **Exit**: the activation test (import, trim, export) takes < 90 s for a first-time user; 1080p preview 60 fps on the reference laptop, export >= 1x realtime on the reference phone browser; autosave survives `kill -9`; no network calls (CI checks); budgets measured in CI.
