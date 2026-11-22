@@ -20,4 +20,4 @@ Format: Context, Decision, Consequences, Status (`proposed` -> `accepted` -> may
 | [0014](0014-governance-funding.md) | Governance and funding | **open: by M3** |
 
 ## Open decisions (do not silently pick one)
-Open: **0012** (deferred to before M3 public beta) and **0014** (by M3). 0009, 0011 and 0013 accepted 2026-11-22 (0013 device specs are assumed until the owner confirms). Each file ends with options and a recommendation.
+Open: **0012** (deferred to before M3 public beta) and **0014** (by M3). 0009, 0011 and 0013 accepted 2026-11-22 (0013: Mac and Windows specs assumed; low-end Android is an emulator-based calibrated proxy). Each file ends with options and a recommendation.
