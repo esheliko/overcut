@@ -1,5 +1,9 @@
 //! ISO BMFF (MP4, MOV) demuxer: reads `moov`, builds packet tables from the sample tables (`stts ctts stss stsz stsc stco/co64`).
-//! Not supported (reported as `Unsupported`): fragmented MP4 (`mvex`/`moof`), QuickTime sound sample-entry version 2, encrypted tracks.
+//! Fragmented MP4 (`mvex` + `moof`/`traf`/`trun`, `tfdt`, defaults from `tfhd`/`trex`) is read by walking the top-level `moof` boxes
+//! (only their headers, never `mdat`). Base offset is the `tfhd` base-data-offset, else the start of the `moof` (the
+//! `default-base-is-moof` rule, also what every real muxer produces). A file cut short mid-fragment keeps the complete fragments before
+//! the cut (recorders crash and phones lose power). Not supported (reported as `Unsupported`): QuickTime sound sample-entry version 2,
+//! encrypted tracks.
 
 use super::codec;
 use super::reader::{invalid, Cur, Reader};
@@ -11,7 +15,9 @@ use crate::{MediaError, Source};
 use app_model::{Rational, Time};
 
 const MAX_MOOV: u64 = 256 * 1024 * 1024;
-const MAX_TOP_LEVEL_BOXES: usize = 100_000;
+const MAX_TOP_LEVEL_BOXES: usize = 400_000;
+/// Total bytes of `moof` headers kept in memory for a fragmented file.
+const MAX_MOOF_BYTES: u64 = 256 * 1024 * 1024;
 
 type Fourcc = [u8; 4];
 type BoxList<'a> = Vec<(Fourcc, &'a [u8])>;
@@ -52,9 +58,12 @@ pub(crate) async fn probe<S: Source>(r: &mut Reader<'_, S>) -> Result<Probe, Med
     let len = r.len();
     let mut off = 0u64;
     let mut moov: Option<Vec<u8>> = None;
+    let mut fragmented = false;
+    let mut moofs: Vec<Moof> = Vec::new();
+    let mut moof_bytes = 0u64;
     let mut format = ContainerFormat::Mp4;
     let mut seen = 0usize;
-    while off < len && moov.is_none() {
+    while off < len && (moov.is_none() || fragmented) {
         seen += 1;
         if seen > MAX_TOP_LEVEL_BOXES {
             return Err(invalid("too many top-level boxes"));
@@ -92,9 +101,25 @@ pub(crate) async fn probe<S: Source>(r: &mut Reader<'_, S>) -> Result<Probe, Med
                 if body > MAX_MOOV || off.saturating_add(size) > len {
                     return Err(invalid("moov box is truncated or implausibly large"));
                 }
-                moov = Some(r.bytes(off + hdr, body as usize).await?);
+                let bytes = r.bytes(off + hdr, body as usize).await?;
+                fragmented = find(&boxes(&bytes)?, b"mvex").is_some();
+                moov = Some(bytes);
             }
-            b"moof" => return Err(MediaError::Unsupported("fragmented MP4".into())),
+            b"moof" => {
+                // A moof cut off by the end of the file is the unfinished tail of a recording: stop there.
+                if off.saturating_add(size) > len {
+                    break;
+                }
+                moof_bytes += size - hdr;
+                if moof_bytes > MAX_MOOF_BYTES {
+                    return Err(invalid("fragment headers implausibly large"));
+                }
+                fragmented = true;
+                moofs.push(Moof {
+                    start: off,
+                    body: r.bytes(off + hdr, (size - hdr) as usize).await?,
+                });
+            }
             _ => {}
         }
         off = match off.checked_add(size) {
@@ -103,14 +128,65 @@ pub(crate) async fn probe<S: Source>(r: &mut Reader<'_, S>) -> Result<Probe, Med
         };
     }
     let moov = moov.ok_or_else(|| invalid("no moov box (file truncated or not finalised)"))?;
-    parse_moov(&moov, len, format)
+    parse_moov(&moov, len, format, &moofs)
 }
 
-fn parse_moov(moov: &[u8], file_len: u64, format: ContainerFormat) -> Result<Probe, MediaError> {
-    let kids = boxes(moov)?;
-    if find(&kids, b"mvex").is_some() {
-        return Err(MediaError::Unsupported("fragmented MP4".into()));
+/// One `moof` box: its absolute start (the default base for sample offsets) and its body (children).
+struct Moof {
+    start: u64,
+    body: Vec<u8>,
+}
+
+/// `trex` defaults for one track.
+#[derive(Clone, Copy, Default)]
+struct Trex {
+    id: u32,
+    duration: u32,
+    size: u32,
+    flags: u32,
+}
+
+/// What a fragmented file adds to a track: the `trex` defaults and the fragments.
+struct Frags<'a> {
+    trex: &'a [Trex],
+    moofs: &'a [Moof],
+}
+
+fn parse_trex(mvex: &[u8]) -> Result<Vec<Trex>, MediaError> {
+    let mut out = Vec::new();
+    for (ty, b) in boxes(mvex)? {
+        if &ty == b"trex" {
+            let mut c = Cur::new(b);
+            full_box(&mut c)?;
+            let id = c.u32()?;
+            c.skip(4)?; // default_sample_description_index
+            out.push(Trex {
+                id,
+                duration: c.u32()?,
+                size: c.u32()?,
+                flags: c.u32()?,
+            });
+            if out.len() > MAX_TRACKS * 4 {
+                return Err(invalid("too many trex boxes"));
+            }
+        }
     }
+    Ok(out)
+}
+
+fn parse_moov(
+    moov: &[u8],
+    file_len: u64,
+    format: ContainerFormat,
+    moofs: &[Moof],
+) -> Result<Probe, MediaError> {
+    let kids = boxes(moov)?;
+    let mvex = find(&kids, b"mvex");
+    let trex = match mvex {
+        Some(m) => parse_trex(m)?,
+        None => Vec::new(),
+    };
+    let frags = (mvex.is_some() || !moofs.is_empty()).then_some(Frags { trex: &trex, moofs });
     let (movie_ts, movie_dur) = match find(&kids, b"mvhd") {
         Some(b) => mvhd(b)?,
         None => (0, 0),
@@ -118,7 +194,7 @@ fn parse_moov(moov: &[u8], file_len: u64, format: ContainerFormat) -> Result<Pro
     let mut tracks = Vec::new();
     for (ty, body) in &kids {
         if ty == b"trak" {
-            if let Some(t) = parse_trak(body, movie_ts, file_len)? {
+            if let Some(t) = parse_trak(body, movie_ts, file_len, frags.as_ref())? {
                 if tracks.len() >= MAX_TRACKS {
                     return Err(invalid("too many tracks"));
                 }
@@ -158,7 +234,12 @@ fn mvhd(b: &[u8]) -> Result<(u32, u64), MediaError> {
     }
 }
 
-fn parse_trak(trak: &[u8], movie_ts: u32, file_len: u64) -> Result<Option<Track>, MediaError> {
+fn parse_trak(
+    trak: &[u8],
+    movie_ts: u32,
+    file_len: u64,
+    frags: Option<&Frags<'_>>,
+) -> Result<Option<Track>, MediaError> {
     let kids = boxes(trak)?;
     let tkhd = find(&kids, b"tkhd").ok_or_else(|| invalid("trak without tkhd"))?;
     let mdia = boxes(find(&kids, b"mdia").ok_or_else(|| invalid("trak without mdia"))?)?;
@@ -202,7 +283,7 @@ fn parse_trak(trak: &[u8], movie_ts: u32, file_len: u64) -> Result<Option<Track>
         None => None,
     };
 
-    let packets = build_packets(
+    let mut packets = build_packets(
         &sizes,
         &stts,
         ctts.as_deref(),
@@ -213,11 +294,35 @@ fn parse_trak(trak: &[u8], movie_ts: u32, file_len: u64) -> Result<Option<Track>
         shift,
         file_len,
     )?;
-    let (mode, vfr) = if kind == TrackKind::Video {
-        let mut runs: Vec<(u64, u64)> = stts
+    let mut runs: Vec<(u64, u64)> = stts
+        .iter()
+        .map(|&(c, d)| (u64::from(c), d as u64))
+        .collect();
+    if let Some(f) = frags {
+        let next_dts = runs
             .iter()
-            .map(|&(c, d)| (u64::from(c), d as u64))
-            .collect();
+            .fold(0u64, |a, &(c, d)| a.saturating_add(c.saturating_mul(d)));
+        let trex = f
+            .trex
+            .iter()
+            .find(|t| t.id == id)
+            .copied()
+            .unwrap_or_default();
+        append_fragments(
+            &FragCtx {
+                id,
+                trex,
+                timescale,
+                shift,
+                file_len,
+            },
+            f.moofs,
+            i64::try_from(next_dts).map_err(|_| invalid("timestamp overflow"))?,
+            &mut packets,
+            &mut runs,
+        )?;
+    }
+    let (mode, vfr) = if kind == TrackKind::Video {
         if let Some(last) = runs.last_mut() {
             last.0 = last.0.saturating_sub(1); // the final sample's duration is arbitrary
         }
@@ -690,4 +795,177 @@ fn build_packets(
         cleft = cleft.saturating_sub(1);
     }
     Ok(packets)
+}
+
+struct FragCtx {
+    id: u32,
+    trex: Trex,
+    timescale: u32,
+    shift: Time,
+    file_len: u64,
+}
+
+/// `tfhd` fields (only what we use).
+#[derive(Default)]
+struct Tfhd {
+    id: u32,
+    base: Option<u64>,
+    duration: Option<u32>,
+    size: Option<u32>,
+    flags: Option<u32>,
+}
+
+fn parse_tfhd(b: &[u8]) -> Result<Tfhd, MediaError> {
+    let mut c = Cur::new(b);
+    let flags = {
+        let v = c.u32()?;
+        v & 0x00FF_FFFF
+    };
+    let mut t = Tfhd {
+        id: c.u32()?,
+        ..Tfhd::default()
+    };
+    if flags & 0x01 != 0 {
+        t.base = Some(c.u64()?);
+    }
+    if flags & 0x02 != 0 {
+        c.skip(4)?; // sample_description_index
+    }
+    if flags & 0x08 != 0 {
+        t.duration = Some(c.u32()?);
+    }
+    if flags & 0x10 != 0 {
+        t.size = Some(c.u32()?);
+    }
+    if flags & 0x20 != 0 {
+        t.flags = Some(c.u32()?);
+    }
+    Ok(t)
+}
+
+/// Appends the samples of every `traf` for this track, in file (decode) order. A fragment whose samples reach past the end of the
+/// file ends the walk: that is a recording cut short, and everything before it is kept.
+fn append_fragments(
+    cx: &FragCtx,
+    moofs: &[Moof],
+    mut next_dts: i64,
+    packets: &mut Vec<Packet>,
+    runs: &mut Vec<(u64, u64)>,
+) -> Result<(), MediaError> {
+    let ts = u64::from(cx.timescale);
+    let bad = || invalid("timestamp overflow");
+    for moof in moofs {
+        for (ty, traf) in boxes(&moof.body)? {
+            if &ty != b"traf" {
+                continue;
+            }
+            let kids = boxes(traf)?;
+            let tfhd =
+                parse_tfhd(find(&kids, b"tfhd").ok_or_else(|| invalid("traf without tfhd"))?)?;
+            if tfhd.id != cx.id {
+                continue;
+            }
+            if let Some(b) = find(&kids, b"tfdt") {
+                let mut c = Cur::new(b);
+                let v = full_box(&mut c)?;
+                let t = if v == 1 {
+                    c.u64()?
+                } else {
+                    u64::from(c.u32()?)
+                };
+                next_dts = i64::try_from(t).map_err(|_| bad())?;
+            }
+            let mut cursor = tfhd.base.unwrap_or(moof.start);
+            let mut staged: Vec<Packet> = Vec::new();
+            let mut staged_runs: Vec<u64> = Vec::new();
+            let mut dts = next_dts;
+            for (ty, trun) in &kids {
+                if ty != b"trun" {
+                    continue;
+                }
+                let mut c = Cur::new(trun);
+                let version = c.u8()?;
+                let f = u32::from_be_bytes([0, c.u8()?, c.u8()?, c.u8()?]);
+                let count = c.u32()?;
+                if packets
+                    .len()
+                    .saturating_add(staged.len())
+                    .saturating_add(count as usize)
+                    > MAX_PACKETS_PER_TRACK
+                {
+                    return Err(invalid("implausible packet count"));
+                }
+                if f & 0x1 != 0 {
+                    let off = i64::from(c.i32()?);
+                    cursor = tfhd
+                        .base
+                        .unwrap_or(moof.start)
+                        .checked_add_signed(off)
+                        .ok_or_else(|| invalid("sample offset overflow"))?;
+                }
+                let first_flags = if f & 0x4 != 0 { Some(c.u32()?) } else { None };
+                for i in 0..count {
+                    let dur = if f & 0x100 != 0 {
+                        c.u32()?
+                    } else {
+                        tfhd.duration.unwrap_or(cx.trex.duration)
+                    };
+                    let size = if f & 0x200 != 0 {
+                        c.u32()?
+                    } else {
+                        tfhd.size.unwrap_or(cx.trex.size)
+                    };
+                    let mut sflags = if f & 0x400 != 0 {
+                        c.u32()?
+                    } else {
+                        tfhd.flags.unwrap_or(cx.trex.flags)
+                    };
+                    if i == 0 {
+                        sflags = first_flags.unwrap_or(sflags);
+                    }
+                    let comp = if f & 0x800 != 0 {
+                        let raw = c.u32()?;
+                        if version == 0 {
+                            i64::from(raw)
+                        } else {
+                            i64::from(raw as i32)
+                        }
+                    } else {
+                        0
+                    };
+                    let end = cursor.checked_add(u64::from(size));
+                    if end.is_none_or(|e| e > cx.file_len) {
+                        // Truncated tail: drop this whole fragment and everything after it.
+                        return Ok(());
+                    }
+                    let conv = |v: i64| to_time(v, ts).and_then(|t| t.checked_add(cx.shift));
+                    let next = dts.checked_add(i64::from(dur)).ok_or_else(bad)?;
+                    let t0 = conv(dts).ok_or_else(bad)?;
+                    staged.push(Packet {
+                        pts: conv(dts.checked_add(comp).ok_or_else(bad)?).ok_or_else(bad)?,
+                        dts: t0,
+                        duration: conv(next)
+                            .ok_or_else(bad)?
+                            .checked_sub(t0)
+                            .ok_or_else(bad)?,
+                        offset: cursor,
+                        size,
+                        keyframe: sflags & 0x0001_0000 == 0,
+                    });
+                    staged_runs.push(u64::from(dur));
+                    cursor = end.unwrap_or(cursor);
+                    dts = next;
+                }
+            }
+            packets.extend(staged);
+            for d in staged_runs {
+                match runs.last_mut() {
+                    Some((c, s)) if *s == d => *c += 1,
+                    _ => runs.push((1, d)),
+                }
+            }
+            next_dts = dts;
+        }
+    }
+    Ok(())
 }
