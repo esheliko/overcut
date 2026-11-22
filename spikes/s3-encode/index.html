@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>S3 encode spike</title>
+<pre id="log">S3 encode spike: driven by run.mjs (window.__start(cfg) -> window.__result).</pre>
+<script type="module">
+  const log = document.getElementById("log");
+  let worker;
+  window.__progress = [];
+  window.__start = (cfg) => {
+    worker = new Worker("./worker.js", { type: "module" });
+    worker.onmessage = ({ data }) => {
+      if (data.type === "progress") { window.__progress.push(data); log.textContent = JSON.stringify(data); }
+      else { window.__result = data; log.textContent = JSON.stringify(data, null, 2); }
+    };
+    worker.onerror = (e) => { window.__result = { type: "error", error: String(e.message ?? e) }; };
+    worker.postMessage({ type: "start", cfg });
+  };
+  window.__cancel = () => { window.__cancelAt = performance.now(); worker.postMessage({ type: "cancel" }); };
+  window.__cancelAt = 0;
+</script>
