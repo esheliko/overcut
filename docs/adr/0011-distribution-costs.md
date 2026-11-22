@@ -1,5 +1,5 @@
 # 0011 Distribution, signing and the real costs of "free"
-**Status**: **open: owner decision** (blocks M5 store work; web and desktop alpha need no decision)
+**Status**: **accepted** as recommended (2026-11-22; owner decision relayed by the work manager)
 
 **Context.** The software costs nothing to use, but distribution has fixed costs that must be paid by someone.
 
@@ -12,4 +12,4 @@
 | CI minutes | free for public repos; macOS/Windows runners limited | release builds | public repo (free), or self-hosted runners |
 | Legal review of codecs/licences | one-off | 1.0 | volunteer counsel / software-freedom org |
 
-**Recommendation.** Public repo (free CI), Vercel/Cloudflare free static hosting, SignPath OSS for Windows, pay the two small store fees from donations/sponsors, keep a visible cost ledger in the repo. Until funded: PWA is the mobile app and desktop builds are unsigned with clear instructions.
+**Decision.** Public repo (free CI), Vercel/Cloudflare free static hosting, SignPath OSS for Windows, store fees (Apple $99/yr, Google Play $25) paid later from donations/sponsors, and a visible cost ledger in the repo. Until funded: the PWA is the mobile app and desktop builds are unsigned, with clear install instructions.
