@@ -1,5 +1,6 @@
 //! Integer-tick time (ADR 0010). Floats are never used for timeline positions.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Ticks per second. Divides exactly into one frame of 24, 25, 30, 48, 50, 60, 120 fps and the
@@ -8,7 +9,18 @@ pub const TICKS_PER_SECOND: i64 = 705_600_000;
 
 /// A point in time or a duration, in ticks. Serialized as a plain integer.
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
 )]
 #[serde(transparent)]
 pub struct Time(i64);
@@ -106,7 +118,7 @@ impl std::ops::Sub for Time {
 }
 
 /// An exact fraction (frame rates, speeds). `den` is always positive and the fraction is reduced.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, JsonSchema)]
 pub struct Rational {
     pub num: i64,
     pub den: i64,

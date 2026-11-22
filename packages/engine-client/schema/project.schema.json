@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/ProjectId"
+    },
+    "media": {
+      "description": "Every media file used by any clip. Clips refer to these by id and never embed paths.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MediaRef"
+      }
+    },
+    "name": {
+      "type": "string"
+    },
+    "schema_version": {
+      "description": "The schema this document was written with; readers migrate older versions and refuse newer ones.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "sequences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Sequence"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "media",
+    "sequences"
+  ],
+  "$defs": {
+    "Clip": {
+      "type": "object",
+      "properties": {
+        "duration": {
+          "description": "Length on the timeline (source length is `duration * speed`).",
+          "$ref": "#/$defs/Time"
+        },
+        "id": {
+          "$ref": "#/$defs/ClipId"
+        },
+        "media": {
+          "$ref": "#/$defs/MediaId"
+        },
+        "source_in": {
+          "description": "Where in the source media the clip starts.",
+          "$ref": "#/$defs/Time"
+        },
+        "speed": {
+          "description": "Playback speed, positive. 1/1 in M1.",
+          "$ref": "#/$defs/Rational",
+          "default": {
+            "den": 1,
+            "num": 1
+          }
+        },
+        "start": {
+          "description": "Where the clip starts on the sequence timeline.",
+          "$ref": "#/$defs/Time"
+        }
+      },
+      "required": [
+        "id",
+        "media",
+        "start",
+        "source_in",
+        "duration"
+      ]
+    },
+    "ClipId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "MediaId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "MediaKind": {
+      "type": "string",
+      "enum": [
+        "video",
+        "audio",
+        "image"
+      ]
+    },
+    "MediaRef": {
+      "description": "A source file as the project knows it. The bytes live outside the project; `uri` is resolved by the host.",
+      "type": "object",
+      "properties": {
+        "duration": {
+          "description": "Source length; `None` for stills and until probed.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "hash": {
+          "description": "Content hash (hex) used to relink moved files; `None` until computed.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "id": {
+          "$ref": "#/$defs/MediaId"
+        },
+        "kind": {
+          "$ref": "#/$defs/MediaKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "uri": {
+          "description": "Host-resolved locator: a path relative to the project, a file handle key (web) or similar. Opaque to the model.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "uri"
+      ]
+    },
+    "ProjectId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "Rational": {
+      "description": "An exact fraction (frame rates, speeds). `den` is always positive and the fraction is reduced.",
+      "type": "object",
+      "properties": {
+        "den": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "num": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ]
+    },
+    "Resolution": {
+      "type": "object",
+      "properties": {
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ]
+    },
+    "Sequence": {
+      "type": "object",
+      "properties": {
+        "frame_rate": {
+          "$ref": "#/$defs/Rational"
+        },
+        "id": {
+          "$ref": "#/$defs/SequenceId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "resolution": {
+          "$ref": "#/$defs/Resolution"
+        },
+        "sample_rate": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "tracks": {
+          "description": "Bottom-to-top for video (later tracks draw over earlier ones). Any number of tracks of either kind.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Track"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "frame_rate",
+        "resolution",
+        "sample_rate",
+        "tracks"
+      ]
+    },
+    "SequenceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "Time": {
+      "description": "A point in time or a duration, in ticks. Serialized as a plain integer.",
+      "type": "integer",
+      "format": "int64"
+    },
+    "Track": {
+      "type": "object",
+      "properties": {
+        "clips": {
+          "description": "Sorted by `start`, never overlapping (see [`Project::validate`]).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Clip"
+          }
+        },
+        "id": {
+          "$ref": "#/$defs/TrackId"
+        },
+        "kind": {
+          "$ref": "#/$defs/TrackKind"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "muted",
+        "locked",
+        "clips"
+      ]
+    },
+    "TrackId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "TrackKind": {
+      "type": "string",
+      "enum": [
+        "video",
+        "audio"
+      ]
+    }
+  }
+}
