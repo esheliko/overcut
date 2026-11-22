@@ -123,3 +123,70 @@ fn hit_path_is_fast() {
     println!("cache hit: {per} ns/op");
     assert!(per < 20_000, "hit path too slow: {per} ns");
 }
+
+#[test]
+fn decoder_advertises_and_switches_frame_kinds() {
+    let mut d = dec(4);
+    assert_eq!(d.frame_kinds(), FrameKinds::BOTH);
+    let cpu = block_on(d.video_frame(1)).unwrap();
+    assert_eq!(cpu.kind(), FrameKind::Cpu);
+    assert!(cpu.as_cpu().is_some() && cpu.as_gpu().is_none());
+    d.set_frame_kind(FrameKind::Gpu).unwrap();
+    let gpu = block_on(d.video_frame(1)).unwrap();
+    assert_eq!(gpu.kind(), FrameKind::Gpu);
+    assert_eq!(FakeDecoder::frame_number(&gpu), 1);
+    assert_eq!(
+        gpu.byte_size(),
+        FRAME,
+        "charged at the estimated GPU footprint"
+    );
+    assert_eq!(gpu, gpu.clone(), "clones share one resource");
+
+    // A CPU-only decoder (the trait default) refuses GPU frames plainly.
+    struct CpuOnly(FakeDecoder);
+    impl Decoder for CpuOnly {
+        fn info(&self) -> &MediaInfo {
+            self.0.info()
+        }
+        async fn video_frame(&mut self, i: i64) -> Result<VideoFrame, MediaError> {
+            self.0.video_frame(i).await
+        }
+        async fn audio(&mut self, s: i64, n: usize) -> Result<AudioChunk, MediaError> {
+            self.0.audio(s, n).await
+        }
+    }
+    let mut c = CpuOnly(dec(2));
+    assert_eq!(c.frame_kinds(), FrameKinds::CPU);
+    assert!(c.set_frame_kind(FrameKind::Cpu).is_ok());
+    assert!(matches!(
+        c.set_frame_kind(FrameKind::Gpu),
+        Err(MediaError::Unsupported(_))
+    ));
+}
+
+#[test]
+fn gpu_frames_are_budgeted_and_closed_on_eviction() {
+    let mut d = dec(100);
+    d.set_frame_kind(FrameKind::Gpu).unwrap();
+    let mut c = FrameCache::new(FRAME * 3);
+    for i in 0..6 {
+        block_on(c.get_or_decode(&mut d, i, 0)).unwrap();
+        assert!(c.bytes() <= c.budget());
+    }
+    assert_eq!(c.len(), 3);
+    assert_eq!(d.live_gpu_frames(), 3, "evicted GPU frames were released");
+    c.set_budget(FRAME);
+    assert_eq!(d.live_gpu_frames(), 1);
+    c.clear();
+    assert_eq!(d.live_gpu_frames(), 0, "clear releases everything");
+
+    // Mixed variants share one byte budget.
+    let mut d = dec(10);
+    let mut c = FrameCache::new(FRAME * 2);
+    block_on(c.get_or_decode(&mut d, 0, 0)).unwrap();
+    d.set_frame_kind(FrameKind::Gpu).unwrap();
+    block_on(c.get_or_decode(&mut d, 1, 0)).unwrap();
+    block_on(c.get_or_decode(&mut d, 2, 0)).unwrap();
+    assert_eq!((c.len(), c.bytes()), (2, FRAME * 2));
+    assert!(!c.contains(0));
+}
