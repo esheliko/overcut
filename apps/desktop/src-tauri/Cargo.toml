@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 app-core = { path = "../../../crates/core" }
+app-model = { path = "../../../crates/model" }
 app-timeline = { path = "../../../crates/timeline" }
 
 [profile.release]

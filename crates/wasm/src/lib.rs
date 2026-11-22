@@ -43,8 +43,42 @@ impl Editor {
     }
 }
 
+/// Opens a `.overcut` container: JSON `{project, read_only, found_version, migrated, entries}`.
+/// On failure throws a JSON string `{code, message}` (see `app_model::FileError`).
+#[wasm_bindgen]
+pub fn project_open(bytes: &[u8]) -> Result<String, String> {
+    app_model::open_json(bytes).map_err(|e| e.to_json())
+}
+
+/// Writes a `.overcut` container from project JSON. `previous` is the container that was opened (empty for a new file).
+#[wasm_bindgen]
+pub fn project_save(project_json: &str, previous: &[u8]) -> Result<Vec<u8>, String> {
+    app_model::save_bytes(project_json, previous).map_err(|e| e.to_json())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn project_file_round_trips_and_errors_are_json() {
+        let project = app_model::Project::new(
+            &mut app_model::SeqIds::default(),
+            "t",
+            app_model::Rational::FPS_30,
+            app_model::Resolution {
+                width: 1280,
+                height: 720,
+            },
+        );
+        let json = serde_json::to_string(&project).unwrap();
+        let bytes = super::project_save(&json, &[]).unwrap();
+        let opened: serde_json::Value =
+            serde_json::from_str(&super::project_open(&bytes).unwrap()).unwrap();
+        assert_eq!(opened["project"]["name"], "t");
+        let err: serde_json::Value =
+            serde_json::from_str(&super::project_open(b"junk").unwrap_err()).unwrap();
+        assert_eq!(err["code"], "corrupt");
+    }
+
     #[test]
     fn forwards_to_core() {
         assert_eq!(super::engine_info(), app_core::engine_info_json());

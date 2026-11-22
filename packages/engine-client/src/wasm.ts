@@ -1,5 +1,5 @@
 import { createEditing } from "./editing";
-import { parseEngineInfo, type Engine } from "./types";
+import { parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
 /** Browser backend: loads the WebAssembly build once. Run the engine inside a Web Worker when it starts doing real work (see docs). */
 export async function createWasmEngine(): Promise<Engine> {
@@ -13,6 +13,20 @@ export async function createWasmEngine(): Promise<Engine> {
   return {
     backend: "wasm",
     info: async () => parseEngineInfo(wasm.engine_info()),
+    openProject: async (bytes) => {
+      try {
+        return parseOpenedProject(wasm.project_open(bytes));
+      } catch (e) {
+        throw toProjectFileError(e);
+      }
+    },
+    saveProject: async (project, previous) => {
+      try {
+        return wasm.project_save(JSON.stringify(project), previous ?? new Uint8Array());
+      } catch (e) {
+        throw toProjectFileError(e);
+      }
+    },
     editing: createEditing({
       open: (projectJson) => {
         const next = new wasm.Editor(projectJson); // throws on an invalid project, keeping the old one
