@@ -56,6 +56,17 @@ fn editor_journal(state: State<'_, EditorState>) -> Result<String, String> {
     with_editor(&state, |e| Ok(e.journal_jsonl()))
 }
 
+/// Same contract as `project_open` in `crates/wasm`. Bytes cross IPC as JSON arrays for now (project files are small).
+#[tauri::command]
+fn project_open(bytes: Vec<u8>) -> Result<String, String> {
+    app_model::open_json(&bytes).map_err(|e| e.to_json())
+}
+
+#[tauri::command]
+fn project_save(project_json: String, previous: Vec<u8>) -> Result<Vec<u8>, String> {
+    app_model::save_bytes(&project_json, &previous).map_err(|e| e.to_json())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -67,7 +78,9 @@ pub fn run() {
             editor_undo,
             editor_redo,
             editor_project,
-            editor_journal
+            editor_journal,
+            project_open,
+            project_save
         ])
         .run(tauri::generate_context!())
         .expect("error while running the application");

@@ -8,13 +8,18 @@
 //!
 //! **Rules**: no I/O; everything `Serialize + Deserialize`; no floats for positions in time; every format change ships a migration and a fixture test.
 //!
-//! Status: `time` (M1-001) and the document structs (M1-002, `docs/features/model.md`) are in; ops and undo are `M1-003`, the `.overcut` file is `M1-005`.
+//! Status: `time` (M1-001) and the document structs (M1-002, `docs/features/model.md`) are in; the `.overcut` container, migrations and relink fingerprints (M1-005, `docs/features/project-file.md`) are in `file`; ops and undo are `M1-003`.
 
+pub mod file;
 pub mod ids;
 pub mod project;
 pub mod schema;
 pub mod time;
 
+pub use file::{
+    fingerprint, fingerprint_size, open_json, save_bytes, FileError, ProjectFile,
+    FINGERPRINT_WINDOW,
+};
 pub use ids::{ClipId, Id, IdSource, MediaId, ProjectId, SeqIds, SequenceId, TrackId};
 pub use project::{
     Clip, MediaKind, MediaRef, ModelError, Project, Resolution, Sequence, Track, TrackKind,
