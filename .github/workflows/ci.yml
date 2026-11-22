@@ -28,7 +28,9 @@ jobs:
         run: echo "v=$(grep -oP 'wasm-bindgen\s*=\s*"=?\K[0-9.]+' crates/wasm/Cargo.toml | head -1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: wbgcache
-        with: { path: ~/.cargo/bin/wasm-bindgen, key: wasm-bindgen-${{ runner.os }}-${{ steps.wbg.outputs.v }} }
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          key: wasm-bindgen-${{ runner.os }}-${{ steps.wbg.outputs.v }}
       - if: steps.wbgcache.outputs.cache-hit != 'true'
         run: cargo install wasm-bindgen-cli --version ${{ steps.wbg.outputs.v }} --locked
       - run: npm ci --no-audit --no-fund
@@ -44,7 +46,9 @@ jobs:
         run: echo "v=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: pw
-        with: { path: ~/.cache/ms-playwright, key: pw-${{ runner.os }}-${{ steps.pwv.outputs.v }} }
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ steps.pwv.outputs.v }}
       - name: Install browser
         run: |
           for i in 1 2 3; do
@@ -79,7 +83,8 @@ jobs:
         run: |
           if git diff --name-only HEAD^ HEAD | grep -qvE '^(docs/|process/|\.claude/|\.github/|.*\.md$)'; then echo "yes=true" >> "$GITHUB_OUTPUT"; else echo "yes=false" >> "$GITHUB_OUTPUT"; echo "docs/process only: not deploying"; fi
       - if: steps.changed.outputs.yes == 'true' && env.VERCEL_TOKEN == ''
-        run: echo "::warning::VERCEL_TOKEN secret missing: web deploy is idle (see DEPLOYING.md)"
+        run: |
+          echo "::warning::VERCEL_TOKEN secret missing: web deploy is idle (see DEPLOYING.md)"
       - if: steps.changed.outputs.yes == 'true' && env.VERCEL_TOKEN != ''
         uses: actions/download-artifact@v4
         with: { name: web-dist, path: apps/web/dist }
