@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, type KeyboardEvent } from "react";
+import { useI18n } from "../i18n";
+import { onThemeChange } from "../theme/tokens";
 import { DARK, drawTimeline, paletteFromCss, type DrawStats, type Palette } from "./draw";
 import { hitTest } from "./hit";
 import type { Scene } from "./scene";
@@ -26,6 +28,7 @@ const TAP_SLOP = 6;
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
 export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, onReady }: Props) {
+  const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ pps: zoom, scrollX: 0, scrollY: 0, width: 300, height: 150 });
   const dpr = useRef(1);
@@ -46,6 +49,9 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     drawTimeline(ctx, l.scene, view.current, l.frame / l.fps, dpr.current, palette.current, stats.current);
   }, [lengthSec]);
   const invalidate = useCallback(() => { if (!raf.current) raf.current = requestAnimationFrame(draw); }, [draw]);
+
+  // Re-read the palette tokens and redraw when the theme changes.
+  useEffect(() => onThemeChange(() => { if (canvas.current) { palette.current = paletteFromCss(canvas.current); invalidate(); } }), [invalidate]);
 
   // Size the backing store to the element at the real device pixel ratio.
   useEffect(() => {
@@ -212,19 +218,19 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         data-testid="timeline-canvas"
         role="slider"
         tabIndex={0}
-        aria-label="Playhead position"
+        aria-label={t("timeline.playhead")}
         aria-describedby="tl-summary"
         aria-valuemin={0}
         aria-valuemax={endFrame}
         aria-valuenow={frame}
-        aria-valuetext={`${(frame / fps).toFixed(2)} seconds`}
+        aria-valuetext={t("timeline.playheadText", { seconds: Math.round((frame / fps) * 100) / 100 })}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
         onKeyDown={onKey}
       />
-      <p id="tl-summary" className="sr-only">{summary} Arrow keys move the playhead, Shift with arrows by a second, plus and minus zoom, 0 fits the project, Page Up and Page Down scroll, Up and Down arrows scroll tracks.</p>
+      <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>
     </>
   );
 }
