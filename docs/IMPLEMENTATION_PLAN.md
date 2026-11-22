@@ -81,6 +81,21 @@ Ordered; `[S]` = spike. Create these as GitHub issues in milestone **M1**.
 
 M1 is done when all of these are merged and the M1 exit checklist is green. M2-M9 backlogs are written when the previous milestone is two-thirds done (planning further ahead goes stale).
 
+## 4a. M1 sequencing (changed 2026-11-22, after the first build wave)
+**Why**: the first wave built foundations breadth-first (model, ops, file format, media reading, render spike, colour) and nothing a person can try yet; the import, trim, export loop (M1-032 to M1-035, M1-022) was not started. Working spikes also cannot be fully proven in the cloud: S1 (<50 ms seek, zero-copy) and S2 (60 fps at 1080p, WebGPU in a real browser) ran on a software renderer.
+
+**Status at this change** (merged on `main`): M1-001, 002, 003 (S7), 005, 011, 012 (plus fragmented MP4 and CPU/GPU frame variants), 010 (S1, code only), 020 (S2, code only), 021. Open or paused with work in progress: 004, 006, 014 (S3), 016 (new: production WebCodecs decoder backend), 031 (S8), 036, 040.
+
+**Order from here (vertical slice first)**:
+1. Finish the in-flight items that the slice needs: 004 (evaluate), 016 (decoder backend), 014 (encode and mux), 031 (canvas timeline), 040 (autosave).
+2. Then the slice itself, one thin end-to-end path before polish: 032 (import) -> 033 (preview and transport) -> 034 (split, trim, delete, undo) -> 035 and 022 (export). Each lands engine op, binding, UI and smoke step together (section 3, rule 3).
+3. Then 030, 013, 036, 006, 041 to 044.
+4. Do not start another foundation item unless the slice needs it.
+
+**Device proofs are separate from merging.** Spike code merges when its tests pass in CI. The success bars that need real hardware (S1 seek latency and zero-copy, S2 60 fps, S3 export speed and A/V drift, S8 on the low-end phone) are tracked as a checklist run on the reference devices (ADR 0013) and recorded in the spike's ADR results section. A spike is marked "proven" only when that run exists; until then say "code merged, bar unproven". Do not spend cloud sessions trying to measure what needs a GPU.
+
+**Session sizing** (cost note: every session re-reads its whole context each turn, and a cold start costs about $0.5 to $0.75 before any work): one session per vertical slice or per tightly related set of items, not per tiny change. A follow-up to an item goes to the session that still holds its context, or is folded into the next item in the same crate. A docs-only edit is done directly by whoever is already in the repo, not by a new session.
+
 ## 5. Risks and mitigations
 | Risk | Impact | Mitigation |
 |---|---|---|
