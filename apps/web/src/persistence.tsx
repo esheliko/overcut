@@ -1,5 +1,6 @@
 import { acquireProjectLock, newProject, openProjectSession, openProjectStorage, type Engine, type ProjectSession, type RecoveryNote, type SaveStatus } from "@app/engine-client";
 import { useEffect, useState } from "react";
+import { useI18n } from "./i18n";
 
 /** One project for now ("default"); the project list arrives with M1-034. */
 const PROJECT_ID = "default";
@@ -76,6 +77,7 @@ export function usePersistence(engine: Engine | null) {
 
 /** Small, non-blocking notes: what was recovered (with an undo) and why saving is not working. */
 export function PersistenceNotes({ state }: { state: ReturnType<typeof usePersistence> }) {
+  const { t } = useI18n();
   const { recovered, problem, undoRecovery, dismiss } = state;
   if (!recovered && !problem) return null;
   return (
@@ -83,9 +85,9 @@ export function PersistenceNotes({ state }: { state: ReturnType<typeof usePersis
       {problem && <div className="persist-note danger" role="alert" data-testid="save-problem">{problem}</div>}
       {recovered && (
         <div className="persist-note" role="status" data-testid="recovery-note">
-          <span>Recovered unsaved changes</span>
-          <button onClick={() => void undoRecovery()}>Undo recovery</button>
-          <button className="icon-btn" aria-label="Dismiss" onClick={dismiss}>×</button>
+          <span>{t("persist.recovered")}</span>
+          <button onClick={() => void undoRecovery()}>{t("persist.undo-recovery")}</button>
+          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={dismiss}>×</button>
         </div>
       )}
     </div>

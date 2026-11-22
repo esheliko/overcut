@@ -99,9 +99,9 @@ h2, p { margin: 0; }
 .toast:not(:empty) { opacity: 1; transform: translate(-50%, 0); }
 
 /* Recovery and save-problem notes: small, non-blocking, above the toast */
-.persist-notes { position: fixed; z-index: 41; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 140px); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); display: grid; gap: 8px; justify-items: center; }
+.persist-notes { position: fixed; z-index: 41; inset-inline: 16px; margin-inline: auto; bottom: calc(env(safe-area-inset-bottom) + 140px); width: max-content; max-width: calc(100vw - 32px); display: grid; gap: 8px; justify-items: center; }
 .persist-note { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--surface-3); border: 1px solid var(--line-strong); box-shadow: var(--shadow); font-weight: 500; }
-.persist-note.danger { border-color: var(--danger); padding-right: 16px; }
+.persist-note.danger { border-color: var(--danger); padding-inline-end: 16px; }
 .persist-note button:not(.icon-btn) { white-space: nowrap; min-height: var(--target); padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); }
 @media (min-width: 720px) { .persist-notes { bottom: 72px; } }
 
