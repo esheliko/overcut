@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEditing } from "./editing";
+import { exportNotYet } from "./export/job";
 import { toStorageError, type ProjectStorage } from "./persist/storage";
 import { MediaDecodeError, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
@@ -34,6 +35,7 @@ export function createTauriEngine(): Engine {
         throw toProjectFileError(e);
       }
     },
+    export: exportNotYet,
     editing: createEditing({
       open: (projectJson) => invoke<void>("editor_open", { projectJson }),
       apply: (opsJson, coalesce) => invoke<string>("editor_apply", { opJson: opsJson, coalesce: coalesce ?? null }),

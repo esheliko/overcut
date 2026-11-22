@@ -1,3 +1,4 @@
+import type { ExportApi } from "./export/types";
 import type { Clip, ClipId, MediaId, Project, Time, TrackId } from "./model.generated";
 
 /** What the engine says about itself. Mirrors `app_core::EngineInfo` (crates/core/src/lib.rs). */
@@ -20,6 +21,8 @@ export interface Engine {
   info(): Promise<EngineInfo>;
   /** Edit the open project: apply ops, undo, redo (M1-003). The UI wiring comes with the timeline (M1-034). */
   readonly editing: Editing;
+  /** Renders a sequence of the open project to a video file (M1-022). Web: a Worker streaming to OPFS. Tauri: rejects `not_yet` until native encode (M1-015). */
+  readonly export: ExportApi;
   /** Reads a `.overcut` file (M1-005). Rejects with `ProjectFileError` (corrupt, too new to display, ...). */
   openProject(bytes: Uint8Array): Promise<OpenedProject>;
   /**
