@@ -47,7 +47,7 @@ One codebase for every platform: a **Rust engine** (`crates/`) compiled to WebAs
 - `apps/desktop/src-tauri`: native shell and its commands. Own Cargo workspace (needs webview libraries), thin like `crates/wasm`.
 - `packages/engine-client` (`@app/engine-client`): the typed `Engine` interface and its two backends (`wasm.ts`, `tauri.ts`). **The only door from UI to engine.**
 - `apps/web` (`@app/web`): the UI (React 19, Vite). Responsive from phone to ultrawide; keyboard and touch both first-class.
-- `scripts/`: tooling (`build-wasm`, `check-boundaries`, `smoke`, `shot`, `vercel-output`, rules/CI helpers).
+- `scripts/`: tooling (`build-wasm`, `check-boundaries`, `smoke`, `shot`, `vercel-output`, `deploy-board` (writes the Deploy board issue, `DEPLOYING.md`), rules/CI helpers).
 - `docs/`: architecture, roadmap, decisions (create what the project needs; per-feature rules in `docs/features/<feature>.md`).
 
 ## Commands

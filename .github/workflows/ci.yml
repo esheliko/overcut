@@ -78,17 +78,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 2 }
+      # Step names are read by scripts/deploy-board-core.mjs (deployOutcome) to tell the deploy board what happened: keep them.
       - name: Does this commit change the shipped app?
         id: changed
         run: |
-          if git diff --name-only HEAD^ HEAD | grep -qvE '^(docs/|process/|\.claude/|\.github/|.*\.md$)'; then echo "yes=true" >> "$GITHUB_OUTPUT"; else echo "yes=false" >> "$GITHUB_OUTPUT"; echo "docs/process only: not deploying"; fi
-      - if: steps.changed.outputs.yes == 'true' && env.VERCEL_TOKEN == ''
-        run: |
-          echo "::warning::VERCEL_TOKEN secret missing: web deploy is idle (see DEPLOYING.md)"
+          if git diff --name-only HEAD^ HEAD | grep -qvE '^(docs/|process/|\.claude/|\.github/|.*\.md$)'; then echo "yes=true" >> "$GITHUB_OUTPUT"; else echo "yes=false" >> "$GITHUB_OUTPUT"; fi
+      - name: 'Skipped: no app change'
+        if: steps.changed.outputs.yes != 'true'
+        run: 'echo "docs/process only, not deploying"'
+      - name: 'Idle: VERCEL_TOKEN missing'
+        if: steps.changed.outputs.yes == 'true' && env.VERCEL_TOKEN == ''
+        run: 'echo "::warning::VERCEL_TOKEN secret missing, web deploy is idle (see DEPLOYING.md)"'
       - if: steps.changed.outputs.yes == 'true' && env.VERCEL_TOKEN != ''
         uses: actions/download-artifact@v4
         with: { name: web-dist, path: apps/web/dist }
-      - if: steps.changed.outputs.yes == 'true' && env.VERCEL_TOKEN != ''
+      - name: Deploy to Vercel
+        if: steps.changed.outputs.yes == 'true' && env.VERCEL_TOKEN != ''
         run: |
           node scripts/vercel-output.mjs
           npx --yes vercel@66 deploy --prebuilt --prod --token "$VERCEL_TOKEN"

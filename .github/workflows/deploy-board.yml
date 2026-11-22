@@ -1,0 +1,31 @@
+name: Deploy board
+# Keeps the issue labelled `deploy-board` current: what is live, what is in flight, recent deployments, alerts (DEPLOYING.md). No model, no tokens, no Vercel access: it only reads GitHub.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  pull_request:
+    types: [opened, reopened, closed, ready_for_review, converted_to_draft]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+concurrency:
+  group: deploy-board
+  cancel-in-progress: true # newest run wins; every run re-derives everything
+permissions:
+  contents: read
+  issues: write
+  actions: read
+  checks: read
+  pull-requests: read
+jobs:
+  write:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write the board
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/deploy-board.mjs

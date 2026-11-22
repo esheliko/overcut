@@ -22,6 +22,13 @@ Vercel cannot build Rust, so CI builds the engine and web app, then uploads only
 - macOS: Xcode command line tools. Windows: Microsoft C++ Build Tools and WebView2 (preinstalled on Windows 11).
 - Regenerate icons from a 1024 px square image: `npx tauri icon <image.png> --output apps/desktop/src-tauri/icons` (the committed icons are placeholders).
 
+## The deploy board
+One GitHub issue labelled `deploy-board` (title "Deploy board", created by the first run) shows, in one place: whether production is up to date, the live commit, `main`'s CI, every open PR with its `verify` state (ready to merge, running, red, behind, conflicts), commits merged but not live yet (🔵 changes the app, ⚪ docs/process only), recent web deployments with commit-to-live time, the latest native release, and alerts (red `main`, failed or idle deploy).
+- `.github/workflows/deploy-board.yml` runs `scripts/deploy-board.mjs` after every CI run, on PR open/close and every 15 min. No model, no tokens, no Vercel access: it only reads GitHub. Nothing is stored: every run re-derives everything, so there is no history to corrupt. Not written when CI runs cannot be read; unchanged boards are not rewritten.
+- It reads what `deploy-web` did from the **step names** in `ci.yml` (`Deploy to Vercel`, `Skipped: no app change`, `Idle: VERCEL_TOKEN missing`). Rename a step and the board shows "no deployment recorded": change `deployOutcome` in `scripts/deploy-board-core.mjs` and its test in the same PR.
+- The issue is written by the script: do not edit it. Look without writing: `node scripts/deploy-board.mjs --dry` (needs `gh` auth).
+- The first board appears after the first CI run on `main` that includes these files, or run the workflow by hand (Actions > Deploy board > Run workflow).
+
 ## For sessions
 Nobody pushes to `main`: every change is a branch + pull request, `verify` must be green, then the PR is squash-merged (CLAUDE.md standing rule). Sessions do not deploy, tag or release unless the owner asks.
 
