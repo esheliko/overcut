@@ -1,0 +1,128 @@
+{
+  "clip": "clip-gop150",
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+  "support": {
+    "no-preference": true,
+    "prefer-hardware": false,
+    "prefer-software": true
+  },
+  "paths": {
+    "decodeOnly": {
+      "decodeMs": {
+        "n": 62,
+        "p50": 319.7,
+        "p95": 543.2,
+        "max": 648.4
+      },
+      "toGpuMs": null,
+      "framesDecodedPerSeek": {
+        "n": 62,
+        "p50": 88,
+        "p95": 147,
+        "max": 150
+      },
+      "wrongFrames": 0,
+      "wrongSample": [],
+      "errors": []
+    },
+    "importExternalTexture": {
+      "decodeMs": {
+        "n": 62,
+        "p50": 297.3,
+        "p95": 615.4,
+        "max": 674.3
+      },
+      "toGpuMs": null,
+      "framesDecodedPerSeek": {
+        "n": 62,
+        "p50": 88,
+        "p95": 147,
+        "max": 150
+      },
+      "wrongFrames": 70,
+      "wrongSample": [
+        {
+          "want": 3,
+          "got": null
+        },
+        {
+          "want": 2,
+          "got": null
+        },
+        {
+          "want": 81,
+          "got": null
+        }
+      ],
+      "errors": [
+        "OperationError: Failed to execute 'importExternalTexture' on 'GPUDevice': Failed to import texture from video"
+      ]
+    },
+    "copyExternalImageToTexture": {
+      "decodeMs": {
+        "n": 62,
+        "p50": 283.2,
+        "p95": 506,
+        "max": 683.3
+      },
+      "toGpuMs": null,
+      "framesDecodedPerSeek": {
+        "n": 62,
+        "p50": 88,
+        "p95": 147,
+        "max": 150
+      },
+      "wrongFrames": 70,
+      "wrongSample": [
+        {
+          "want": 3,
+          "got": null
+        },
+        {
+          "want": 2,
+          "got": null
+        },
+        {
+          "want": 81,
+          "got": null
+        }
+      ],
+      "errors": [
+        "OperationError: A valid external Instance reference no longer exists.",
+        "device lost: unknown A valid external Instance reference no longer exists."
+      ]
+    },
+    "cpuUpload": {
+      "decodeMs": {
+        "n": 62,
+        "p50": 355.6,
+        "p95": 588.4,
+        "max": 702.3
+      },
+      "toGpuMs": {
+        "n": 62,
+        "p50": 392.4,
+        "p95": 614.3,
+        "max": 734.3
+      },
+      "framesDecodedPerSeek": {
+        "n": 62,
+        "p50": 88,
+        "p95": 147,
+        "max": 150
+      },
+      "wrongFrames": 0,
+      "wrongSample": [],
+      "errors": []
+    }
+  },
+  "codec": "avc1.640028",
+  "webgpu": true,
+  "gpu": {
+    "vendor": "google",
+    "architecture": "swiftshader",
+    "description": ""
+  },
+  "timestampSweepMismatches": 0,
+  "browser": "Chromium 153.0.8010.12 headless"
+}
