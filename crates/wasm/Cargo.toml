@@ -15,4 +15,5 @@ workspace = true
 
 [dependencies]
 app-core = { path = "../core" }
+app-timeline = { path = "../timeline" }
 wasm-bindgen = "=0.2.130"
