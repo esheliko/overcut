@@ -14,3 +14,16 @@ app-model = { path = "../model" }
 app-fx = { path = "../fx" }
 app-media = { path = "../media" }
 app-timeline = { path = "../timeline" }
+wgpu = { version = "26.0.1", default-features = false, features = ["wgsl"] }
+bytemuck = { version = "1", features = ["derive"] }
+
+# Backends per target (ADR 0003): native Vulkan + GLES; browsers WebGPU + WebGL2.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+wgpu = { version = "26.0.1", default-features = false, features = ["wgsl", "vulkan", "gles", "metal", "dx12"] }
+pollster = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { version = "26.0.1", default-features = false, features = ["wgsl", "webgpu", "webgl"] }
+
+[dev-dependencies]
+png = "0.18"
