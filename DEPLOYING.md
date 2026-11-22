@@ -10,6 +10,8 @@ There is no server to run. Three things ship:
 
 Vercel cannot build Rust, so CI builds the engine and web app, then uploads only the result (`scripts/vercel-output.mjs` packs it in the Build Output format and keeps the cross-origin-isolation headers that threaded WebAssembly needs).
 
+**Branch previews**: `.github/workflows/preview.yml` deploys every push to a non-`main` branch (docs-only pushes skipped) as a Vercel preview, built in CI like production (`vercel deploy --prebuilt`, no `--prod`), aliased to `https://<repo>-<branch-slug>.vercel.app` (falls back to the plain preview URL if the alias fails) and commented on the PR. It skips lint and tests, so a failing branch can still be viewed; only `main` after a green `verify` reaches production. Preview URLs may sit behind Vercel Deployment Protection (sign in to view).
+
 ## Repo secrets (set by the project creator)
 - `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`: web deploy. Without `VERCEL_TOKEN` the deploy job idles and says so.
 - Later, for signed native builds: Apple (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`), Windows code signing, Android keystore. Until then builds are unsigned and the OS asks the user to confirm the first launch. Never put these anywhere but repo secrets.
