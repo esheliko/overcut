@@ -20,7 +20,7 @@ CapCut is popular because it is quick and rich, but users widely report that it 
 | Learning curve | low | high | low by default, depth on demand |
 
 ## Principles (these settle arguments)
-1. **Free means free.** No watermark, paywalled feature, account wall, ad, dark pattern or "pro" tier. Costs are paid by being a lean open project (no servers to run), donations and sponsors.
+1. **Free means free.** No watermark, paywalled feature, account wall, ad, dark pattern or "pro" tier. Costs are paid by being a lean open project (no servers to run), donations and sponsors. Written commitment: no feature gating, ever (`GOVERNANCE.md`).
 2. **Fast is a feature.** Open in a second, scrub instantly, never block the UI. Budgets in `PERFORMANCE.md` are release gates, not aspirations.
 3. **Local-first and private.** Projects and media never leave the device unless the user shares them. No telemetry by default. AI runs on-device.
 4. **Every screen is first-class.** The phone layout is designed, not shrunk from the desktop. Touch, mouse, keyboard, stylus and controller all work.

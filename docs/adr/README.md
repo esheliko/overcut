@@ -12,12 +12,12 @@ Format: Context, Decision, Consequences, Status (`proposed` -> `accepted` -> may
 | [0006](0006-edit-operations.md) | Edits are serializable operations with inverses | proposed (validate with S7) |
 | [0007](0007-ui-and-extensibility.md) | React UI, canvas timeline, effects as data | proposed |
 | [0008](0008-on-device-ai.md) | AI runs on-device, models on demand | proposed (validate with S6) |
-| [0009](0009-license.md) | Licence | **open: owner decision** |
+| [0009](0009-license.md) | Licence | **accepted** (GPL-3.0-or-later apps, MIT OR Apache-2.0 engine, DCO) |
 | [0010](0010-time.md) | Time as integer ticks | proposed |
 | [0011](0011-distribution-costs.md) | Distribution, signing and the real costs of "free" | **open: owner decision** |
 | [0012](0012-name.md) | Name and trademark check | **open: owner action** |
-| [0013](0013-reference-devices.md) | Reference devices for budgets | **open: owner decision** |
+| [0013](0013-reference-devices.md) | Reference devices for budgets | **accepted** (owner's devices; low-end Android via proxy) |
 | [0014](0014-governance-funding.md) | Governance and funding | **open: by M3** |
 
 ## Open decisions (do not silently pick one)
-Owner input is needed on **0009, 0011, 0012, 0013, 0014**. Each file ends with options and a recommendation.
+Owner input is needed on **0011, 0012, 0014** (0009 and 0013 accepted 2026-11-22; owner still fills in device specs in 0013). Each file ends with options and a recommendation.

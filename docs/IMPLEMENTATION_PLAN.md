@@ -96,4 +96,4 @@ M1 is done when all of these are merged and the M1 exit checklist is green. M2-M
 | Single point of failure on maintainers | bus factor | docs-first, ADRs, small modules, welcoming contribution guide at M3 |
 
 ## 6. Decisions the owner needs to make (blocking marked)
-See [adr/README.md](adr/README.md): **license (0009, blocks first external contribution)**, **distribution costs and stores (0011, blocks M5)**, **name/trademark check (0012, blocks public launch)**, reference devices list (0013, blocks M1 perf gates), governance and funding (0014, by M3).
+See [adr/README.md](adr/README.md): **distribution costs and stores (0011, blocks M5)**, **name/trademark check (0012, blocks public launch)**, governance and funding (0014, by M3). **Decided 2026-11-22:** licence (0009: GPL-3.0-or-later apps, MIT OR Apache-2.0 engine, DCO) and reference devices (0013: owner's Windows 10 laptop, Mac, Galaxy S24, iPhone 14; low-end Android measured by Chrome 4x CPU throttle + 4 GB proxy until a device exists; owner still to supply Windows/Mac specs).

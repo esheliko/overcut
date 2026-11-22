@@ -2,6 +2,7 @@
   "name": "overcut",
   "version": "0.1.0",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "workspaces": ["apps/web", "apps/desktop", "packages/*"],
   "engines": { "node": ">=22" },

@@ -1,0 +1,16 @@
+# OverCut licensing
+
+OverCut is open source and uses two licences, split by directory (decision: `docs/adr/0009-license.md`).
+
+| Part | Path | Licence | Text |
+|---|---|---|---|
+| Apps (UI, web/PWA, desktop and mobile shells) | `apps/*` | GPL-3.0-or-later | `LICENSE-GPL` |
+| Engine crates | `crates/*` | MIT OR Apache-2.0 (your choice) | `LICENSE-MIT`, `LICENSE-APACHE` |
+| Shared packages (e.g. engine client) | `packages/*` | MIT OR Apache-2.0 (your choice) | `LICENSE-MIT`, `LICENSE-APACHE` |
+| Docs, scripts, tests, tooling | everything else | GPL-3.0-or-later unless a file says otherwise | `LICENSE-GPL` |
+
+The permissive engine and package code may be combined into the GPL apps; the reverse is not allowed (GPL code may not be pulled into `crates/*` or `packages/*`).
+
+Contributions are accepted under the same licence as the part they touch, with a DCO sign-off (no CLA). See `CONTRIBUTING.md`.
+
+**No feature gating, ever**: see `docs/GOVERNANCE.md`.

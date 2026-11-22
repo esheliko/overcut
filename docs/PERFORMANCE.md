@@ -2,13 +2,13 @@
 
 "Fast" is a requirement with numbers. Budgets are measured in CI where possible and on the device lab otherwise; a milestone cannot exit with a budget missed. Numbers are initial and are tuned by the S1-S8 spikes; changing one is a PR to this file with data.
 
-## Reference devices (to be fixed in ADR 0013; proposal)
+## Reference devices (ADR 0013, accepted)
 | Tier | Example | Used for |
 |---|---|---|
-| Low phone | Android, Snapdragon 6-series / 4 GB RAM, Chrome WebView | floor for mobile budgets |
-| Mid phone | iPhone 12-class, mid Android (8 GB) | typical mobile |
-| Laptop | Apple M1 / recent integrated-GPU x86, 8-16 GB | desktop baseline |
-| Desktop | discrete GPU, 16-32 GB | high-end, 4K |
+| Low phone | Android, Snapdragon 6-series / 4 GB RAM, Chrome WebView. No device yet: Chrome 4x CPU throttle + 4 GB assumption, numbers labelled "proxy" | floor for mobile budgets |
+| Mid phone | iPhone 14 (owner's); high phone: Samsung Galaxy S24 (owner's) | typical mobile |
+| Laptop | owner's Windows 10 laptop (x86; specs TBD) and Mac (chip TBD) | desktop baseline |
+| Desktop | discrete GPU, 16-32 GB; none yet, CI runners are "interim" | high-end, 4K |
 
 ## Budgets
 | Area | Metric | Low phone | Mid phone | Laptop | Desktop |
