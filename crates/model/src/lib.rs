@@ -8,4 +8,8 @@
 //!
 //! **Rules**: no I/O; everything `Serialize + Deserialize`; no floats for positions in time; every format change ships a migration and a fixture test.
 //!
-//! Status: M0 skeleton, empty. First content arrives with `M1-001`/`M1-002` (see docs/IMPLEMENTATION_PLAN.md).
+//! Status: `time` (M1-001) is in; the document structs arrive with `M1-002` (see docs/IMPLEMENTATION_PLAN.md).
+
+pub mod time;
+
+pub use time::{Rational, Time, TICKS_PER_SECOND};
