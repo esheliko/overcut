@@ -108,6 +108,7 @@ test("language and direction: the page declares lang and dir, and a right-to-lef
   }
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
 
 test("timeline editing: select, split, delete, undo and redo go through the engine", async ({ page }, info) => {
   const phone = info.project.name === "phone";

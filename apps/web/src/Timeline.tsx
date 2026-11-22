@@ -31,6 +31,9 @@ type Props = {
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
 const NO_SELECTION: ReadonlySet<string> = new Set();
+const KEYS = { undo: "Ctrl+Z", redo: "Ctrl+Shift+Z", split: "S", del: "Del" };
+const tip = (label: string, keys: string) => label + " (" + keys + ")";
+const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 
 export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, editing, onReady }: Props) {
@@ -69,7 +72,7 @@ export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, edit
     const p = live.current.proj;
     if (!p.ready) return;
     (which === "undo" ? p.undo() : p.redo())
-      .then((out) => speak(say(out?.changed ? `timeline.say.${which}` : `timeline.say.nothing.${which}`)))
+      .then((out) => speak(say(DONE[which][out?.changed ? 0 : 1])))
       .catch(() => onNotice(t("timeline.say.failed")));
   }, [speak, onNotice, t]);
 
@@ -135,11 +138,11 @@ export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, edit
     <section className="timeline" aria-label={t("timeline.label")} data-testid="panel-timeline">
       <div className="tl-bar">
         <div className="tl-group" role="toolbar" aria-label={t("timeline.edit")}>
-          <button className="icon-btn" aria-label={t("timeline.undo")} title={`${t("timeline.undo")} (Ctrl+Z)`} disabled={off || !proj.canUndo} onClick={() => run({ c: "undo" })}><Icon name="undo" /></button>
-          <button className="icon-btn" aria-label={t("timeline.redo")} title={`${t("timeline.redo")} (Ctrl+Shift+Z)`} disabled={off || !proj.canRedo} onClick={() => run({ c: "redo" })}><Icon name="redo" /></button>
+          <button className="icon-btn" aria-label={t("timeline.undo")} title={tip(t("timeline.undo"), KEYS.undo)} disabled={off || !proj.canUndo} onClick={() => run({ c: "undo" })}><Icon name="undo" /></button>
+          <button className="icon-btn" aria-label={t("timeline.redo")} title={tip(t("timeline.redo"), KEYS.redo)} disabled={off || !proj.canRedo} onClick={() => run({ c: "redo" })}><Icon name="redo" /></button>
           <span className="sep" aria-hidden="true" />
-          <button className="icon-btn" aria-label={t("timeline.split")} title={`${t("timeline.split")} (S)`} disabled={off} onClick={() => run({ c: "split" })}><Icon name="split" /></button>
-          <button className="icon-btn" aria-label={t("timeline.delete")} title={`${t("timeline.delete")} (Del)`} disabled={off || none} onClick={() => run({ c: "delete" })}><Icon name="trash" /></button>
+          <button className="icon-btn" aria-label={t("timeline.split")} title={tip(t("timeline.split"), KEYS.split)} disabled={off} onClick={() => run({ c: "split" })}><Icon name="split" /></button>
+          <button className="icon-btn" aria-label={t("timeline.delete")} title={tip(t("timeline.delete"), KEYS.del)} disabled={off || none} onClick={() => run({ c: "delete" })}><Icon name="trash" /></button>
           {!none && <span className="tl-sel" data-testid="tl-selected">{t("timeline.selected", { count: selected.size })}</span>}
         </div>
         <label className="zoom">
