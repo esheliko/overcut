@@ -10,3 +10,4 @@ export async function createEngine(): Promise<Engine> {
   if (isTauri()) return (await import("./tauri")).createTauriEngine();
   return (await import("./wasm")).createWasmEngine();
 }
+export * from "./model.generated";
