@@ -1,0 +1,10 @@
+{
+  "name": "OverCut",
+  "short_name": "OverCut",
+  "description": "A free, fast, feature-complete video and media editor for every device and screen: comfortable and quick to use, no watermark, no paywall, no account, everything running on your own device.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d10",
+  "theme_color": "#0b0d10",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

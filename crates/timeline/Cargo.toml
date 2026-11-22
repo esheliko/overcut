@@ -1,0 +1,13 @@
+[package]
+name = "app-timeline"
+description = "OverCut engine: edit operations with inverses, undo/redo, journal, selection and snapping, timeline evaluation."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app-model = { path = "../model" }

@@ -1,0 +1,17 @@
+[package]
+name = "app-wasm"
+description = "WebAssembly build of the engine for browsers (wasm-bindgen). Thin: every function forwards to app-core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+app-core = { path = "../core" }
+wasm-bindgen = "=0.2.130"

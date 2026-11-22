@@ -1,0 +1,13 @@
+[package]
+name = "app-media"
+description = "OverCut engine: probing, demux, decoder traits, frame cache, proxies, thumbnails, waveforms."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app-model = { path = "../model" }

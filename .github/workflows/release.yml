@@ -1,0 +1,48 @@
+name: Release
+# Native apps ship from version tags (v1.2.3): Windows, macOS (Apple silicon + Intel), Linux. The web app is deployed by CI on every merge to main.
+# Mobile (iOS/Android) joins this matrix once `tauri ios init` / `tauri android init` have been run and committed (see DEPLOYING.md).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, args: '--target aarch64-apple-darwin' }
+          - { os: macos-latest, args: '--target x86_64-apple-darwin' }
+          - { os: ubuntu-22.04, args: '' }
+          - { os: windows-latest, args: '' }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: 'wasm32-unknown-unknown,aarch64-apple-darwin,x86_64-apple-darwin' }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: '. -> target' }
+      - name: wasm-bindgen CLI
+        shell: bash
+        run: cargo install wasm-bindgen-cli --version "$(grep -oE 'wasm-bindgen *= *"=?[0-9.]+' crates/wasm/Cargo.toml | grep -oE '[0-9.]+$' | head -1)" --locked
+      - if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci --no-audit --no-fund
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: npx tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: 'OverCut ${{ github.ref_name }}'
+          releaseBody: 'See the assets below to install. Unsigned builds: your OS may ask you to confirm the first launch (DEPLOYING.md > Signing).'
+          releaseDraft: true
+          args: ${{ matrix.args }}

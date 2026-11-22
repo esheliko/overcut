@@ -1,0 +1,4 @@
+{
+  "files": [],
+  "references": [{ "path": "packages/engine-client" }, { "path": "apps/web" }, { "path": "tests" }]
+}

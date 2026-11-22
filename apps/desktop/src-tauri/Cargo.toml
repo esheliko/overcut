@@ -1,0 +1,28 @@
+# Own workspace on purpose: building this crate needs the platform webview libraries (see RELEASING.md), the main workspace must not.
+[workspace]
+
+[package]
+name = "app-desktop"
+description = "OverCut native shell (Tauri 2): hosts apps/web and exposes the Rust engine to it through commands."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+
+[lib]
+name = "app_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+app-core = { path = "../../../crates/core" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

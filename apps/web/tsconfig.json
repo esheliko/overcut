@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../node_modules/.cache/tsc/web",
+    "tsBuildInfoFile": "../../node_modules/.cache/tsc/web.tsbuildinfo",
+    "types": ["vite/client"],
+    "paths": { "@app/wasm-pkg": ["../../packages/engine-client/src/wasm-module.d.ts"] }
+  },
+  "include": ["src", "vite.config.ts"],
+  "references": [{ "path": "../../packages/engine-client" }]
+}

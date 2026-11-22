@@ -1,0 +1,14 @@
+node_modules
+target
+dist
+*.tsbuildinfo
+.env
+.env*.local
+.vercel
+packages/engine-client/wasm-pkg
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen
+test-results
+playwright-report
+visual-shots
+.DS_Store

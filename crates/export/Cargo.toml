@@ -1,0 +1,15 @@
+[package]
+name = "app-export"
+description = "OverCut engine: encode orchestration, muxing, presets, export queue."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app-render = { path = "../render" }
+app-audio = { path = "../audio" }
+app-media = { path = "../media" }

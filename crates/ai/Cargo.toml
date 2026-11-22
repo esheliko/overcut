@@ -1,0 +1,13 @@
+[package]
+name = "app-ai"
+description = "OverCut engine: on-device model registry and runtimes, task pipelines (speech to text, matting, tracking, reframe, TTS...)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app-model = { path = "../model" }

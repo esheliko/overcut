@@ -1,0 +1,27 @@
+name: Desktop check
+# Compiles the Tauri shell (needs the Linux webview libraries) when the engine or the shell changes. Not a required check: `verify` is.
+on:
+  pull_request:
+    paths: ['crates/**', 'apps/desktop/**', '.github/workflows/desktop-check.yml']
+  push:
+    branches: [main]
+    paths: ['crates/**', 'apps/desktop/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: 'apps/desktop/src-tauri -> target' }
+      - name: System libraries for the webview
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Tauri needs the frontend folder to exist at compile time
+        run: mkdir -p apps/web/dist
+      - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked

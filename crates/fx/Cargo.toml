@@ -1,0 +1,13 @@
+[package]
+name = "app-fx"
+description = "OverCut engine: effect and transition definitions (data + WGSL), parameter evaluation, colour maths, LUTs, masks, text layout."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app-model = { path = "../model" }

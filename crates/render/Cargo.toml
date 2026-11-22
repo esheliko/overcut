@@ -1,0 +1,16 @@
+[package]
+name = "app-render"
+description = "OverCut engine: GPU compositor on wgpu (WebGPU, WebGL2, Vulkan, Metal, DX12), render graph, colour management."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app-model = { path = "../model" }
+app-fx = { path = "../fx" }
+app-media = { path = "../media" }
+app-timeline = { path = "../timeline" }

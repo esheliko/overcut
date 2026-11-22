@@ -1,0 +1,13 @@
+[package]
+name = "app-model"
+description = "OverCut engine: project document, integer-tick time, ids, serialization, migrations."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app-core = { path = "../core" }

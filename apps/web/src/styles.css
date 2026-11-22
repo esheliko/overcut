@@ -1,0 +1,43 @@
+:root { color-scheme: dark light; --bg: #0b0d10; --panel: #14171c; --fg: #e8eaed; --muted: #9aa0a6; --accent: #7c5cff; --line: color-mix(in srgb, var(--fg) 12%, transparent); --gap: 0.5rem; }
+@media (prefers-color-scheme: light) { :root { --bg: #f3f4f6; --panel: #ffffff; --fg: #15171a; --muted: #5f6368; } }
+@media (prefers-contrast: more) { :root { --line: var(--fg); --muted: var(--fg); } }
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; overflow: hidden; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.editor { display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100%; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.topbar { display: flex; align-items: center; gap: 1rem; justify-content: space-between; padding: 0.5rem 1rem; background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
+.brand { letter-spacing: 0.02em; }
+.status { color: var(--muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+[role="alert"] { color: #ff6b6b; }
+
+/* Phone (default): one panel at a time, tab bar. */
+.tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; min-height: 44px; padding: 0 0.5rem; background: none; border: 0; border-bottom: 3px solid transparent; cursor: pointer; }
+.tabs button[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; }
+.panels { grid-row: 3; display: grid; min-height: 0; padding: var(--gap); gap: var(--gap); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.75rem 1rem; min-width: 0; min-height: 0; overflow: auto; }
+.panel h2 { margin: 0 0 0.25rem; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.panel p { margin: 0; color: var(--muted); }
+.panel[data-active="false"] { display: none; }
+
+/* Tablet and up: all areas visible, no tab bar. */
+@media (min-width: 720px) {
+  .tabs { display: none; }
+  .panel[data-active="false"] { display: block; }
+  .panels { grid-template-columns: minmax(12rem, 1fr) minmax(0, 2fr); grid-template-rows: minmax(0, 2fr) minmax(0, 1.4fr); grid-template-areas: "media preview" "inspector timeline"; }
+  .panel-media { grid-area: media; } .panel-preview { grid-area: preview; } .panel-timeline { grid-area: timeline; } .panel-inspector { grid-area: inspector; }
+}
+/* Laptop and desktop: media | preview | inspector over a full-width timeline. */
+@media (min-width: 1100px) {
+  .panels { grid-template-columns: minmax(14rem, 1fr) minmax(0, 3fr) minmax(14rem, 1fr); grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); grid-template-areas: "media preview inspector" "timeline timeline timeline"; }
+}
+/* Phone landscape: preview beside the active panel, tab bar stays. */
+@media (max-width: 719px) and (orientation: landscape) {
+  .panels { grid-template-columns: 1fr 1fr; }
+  .panel-preview { display: block !important; grid-column: 1; grid-row: 1 / span 1; }
+  .panel:not(.panel-preview) { grid-column: 2; grid-row: 1; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
