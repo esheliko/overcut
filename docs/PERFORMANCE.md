@@ -5,9 +5,9 @@
 ## Reference devices (ADR 0013, accepted)
 | Tier | Example | Used for |
 |---|---|---|
-| Low phone | Android, Snapdragon 6-series / 4 GB RAM, Chrome WebView. No device yet: Chrome 4x CPU throttle + 4 GB assumption, numbers labelled "proxy" | floor for mobile budgets |
+| Low phone | Android, Snapdragon 6-series / 4 GB RAM, Chrome WebView. Galaxy A15-class (4 GB) to be added before M1 exit; until then Chrome 4x CPU throttle + 4 GB assumption, numbers labelled "proxy" | floor for mobile budgets |
 | Mid phone | iPhone 14 (owner's); high phone: Samsung Galaxy S24 (owner's) | typical mobile |
-| Laptop | owner's Windows 10 laptop (x86; specs TBD) and Mac (chip TBD) | desktop baseline |
+| Laptop | owner's Windows 10 laptop (assumed: i5 10th-gen class, integrated GPU, 8 GB) and Mac (assumed: M1, 8 GB) | desktop baseline |
 | Desktop | discrete GPU, 16-32 GB; none yet, CI runners are "interim" | high-end, 4K |
 
 ## Budgets
