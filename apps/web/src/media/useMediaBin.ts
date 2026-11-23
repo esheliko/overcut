@@ -1,7 +1,7 @@
-import { MediaDecodeError, type Engine, type MediaKind, type Project } from "@app/engine-client";
+import { MediaDecodeError, fingerprintFile, fingerprintSize, newProject, type Editing, type Engine, type MediaKind, type Op, type Project } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { probeFile } from "./probe";
-import { STILL_SECONDS, TICKS, classify, clipCount, emptyProject, extOf, insertOps, mediaRef, newId, placeAt, sequenceFrom, sequenceIsUnset, timelineEnd, withMedia, type Probed } from "./plan";
+import { STILL_SECONDS, TICKS, classify, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
 import { loadHandle, saveHandle, type Source } from "./sources";
 
 export type BinStatus = "probing" | "ready" | "unsupported" | "offline";
@@ -37,20 +37,26 @@ export interface BinText {
 interface Live { file: File; probed: Probed }
 
 /**
- * The project's media list and the import flow. The engine owns the project (`Engine.editing`); this hook owns the files, posters and
- * bin state. Every change to the project is queued so concurrent drops cannot interleave.
+ * The project's media list and the import flow. The engine owns the project: every change is an edit op through `editing` (the autosaving
+ * project session, or the bare engine when storage is unavailable), so undo, redo and crash recovery cover imports. This hook owns the files,
+ * posters and bin state. Changes are queued so concurrent drops cannot interleave.
  */
-export function useMediaBin(engine: Engine | null, name: string, text: BinText) {
+export function useMediaBin(engine: Engine | null, editing: Editing | null, fallback: boolean, name: string, text: BinText) {
   const [items, setItems] = useState<BinItem[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const live = useRef(new Map<string, Live>());
   const doc = useRef<Project | null>(null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const posters = useRef(new Set<string>());
+  /** Files dropped before the project is open (the editing session starts asynchronously): imported as soon as it is. */
+  const pending = useRef<Source[]>([]);
+  const importRef = useRef<(s: Source[]) => Promise<void>>(() => Promise.resolve());
   const textRef = useRef(text);
   textRef.current = text;
   const nameRef = useRef(name);
   nameRef.current = name;
+  // Without durable storage the bare engine edits an in-memory project (the editor still works, saving says why it does not).
+  const ed = editing ?? (fallback && engine ? engine.editing : null);
 
   const enqueue = useCallback(<T,>(job: () => Promise<T>): Promise<T> => {
     const next = queue.current.then(job, job);
@@ -58,45 +64,70 @@ export function useMediaBin(engine: Engine | null, name: string, text: BinText) 
     return next;
   }, []);
 
-  // A fresh empty project as soon as the engine is there: no "new project" dialog.
-  useEffect(() => {
-    if (!engine) return;
-    let alive = true;
-    const p = emptyProject(nameRef.current);
-    void enqueue(async () => {
-      await engine.editing.open(p);
-      if (alive) { doc.current = p; setProject(p); }
+  const adopt = useCallback(async (p: Project) => {
+    doc.current = p;
+    setProject(p);
+    const known = new Set(p.media.map((m) => m.id));
+    setItems((all) => {
+      const kept = all.filter((i) => i.status === "probing" || i.status === "unsupported" || known.has(i.id));
+      const have = new Set(kept.map((i) => i.id));
+      const fresh = p.media.filter((m) => !have.has(m.id)).map<BinItem>((m) => ({
+        id: m.id, name: m.name, kind: m.kind, size: fingerprintSize(m.hash ?? "") ?? 0, status: "offline", durationTicks: m.duration, uri: m.uri,
+      }));
+      return [...fresh, ...kept];
     });
+    // A reopened project: files whose stored handle still has permission come back by themselves; the rest show "Relink".
+    for (const m of p.media) {
+      if (live.current.has(m.id)) continue;
+      const file = await loadHandle(m.uri);
+      if (file) setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, status: "ready", size: file.size } : i)));
+    }
+  }, []);
+
+  // The open project (new, restored or recovered) as soon as the editing session is there: no "new project" dialog.
+  useEffect(() => {
+    if (!ed) return;
+    let alive = true;
+    void enqueue(async () => {
+      if (!editing) await ed.open(newProject(nameRef.current));
+      const p = await ed.project();
+      if (alive) await adopt(p);
+    }).then(() => { const early = pending.current.splice(0); if (alive && early.length > 0) void importRef.current(early); }).catch(() => undefined);
     return () => { alive = false; };
-  }, [engine, enqueue]);
+  }, [ed, editing, enqueue, adopt]);
 
   useEffect(() => { const urls = posters.current; return () => urls.forEach((u) => URL.revokeObjectURL(u)); }, []);
 
   const patch = useCallback((id: string, change: Partial<BinItem>) => setItems((all) => all.map((i) => (i.id === id ? { ...i, ...change } : i))), []);
 
-  const refresh = useCallback(async (e: Engine) => {
-    const next = await e.editing.project();
-    doc.current = next;
-    setProject(next);
-  }, []);
+  /** Re-reads the project after an edit (also what undo/redo should call so the bin follows). */
+  const sync = useCallback(async () => {
+    if (ed) await adopt(await ed.project());
+  }, [ed, adopt]);
 
-  /** Puts a media item on the timeline (one undo step) at `start` ticks, or at the end when that spot is taken. */
-  const place = useCallback(async (e: Engine, id: string, start: number | "end") => {
-    const l = live.current.get(id);
-    const cur = doc.current;
-    const ref = cur?.media.find((m) => m.id === id);
-    if (!l || !cur || !ref) return false;
+  /** The file behind a media entry: the live one, else (reopened project) the stored handle, probed on first use. */
+  const fileFor = useCallback(async (id: string, uri: string, kind: MediaKind): Promise<Live | null> => {
+    const have = live.current.get(id);
+    if (have) return have;
+    const file = await loadHandle(uri);
+    if (!file || !engine) return null;
+    const l = { file, probed: (await probeFile(engine, file, kind)).probed };
+    live.current.set(id, l);
+    return l;
+  }, [engine]);
+
+  /** Ops for putting a media item on the timeline: `at` ticks, or after the last clip when that spot is taken. */
+  const timelineOps = useCallback(async (cur: Project, id: string, start: number | "end"): Promise<Op[] | null> => {
+    const ref = cur.media.find((m) => m.id === id);
+    const l = ref && (await fileFor(id, ref.uri, ref.kind));
+    if (!ref || !l) return null;
     const len = ref.kind === "image" ? STILL_SECONDS * TICKS : ref.duration ?? 0;
-    const at = start === "end" ? timelineEnd(cur) : placeAt(cur, start, len);
-    const ops = insertOps(cur, ref, l.probed, at);
-    if (!ops) return false;
-    await e.editing.apply(ops);
-    await refresh(e);
-    return true;
-  }, [refresh]);
+    return insertOps(cur, ref, l.probed, start === "end" ? timelineEnd(cur) : placeAt(cur, start, len));
+  }, [fileFor]);
 
   const importSources = useCallback(async (sources: Source[]): Promise<void> => {
-    if (!engine || sources.length === 0) return;
+    if (sources.length === 0) return;
+    if (!engine || !ed) { pending.current.push(...sources); return; }
     const t = textRef.current;
     // Show every card at once, probe them one after another so the first import is deterministic.
     const rows = sources.map((s) => ({ s, kind: classify(s.file.name, s.file.type), id: newId() }));
@@ -114,21 +145,23 @@ export function useMediaBin(engine: Engine | null, name: string, text: BinText) 
         try {
           const res = await probeFile(engine, s.file, kind);
           if (res.poster) posters.current.add(res.poster);
-          const cur = doc.current!;
+          const cur = doc.current ?? (await ed.project());
           const uri = s.handle ? `fs:${id}` : `file:${s.file.name}:${s.file.size}`;
           if (s.handle) await saveHandle(uri, s.handle);
-          const first = cur.media.length === 0 && clipCount(cur) === 0;
-          const adopt = sequenceIsUnset(cur) ? sequenceFrom(res.probed) : null;
-          const next = withMedia(cur, mediaRef(id, s.file.name, uri, res.probed), adopt);
-          await engine.editing.open(next); // media is not an edit op yet: this restarts the undo history (docs/features/media-bin.md)
-          doc.current = next;
+          const hash = await fingerprintFile(engine, s.file).catch(() => null); // 128 KiB read at most, however big the file
+          const ref = mediaRef(id, s.file.name, uri, res.probed, hash);
           live.current.set(id, { file: s.file, probed: res.probed });
-          patch(id, { status: "ready", durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
-          if (first || added > 0) { // the very first import goes straight onto the timeline, every file of that drop in order
-            if (await place(engine, id, "end")) added++;
-          } else {
-            await refresh(engine);
+          // The very first import goes straight onto the timeline (every file of that drop, in order); one undo step per file.
+          const first = cur.media.length === 0 && clipCount(cur) === 0;
+          const ops = importOps(cur, ref, res.probed);
+          if (first || added > 0) {
+            const withRef: Project = { ...cur, media: [...cur.media, ref] };
+            const place = insertOps(withRef, ref, res.probed, timelineEnd(cur));
+            if (place) { ops.push(...place); added++; }
           }
+          await ed.apply(ops);
+          patch(id, { status: "ready", durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
+          await sync();
         } catch (e) {
           const ext = extOf(s.file.name).toUpperCase();
           const message = e instanceof MediaDecodeError && e.kind === "unsupported" ? t.unsupported(s.file.name, ext, e.message) : t.failed(s.file.name);
@@ -139,12 +172,20 @@ export function useMediaBin(engine: Engine | null, name: string, text: BinText) 
     }
     const ok = rows.filter((r) => r.kind).length;
     if (ok > 0) t.announce(t.imported(ok));
-  }, [engine, enqueue, patch, place, refresh]);
+  }, [engine, ed, enqueue, patch, sync]);
+
+  importRef.current = importSources;
 
   const addToTimeline = useCallback((id: string, start: number | "end" = "end"): Promise<boolean> => {
-    if (!engine) return Promise.resolve(false);
-    return enqueue(() => place(engine, id, start));
-  }, [engine, enqueue, place]);
+    if (!ed) return Promise.resolve(false);
+    return enqueue(async () => {
+      const ops = await timelineOps(doc.current ?? (await ed.project()), id, start);
+      if (!ops) return false;
+      await ed.apply(ops);
+      await sync();
+      return true;
+    });
+  }, [ed, enqueue, timelineOps, sync]);
 
   const remove = useCallback((id: string) => {
     setItems((all) => {
@@ -154,29 +195,28 @@ export function useMediaBin(engine: Engine | null, name: string, text: BinText) 
     });
   }, []);
 
-  /** Reconnects a file whose bytes are not available (reopened project, revoked permission). */
-  const relink = useCallback(async (id: string, source?: Source) => {
-    const item = items.find((i) => i.id === id);
-    if (!item) return false;
-    const file = source?.file ?? (item.uri ? await loadHandle(item.uri, true) : null);
-    if (!file || !engine || file.size !== item.size) return false;
-    const probed = (await probeFile(engine, file, item.kind)).probed;
+  /**
+   * Reconnects a file whose bytes are not available (reopened project, revoked permission): the stored handle (asks for permission), or the
+   * `source` the user picked. It must be the same file (fingerprint, else size). A moved file's new location is recorded with `set_media`.
+   */
+  const relink = useCallback(async (id: string, source?: Source): Promise<boolean> => {
+    const ref = doc.current?.media.find((m) => m.id === id);
+    if (!ref || !engine || !ed) return false;
+    const file = source?.file ?? (await loadHandle(ref.uri, true));
+    if (!file) return false;
+    const same = ref.hash ? (fingerprintSize(ref.hash) === file.size && (await fingerprintFile(engine, file)) === ref.hash) : file.name === ref.name;
+    if (!same) return false;
+    const probed = (await probeFile(engine, file, ref.kind)).probed;
     live.current.set(id, { file, probed });
-    patch(id, { status: "ready" });
-    return true;
-  }, [engine, items, patch]);
-
-  /** For project open (M1-040): list a loaded project's media, restoring files from stored handles and marking the rest offline. */
-  const adoptProject = useCallback(async (p: Project) => {
-    const rows: BinItem[] = [];
-    for (const m of p.media) {
-      const file = await loadHandle(m.uri);
-      rows.push({ id: m.id, name: m.name, kind: m.kind, size: file?.size ?? 0, status: file ? "ready" : "offline", durationTicks: m.duration, uri: m.uri });
+    if (source?.handle) {
+      const uri = `fs:${id}`;
+      await saveHandle(uri, source.handle);
+      if (uri !== ref.uri) await enqueue(() => ed.apply({ op: "set_media", media: id, uri, hash: ref.hash ?? null }));
     }
-    doc.current = p;
-    setProject(p);
-    setItems(rows);
-  }, []);
+    patch(id, { status: "ready", size: file.size });
+    await sync();
+    return true;
+  }, [engine, ed, enqueue, patch, sync]);
 
-  return { items, project, importSources, addToTimeline, remove, relink, adoptProject };
+  return { items, project, importSources, addToTimeline, remove, relink, sync };
 }

@@ -44,29 +44,7 @@ export interface Probed {
   hasVideo: boolean;
 }
 
-const SEQ = "Main";
-export const DEFAULT_SEQUENCE = { frame_rate: { num: 30, den: 1 } as Rational, resolution: { width: 1920, height: 1080 } as Resolution, sample_rate: 48_000 };
-
-/** The project a person starts in: one sequence with a video and an audio track, no questions asked. */
-export function emptyProject(name: string): Project {
-  return {
-    id: newId(),
-    name,
-    schema_version: 1,
-    media: [],
-    sequences: [
-      {
-        id: newId(),
-        name: SEQ,
-        ...DEFAULT_SEQUENCE,
-        tracks: [
-          { id: newId(), kind: "video", name: "V1", clips: [], locked: false, muted: false },
-          { id: newId(), kind: "audio", name: "A1", clips: [], locked: false, muted: false },
-        ],
-      },
-    ],
-  };
-}
+export const DEFAULT_RATE: Rational = { num: 30, den: 1 };
 
 export const clipCount = (p: Project): number => p.sequences.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.clips.length, 0), 0);
 
@@ -82,24 +60,27 @@ export function sequenceFrom(p: Probed): { frame_rate: Rational; resolution: Res
   if (!p.hasVideo || !p.width || !p.height) return null;
   const turned = p.rotation === 90 || p.rotation === 270;
   const [w, h] = turned ? [p.height, p.width] : [p.width, p.height];
-  const fps = p.fps && p.fps.num > 0 && p.fps.den > 0 ? p.fps : DEFAULT_SEQUENCE.frame_rate;
+  const fps = p.fps && p.fps.num > 0 && p.fps.den > 0 ? p.fps : DEFAULT_RATE;
   return { frame_rate: fps, resolution: { width: w, height: h } };
 }
 
 /** True while no picture has been added: the next picture sets the sequence's frame rate and size. */
 export const sequenceIsUnset = (p: Project): boolean => !p.media.some((m) => m.kind !== "audio");
 
-/** The project with `ref` added to its media list and, if `adopt` is given, the sequence's frame rate and size replaced. */
-export function withMedia(p: Project, ref: MediaRef, adopt: { frame_rate: Rational; resolution: Resolution } | null): Project {
-  return {
-    ...p,
-    media: [...p.media, ref],
-    sequences: p.sequences.map((s, i) => (i === 0 && adopt ? { ...s, frame_rate: adopt.frame_rate, resolution: adopt.resolution } : s)),
-  };
+export function mediaRef(id: string, name: string, uri: string, probed: Probed, hash: string | null): MediaRef {
+  return { id, kind: probed.kind, name, uri, duration: probed.kind === "image" ? null : probed.durationTicks, hash };
 }
 
-export function mediaRef(id: string, name: string, uri: string, probed: Probed): MediaRef {
-  return { id, kind: probed.kind, name, uri, duration: probed.kind === "image" ? null : probed.durationTicks, hash: null };
+/**
+ * The ops that record an import: the media entry and, for the first picture, the sequence's frame rate and size. Applied together with
+ * the timeline insert (first import) as one undo step.
+ */
+export function importOps(p: Project, ref: MediaRef, probed: Probed): Op[] {
+  const ops: Op[] = [{ op: "add_media", media: ref }];
+  const seq = p.sequences[0];
+  const adopt = sequenceIsUnset(p) ? sequenceFrom(probed) : null;
+  if (seq && adopt) ops.push({ op: "set_sequence_format", sequence: seq.id, ...adopt });
+  return ops;
 }
 
 /** Where a clip of `length` should start: at `want` if both tracks are free there, else after everything already on the timeline. */

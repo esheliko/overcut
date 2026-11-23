@@ -1,4 +1,4 @@
-import type { Clip, ClipId, MediaId, Project, Time, TrackId } from "./model.generated";
+import type { Clip, ClipId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TrackId } from "./model.generated";
 
 /** What the engine says about itself. Mirrors `app_core::EngineInfo` (crates/core/src/lib.rs). */
 export interface EngineInfo {
@@ -163,7 +163,10 @@ export type Op =
   | { op: "move"; clip: ClipId; track: TrackId; start: Time }
   | { op: "delete"; clip: ClipId }
   | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
-  | { op: "set_media"; media: MediaId; uri: string; hash: string | null };
+  | { op: "set_media"; media: MediaId; uri: string; hash: string | null }
+  | { op: "add_media"; media: MediaRef }
+  | { op: "remove_media"; media: MediaId }
+  | { op: "set_sequence_format"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution };
 
 /** What the engine reports after every edit. Re-read `project()` when `revision` moved. */
 export interface EditOutcome {

@@ -33,6 +33,22 @@ export async function pickWithHandles(): Promise<Source[]> {
   }
 }
 
+/** One file, for relinking: the handle picker where there is one, else a throwaway input. Resolves to `null` on cancel. */
+export async function pickOne(): Promise<Source | null> {
+  if (hasHandlePicker()) {
+    const [one] = await pickWithHandles();
+    return one ?? null;
+  }
+  return new Promise((ok) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ACCEPT;
+    input.onchange = () => ok(input.files?.[0] ? { file: input.files[0] } : null);
+    input.oncancel = () => ok(null);
+    input.click();
+  });
+}
+
 export const fromFileList = (files: FileList | File[] | null | undefined): Source[] => Array.from(files ?? [], (file) => ({ file }));
 
 /** Files from a drop, with handles where the browser gives them. Folders are ignored. */

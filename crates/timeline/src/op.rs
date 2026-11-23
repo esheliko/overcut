@@ -1,7 +1,7 @@
 //! `Op`: the only way a project changes (ADR 0006). Ops address things by id, never by index, and carry every
 //! id they create (the host supplies fresh ids), so applying the same op list to the same project is deterministic.
 
-use app_model::{Clip, ClipId, MediaId, Time, TrackId};
+use app_model::{Clip, ClipId, MediaId, MediaRef, Rational, Resolution, SequenceId, Time, TrackId};
 use serde::{Deserialize, Serialize};
 
 /// One edit. `#[non_exhaustive]` + the `op` tag leave room for M2 ripple / roll / slip / slide, which are new variants
@@ -43,6 +43,16 @@ pub enum Op {
         media: MediaId,
         uri: String,
         hash: Option<String>,
+    },
+    /// Add a source file to the project's media list (import). Its id must be new; clips are untouched.
+    AddMedia { media: MediaRef },
+    /// Remove a media entry that no clip uses (the inverse of `AddMedia`).
+    RemoveMedia { media: MediaId },
+    /// Set a sequence's frame rate and size (the first import adopts its clip's; also a valid edit).
+    SetSequenceFormat {
+        sequence: SequenceId,
+        frame_rate: Rational,
+        resolution: Resolution,
     },
 }
 

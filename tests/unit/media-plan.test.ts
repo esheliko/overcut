@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { STILL_SECONDS, TICKS, classify, clipCount, codecLabel, emptyProject, formatBytes, formatDuration, insertOps, mediaRef, placeAt, sequenceFrom, sequenceIsUnset, timelineEnd, withMedia, type Probed } from "../../apps/web/src/media/plan";
+import { STILL_SECONDS, TICKS, classify, clipCount, codecLabel, formatBytes, formatDuration, importOps, insertOps, mediaRef, placeAt, sequenceFrom, sequenceIsUnset, timelineEnd, type Probed } from "../../apps/web/src/media/plan";
+import { newProject as emptyProject } from "../../packages/engine-client/src/project";
 
 const video: Probed = { kind: "video", durationTicks: 10 * TICKS, width: 1080, height: 1920, rotation: 0, fps: { num: 24000, den: 1001 }, hasAudio: true, hasVideo: true };
 const counter = () => { let n = 0; return () => (++n).toString(16).padStart(32, "0"); };
@@ -21,20 +22,28 @@ test("the first picture sets frame rate and size, rotated phone video swaps its 
   assert.deepEqual(sequenceFrom({ ...video, fps: undefined })?.frame_rate, { num: 30, den: 1 }); // variable frame rate: the default
 });
 
-test("only the first picture adopts its settings", () => {
+test("only the first picture adopts its settings; the media entry always comes first", () => {
   const p0 = emptyProject("x");
+  const vref = mediaRef("v", "v.mp4", "u", video, null);
+  const aud: Probed = { kind: "audio", durationTicks: TICKS, hasAudio: true, hasVideo: false };
+  const aref = mediaRef("a", "a.m4a", "u", aud, null);
   assert.equal(sequenceIsUnset(p0), true);
-  const audioOnly = withMedia(p0, mediaRef("a", "a.m4a", "u", { kind: "audio", durationTicks: TICKS, hasAudio: true, hasVideo: false }), null);
-  assert.equal(sequenceIsUnset(audioOnly), true);
-  const p1 = withMedia(audioOnly, mediaRef("v", "v.mp4", "u", video), sequenceFrom(video));
-  assert.equal(sequenceIsUnset(p1), false);
-  assert.deepEqual(p1.sequences[0]!.resolution, { width: 1080, height: 1920 });
+  const first = importOps(p0, vref, video);
+  assert.deepEqual(first.map((o) => o.op), ["add_media", "set_sequence_format"]);
+  assert.deepEqual(first[1], { op: "set_sequence_format", sequence: p0.sequences[0]!.id, frame_rate: { num: 24000, den: 1001 }, resolution: { width: 1080, height: 1920 } });
+  assert.deepEqual(importOps(p0, aref, aud).map((o) => o.op), ["add_media"]); // audio never changes the sequence
+  const afterAudio = { ...p0, media: [aref] };
+  assert.equal(sequenceIsUnset(afterAudio), true);
+  assert.deepEqual(importOps(afterAudio, vref, video).map((o) => o.op), ["add_media", "set_sequence_format"]);
+  const afterVideo = { ...p0, media: [vref] };
+  assert.equal(sequenceIsUnset(afterVideo), false);
+  assert.deepEqual(importOps(afterVideo, { ...vref, id: "w" }, video).map((o) => o.op), ["add_media"]);
 });
 
 test("a video with sound becomes two clips in ONE op list (one undo step); audio and stills go where they belong", () => {
   const p = emptyProject("x");
   const [v, a] = p.sequences[0]!.tracks;
-  const ref = mediaRef("m1", "v.mp4", "u", video);
+  const ref = mediaRef("m1", "v.mp4", "u", video, null);
   const ops = insertOps(p, ref, video, 0, counter())!;
   assert.equal(ops.length, 2);
   assert.deepEqual(ops.map((o) => (o.op === "insert_clip" ? o.track : "")), [v!.id, a!.id]);
@@ -43,11 +52,11 @@ test("a video with sound becomes two clips in ONE op list (one undo step); audio
   const silent = insertOps(p, ref, { ...video, hasAudio: false }, 0)!;
   assert.equal(silent.length, 1);
 
-  const song = mediaRef("m2", "s.m4a", "u", { kind: "audio", durationTicks: 3 * TICKS, hasAudio: true, hasVideo: false });
+  const song = mediaRef("m2", "s.m4a", "u", { kind: "audio", durationTicks: 3 * TICKS, hasAudio: true, hasVideo: false }, null);
   const audioOps = insertOps(p, song, { kind: "audio", durationTicks: 3 * TICKS, hasAudio: true, hasVideo: false }, 0)!;
   assert.deepEqual(audioOps.map((o) => (o.op === "insert_clip" ? o.track : "")), [a!.id]);
 
-  const still = mediaRef("m3", "p.jpg", "u", { kind: "image", durationTicks: null, hasAudio: false, hasVideo: true });
+  const still = mediaRef("m3", "p.jpg", "u", { kind: "image", durationTicks: null, hasAudio: false, hasVideo: true }, null);
   const stillOps = insertOps(p, still, { kind: "image", durationTicks: null, hasAudio: false, hasVideo: true }, 0)!;
   assert.equal(stillOps.length, 1);
   assert.ok(stillOps[0]!.op === "insert_clip" && stillOps[0]!.clip.duration === STILL_SECONDS * TICKS);
@@ -55,7 +64,7 @@ test("a video with sound becomes two clips in ONE op list (one undo step); audio
 
 test("placement: the wanted spot when free, else after everything; a project without tracks refuses", () => {
   let p = emptyProject("x");
-  const ref = mediaRef("m1", "v.mp4", "u", video);
+  const ref = mediaRef("m1", "v.mp4", "u", video, null);
   const first = insertOps(p, ref, video, 0, counter())!;
   p = { ...p, media: [ref], sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t, i) => ({ ...t, clips: [first[i]!.op === "insert_clip" ? first[i]!.clip : (undefined as never)] })) }] };
   assert.equal(clipCount(p), 2);

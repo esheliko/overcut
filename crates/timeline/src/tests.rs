@@ -777,7 +777,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 8, "one example per Op variant");
+    assert_eq!(ops.len(), 11, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -1004,4 +1004,70 @@ fn recovery_time_for_a_long_session() {
     );
     assert_eq!(pj(r.project()), pj(e.project()));
     assert!(ms < 20_000.0);
+}
+
+#[test]
+fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
+    let (mut p, mut ids) = base();
+    let mut h = History::new();
+    let before = p.clone();
+    let new = MediaRef {
+        id: MediaId::new(&mut ids),
+        kind: MediaKind::Video,
+        name: "a.mp4".into(),
+        uri: "file:a.mp4:1".into(),
+        hash: None,
+        duration: Some(Time::from_ticks(1000)),
+    };
+    let seq = p.sequences[0].id;
+    let fmt = Op::SetSequenceFormat {
+        sequence: seq,
+        frame_rate: Rational::new(24000, 1001).unwrap(),
+        resolution: Resolution {
+            width: 1080,
+            height: 1920,
+        },
+    };
+    // one undo step for both, the way import applies them
+    h.apply_batch(&mut p, vec![Op::AddMedia { media: new.clone() }, fmt], None)
+        .unwrap();
+    assert_eq!(p.media.last().unwrap(), &new);
+    assert_eq!(p.sequences[0].resolution.width, 1080);
+    h.undo(&mut p).unwrap();
+    assert_eq!(p, before);
+    h.redo(&mut p).unwrap();
+    assert_eq!(p.media.len(), before.media.len() + 1);
+    // duplicate id, empty uri, bad format, removing media a clip uses
+    let dup = Op::AddMedia { media: new.clone() };
+    assert!(h.apply(&mut p, dup, None).is_err());
+    let mut empty = new.clone();
+    empty.id = MediaId::new(&mut ids);
+    empty.uri.clear();
+    assert!(h
+        .apply(&mut p, Op::AddMedia { media: empty }, None)
+        .is_err());
+    let (tr, clip) = {
+        let t = &p.sequences[0].tracks[0];
+        (t.id, t.clips.first().cloned())
+    };
+    if let Some(c) = clip {
+        let used = c.media;
+        assert!(h
+            .apply(&mut p, Op::RemoveMedia { media: used }, None)
+            .is_err());
+    } else {
+        // base() has no clips: put one on the new media, then removing that media must be refused
+        let m = p.media.last().unwrap().id;
+        let c = Clip {
+            id: ClipId::new(&mut ids),
+            media: m,
+            start: Time::from_ticks(0),
+            source_in: Time::from_ticks(0),
+            duration: Time::from_ticks(500),
+            speed: Rational::new(1, 1).unwrap(),
+        };
+        h.apply(&mut p, Op::InsertClip { track: tr, clip: c }, None)
+            .unwrap();
+        assert!(h.apply(&mut p, Op::RemoveMedia { media: m }, None).is_err());
+    }
 }

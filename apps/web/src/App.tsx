@@ -10,7 +10,7 @@ import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref }
 import { FPS, timecode } from "./timecode";
 import { MediaBin } from "./media/MediaBin";
 import { TICKS, clipCount } from "./media/plan";
-import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, type Source } from "./media/sources";
+import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, pickOne, type Source } from "./media/sources";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
 type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; engine: Engine } | { status: "error"; message: string };
@@ -196,7 +196,7 @@ export function App() {
   const soon = useCallback((m: string) => setToast(m), []);
 
   // ---- media import (M1-032) ----
-  const media = useMediaBin(engine.status === "ready" ? engine.engine : null, t("app.untitled"), {
+  const media = useMediaBin(core, persistence.session?.editing ?? null, !!persistence.problem && !persistence.session, t("app.untitled"), {
     notMedia: (n) => t("media.err.notMedia", { name: n }),
     unsupported: (n, ext, detail) => t("media.err.unsupported", { name: n, ext: ext || "?", detail }),
     failed: (n) => t("media.err.failed", { name: n }),
@@ -241,7 +241,11 @@ export function App() {
     onImport: (s) => void importFiles(s),
     onAdd: (id) => void media.addToTimeline(id).then((ok) => ok && announce(t("media.added"))),
     onRemove: media.remove,
-    onRelink: (id) => void media.relink(id).then((ok) => { if (!ok) setToast(t("media.relinkFailed")); }),
+    onRelink: (id) => void media.relink(id).then(async (ok) => {
+      if (ok) return;
+      const picked = await pickOne(); // no stored permission: choose the file again
+      if (!picked || !(await media.relink(id, picked))) setToast(t("media.relinkFailed"));
+    }),
   };
   const project = media.project;
   const hasClips = project ? clipCount(project) > 0 : false;
