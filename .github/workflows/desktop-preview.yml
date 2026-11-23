@@ -1,0 +1,58 @@
+name: Desktop preview build
+# Manual: builds UNSIGNED installers (Windows, macOS Apple silicon + Intel, Linux) from any branch and uploads them as run artifacts.
+# Actions tab > Desktop preview build > Run workflow, then download the installer from the run page. No tag, no release.
+# First launch of an unsigned build asks you to confirm (DEPLOYING.md > Signing). These builds do not include libav (native media).
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, args: '--target aarch64-apple-darwin', name: macos-apple-silicon }
+          - { os: macos-latest, args: '--target x86_64-apple-darwin', name: macos-intel }
+          - { os: ubuntu-22.04, args: '', name: linux }
+          - { os: windows-latest, args: '', name: windows }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: 'wasm32-unknown-unknown,aarch64-apple-darwin,x86_64-apple-darwin' }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: '. -> target' }
+      - name: wasm-bindgen CLI
+        shell: bash
+        run: cargo install wasm-bindgen-cli --version "$(grep -oE 'wasm-bindgen *= *"=?[0-9.]+' crates/wasm/Cargo.toml | grep -oE '[0-9.]+$' | head -1)" --locked
+      - if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci --no-audit --no-fund
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: npx tauri
+          args: ${{ matrix.args }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: overcut-${{ matrix.name }}
+          path: |
+            target/**/release/bundle/**/*.dmg
+            target/**/release/bundle/**/*.msi
+            target/**/release/bundle/**/*.exe
+            target/**/release/bundle/**/*.AppImage
+            target/**/release/bundle/**/*.deb
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.dmg
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.msi
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.exe
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.AppImage
+            apps/desktop/src-tauri/target/**/release/bundle/**/*.deb
+          if-no-files-found: error

@@ -2,6 +2,20 @@
 
 Every change to a rule, instruction, hook, CI or deploy mechanism gets an entry here (newest first) with an expected effect and a review-by date, so a change is judged by what happened, not by feel. Format and workflow: `.claude/skills/process/SKILL.md`. Checked by `tests/unit/process-changelog.test.ts`.
 
+## 2026-11-23 · #55 · CSP as a response header
+What: `vercel.json` sends `Content-Security-Policy` (the `apps/web/csp.ts` value plus `frame-ancestors 'none'`) on every path; a unit test fails if the two drift apart.
+Why: a header also covers frame-ancestors and the service worker script, which the meta tag cannot.
+Expected effect: the production response carries the CSP header; the app still loads with no console CSP violations.
+Review by: 2026-12-07
+Status: pending
+
+## 2026-11-23 · #52 · Native-media CI job and manual desktop preview build
+What: `desktop-check.yml` gains a non-blocking `desktop-native` job (libav crate fmt, clippy, tests, shell check); new manual `desktop-preview.yml` builds unsigned Windows, macOS and Linux installers as run artifacts. The release-time libav build pipeline stays open on the issue.
+Why: nothing built or tested the libav crate in CI, and the owner wants installers to try without tags or coding tools.
+Expected effect: `desktop-native` goes green on main; one manual run yields downloadable installers for all platforms.
+Review by: 2026-12-07
+Status: pending
+
 ## 2026-11-22 · #27 · Orchestrators cap workers at 3; paused workers push WIP
 What: new standing rule `orchestration` (max 3 parallel workers, stop spawning at `allowed_warning`, push WIP branch before a pause, one worker per slice).
 Why: seven parallel workers used the 5-hour quota in 73 minutes and five lost unpushed work.
