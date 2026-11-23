@@ -43,3 +43,10 @@ Why: 2026-11-22/23 review of the oversight session: ~270M cache-read tokens for 
 Expected effect: fewer simultaneous sessions, no marathon contexts, ~3k fewer tokens re-read per turn per session, no wasted post-merge turns. The 104k start-up cost is mostly account-level (skills, connectors), not repo files.
 Review by: 2026-12-07
 Status: pending
+
+## 2026-11-23 · owner (direct edit) · Rate gate keys on the 5-hour window; active orchestrators retire at ~600k
+What: orchestration rule: pause only when the 5-hour limit is not allowed, any status is `rejected`, or weekly use is about 80% or more; a weekly `allowed_warning` alone no longer blocks starts or resumes. Orchestrator retire threshold raised from ~250k to ~600k (while kept active); the 1-hour cache rule (hand off instead of waking a big session after a long idle) stays.
+Why: the manager read the weekly `allowed_warning` (owner: 34% used) as a reason to pause all work until the weekly reset and to retire itself at 270k. An active session keeps a warm cache, so early retirement saves little; the 5-hour window is the limit that was actually hit.
+Expected effect: no needless pauses; fewer manager restarts. Worker cap of 3 and worker handoff at ~200k unchanged.
+Review by: 2026-12-07
+Status: pending
