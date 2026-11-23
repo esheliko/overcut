@@ -12,7 +12,8 @@ import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref }
 import { ExportControl } from "./export/ExportDialog";
 import { MediaBin } from "./media/MediaBin";
 import { TICKS, clipCount } from "./media/plan";
-import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, pickOne, type Source } from "./media/sources";
+import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickOne, setDesktop, type Source } from "./media/sources";
+import { useShellProfile } from "./layout/useShellProfile";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
 type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; engine: Engine } | { status: "error"; message: string };
@@ -37,18 +38,6 @@ const RATIOS = [
   { id: "1:1", value: 1 },
   { id: "4:5", value: 4 / 5 },
 ] as const;
-
-function useMedia(query: string) {
-  const [match, setMatch] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const m = window.matchMedia(query);
-    const on = () => setMatch(m.matches);
-    on();
-    m.addEventListener("change", on);
-    return () => m.removeEventListener("change", on);
-  }, [query]);
-  return match;
-}
 
 function EmptyState({ icon, title, text }: { icon: IconName; title: string; text: string }) {
   return (
@@ -120,6 +109,15 @@ function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: 
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // Desktop app: where projects are saved. The open project stays where it is; the new folder is used from the next start.
+  const chooseFolder = async () => {
+    try {
+      const dir = await getDesktop()?.chooseProjectsFolder();
+      if (dir) announce(t("menu.projectsFolder.set", { path: dir }), "polite");
+    } catch {
+      announce(t("menu.projectsFolder.failed"), "assertive");
+    }
+  };
   useEffect(() => {
     if (!open) return;
     const away = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
@@ -139,6 +137,7 @@ function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: 
               <div className="menu-row menu-status" role="presentation">{status}</div>
             </>
           )}
+          {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
         </div>
       )}
@@ -173,15 +172,16 @@ function Editor({ store }: { store: ProjectStore }) {
     announce(t("theme.changed", { theme: t(`theme.${next === "system" ? "system" : theme}`) }));
   };
   useEffect(() => watchSystem(() => loadPref(), () => undefined), []);
-  const wide = useMedia("(min-width: 1100px)");
-  const compact = useMedia("(max-width: 479px)"); // small phone: theme toggle and engine status live in the "..." menu
-  const roomy = useMedia("(min-width: 720px)"); // tablet and up: the tool panel is always open
+  const editorRef = useRef<HTMLDivElement>(null);
+  const { profile, compact } = useShellProfile(editorRef); // compact: small phone, theme toggle and engine status live in the "..." menu
+  const wide = profile === "desktop" || profile === "ultrawide"; // details panel gets its own column
+  const roomy = profile === "tablet" || wide; // tablet and up: the tool panel is always docked open (phones: a sheet)
 
   useEffect(() => {
     let alive = true;
     createEngine()
       .then(async (e) => ({ info: await e.info(), backend: e.backend, engine: e }))
-      .then(({ engine: e, ...r }) => alive && (setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
+      .then(({ engine: e, ...r }) => alive && (setDesktop(e.desktop), setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
       .catch((e: unknown) => alive && setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }));
     return () => { alive = false; };
   }, []);
@@ -243,6 +243,15 @@ function Editor({ store }: { store: ProjectStore }) {
       window.removeEventListener("paste", paste);
     };
   }, [importFiles]);
+  // Desktop app: files dropped from the OS arrive as paths (never copies); the window shows the same drop hint as in the browser.
+  const desktopApi = engine.status === "ready" ? engine.engine.desktop : undefined;
+  useEffect(() => {
+    if (!desktopApi) return;
+    let off: (() => void) | undefined;
+    let alive = true;
+    void desktopApi.onDrop((files) => void importFiles(fromFileList(files)), setDragging).then((un) => (alive ? (off = un) : un())).catch(() => undefined);
+    return () => { alive = false; off?.(); };
+  }, [desktopApi, importFiles]);
   const binProps: BinProps = {
     items: media.items,
     onImport: (s) => void importFiles(s),
@@ -274,7 +283,7 @@ function Editor({ store }: { store: ProjectStore }) {
     : t("engine.failed", { message: engine.message });
 
   return (
-    <div className="editor">
+    <div className="editor" ref={editorRef} data-profile={profile} data-testid="editor">
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           {!compact && <button className="icon-btn" aria-label={t("theme.change", { theme: themeName })} title={themeName} onClick={cycleTheme} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>}

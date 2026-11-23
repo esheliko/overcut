@@ -1,6 +1,6 @@
 /** Export dialog logic with no React and no DOM: presets, sizes, bitrates, the size estimate, formatting, the remembered choice, and error mapping.
  *  Unit-tested in tests/unit/export-dialog.test.ts. Rules: docs/features/export-dialog.md. */
-import { ExportError, type ExportErrorCode, type ExportFormatId, type ExportFormatOption, type ExportSettings } from "@app/engine-client";
+import { ExportError, type DesktopCodecs, type ExportErrorCode, type ExportFormatId, type ExportFormatOption, type ExportFormats, type ExportSettings } from "@app/engine-client";
 
 export type PresetId = "original" | "youtube" | "vertical" | "small";
 export type QualityId = "high" | "medium" | "low";
@@ -194,3 +194,17 @@ export function presetHint(id: PresetId, src: Source): { key: string; values: { 
     case "vertical": return { key: src.width / src.height > 0.57 ? "export.preset.vertical.bars" : "export.preset.vertical.hint", values: { size } };
   }
 }
+
+// ---- desktop app: what the native encoder offers (docs/features/desktop.md) ----
+/**
+ * The formats the desktop app can write on this computer. MP4 (H.264 + AAC) needs an H.264 encoder: an OS / GPU one, or Cisco's OpenH264 once the person
+ * has enabled it. Without one, WebM (VP9 + Opus, no network) is the default where the app can write it. Never offers a format the encoder cannot make.
+ */
+export function desktopFormats(c: DesktopCodecs): ExportFormats {
+  if (c.h264 !== "none") return { options: [{ id: "mp4-h264", container: "mp4", videoCodec: "h264", audioCodec: "aac", warnings: [] }], auto: "mp4-h264" };
+  if (c.webm) return { options: [{ id: "webm-vp9", container: "webm", videoCodec: "vp9", audioCodec: "opus", warnings: [] }], auto: "webm-vp9" };
+  return { options: [], auto: null };
+}
+
+/** True when MP4 is missing and the person can switch it on (the explicit "Enable MP4" button): never downloads by itself. */
+export const canOfferH264Download = (c: DesktopCodecs): boolean => c.h264 === "none" && c.canEnableH264;

@@ -78,6 +78,7 @@ test("aspect ratio: an empty project's preview takes the chosen shape (a project
 });
 
 test("device check: reachable from the menu, shows capabilities, runs the test, fits the screen, makes no outside requests", async ({ page }) => {
+  test.setTimeout(480_000);
   const outside: string[] = [];
   const origin = new URL(page.url() === "about:blank" ? "http://localhost" : page.url()).origin;
   page.on("request", (r) => { const u = new URL(r.url()); if (/^https?:$/.test(u.protocol) && u.hostname !== new URL(test.info().project.use.baseURL ?? origin).hostname) outside.push(r.url()); });
@@ -98,11 +99,11 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
 
   await run.click();
   // headless CI often has no GPU or hardware codecs: every test must still END with a readable answer, never hang or crash
-  await expect(page.getByTestId("copy")).toBeVisible({ timeout: 240_000 });
-  await expect(page.getByTestId("results").locator("li")).toHaveCount(4);
+  await expect(page.getByTestId("copy")).toBeVisible({ timeout: 420_000 });
+  await expect(page.getByTestId("results").locator("li")).toHaveCount(6);
   const report = JSON.parse(await page.getByTestId("report").inputValue());
   expect(report.overcut_device_report).toBe(1);
-  expect(Object.keys(report.tests)).toEqual(["decode", "seek", "gpuUpload", "fillRate"]);
+  expect(Object.keys(report.tests)).toEqual(["decode", "seek", "gpuUpload", "fillRate", "playback", "exportSpeed"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
   expect(outside).toEqual([]);
@@ -258,3 +259,56 @@ test("top bar on a small phone: project name truncates but stays editable, Expor
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   }
 });
+
+// M1-030: one deliberate layout per form-factor profile (docs/features/editor-layouts.md). The test sets its own viewport, so it runs once.
+const PROFILES = [
+  { name: "phone-portrait", w: 390, h: 844, inspector: false, docked: false },
+  { name: "phone-portrait", w: 320, h: 568, inspector: false, docked: false },
+  { name: "phone-landscape", w: 844, h: 390, inspector: false, docked: false },
+  { name: "tablet", w: 820, h: 1180, inspector: false, docked: true },
+  { name: "tablet", w: 1024, h: 768, inspector: false, docked: true },
+  { name: "desktop", w: 1280, h: 800, inspector: true, docked: true },
+  { name: "ultrawide", w: 3440, h: 1440, inspector: true, docked: true },
+] as const;
+for (const p of PROFILES) {
+  test(`layout profile ${p.name} at ${p.w}x${p.h}: panels arranged, no overlap, no horizontal scroll, 44 px touch targets`, async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "sets its own viewport");
+    await page.setViewportSize({ width: p.w, height: p.h });
+    await page.goto("/");
+    await expect(page.getByTestId("editor")).toHaveAttribute("data-profile", p.name);
+    const box = async (id: string) => (await page.getByTestId(id).boundingBox())!;
+    const preview = await box("panel-preview");
+    const timeline = await box("panel-timeline");
+    const tools = (await page.getByRole("navigation", { name: "Tools" }).boundingBox())!;
+    for (const b of [preview, timeline, tools]) {
+      expect(b.width).toBeGreaterThan(40);
+      expect(b.height).toBeGreaterThan(40);
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.width).toBeLessThanOrEqual(p.w + 0.5);
+      expect(b.y + b.height).toBeLessThanOrEqual(p.h + 0.5);
+    }
+    const overlap = (a: typeof preview, b: typeof preview) => a.x < b.x + b.width - 1 && b.x < a.x + a.width - 1 && a.y < b.y + b.height - 1 && b.y < a.y + a.height - 1;
+    expect(overlap(preview, timeline)).toBe(false);
+    expect(overlap(preview, tools)).toBe(false);
+    expect(overlap(timeline, tools)).toBe(false);
+    expect(preview.height).toBeGreaterThan(p.h * 0.2); // the preview is never squeezed out
+    expect(timeline.height).toBeGreaterThan(100);
+    expect(await page.getByTestId("panel-inspector").count()).toBe(p.inspector ? 1 : 0);
+    if (p.docked) await expect(page.getByTestId("panel-tool")).toBeVisible();
+    else await expect(page.getByTestId("panel-tool")).toBeHidden();
+    if (p.name === "phone-landscape") { // tools rail on the left, tool panel opens as a side drawer over the preview
+      expect(tools.x + tools.width).toBeLessThanOrEqual(preview.x + 1);
+      await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+      await expect.poll(async () => (await box("panel-tool")).x).toBeGreaterThanOrEqual(tools.x + tools.width - 1); // after the slide-in
+      const drawer = await box("panel-tool");
+      expect(drawer.y + drawer.height).toBeLessThanOrEqual(p.h + 0.5);
+      expect(drawer.width).toBeLessThanOrEqual(p.w * 0.53);
+      await page.getByRole("button", { name: "Close panel" }).first().click();
+    }
+    for (const b of await page.getByRole("navigation", { name: "Tools" }).getByRole("button").all()) {
+      const r = (await b.boundingBox())!;
+      if (r.x + r.width <= p.w && r.y + r.height <= p.h) expect(Math.min(r.width, r.height)).toBeGreaterThanOrEqual(44);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+  });
+}

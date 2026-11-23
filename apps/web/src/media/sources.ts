@@ -3,6 +3,8 @@
  * plus, where the browser allows it (Chromium's File System Access API), a persistent handle so a reopened project finds the file again.
  */
 
+import type { DesktopApi } from "@app/engine-client";
+
 export interface Source {
   file: File;
   /** Present only with the File System Access API; stored so the file can be reopened without importing it again. */
@@ -16,11 +18,19 @@ type HandleItem = DataTransferItem & { getAsFileSystemHandle?: () => Promise<Fil
 
 export const ACCEPT = "video/*,audio/*,image/*";
 
+// ---- desktop app: native dialog and paths (M1-041). Set once the engine is up; undefined in a browser. ----
+let desktop: DesktopApi | undefined;
+export const setDesktop = (api: DesktopApi | undefined): void => { desktop = api; };
+export const getDesktop = (): DesktopApi | undefined => desktop;
+/** The path of a file that stays on disk (picked or dropped in the desktop app), else undefined. */
+export const pathOf = (f: File): string | undefined => (f as File & { path?: string }).path;
+
 /** True where a persistent-handle picker exists (Chromium desktop). Phones use the plain input: it opens the camera roll. */
-export const hasHandlePicker = (): boolean => typeof window !== "undefined" && typeof (window as PickerWindow).showOpenFilePicker === "function" && !matchMedia("(pointer: coarse)").matches;
+export const hasHandlePicker = (): boolean => desktop !== undefined || typeof window !== "undefined" && typeof (window as PickerWindow).showOpenFilePicker === "function" && !matchMedia("(pointer: coarse)").matches;
 
 /** Opens the system picker. Resolves to nothing when the user cancels. */
 export async function pickWithHandles(): Promise<Source[]> {
+  if (desktop) return fromFileList(await desktop.pickMedia());
   try {
     const handles = await (window as PickerWindow).showOpenFilePicker!({
       multiple: true,
@@ -113,6 +123,7 @@ export async function saveHandle(uri: string, handle: FileSystemFileHandle): Pro
  * `request` asks the user for permission, which must happen from a click; without it only an existing grant counts.
  */
 export async function loadHandle(uri: string, request = false): Promise<File | null> {
+  if (uri.startsWith("path:")) return desktop ? desktop.fileAt(uri.slice(5)) : null; // desktop: the file is read where it lies
   try {
     const d = await db();
     const handle = await new Promise<FileSystemFileHandle | undefined>((ok, bad) => {

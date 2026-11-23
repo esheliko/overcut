@@ -3,6 +3,7 @@
 import type { MediaRef } from "@app/engine-client";
 import type { MediaCache } from "./cache";
 import type { MediaHost } from "./host";
+import { emitThumb } from "./thumbBus";
 
 export const THUMB_W = 160;
 export const THUMB_H = 90;
@@ -72,6 +73,7 @@ export class ThumbService {
       if (!m) this.bitmaps.set(fp, (m = new Map()));
       m.set(key, bmp);
       if (++this.count > MAX_BITMAPS) this.evict(fp);
+      emitThumb(media.id, k * INTERVALS[iv]!, bmp);
       this.onChange();
     } catch { /* a frame that cannot be produced stays a placeholder */ }
     finally { this.pending.delete(id); }

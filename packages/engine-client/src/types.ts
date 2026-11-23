@@ -21,6 +21,8 @@ export type EngineBackend = "wasm" | "tauri";
  */
 export interface Engine {
   readonly backend: EngineBackend;
+  /** Native-shell abilities (dialogs, paths, projects folder, "Show in folder"); undefined in a browser (M1-041, docs/features/desktop.md). */
+  readonly desktop?: DesktopApi;
   info(): Promise<EngineInfo>;
   /** What this device can do (codecs, GPU, storage, cores). Never rejects for a partly failed probe; unknowns are reported as such. */
   capabilities(): Promise<Capabilities>;
@@ -46,6 +48,7 @@ export interface Engine {
   readonly peaks: PeaksApi;
 }
 
+import type { DesktopApi } from "./desktop";
 export { MediaDecodeError, type MediaErrorKind } from "./decode/errors";
 
 export interface OpenMediaOptions {

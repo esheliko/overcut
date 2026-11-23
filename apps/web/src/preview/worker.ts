@@ -2,10 +2,12 @@
  * The preview Worker (M1-023): the Rust GPU compositor on the transferred canvas, the player loop (`Player`), decoding and audio mixing, all off the
  * UI thread. The UI thread sends commands and the audible clock; it receives the playhead, state, and mixed audio to schedule.
  */
-import { openEvaluator, openMediaApi, openRenderer, layerOf, renderExportFrame, type Evaluator, type GpuLayer, type GpuRenderer, type MediaApi, type MediaHandle } from "@app/engine-client";
+import { openEvaluator, openMediaApi, openRenderer, layerOf, renderExportFrame, type DecodedFrame, type Evaluator, type GpuLayer, type GpuRenderer, type LayerSource, type MediaApi, type MediaHandle } from "@app/engine-client";
 import { epochNow, type FromPreview, type PreviewConfig, type PreviewRpc, type ToPreview } from "./protocol";
 import { Player, type AudioOut } from "./player";
 import { frameStartTicks } from "./timing";
+import { ThumbStore } from "./scrubCache";
+import { chooseUploadPath, median, uploadKey, type UploadChoice, type UploadPath } from "./uploadPath";
 
 const scope = self as unknown as {
   postMessage(m: FromPreview, transfer?: Transferable[]): void;
@@ -31,6 +33,61 @@ const audioClock = { now: () => (anchor ? anchor.audio + (epochNow() - anchor.ep
 let nextReq = 1;
 const pending = new Map<number, (v: unknown) => void>();
 const request = (name: "audio-resume"): Promise<unknown> => new Promise((res) => { const id = nextReq++; pending.set(id, res); post({ type: "request", id, name }); });
+const requestUpload = (key: string): Promise<unknown> => new Promise((res) => { const id = nextReq++; pending.set(id, res); post({ type: "request", id, name: "upload-get", key }); });
+
+// --- how decoded frames reach the GPU: measured per device on the first real frame, cached by GPU + browser version (uploadPath.ts) ------------
+let upload: UploadChoice | undefined;
+let deciding: Promise<UploadChoice> | undefined;
+const rgbaSlots: Uint8Array[] = [];
+const thumbs = new ThumbStore<ImageBitmap>();
+
+/** p50 of one upload path (ms): a fresh scratch compositor (never presented, so it can read back) draws `sample` into 64x64 and waits for the GPU. */
+async function measureUpload(path: UploadPath, sample: VideoFrame, width: number, height: number): Promise<number | null> {
+  const c = new OffscreenCanvas(64, 64);
+  const r = await openRenderer(c, gpu!.info.backend);
+  try {
+    r.resize(64, 64);
+    const buf = path === "cpu" ? new Uint8Array(sample.allocationSize({ format: "RGBA" })) : undefined;
+    const times: number[] = [];
+    for (let i = 0; i < 13; i++) {
+      const t0 = performance.now();
+      let source: LayerSource = sample;
+      if (buf) { await sample.copyTo(buf, { format: "RGBA" }); source = { rgba: buf }; }
+      await r.readback([{ source, width, height, rotation: 0, center: [width / 2, height / 2], scale: [1, 1], angle: 0, opacity: 1 }], { width, height }, { width: 64, height: 64 });
+      if (i >= 3) times.push(performance.now() - t0);
+    }
+    return median(times);
+  } finally {
+    r.dispose();
+  }
+}
+
+function decideUpload(f: DecodedFrame & { kind: "gpu" }): Promise<UploadChoice> {
+  const key = uploadKey(gpu!.info.backend, gpu!.info.adapter, navigator.userAgent);
+  return chooseUploadPath({
+    key,
+    cached: requestUpload,
+    save: (k, value) => post({ type: "upload-set", key: k, value }),
+    measure: (p) => measureUpload(p, f.frame, f.width, f.height),
+  });
+}
+
+/** The compositor's pixels for a decoded frame, by the chosen path. The first GPU frame ever seen triggers the (cached) measurement. */
+async function uploadSource(f: DecodedFrame, slot: number): Promise<LayerSource> {
+  if (f.kind === "cpu") return { rgba: f.rgba };
+  upload ??= await (deciding ??= decideUpload(f).catch((): UploadChoice => ({ path: "frame", ms: {}, source: "default" })));
+  if (upload.path === "frame") return f.frame;
+  try {
+    const n = f.frame.allocationSize({ format: "RGBA" });
+    let buf = rgbaSlots[slot];
+    if (!buf || buf.length !== n) rgbaSlots[slot] = buf = new Uint8Array(n);
+    await f.frame.copyTo(buf, { format: "RGBA" });
+    return { rgba: buf };
+  } catch {
+    upload = { ...upload, path: "frame" }; // this browser cannot convert: hand the frame over instead
+    return f.frame;
+  }
+}
 
 const audio: AudioOut = {
   sampleRate: 48_000,
@@ -76,6 +133,8 @@ function removeMedia(id: string): void {
   const h = handles.get(id);
   if (!h) return;
   handles.delete(id);
+  player?.dropMedia(id);
+  thumbs.dropMedia(id);
   player?.reconfigure({}); // closes the decode feeds first
   void h.close();
 }
@@ -89,6 +148,8 @@ function startPlayer(c: PreviewConfig): void {
     sequence: c.sequence,
     evaluate: async (ticks, n) => (ev && cfg?.sequence ? ev.evaluate(cfg.sequence, ticks, n) : idleDescription(ticks, n)),
     media: (id) => handles.get(id),
+    upload: uploadSource,
+    standIn: (id, seconds) => thumbs.nearest(id, seconds),
     renderer: {
       render: (layers, seq) => {
         g.present(layers, seq);
@@ -114,10 +175,10 @@ function startPlayer(c: PreviewConfig): void {
 
 async function rpc(r: PreviewRpc): Promise<unknown> {
   switch (r.name) {
-    case "stats": return { ...player?.stats };
+    case "stats": return { ...player?.stats, cached: player?.cached ?? 0 };
     case "position": return { frame: player?.frame ?? 0, playing: player?.isPlaying ?? false, ticks: player?.position() ?? 0 };
     case "frames": return [...handles.values()].map((h) => h.stats());
-    case "gpu": return { info: gpu?.info, alloc: gpu?.allocStats(), canvas: backing };
+    case "gpu": return { info: gpu?.info, alloc: gpu?.allocStats(), canvas: backing, upload };
     case "probe": return probe(r.x, r.y);
     case "bench": return bench(r.width, r.height, r.frames);
     case "parity": return parity(r.frame);
@@ -272,6 +333,9 @@ async function handle(m: ToPreview): Promise<void> {
       return;
     case "unmedia":
       removeMedia(m.id);
+      return;
+    case "thumb":
+      thumbs.add(m.media, m.seconds, m.bitmap, m.bitmap.width, m.bitmap.height);
       return;
     case "resize":
       if (!gpu) return;

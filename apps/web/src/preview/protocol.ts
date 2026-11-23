@@ -39,6 +39,8 @@ export type ToPreview =
   /** The file behind a media item (cloned, not copied): the Worker opens its own decoder. */
   | { type: "media"; id: string; file: File }
   | { type: "unmedia"; id: string }
+  /** A filmstrip thumbnail the timeline made (upright, transferred): kept as a scrub stand-in for media `media` at `seconds`. */
+  | { type: "thumb"; media: string; seconds: number; bitmap: ImageBitmap }
   | { type: "resize"; width: number; height: number }
   | { type: "cmd"; cmd: PreviewCommand }
   /** The audible audio clock sampled on the UI thread: `audio` (seconds) at `epoch` (ms, `performance.timeOrigin + performance.now()`). */
@@ -57,6 +59,10 @@ export type FromPreview =
   | { type: "audio-stop" }
   /** The worker asks the UI thread to start the audio output; answered with a `reply` `{ running, audio, epoch }`. */
   | { type: "request"; id: number; name: "audio-resume" }
+  /** The stored upload-path choice for `key` (local storage lives on the UI thread); answered with a `reply` (the stored value or null). */
+  | { type: "request"; id: number; name: "upload-get"; key: string }
+  /** Remember the measured upload path for `key` (re-measured when the GPU or browser version changes). */
+  | { type: "upload-set"; key: string; value: unknown }
   | { type: "reply"; id: number; value: unknown };
 
 /** Wall clock shared by every thread of the page (ms). */

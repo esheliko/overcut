@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CSP } from "../../apps/web/csp";
 
 type Rule = { source: string; headers: { key: string; value: string }[] };
+// csp.ts is read as text (not imported) so tests/tsconfig.json needs no entry for it.
+const CSP = [...readFileSync("apps/web/csp.ts", "utf8").matchAll(/^\s+"(.*)",$/gm)].map((m) => m[1]).join("; ");
 const rules = (JSON.parse(readFileSync("vercel.json", "utf8")) as { headers: Rule[] }).headers;
 
 test("vercel.json sends the app CSP as a response header, plus frame-ancestors 'none' (covers /sw.js too)", () => {
