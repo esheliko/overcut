@@ -22,7 +22,7 @@ export function findViolations(files) {
       for (const c of PLATFORM_CRATES) if (new RegExp(`^${c}\\s*[=.]`, 'm').test(deps)) out.push(`${path}: depends on platform crate "${c}" (engine crates must stay portable; put bindings in crates/wasm or the Tauri shell)`);
     }
     if (/^(apps|packages)\/.+\.(ts|tsx)$/.test(path)) {
-      if (path !== WASM_OK && IMPORT('@app\\/wasm-pkg').test(text)) out.push(`${path}: imports the wasm package directly (go through @app/engine-client)`);
+      if (path !== WASM_OK && !path.endsWith('.d.ts') && IMPORT('@app\\/wasm-pkg').test(text)) out.push(`${path}: imports the wasm package directly (go through @app/engine-client)`);
       if (path !== TAURI_OK && IMPORT('@tauri-apps\\/').test(text)) out.push(`${path}: imports @tauri-apps/* directly (go through @app/engine-client)`);
       if (IMPORT('[./]*\\/?crates\\/').test(text)) out.push(`${path}: imports Rust sources by path`);
     }

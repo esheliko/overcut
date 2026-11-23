@@ -5,7 +5,7 @@
     "tsBuildInfoFile": "../../node_modules/.cache/tsc/web.tsbuildinfo",
     "types": ["vite/client"],
     "resolveJsonModule": true,
-    "paths": { "@app/wasm-pkg": ["../../packages/engine-client/src/wasm-module.d.ts"] }
+    "paths": { "@app/wasm-pkg": ["../../packages/engine-client/src/wasm-module.d.ts"], "@app/wasm-pkg-gpu": ["../../packages/engine-client/src/wasm-module.d.ts"] }
   },
   "include": ["src", "src/**/*.json", "vite.config.ts"],
   "references": [{ "path": "../../packages/engine-client" }]
