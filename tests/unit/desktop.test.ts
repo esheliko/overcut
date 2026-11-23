@@ -1,6 +1,7 @@
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { createDesktopApi, baseName, mimeOfPath, type PathFile } from "../../packages/engine-client/src/desktop";
+import { createDesktopApi, baseName, h264Percent, mimeOfPath, parseH264Failure, type PathFile } from "../../packages/engine-client/src/desktop";
 import { fingerprintFile } from "../../packages/engine-client/src/media";
 import { canOfferH264Download, desktopFormats } from "../../apps/web/src/export/model";
 
@@ -94,4 +95,54 @@ test("without an H.264 encoder the offline WebM is the default, and MP4 comes on
   const today = { h264: "none", webm: false, canEnableH264: false } as const;
   assert.deepEqual(desktopFormats(today), { options: [], auto: null });
   assert.equal(canOfferH264Download(today), false);
+});
+
+test("enable H.264: progress events reach the caller and stop afterwards; the download is one explicit command", async () => {
+  const shell = fakeShell({});
+  const inner = shell.invoke as unknown as (c: string, a?: unknown) => Promise<unknown>;
+  const invoke = (async (cmd: string, args?: unknown) => {
+    if (cmd !== "desktop_enable_h264") return inner(cmd, args);
+    shell.calls.push(cmd);
+    shell.handlers.get("overcut://h264-progress")?.({ payload: { done: 500, total: 1000 } });
+    return undefined;
+  }) as never;
+  const api = createDesktopApi(invoke, shell.listen);
+  const seen: number[] = [];
+  await api.enableH264((p) => seen.push(h264Percent(p) ?? -1));
+  assert.deepEqual(seen, [50]);
+  assert.equal(shell.handlers.size, 0, "the progress listener is removed when the download ends");
+  assert.deepEqual(shell.calls.filter((c) => c === "desktop_enable_h264"), ["desktop_enable_h264"]);
+  assert.equal(h264Percent({ done: 5, total: null }), null);
+  assert.equal(h264Percent({ done: 2000, total: 1000 }), 100);
+});
+
+test("enable H.264: failures come back typed (offline, checksum, cancelled) and unknown ones do not crash the parser", async () => {
+  const shell = fakeShell({});
+  for (const code of ["offline", "checksum", "cancelled", "io"]) {
+    const invoke = (async () => {
+      throw JSON.stringify({ code, message: `m-${code}` });
+    }) as never;
+    await assert.rejects(createDesktopApi(invoke, shell.listen).enableH264(), (e: unknown) => (e as { code?: string }).code === code && (e as Error).message === `m-${code}`);
+  }
+  assert.equal(parseH264Failure("Command desktop_enable_h264 not found").code, "unknown");
+  assert.equal(parseH264Failure(new Error('{"code":"nope","message":"x"}')).code, "unknown");
+  assert.equal(parseH264Failure(JSON.stringify({ code: "busy", message: "b" })).code, "busy");
+});
+
+test("cancel is one command, usable while the download runs", async () => {
+  const shell = fakeShell({});
+  const inner = shell.invoke as unknown as (c: string, a?: unknown) => Promise<unknown>;
+  const invoke = (async (cmd: string, args?: unknown) => (cmd === "desktop_cancel_h264" ? void shell.calls.push(cmd) : inner(cmd, args))) as never;
+  await createDesktopApi(invoke, shell.listen).cancelH264();
+  assert.deepEqual(shell.calls, ["desktop_cancel_h264"]);
+});
+
+test("the one optional download host is listed as desktop-only, never as a web host, and matches the Rust downloader", () => {
+  const allow = JSON.parse(readFileSync("config/network-allowlist.json", "utf8")) as { hosts: string[]; desktopOnlyHosts: string[] };
+  assert.deepEqual(allow.hosts, []);
+  assert.deepEqual(allow.desktopOnlyHosts, ["ciscobinary.openh264.org"]);
+  const rust = readFileSync("apps/desktop/native-media/src/openh264.rs", "utf8");
+  assert.match(rust, /pub const HOST: &str = "ciscobinary\.openh264\.org";/);
+  // The web smoke test reads only `hosts`: a desktop-only host does not widen what the web build may contact.
+  assert.doesNotMatch(readFileSync("tests/smoke/network.spec.ts", "utf8"), /desktopOnlyHosts/);
 });

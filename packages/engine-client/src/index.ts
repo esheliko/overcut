@@ -2,7 +2,7 @@ import type { Engine, MediaApi } from "./types";
 
 export * from "./types";
 export * from "./export/types";
-export { PathFile, baseName, mimeOfPath, type DesktopApi, type DesktopCodecs } from "./desktop";
+export { H264Error, PathFile, baseName, h264Percent, mimeOfPath, parseH264Failure, type DesktopApi, type DesktopCodecs, type H264FailureCode, type H264Progress } from "./desktop";
 export { createExportApi, exportNotYet, type ExportHost, type WorkerLike } from "./export/job";
 import type { WorkerLike } from "./export/job";
 import type { GpuRenderer } from "./render";

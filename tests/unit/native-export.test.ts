@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createNativeExportApi, type NativeBeginArgs, type NativeExportBackend, type NativeExportHost } from "../../packages/engine-client/src/export/native";
+import { createNativeExportApi, nativeContainer, type NativeBeginArgs, type NativeExportBackend, type NativeExportHost } from "../../packages/engine-client/src/export/native";
 import { frameIndexAtTicks } from "../../packages/engine-client/src/native-media";
 import { TICKS_PER_SECOND } from "../../packages/engine-client/src/export/plan";
 import { ExportError } from "../../packages/engine-client/src/export/types";
@@ -140,15 +140,38 @@ test("native export: an encoder failure aborts the job as encode_failed and clea
   assert.equal(calls.cancelled, 1);
 });
 
-test("native export: formats the desktop cannot encode yet are refused up front; no H.264 encoder is 'unsupported'", async () => {
+test("native export: mixed containers are refused up front; no H.264 encoder is 'unsupported'", async () => {
   const { host } = fake();
-  for (const s of [{ container: "webm" as const }, { videoCodec: "vp9" as const }, { audioCodec: "opus" as const }]) {
-    await assert.rejects(createNativeExportApi(host).start({ sequence: "s", sources: { m: new Blob([]) }, ...s }), (e: unknown) => e instanceof ExportError && e.code === "unsupported");
+  for (const s of [{ container: "webm" as const, videoCodec: "h264" as const }, { container: "mp4" as const, audioCodec: "opus" as const }, { videoCodec: "vp9" as const, audioCodec: "aac" as const }]) {
+    await assert.rejects(createNativeExportApi(host).start({ sequence: "s", sources: { m: new Blob([]) }, ...s }), (e: unknown) => e instanceof ExportError && e.code === "unsupported", JSON.stringify(s));
   }
   const none = fake({ failBegin: "libopenh264: no H.264 encoder is available" });
   const job = await createNativeExportApi(none.host).start({ sequence: "s", sources: { m: new Blob([]) } });
   await assert.rejects(job.result, (e: unknown) => e instanceof ExportError && e.code === "unsupported");
   await assert.rejects(createNativeExportApi(host).start({ sequence: "missing", sources: { m: new Blob([]) } }), (e: unknown) => e instanceof ExportError && e.code === "invalid_settings");
+});
+
+test("native export: the container follows the settings (nothing = MP4, WebM / VP9 / Opus = WebM)", () => {
+  assert.equal(nativeContainer({ sequence: "s" }), "mp4");
+  assert.equal(nativeContainer({ sequence: "s", container: "mp4", videoCodec: "h264", audioCodec: "aac" }), "mp4");
+  assert.equal(nativeContainer({ sequence: "s", container: "webm" }), "webm");
+  assert.equal(nativeContainer({ sequence: "s", videoCodec: "vp9" }), "webm");
+  assert.equal(nativeContainer({ sequence: "s", container: "webm", videoCodec: "vp9", audioCodec: "opus" }), "webm");
+});
+
+test("native export: WebM (VP9 + Opus) asks Rust for a .webm file at the WebM bitrates and returns video/webm", async () => {
+  const { host, calls, file } = fake();
+  const job = await createNativeExportApi(host).start({ sequence: "s", sources: { m: new Blob([]) }, container: "webm", videoCodec: "vp9", audioCodec: "opus" });
+  const r = await job.result;
+  const b = calls.begin[0]!;
+  assert.match(b.fileName, /\.webm$/);
+  assert.equal(b.audioBitrate, 128_000);
+  assert.equal(b.videoBitrate, 1_000_000); // the VP9 default (0.075 bpp) is clamped to the 1 Mbit/s floor at this tiny size
+  assert.equal(r.mime, "video/webm");
+  assert.match(r.stats.codecs, /\+ opus$/);
+  const f = await r.file();
+  assert.equal(f.type, "video/webm");
+  assert.equal(f.size, file.length);
 });
 
 test("native decoder: frameIndexAt picks the last frame not after the time (VFR safe), clamps at both ends", () => {

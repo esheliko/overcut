@@ -361,7 +361,8 @@ macro_rules! handlers {
             desktop::desktop_save_project,
             desktop::desktop_reveal,
             desktop::desktop_codecs,
-            desktop::desktop_enable_h264 $(, $extra)*]
+            desktop::desktop_enable_h264,
+            desktop::desktop_cancel_h264 $(, $extra)*]
     };
 }
 
@@ -371,7 +372,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .on_window_event(desktop::on_window_event)
         .manage(EditorState::default())
-        .manage(Mutex::new(PeaksState::default()));
+        .manage(desktop::H264Download::default())
+        .manage(Mutex::new(PeaksState::default()))
+        .setup(|app| {
+            // An OpenH264 library the person downloaded earlier is loaded before libav is first used. No network call, nothing when absent.
+            #[cfg(feature = "native-media")]
+            if let Ok(dir) = desktop::app_data(app.handle()) {
+                app_native_media::openh264::preload_installed(&dir);
+            }
+            let _ = app;
+            Ok(())
+        });
     #[cfg(feature = "native-media")]
     let builder = builder.manage(native::NativeState::default()).invoke_handler(handlers![
         native::native_info,

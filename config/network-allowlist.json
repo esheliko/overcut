@@ -1,5 +1,8 @@
 {
-  "_comment": "OverCut makes no network request beyond its own assets (docs/PRODUCT.md, ADR 0005, XT-06). tests/smoke/network.spec.ts fails on any request whose host is not listed here. Adding a host needs a reason in docs/ (an ADR or docs/features/privacy-network.md) in the same PR, and the user must be able to decline the feature that uses it. Entries are exact hostnames; 'sameOrigin' allows the page's own host.",
+  "_comment": "OverCut makes no network request beyond its own assets (docs/PRODUCT.md, ADR 0005, XT-06). tests/smoke/network.spec.ts fails on any request whose host is not listed here. Adding a host needs a reason in docs/ (an ADR or docs/features/privacy-network.md) in the same PR, and the user must be able to decline the feature that uses it. Entries are exact hostnames; 'sameOrigin' allows the page's own host. 'desktopOnlyHosts' are contacted only by the desktop app, only after a click, and never by the web build (docs/features/privacy-network.md): the web smoke test still allows only 'hosts'.",
   "sameOrigin": true,
-  "hosts": []
+  "hosts": [],
+  "desktopOnlyHosts": [
+    "ciscobinary.openh264.org"
+  ]
 }
