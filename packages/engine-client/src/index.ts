@@ -1,6 +1,7 @@
 import type { Engine, MediaApi } from "./types";
 
 export * from "./types";
+export { NETWORK_CHANNEL, reportWorkerNetwork, type NetReport } from "./net-report";
 export * from "./export/types";
 export { PathFile, baseName, mimeOfPath, type DesktopApi, type DesktopCodecs } from "./desktop";
 export { createExportApi, exportNotYet, type ExportHost, type WorkerLike } from "./export/job";

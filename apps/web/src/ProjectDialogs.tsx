@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FPS_CHOICES, QUALITIES, SHAPES, canvasOp, choiceOf, fpsLabel, frameRateOf, resolutionOf, sameCanvas, type CanvasChoice } from "./canvas";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
+import { NetworkLog } from "./privacy/NetworkLog";
 
 /** A modal `<dialog>` that closes on Esc and starts focused on its title. Shared by the canvas settings and the confirmations. */
 function Modal({ title, titleId, testId, onClose, children, role }: { title: string; titleId: string; testId: string; onClose(): void; children: ReactNode; role?: "alertdialog" }) {
@@ -100,6 +101,17 @@ export function CanvasDialog({ sequence, hasPicture, onApply, onClose }: { seque
         <button className="export-secondary" onClick={onClose} data-testid="canvas-cancel">{t("canvas.cancel")}</button>
         <button className="export-go" disabled={sameCanvas(sequence, c)} onClick={() => onApply(canvasOp(sequence, c))} data-testid="canvas-apply">{t("canvas.apply")}</button>
       </div>
+    </Modal>
+  );
+}
+
+/** App menu > Privacy: the visible network log (XT-06). */
+export function PrivacyDialog({ onClose }: { onClose(): void }) {
+  const { t } = useI18n();
+  return (
+    <Modal title={t("net.title")} titleId="privacy-title" testId="privacy-dialog" onClose={onClose}>
+      <p className="export-note">{t("net.intro")}</p>
+      <NetworkLog />
     </Modal>
   );
 }

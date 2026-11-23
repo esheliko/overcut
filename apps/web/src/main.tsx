@@ -2,6 +2,7 @@ import { StrictMode, Suspense, createElement, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { applyLocale, initialLocale, I18nProvider } from "./i18n";
+import { startNetworkCapture } from "./privacy/networkLog";
 import { applyTheme, loadPref } from "./theme/theme";
 import "./theme/tokens.css";
 import "./styles.css";
@@ -9,6 +10,7 @@ import "./styles.css";
 // Set theme, language and direction before the first paint so there is no flash of the wrong theme.
 applyTheme(loadPref());
 applyLocale(initialLocale());
+startNetworkCapture(); // the visible network log (Privacy menu, /diagnostics)
 
 // `/#timeline-bench` opens the S8 benchmark page (lazy chunk, not linked from the UI).
 const Diagnostics = lazy(() => import("./diagnostics/Diagnostics"));

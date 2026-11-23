@@ -167,7 +167,8 @@ All models are open-weight, downloaded on request, cached, removable, run locall
 | XT-03 | Share a project for live co-editing, peer-to-peer (CRDT over WebRTC), no server holding media | P2 | M8 | + | |
 | XT-04 | Review comments and markers on a shared link/file | P2 | M8 | = | |
 | XT-05 | Version history with named snapshots and diff of timeline changes | P2 | M8 | + | Falls out of the operation log |
-| XT-06 | Privacy: no telemetry by default; opt-in crash reports; visible network log; no third-party scripts | P0 | M1 | + | Enforced by CSP and a test |
+| XT-06 | Privacy: no telemetry by default; visible network log; no third-party scripts (opt-in crash reports: M2, split to XT-06b) | P0 | M1 | + | Enforced by CSP and a test; log: Privacy menu and /diagnostics |
+| XT-06b | Opt-in crash reports | P1 | M2 | + | Needs an optional, documented endpoint with a local fallback ("Copy crash report" to clipboard / file); off by default; listed in the allow-list and shown in the network log. Moved from M1: a backend conflicts with "no backend" unless designed with care |
 | XT-07 | Update mechanism (web: service worker; desktop: signed updater; mobile: stores) | P0 | M5 | = | |
 | XT-08 | Security: sandboxed plugin runtime, strict CSP, memory-safe engine, fuzzed demuxers | P0 | M1-M9 | + | |
 

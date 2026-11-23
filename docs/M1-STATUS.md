@@ -22,7 +22,7 @@ Audit of 2026-11-23 against `origin/main` at `a8c7ba1`. Nothing was built for th
 | AU-01 Waveforms (M1 part) | **done** | Peaks pyramid, cache and wiring (PR #41, #48; unit `media-cache.test.ts`) |
 | UX-01 Responsive layouts | **done** (device unchecked) | Phone, tablet, desktop shells; overflow checked at phone and desktop in smoke; phone top bar PR #60. Foldable / ultrawide not specifically tested |
 | UX-05 Themes: dark, light, high contrast, accent colours, follows system | **partial** | Dark / light / high-contrast, system default, WCAG test (PR #32, `theme-contrast.test.ts`). No accent colour choice |
-| XT-06 Privacy: no telemetry, opt-in crash reports, visible network log, no third-party scripts | **partial** | Allow-list (`config/network-allowlist.json`) + strict CSP + CI test (PR #54, `network.spec.ts`). Opt-in crash reports and the visible network log: not built (documented as future in `privacy-network.md`). CSP as a response header: issue #55 (PR #61 open) |
+| XT-06 Privacy: no telemetry, opt-in crash reports, visible network log, no third-party scripts | **partial** | Allow-list (`config/network-allowlist.json`) + strict CSP + CI test (PR #54, `network.spec.ts`). Visible network log built (Privacy menu and `/diagnostics`, `recordNetworkEvent` hook for desktop downloads; smoke asserts no foreign host). Opt-in crash reports moved to M2 as XT-06b (needs an optional endpoint with a local fallback; docs PR). CSP as a response header: issue #55 (PR #61 open) |
 
 ## 2. M1 backlog (docs/IMPLEMENTATION_PLAN.md section 4)
 | Item | Status | Evidence |
@@ -90,6 +90,6 @@ Built the app (`npm run build`, wasm-bindgen-cli 0.2.130) and served it with `vi
 6. ~~Editing rows left in TL-02 / TL-06~~ done; ripple delete stays M2 (FEATURES row reconciled).
 7. **Desktop**: OpenH264 downloader (#57) and native WebM, preview of on-disk files, Windows drag behaviour (#58); there is no CI test that runs the desktop app and no release dry run result.
 8. **Export presets** (EX-02): add TikTok / Reels / X / WhatsApp / Discord size-capped presets, or narrow the row to the four built.
-9. **XT-06**: opt-in crash reports and the visible network log are required by the row; build them or move them to M2 by a docs PR.
+9. ~~XT-06~~ done: visible network log built; opt-in crash reports moved to M2 (XT-06b) with the reason. Open: no crash/error screen exists yet to hang a "Copy diagnostics report" on (the Diagnostics page already has "Copy results").
 10. **UX-05 accent colours**; **PM-02/12** share sheet / open-with and an install prompt; **PM-03** tags and filters, 10k-item check; fuzz targets (`app-media`, `app-model`) not run in CI.
 11. **Docs consistency**: ROADMAP M1 lists M1 exit as "all merged and the checklist green" (plan section 4); this file is the checklist until a CI-backed one exists.
