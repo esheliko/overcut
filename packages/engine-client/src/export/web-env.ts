@@ -41,13 +41,19 @@ export interface WebEnv {
   dispose(): void;
 }
 
-/** Everything in the real export that needs a browser: media, canvas compositing, WebCodecs, OPFS. Fails fast (before the file exists) on anything it cannot do. */
-export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
-  const { project, settings, signal } = input;
-  const plan = planExport(project, settings);
-  const preset = await resolvePreset(plan, settings, input.probe ?? webCodecsProbe);
+/** Media a plan uses, opened up front. */
+export interface UsedMedia {
+  videoOf(id: string): MediaVideo | undefined;
+  audioOf(id: string): Promise<MediaAudio | undefined>;
+  /** Releases every decoder; call once the job is over, success or not. */
+  dispose(): void;
+}
 
-  // Media: every clip's source must be readable before we start; opening them all up front turns "frame 9000 of 9000 has no decoder" into an immediate error.
+/**
+ * Every clip's source must be readable before the file exists: opening them all up front turns "frame 9000 of 9000 has no decoder" into an
+ * immediate `media_unavailable`. Shared by the browser export and the native one (`native.ts`).
+ */
+export async function openUsedMedia(plan: ExportPlan, project: Project, settings: ExportSettings, media: MediaApi | undefined): Promise<UsedMedia> {
   const refs = new Map<string, MediaRef>(project.media.map((m) => [m.id, m]));
   const opened = new Map<string, OpenedMedia>();
   const dispose = (): void => {
@@ -63,7 +69,7 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
     const blob = settings.sources?.[id];
     let m: OpenedMedia | null;
     try {
-      m = ref && blob && input.media ? await openBlobMedia(input.media, blob, plan.sampleRate, ref.name) : ref ? await openMedia(ref, plan.sampleRate) : null;
+      m = ref && blob && media ? await openBlobMedia(media, blob, plan.sampleRate, ref.name) : ref ? await openMedia(ref, plan.sampleRate) : null;
     } catch (err) {
       dispose();
       throw new ExportError("media_unavailable", `"${ref?.name ?? id}" cannot be read: ${err instanceof Error ? err.message : String(err)}`);
@@ -74,8 +80,16 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
     }
     opened.set(id, m);
   }
-  const videoOf = (id: string): MediaVideo | undefined => opened.get(id)?.video;
-  const audioOf = async (id: string): Promise<MediaAudio | undefined> => opened.get(id)?.audio;
+  return { videoOf: (id) => opened.get(id)?.video, audioOf: async (id) => opened.get(id)?.audio, dispose };
+}
+
+/** Everything in the real export that needs a browser: media, canvas compositing, WebCodecs, OPFS. Fails fast (before the file exists) on anything it cannot do. */
+export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
+  const { project, settings, signal } = input;
+  const plan = planExport(project, settings);
+  const preset = await resolvePreset(plan, settings, input.probe ?? webCodecsProbe);
+
+  const { videoOf, audioOf, dispose } = await openUsedMedia(plan, project, settings, input.media);
 
   // The compositor is opened before the file exists, so "no GPU" fails at 0% with a plain message.
   const canvas = new OffscreenCanvas(plan.width, plan.height);
