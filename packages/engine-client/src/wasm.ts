@@ -1,10 +1,11 @@
 import { createEditing } from "./editing";
+import { probeHost } from "./probe";
 import { createExportApi, type WorkerLike } from "./export/job";
 import { opfsStorage } from "./export/storage";
 import { createWebMedia, type WasmMediaClass } from "./decode/media";
 import type { GpuRenderer as GpuRendererClass } from "@app/wasm-pkg-gpu";
 import { wrapRenderer, type GpuRenderer } from "./render";
-import { parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine, type FrameDescription, type MediaApi } from "./types";
+import { parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine, type FrameDescription, type MediaApi } from "./types";
 
 /** Browser backend: loads the UI-thread WebAssembly build once (no GPU code: the compositing Workers load `@app/wasm-pkg-gpu` below). Run the engine inside a Web Worker when it starts doing real work (see docs). */
 export async function createWasmEngine(opts: { spawnExportWorker: () => WorkerLike }): Promise<Engine> {
@@ -94,6 +95,7 @@ export async function createWasmEngine(opts: { spawnExportWorker: () => WorkerLi
       project: () => editing.project(),
       storage: opfsStorage,
     }),
+    capabilities: async () => parseCapabilities(wasm.capabilities(await probeHost())),
   };
 }
 

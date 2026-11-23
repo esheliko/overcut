@@ -98,6 +98,12 @@ pub fn media_fingerprint(size: f64, first: &[u8], last: &[u8]) -> Result<String,
     app_model::fingerprint(size as u64, first, last).map_err(|e| e.to_json())
 }
 
+/// Normalises the browser's raw probe JSON into `app_core::Capabilities` JSON (host `web`).
+#[wasm_bindgen]
+pub fn capabilities(probe_json: &str) -> Result<String, String> {
+    app_core::capabilities_json(probe_json, "web", None)
+}
+
 /// A waveform extraction in progress (`app_audio::peaks::PeaksBuilder`). PCM goes in as interleaved i16 chunks.
 #[wasm_bindgen]
 pub struct PeaksJob(Option<app_audio::peaks::PeaksBuilder>);
@@ -221,5 +227,12 @@ mod tests {
             .unwrap()
             .starts_with("b3-64k:10:"));
         assert!(super::media_fingerprint(-1.0, &data, &data).is_err());
+    }
+
+    #[test]
+    fn capabilities_are_stamped_web() {
+        let json = super::capabilities("{}").unwrap();
+        assert!(json.contains("\"host\":\"web\""), "{json}");
+        assert!(super::capabilities("[]").is_err());
     }
 }

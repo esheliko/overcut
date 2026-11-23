@@ -114,6 +114,27 @@ function Details() {
   );
 }
 
+/** The "..." menu: small, out of the way. Holds About / Diagnostics for now. */
+function AppMenu() {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  return (
+    <div className="menu" ref={ref}>
+      <button className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
+      {open && <div className="menu-pop" role="menu"><a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a></div>}
+    </div>
+  );
+}
+
 /** The app owns one project store; every panel below reads it. */
 export function App() {
   const [store] = useState(() => new ProjectStore());
@@ -254,6 +275,7 @@ function Editor({ store }: { store: ProjectStore }) {
             </span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
+          <AppMenu />
         </div>
       </header>
 

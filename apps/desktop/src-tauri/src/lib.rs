@@ -61,6 +61,18 @@ fn editor_project(state: State<'_, EditorState>) -> Result<String, String> {
 #[tauri::command]
 fn editor_journal(state: State<'_, EditorState>) -> Result<String, String> {
     with_editor(&state, |e| Ok(e.journal_jsonl()))
+
+}
+
+/// The webview's raw probe, normalised, plus the facts only the native side knows.
+#[tauri::command]
+fn capabilities(probe_json: String) -> Result<String, String> {
+    let native = app_core::NativeInfo {
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        cores: std::thread::available_parallelism().ok().map(|n| n.get() as u32),
+    };
+    app_core::capabilities_json(&probe_json, "tauri", Some(&native))
 }
 
 #[tauri::command]
@@ -332,6 +344,7 @@ pub fn run() {
             editor_redo,
             editor_project,
             editor_journal,
+            capabilities,
             editor_take_log,
             editor_checkpoint,
             editor_recover,

@@ -65,6 +65,7 @@ function fakeEngine() {
   const engine: Engine = {
     backend: "wasm",
     info: async () => ({ name: "fake", version: "0", abi: 1 }),
+    capabilities: async () => { throw new Error("not used"); },
     editing,
     media: { open: async () => { throw new Error("not used"); } },
     export: { start: async () => { throw new Error("not used"); } },

@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEditing } from "./editing";
+import { probeHost } from "./probe";
 import { exportNotYet } from "./export/job";
 import { toStorageError, type ProjectStorage } from "./persist/storage";
-import { MediaDecodeError, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
+import { MediaDecodeError, parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
 /** Native backend: the Rust engine runs in the Tauri shell process; commands are defined in apps/desktop/src-tauri/src/lib.rs. */
 export function createTauriEngine(): Engine {
@@ -70,6 +71,7 @@ export function createTauriEngine(): Engine {
       checkpoint: () => invoke<string>("editor_checkpoint"),
       recover: (baseJson, checkpointJson, log) => invoke<string>("editor_recover", { baseJson, checkpointJson, log }),
     }),
+    capabilities: async () => parseCapabilities(await invoke<string>("capabilities", { probeJson: await probeHost() })),
   };
 }
 

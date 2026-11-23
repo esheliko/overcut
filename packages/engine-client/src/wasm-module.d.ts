@@ -46,6 +46,7 @@ declare module "@app/wasm-pkg" {
     static recover(baseJson: string | undefined, checkpointJson: string | undefined, log: string): Editor;
     recovery(): string | undefined;
   }
+  export function capabilities(probe_json: string): string;
   /** A waveform extraction. Mirrors `PeaksJob` in crates/wasm/src/lib.rs. */
   export class PeaksJob {
     constructor(sampleRate: number, channels: number, resume: Uint8Array);

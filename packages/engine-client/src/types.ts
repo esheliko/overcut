@@ -1,5 +1,8 @@
 import type { ExportApi } from "./export/types";
 import type { Clip, ClipId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TrackId } from "./model.generated";
+import type { Capabilities } from "./capabilities";
+
+export * from "./capabilities";
 
 /** What the engine says about itself. Mirrors `app_core::EngineInfo` (crates/core/src/lib.rs). */
 export interface EngineInfo {
@@ -19,6 +22,8 @@ export type EngineBackend = "wasm" | "tauri";
 export interface Engine {
   readonly backend: EngineBackend;
   info(): Promise<EngineInfo>;
+  /** What this device can do (codecs, GPU, storage, cores). Never rejects for a partly failed probe; unknowns are reported as such. */
+  capabilities(): Promise<Capabilities>;
   /** Edit the open project: apply ops, undo, redo (M1-003). The UI wiring comes with the timeline (M1-034). */
   readonly editing: Editing;
   /** Renders a sequence of the open project to a video file (M1-022). Web: a Worker streaming to OPFS. Tauri: rejects `not_yet` until native encode (M1-015). */
