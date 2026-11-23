@@ -2,9 +2,9 @@
  *  Unit-tested in tests/unit/export-dialog.test.ts. Rules: docs/features/export-dialog.md. */
 import { ExportError, type DesktopCodecs, type ExportErrorCode, type ExportFormatId, type ExportFormatOption, type ExportFormats, type ExportSettings } from "@app/engine-client";
 
-export type PresetId = "original" | "youtube" | "vertical" | "small";
+export type PresetId = "original" | "youtube" | "vertical" | "x" | "whatsapp" | "discord" | "small";
 export type QualityId = "high" | "medium" | "low";
-export const PRESET_IDS: readonly PresetId[] = ["original", "youtube", "vertical", "small"];
+export const PRESET_IDS: readonly PresetId[] = ["original", "youtube", "vertical", "x", "whatsapp", "discord", "small"];
 export const QUALITIES: readonly QualityId[] = ["high", "medium", "low"];
 /** Video bitrate as a share of the default for the size (ADR 0004: bits per pixel). */
 export const QUALITY_FACTOR: Record<QualityId, number> = { high: 1, medium: 0.6, low: 0.35 };
@@ -25,6 +25,8 @@ export interface Choice {
   fps: number | null;
   format: ExportFormatId | "auto";
   quality: QualityId;
+  /** A size the file should stay under (platform upload cap): the video bitrate is lowered to aim at it. Dropped by any Advanced edit. */
+  capBytes?: number;
 }
 
 const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
@@ -50,31 +52,96 @@ export function fpsSteps(srcFps: number): (number | null)[] {
   return [null, ...[60, 50, 30, 25, 24].filter((f) => f < srcFps - 0.01 && Math.abs(f - srcFps) > 0.01)];
 }
 
-/** The preset's concrete choice for this project. Presets only ever shrink: a 720p project exported as "YouTube 1080p" stays 720p. */
+/**
+ * Platform limits the presets use. The sourced figures and their "last checked" dates live in ONE table: docs/features/export.md
+ * ("Platform limits"). Change a number there and here together. `capBytes` is what we aim under (decimal MB, as the platforms count),
+ * `maxSeconds` only drives a warning (a longer video is not cut). Where sources disagree we use the lowest figure reported.
+ */
+export interface PlatformSpec {
+  /** Short side to export at (never enlarged). */
+  short: number;
+  fpsMax: number;
+  capBytes?: number;
+  maxSeconds?: number;
+  /** A fixed 9:16 frame (the project is fitted inside it with bars, never cropped). */
+  tall?: boolean;
+}
+export const PLATFORMS: Partial<Record<PresetId, PlatformSpec>> = {
+  youtube: { short: 1080, fpsMax: 60 },
+  vertical: { short: 1080, fpsMax: 60, tall: true },
+  x: { short: 1080, fpsMax: 60, capBytes: 512_000_000, maxSeconds: 140 },
+  whatsapp: { short: 720, fpsMax: 30, capBytes: 16_000_000 },
+  discord: { short: 720, fpsMax: 30, capBytes: 10_000_000 },
+};
+
+/** Share of a cap the video aims for: the encoder is variable-rate and the container adds overhead, so aim under, not at, the limit. */
+export const CAP_MARGIN = 0.9;
+/** Below this many bits per pixel per frame a picture stops being watchable (H.264 "Medium" is 0.06): step the size down instead of the quality. */
+export const MIN_BPP = 0.05;
+const CAP_AUDIO_BPS = 192_000; // worst case (AAC), so the choice does not depend on the codec picked later
+
+const capVideoBps = (capBytes: number, seconds: number, audioBps: number) => Math.max(0, (capBytes * CAP_MARGIN * 8) / Math.max(0.1, seconds) - audioBps);
+
+/** The preset's concrete choice for this project. Presets only ever shrink: a 720p project exported as "YouTube 1080p" stays 720p. A capped preset also steps the size down until the cap leaves a watchable bitrate. */
 export function presetChoice(id: PresetId, src: Source): Choice {
-  switch (id) {
-    case "original":
-      return { ...scaledSize(src, null), fps: null, format: "auto", quality: "high" };
-    case "youtube":
-      return { ...scaledSize(src, 1080), fps: src.fps > 60.01 ? 60 : null, format: "auto", quality: "high" };
-    case "vertical": {
-      // A 9:16 frame as wide as the project allows, at most 1080 wide. A wider picture is placed inside it (black bars; reframing comes later).
-      const w = even(Math.min(1080, src.width));
-      return { width: w, height: even((w * 16) / 9), fps: src.fps > 60.01 ? 60 : null, format: "auto", quality: "high" };
-    }
-    case "small":
-      return { ...scaledSize(src, 720), fps: src.fps > 30.01 ? 30 : null, format: "auto", quality: "medium" };
+  if (id === "original") return { ...scaledSize(src, null), fps: null, format: "auto", quality: "high" };
+  if (id === "small") return { ...scaledSize(src, 720), fps: src.fps > 30.01 ? 30 : null, format: "auto", quality: "medium" };
+  const p = PLATFORMS[id]!;
+  const fps = src.fps > p.fpsMax + 0.01 ? p.fpsMax : null;
+  const rate = fps ?? src.fps;
+  if (p.tall) {
+    // A 9:16 frame as wide as the project allows, at most 1080 wide. A different shape is placed inside it (bars; reframing comes later).
+    const w = even(Math.min(p.short, src.width));
+    return { width: w, height: even((w * 16) / 9), fps, format: "auto", quality: "high" };
   }
+  let size = scaledSize(src, p.short);
+  if (p.capBytes) {
+    const budget = capVideoBps(p.capBytes, src.seconds, CAP_AUDIO_BPS);
+    const steps = [p.short, 720, 480, 360, 240].filter((s) => s <= p.short);
+    for (const short of [...new Set(steps)]) {
+      size = scaledSize(src, short);
+      if (budget / (size.width * size.height * rate) >= MIN_BPP) break; // the last step stays when nothing reaches it
+    }
+  }
+  return { ...size, fps, format: "auto", quality: "high", ...(p.capBytes ? { capBytes: p.capBytes } : null) };
+}
+
+/** The same choice without a platform's size cap (any manual change makes it a custom choice). */
+export function withoutCap(c: Choice): Choice {
+  const out = { ...c };
+  delete out.capBytes;
+  return out;
+}
+
+/** True when the picture's shape differs from the preset's fixed frame, so it will be placed inside it with bars (only 9:16 presets have one). */
+export function needsBars(id: PresetId, src: Pick<Source, "width" | "height">): boolean {
+  if (!PLATFORMS[id]?.tall) return false;
+  return Math.abs(src.width / src.height - 9 / 16) > 0.02;
+}
+
+/** Warnings for a choice: over a platform's duration limit, or too long for its size cap even at the lowest bitrate. Pure; the UI shows them next to the estimate. */
+export interface PresetWarning { key: "export.warn.duration" | "export.warn.cap"; values: Record<string, string | number> }
+export function presetWarnings(id: PresetId | "custom", c: Choice, src: Source, f: ExportFormatOption, locale?: string): PresetWarning[] {
+  const out: PresetWarning[] = [];
+  const p = id === "custom" ? undefined : PLATFORMS[id];
+  if (p?.maxSeconds && src.seconds > p.maxSeconds) out.push({ key: "export.warn.duration", values: { limit: formatClock(p.maxSeconds), length: formatClock(src.seconds) } });
+  if (c.capBytes) {
+    const est = estimateBytes(c, src, f);
+    if (est > c.capBytes) out.push({ key: "export.warn.cap", values: { cap: formatBytes(c.capBytes, locale), size: formatBytes(est, locale) } });
+  }
+  return out;
 }
 
 /** Frame rate the export actually runs at. */
 export const outputFps = (c: Choice, src: Source): number => c.fps ?? src.fps;
 
-export function videoBitrate(c: Choice, src: Source, codec: ExportFormatOption["videoCodec"]): number {
+export function videoBitrate(c: Choice, src: Source, codec: ExportFormatOption["videoCodec"], audio: "aac" | "opus" = codec === "h264" ? "aac" : "opus"): number {
   // Bits per pixel per frame (ADR 0004). No 1 Mbps floor like the engine default: on a tiny frame that floor made the estimate several times too big.
   const bpp = codec === "h264" ? 0.1 : codec === "vp9" ? 0.075 : 0.06;
   const rate = c.width * c.height * outputFps(c, src) * bpp * QUALITY_FACTOR[c.quality];
-  return Math.min(80_000_000, Math.max(100_000, Math.round(rate)));
+  const normal = Math.min(80_000_000, Math.max(100_000, Math.round(rate)));
+  // Size-capped preset: never above what keeps the file under the cap (same floor, so a very long video still gets a picture and the estimate says it will not fit).
+  return c.capBytes ? Math.min(normal, Math.max(100_000, Math.round(capVideoBps(c.capBytes, src.seconds, audioBitrate(audio))))) : normal;
 }
 
 export const audioBitrate = (audio: "aac" | "opus"): number => (audio === "aac" ? 192_000 : 128_000);
@@ -87,7 +154,7 @@ export function pickFormat(c: Choice, options: readonly ExportFormatOption[], au
 
 /** About how big the file will be: target bitrate x length. The encoder is variable-rate, so the real size lands near this, not on it. */
 export function estimateBytes(c: Choice, src: Source, f: ExportFormatOption): number {
-  return Math.round(((videoBitrate(c, src, f.videoCodec) + audioBitrate(f.audioCodec)) * src.seconds) / 8);
+  return Math.round(((videoBitrate(c, src, f.videoCodec, f.audioCodec) + audioBitrate(f.audioCodec)) * src.seconds) / 8);
 }
 
 /** The settings handed to `engine.export.start` (the sequence and the media files are added by the caller). */
@@ -99,7 +166,7 @@ export function buildSettings(c: Choice, src: Source, f: ExportFormatOption): Om
     width: c.width,
     height: c.height,
     ...(c.fps !== null ? { frameRate: { num: c.fps, den: 1 } } : null),
-    videoBitrate: videoBitrate(c, src, f.videoCodec),
+    videoBitrate: videoBitrate(c, src, f.videoCodec, f.audioCodec),
     audioBitrate: audioBitrate(f.audioCodec),
   };
 }
@@ -151,7 +218,7 @@ function safeStorage(): Storage | undefined {
 
 function isChoice(c: unknown): c is Choice {
   const v = c as Partial<Choice> | undefined;
-  return !!v && typeof v.width === "number" && typeof v.height === "number" && (v.fps === null || typeof v.fps === "number") && typeof v.format === "string" && QUALITIES.includes(v.quality as QualityId);
+  return !!v && typeof v.width === "number" && typeof v.height === "number" && (v.fps === null || typeof v.fps === "number") && typeof v.format === "string" && QUALITIES.includes(v.quality as QualityId) && (v.capBytes === undefined || typeof v.capBytes === "number");
 }
 
 /** A remembered custom choice still valid for this project (sizes at or below the project's, same frame-rate rule), else null. */
@@ -183,7 +250,7 @@ export function saveName(internal: string, date: Date = new Date()): string {
 }
 
 /** The chip's second line, as a message key plus values, so it never promises more than the output delivers. */
-export function presetHint(id: PresetId, src: Source): { key: string; values: { size: string } } {
+export function presetHint(id: PresetId, src: Source, locale?: string): { key: string; values: Record<string, string> } {
   const c = presetChoice(id, src);
   const size = `${c.width}×${c.height}`;
   const short = Math.min(src.width, src.height);
@@ -191,7 +258,10 @@ export function presetHint(id: PresetId, src: Source): { key: string; values: { 
     case "original": return { key: "export.preset.original.hint", values: { size } };
     case "youtube": return { key: short < 1080 ? "export.preset.youtube.capped" : "export.preset.youtube.hint", values: { size } };
     case "small": return { key: short < 720 ? "export.preset.small.capped" : "export.preset.small.hint", values: { size } };
-    case "vertical": return { key: src.width / src.height > 0.57 ? "export.preset.vertical.bars" : "export.preset.vertical.hint", values: { size } };
+    case "vertical": return { key: needsBars(id, src) ? "export.preset.vertical.bars" : "export.preset.vertical.hint", values: { size } };
+    case "x": return { key: short < 1080 ? "export.preset.x.capped" : "export.preset.x.hint", values: { size } };
+    case "whatsapp":
+    case "discord": return { key: "export.preset.capped.hint", values: { size, cap: formatBytes(PLATFORMS[id]!.capBytes!, locale) } };
   }
 }
 

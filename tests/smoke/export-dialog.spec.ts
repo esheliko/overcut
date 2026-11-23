@@ -33,7 +33,7 @@ test("one click on Export (the smart default) makes a file and saves it", async 
   await expect(dialog).toBeVisible();
   // presets are big tappable chips; the default is the project's own size
   const chips = page.locator(".export-chip-choice");
-  await expect(chips).toHaveCount(4);
+  await expect(chips).toHaveCount(7);
   for (const c of await chips.all()) expect((await c.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(page.getByTestId("export-preset-original")).toBeChecked();
   await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
@@ -102,4 +102,25 @@ test("cancel really cancels and returns to the settings; the editor is read-only
   await page.getByTestId("export-cancel").click();
   await expect(page.getByTestId("export-go")).toBeVisible({ timeout: 15_000 }); // back on the settings
   await expect(page.getByTestId("export-chip")).toHaveCount(0);
+});
+
+test("platform presets: picking Discord aims under its cap, labels the figure a target, and any Advanced change drops the cap", async ({ page }) => {
+  await ready(page);
+  await page.getByTestId("export-open").click();
+  await page.getByTestId("export-preset-discord").check({ force: true });
+  await expect(page.getByTestId("export-preset-discord")).toBeChecked();
+  await expect(page.locator(".export-chip-choice", { has: page.getByTestId("export-preset-discord") })).toContainText("Aims under 10 MB");
+  await expect(page.getByTestId("export-cap-note")).toContainText(/Aims to stay under 10 MB.*target/);
+  await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
+  await expect(page.getByTestId("export-cap-warning")).toHaveCount(0); // a short clip fits
+  // The 160x120 fixture is not 9:16, so the TikTok chip says it adds bars and shows the note when chosen.
+  await page.getByTestId("export-preset-vertical").check({ force: true });
+  await expect(page.getByText("placed inside this tall frame with black bars")).toBeVisible();
+  await expect(page.getByTestId("export-cap-note")).toHaveCount(0);
+  await page.getByTestId("export-preset-whatsapp").check({ force: true });
+  await expect(page.getByTestId("export-cap-note")).toContainText("16 MB");
+  await page.getByText("Advanced").click();
+  await page.getByTestId("export-quality").selectOption("low");
+  await expect(page.getByTestId("export-cap-note")).toHaveCount(0); // custom: no cap claim
+  expect(await noOverflow(page)).toBeLessThanOrEqual(0);
 });

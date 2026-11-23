@@ -7,7 +7,7 @@ import type { CodecProbe } from "../../packages/engine-client/src/export/presets
 import type { Project } from "../../packages/engine-client/src/model.generated";
 import { canShareFile, saveFile, shareFile } from "../../apps/web/src/export/deliver";
 import {
-  buildSettings, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, pickFormat, presetChoice, presetHint, saveName, resolutionSteps, saveRemembered, scaledSize, usableCustom, videoBitrate,
+  PLATFORMS, MIN_BPP, withoutCap, buildSettings, errorKey, needsBars, presetWarnings, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, pickFormat, presetChoice, presetHint, saveName, resolutionSteps, saveRemembered, scaledSize, usableCustom, videoBitrate,
   type Choice, type Source,
 } from "../../apps/web/src/export/model";
 
@@ -215,4 +215,87 @@ test("size estimate follows codec bits per pixel with no floor that inflates tin
   // 1080p30 VP9 high: 1920*1080*30*0.075 = 4.67 Mbps video + 128 kbps audio over 60 s
   assert.equal(estimateBytes(presetChoice("original", HD), HD, OPT("webm-vp9")), Math.round(((4_665_600 + 128_000) * 60) / 8));
   assert.ok(videoBitrate({ ...c, width: 7680, height: 4320 }, HD, "h264") <= 80_000_000);
+});
+
+// ---- platform presets (EX-02) ----
+const H264 = OPT("mp4-h264");
+const clip = (seconds: number, over: Partial<Source> = {}): Source => ({ width: 1920, height: 1080, fps: 30, seconds, ...over });
+
+test("platform presets: X and YouTube keep Full HD and the project's shape; frame rate is capped at 60", () => {
+  const x = presetChoice("x", clip(30, { fps: 120 }));
+  assert.deepEqual([x.width, x.height, x.fps], [1920, 1080, 60]);
+  assert.equal(x.capBytes, 512_000_000);
+  const p = presetChoice("x", PHONE); // a vertical project stays vertical: no reframe
+  assert.deepEqual([p.width, p.height], [1080, 1920]);
+});
+
+test("size cap: the video bitrate is lowered so the estimate lands under WhatsApp 16 MB and Discord 10 MB", () => {
+  for (const [id, cap] of [["whatsapp", 16_000_000], ["discord", 10_000_000]] as const) {
+    for (const seconds of [10, 30, 60, 120]) {
+      const src = clip(seconds);
+      const c = presetChoice(id, src);
+      const est = estimateBytes(c, src, H264);
+      assert.ok(est <= cap * 0.93, `${id} ${seconds}s: ${est} should be under ${cap}`);
+      assert.ok(c.fps === null || c.fps <= 30);
+    }
+  }
+});
+
+test("size cap: a longer video steps the size down (never up) so the picture stays watchable, and never above 720p", () => {
+  const short = presetChoice("discord", clip(10));
+  assert.deepEqual([short.width, short.height], [1280, 720]);
+  const long = presetChoice("discord", clip(120));
+  assert.ok(long.height < 720, "120 s in 10 MB cannot be 720p");
+  const bpp = (c: Choice, s: Source) => (videoBitrate(c, s, "h264", "aac")) / (c.width * c.height * (c.fps ?? s.fps));
+  assert.ok(bpp(long, clip(120)) >= MIN_BPP * 0.95);
+  const tiny = presetChoice("whatsapp", clip(10, { width: 640, height: 360 }));
+  assert.deepEqual([tiny.width, tiny.height], [640, 360]); // presets never enlarge
+});
+
+test("size cap: too long even at the smallest size gives a warning, not a silent miss; custom choices carry no cap", () => {
+  const src = clip(3600);
+  const c = presetChoice("discord", src);
+  const w = presetWarnings("discord", c, src, H264);
+  assert.deepEqual(w.map((x) => x.key), ["export.warn.cap"]);
+  assert.deepEqual(presetWarnings("discord", presetChoice("discord", clip(20)), clip(20), H264), []);
+  const custom = withoutCap(c);
+  assert.deepEqual(presetWarnings("custom", custom, src, H264), []);
+  // dropping the cap restores the normal bitrate
+  assert.ok(videoBitrate(custom, src, "h264", "aac") > videoBitrate(c, src, "h264", "aac"));
+});
+
+test("duration limits only warn (X standard accounts 2:20); other presets have none", () => {
+  const long = clip(200);
+  const w = presetWarnings("x", presetChoice("x", long), long, H264, "en");
+  assert.deepEqual(w.map((x) => x.key), ["export.warn.duration"]);
+  assert.deepEqual(w[0]!.values, { limit: "2:20", length: "3:20" });
+  assert.deepEqual(presetWarnings("x", presetChoice("x", clip(60)), clip(60), H264), []);
+  assert.deepEqual(presetWarnings("youtube", presetChoice("youtube", long), long, H264), []);
+});
+
+test("project canvas: a canvas that is not 9:16 gets the bars note on the 9:16 chip only; a vertical canvas does not", () => {
+  assert.equal(needsBars("vertical", HD), true);
+  assert.equal(needsBars("vertical", { width: 1080, height: 1080 }), true);
+  assert.equal(needsBars("vertical", PHONE), false);
+  for (const id of ["x", "whatsapp", "discord", "youtube", "small", "original"] as const) assert.equal(needsBars(id, HD), false);
+  assert.equal(presetHint("vertical", HD).key, "export.preset.vertical.bars");
+  assert.equal(presetHint("vertical", PHONE).key, "export.preset.vertical.hint");
+  assert.deepEqual(presetHint("discord", clip(10), "en").values, { size: "1280×720", cap: "10 MB" });
+});
+
+test("presets are labelled as targets: caps in the table are sane and every capped preset has one", () => {
+  assert.equal(PLATFORMS.discord!.capBytes, 10_000_000);
+  assert.equal(PLATFORMS.whatsapp!.capBytes, 16_000_000);
+  assert.ok(Object.values(PLATFORMS).every((p) => p!.fpsMax <= 60 && p!.short >= 480));
+  const s = buildSettings(presetChoice("whatsapp", clip(30)), clip(30), H264);
+  assert.ok(s.videoBitrate! * 30 / 8 + s.audioBitrate! * 30 / 8 < 16_000_000);
+});
+
+test("a remembered capped preset is by name only; an old stored 'vertical' keeps working", () => {
+  const mem = new Map<string, string>();
+  const store = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+  saveRemembered({ preset: "discord" }, store);
+  assert.deepEqual(loadRemembered(store), { preset: "discord" });
+  mem.set("overcut.export", JSON.stringify({ preset: "vertical" }));
+  assert.deepEqual(loadRemembered(store), { preset: "vertical" });
 });

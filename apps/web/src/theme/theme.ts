@@ -50,3 +50,29 @@ export function watchSystem(getPref: () => ThemePref, onChange: (t: Theme) => vo
 export function nextPref(p: ThemePref): ThemePref {
   return THEME_PREFS[(THEME_PREFS.indexOf(p) + 1) % THEME_PREFS.length]!;
 }
+
+// ---- accent colour (UX-05): a second, independent choice on top of the theme ----
+/** `teal` is the base token set; the rest override --accent* and --clip in tokens.css (`:root[data-theme][data-accent]`). */
+export const ACCENTS = ["teal", "blue", "violet", "pink", "orange", "green", "yellow"] as const;
+export type Accent = (typeof ACCENTS)[number];
+const ACCENT_KEY = "overcut.accent";
+/** The swatch shown in the picker: the colour the accent has in the dark theme (decorative; the name is the accessible label). */
+export const ACCENT_SWATCH: Record<Accent, string> = { teal: "#2de2d6", blue: "#6aa8ff", violet: "#a58bff", pink: "#ff7ab6", orange: "#ff9f4a", green: "#5fd97a", yellow: "#f2cf4a" };
+
+export function parseAccent(v: unknown): Accent {
+  return ACCENTS.includes(v as Accent) ? (v as Accent) : "teal";
+}
+export function loadAccent(): Accent {
+  try { return parseAccent(localStorage.getItem(ACCENT_KEY)); } catch { return "teal"; }
+}
+export function saveAccent(a: Accent): void {
+  try {
+    if (a === "teal") localStorage.removeItem(ACCENT_KEY);
+    else localStorage.setItem(ACCENT_KEY, a);
+  } catch { /* not persisted */ }
+}
+/** Set `<html data-accent>` and tell canvas code to re-read tokens (the theme event carries the unchanged theme). */
+export function applyAccent(a: Accent, root: HTMLElement = document.documentElement): void {
+  root.dataset.accent = a;
+  root.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { theme: root.dataset.theme } }));
+}

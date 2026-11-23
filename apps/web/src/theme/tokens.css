@@ -53,6 +53,63 @@
   --focus-ring: #ffffff; --focus-ring-width: 3px; --focus-ring-offset: 3px;
 }
 
+/* Accent colours (UX-05): each one overrides --accent, --accent-ink, --accent-soft and --clip per theme. Teal is the base set above (no attribute needed).
+   tests/unit/theme-contrast.test.ts checks every theme x accent against the same pairs. */
+:root[data-theme="dark"][data-accent="blue"] {
+  --accent: #6aa8ff; --accent-ink: #04152e; --accent-soft: rgba(106, 168, 255, 0.14); --clip: #1f3c63;
+}
+:root[data-theme="light"][data-accent="blue"] {
+  --accent: #1856c4; --accent-ink: #ffffff; --accent-soft: rgba(24, 86, 196, 0.12); --clip: #b5cdf5;
+}
+:root[data-theme="high-contrast"][data-accent="blue"] {
+  --accent: #8ec2ff; --accent-ink: #000000; --accent-soft: rgba(142, 194, 255, 0.22); --clip: #10407a;
+}
+:root[data-theme="dark"][data-accent="violet"] {
+  --accent: #a58bff; --accent-ink: #140a33; --accent-soft: rgba(165, 139, 255, 0.14); --clip: #3d2f6e;
+}
+:root[data-theme="light"][data-accent="violet"] {
+  --accent: #5b3fc8; --accent-ink: #ffffff; --accent-soft: rgba(91, 63, 200, 0.12); --clip: #cdc3f3;
+}
+:root[data-theme="high-contrast"][data-accent="violet"] {
+  --accent: #c1b0ff; --accent-ink: #000000; --accent-soft: rgba(193, 176, 255, 0.22); --clip: #3d2a8a;
+}
+:root[data-theme="dark"][data-accent="pink"] {
+  --accent: #ff7ab6; --accent-ink: #33081c; --accent-soft: rgba(255, 122, 182, 0.14); --clip: #6b2a49;
+}
+:root[data-theme="light"][data-accent="pink"] {
+  --accent: #b3195f; --accent-ink: #ffffff; --accent-soft: rgba(179, 25, 95, 0.12); --clip: #f2bcd5;
+}
+:root[data-theme="high-contrast"][data-accent="pink"] {
+  --accent: #ff9ccb; --accent-ink: #000000; --accent-soft: rgba(255, 156, 203, 0.22); --clip: #8a2257;
+}
+:root[data-theme="dark"][data-accent="orange"] {
+  --accent: #ff9f4a; --accent-ink: #301700; --accent-soft: rgba(255, 159, 74, 0.14); --clip: #6b4318;
+}
+:root[data-theme="light"][data-accent="orange"] {
+  --accent: #a14a00; --accent-ink: #ffffff; --accent-soft: rgba(161, 74, 0, 0.12); --clip: #f3cfa6;
+}
+:root[data-theme="high-contrast"][data-accent="orange"] {
+  --accent: #ffb870; --accent-ink: #000000; --accent-soft: rgba(255, 184, 112, 0.22); --clip: #7a4300;
+}
+:root[data-theme="dark"][data-accent="green"] {
+  --accent: #5fd97a; --accent-ink: #04210c; --accent-soft: rgba(95, 217, 122, 0.14); --clip: #1f5a2c;
+}
+:root[data-theme="light"][data-accent="green"] {
+  --accent: #1b6b2f; --accent-ink: #ffffff; --accent-soft: rgba(27, 107, 47, 0.12); --clip: #b7e0c0;
+}
+:root[data-theme="high-contrast"][data-accent="green"] {
+  --accent: #86f59a; --accent-ink: #000000; --accent-soft: rgba(134, 245, 154, 0.22); --clip: #0f5e24;
+}
+:root[data-theme="dark"][data-accent="yellow"] {
+  --accent: #f2cf4a; --accent-ink: #2b2200; --accent-soft: rgba(242, 207, 74, 0.14); --clip: #5e5016;
+}
+:root[data-theme="light"][data-accent="yellow"] {
+  --accent: #7a5a00; --accent-ink: #ffffff; --accent-soft: rgba(122, 90, 0, 0.12); --clip: #efdf9c;
+}
+:root[data-theme="high-contrast"][data-accent="yellow"] {
+  --accent: #ffe36e; --accent-ink: #000000; --accent-soft: rgba(255, 227, 110, 0.22); --clip: #6b5a00;
+}
+
 @media (pointer: fine) { :root { --target: 36px; } }
 @media (min-width: 720px) { :root { --gutter: 56px; --lane: 56px; } }
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { :root { --top: 44px; --lane: 36px; --ruler: 24px; } }

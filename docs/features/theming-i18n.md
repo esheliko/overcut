@@ -8,6 +8,9 @@
 - **RTL**: shell CSS uses logical properties; the grid areas mirror. Deliberately LTR in every locale: the timeline time axis, the transport controls and the timecode (as in other editors).
 - **a11y primitives** (`apps/web/src/a11y/`): `.visually-hidden`/`<VisuallyHidden>`, focus-ring tokens, `announce()` live-region announcer (polite/assertive; repeats identical messages), `useRovingTabindex` + `nextRovingIndex` (RTL aware; used by the Details tabs).
 
+## Accent colours (UX-05)
+Seven accents (`ACCENTS` in `theme/theme.ts`: teal = the base tokens, blue, violet, pink, orange, green, yellow) are a second choice next to the theme, picked in the "..." menu (radio swatches, 44 px), stored in `localStorage["overcut.accent"]` (teal removes the key) and applied as `<html data-accent>` before first paint. Each accent overrides `--accent --accent-ink --accent-soft --clip` per theme in `tokens.css` (`:root[data-theme="light"][data-accent="blue"]` ...). `theme-contrast.test.ts` runs the full pair list for every theme x accent (21 combinations) and checks no accent is half-defined. Adding an accent = three override blocks + the `ACCENTS` / swatch / `accent.*` string entries; the test fails until the pairs pass.
+
 ## Rules for new UI
 - No user-visible English in components: add the string to `en.json` and use `t()`. `tests/unit/i18n-hardcoded.test.ts` fails on JSX text and on `aria-label/title/placeholder/alt` literals.
 - New colour pairs: add the pair to `PAIRS` in `tests/unit/theme-contrast.test.ts`; text needs 4.5:1, non-text 3:1.
