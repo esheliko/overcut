@@ -114,6 +114,7 @@ export class ProjectSession {
   private sinceCheckpoint = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
+  private edits = 0;
   private _status: SaveStatus = "saved";
   private _error: StorageError | undefined;
   /** Cost of the most recent journal append (ms) and how many there have been, for the performance notes in the docs. */
@@ -132,7 +133,10 @@ export class ProjectSession {
     const after = async <T extends EditOutcome>(p: Promise<T>): Promise<T> => {
       if (this.closed) throw new Error("the project is closed");
       const out = await p;
-      if (out.changed) this.schedule();
+      if (out.changed) {
+        this.edits += 1;
+        this.schedule();
+      }
       return out;
     };
     this.editing = {
@@ -141,6 +145,16 @@ export class ProjectSession {
       undo: () => after(e.undo()),
       redo: () => after(e.redo()),
     };
+  }
+
+  /** How many edits (including undo and redo) this session has made: automatic versions are taken only when it moved. */
+  get editCount(): number {
+    return this.edits;
+  }
+
+  /** The project as it is now, as `.overcut` bytes (a version snapshot, an export). Does not touch the saved base or the journal. */
+  async snapshot(): Promise<Uint8Array> {
+    return this.engine.saveProject(await this.engine.editing.project(), this.baseBytes);
   }
 
   get status(): SaveStatus {

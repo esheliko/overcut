@@ -43,7 +43,7 @@ interface Live { file: File; probed: Probed }
  * posters and bin state, and re-derives the bin's cards whenever the shared project changes (so undo of an import removes its card).
  * Changes are queued so concurrent drops cannot interleave.
  */
-export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: boolean, name: string, text: BinText) {
+export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: boolean, name: string, text: BinText, keep: { size: boolean; rate: boolean } = { size: false, rate: false }) {
   const [items, setItems] = useState<BinItem[]>([]);
   const store = useStore();
   const project = useProjectStore((s) => s.project);
@@ -57,6 +57,8 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
   const importRef = useRef<(s: Source[]) => Promise<void>>(() => Promise.resolve());
   const textRef = useRef(text);
   textRef.current = text;
+  const keepRef = useRef(keep);
+  keepRef.current = keep;
   const nameRef = useRef(name);
   nameRef.current = name;
 
@@ -157,7 +159,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           live.current.set(id, { file: s.file, probed: res.probed });
           // The very first import goes straight onto the timeline (every file of that drop, in order); one undo step per file.
           const first = cur.media.length === 0 && clipCount(cur) === 0;
-          const ops = importOps(cur, ref, res.probed);
+          const ops = importOps(cur, ref, res.probed, keepRef.current);
           if (first || added > 0) {
             const withRef: Project = { ...cur, media: [...cur.media, ref] };
             const place = insertOps(withRef, ref, res.probed, timelineEnd(cur));

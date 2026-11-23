@@ -1,4 +1,5 @@
 import type { Editing, EditOutcome, Op, Project } from "@app/engine-client";
+import { afterApply, afterRedo, afterUndo, describeOps, EMPTY_HISTORY, type HistoryLabel, type HistoryState } from "./history";
 import { createContext, createElement, useContext, useSyncExternalStore, type ReactNode } from "react";
 
 /** What every panel reads. Replaced (never mutated) on each change, so a selector result is stable until its part changes. */
@@ -13,6 +14,8 @@ export interface ProjectState {
   readonly playhead: number;
   /** True while an export runs: the project is frozen (edits are refused) but playback, selection and scrubbing still work. */
   readonly readOnly: boolean;
+  /** The edits made this session by name (TL-06): the History panel reads it; `past.length` is where "now" is. */
+  readonly history: HistoryState;
 }
 
 type Listener = () => void;
@@ -25,7 +28,7 @@ const NO_SELECTION: ReadonlySet<string> = new Set();
  * the bin, timeline, preview and transport cannot disagree.
  */
 export class ProjectStore {
-  private state: ProjectState = { project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, playhead: 0, readOnly: false };
+  private state: ProjectState = { project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, playhead: 0, readOnly: false, history: EMPTY_HISTORY };
   private listeners = new Set<Listener>();
   private chain: Promise<unknown> = Promise.resolve();
   private editing: Editing | null = null;
@@ -51,12 +54,12 @@ export class ProjectStore {
     const mine = ++this.token;
     this.editing = editing;
     if (!editing) {
-      this.set({ project: null, canUndo: false, canRedo: false, selection: NO_SELECTION });
+      this.set({ project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, history: EMPTY_HISTORY });
       return Promise.resolve();
     }
     return this.enqueue(async () => {
       const project = await editing.project().catch(() => null); // no project open yet: stay empty until the opener calls reload()
-      if (project && this.token === mine) this.set({ project, canUndo: history.canUndo ?? false, canRedo: history.canRedo ?? false, selection: this.pruned(project) });
+      if (project && this.token === mine) this.set({ project, canUndo: history.canUndo ?? false, canRedo: history.canRedo ?? false, selection: this.pruned(project), history: { ...EMPTY_HISTORY, earlier: history.canUndo ?? false } });
     });
   }
 
@@ -71,23 +74,39 @@ export class ProjectStore {
     return next;
   }
 
-  private run(call: (e: Editing) => Promise<EditOutcome>): Promise<EditOutcome | null> {
+  private run(call: (e: Editing) => Promise<EditOutcome>, track: (out: EditOutcome, before: Project | null) => HistoryState | null = () => null): Promise<EditOutcome | null> {
     const ed = this.editing;
     if (!ed || this.state.readOnly) return Promise.resolve(null);
     const mine = this.token;
     return this.enqueue(async () => {
+      const before = this.state.project;
       const out = await call(ed);
       if (this.token !== mine) return out;
       const project = out.changed ? await ed.project() : null;
       if (this.token !== mine) return out;
-      this.set({ project: project ?? this.state.project, canUndo: out.can_undo, canRedo: out.can_redo, ...(project ? { selection: this.pruned(project) } : null) });
+      this.set({ project: project ?? this.state.project, canUndo: out.can_undo, canRedo: out.can_redo, ...(project ? { selection: this.pruned(project) } : null), ...(out.changed ? { history: track(out, before) ?? this.state.history } : null) });
       return out;
     });
   }
 
-  readonly apply = (ops: Op | Op[], coalesce?: number) => this.run((e) => e.apply(ops, coalesce));
-  readonly undo = () => this.run((e) => e.undo());
-  readonly redo = () => this.run((e) => e.redo());
+  /** `label` overrides the name the History panel derives from the ops (a restored version is one step made of many ops). */
+  readonly apply = (ops: Op | Op[], coalesce?: number, label?: HistoryLabel) =>
+    this.run((e) => e.apply(ops, coalesce), (_out, before) => afterApply(this.state.history, { label: label ?? describeOps(Array.isArray(ops) ? ops : [ops], before), coalesce }));
+  readonly undo = () => this.run((e) => e.undo(), () => afterUndo(this.state.history));
+  readonly redo = () => this.run((e) => e.redo(), () => afterRedo(this.state.history));
+
+  /**
+   * Walks undo/redo until `past.length === target` (the History panel: click a step to go back or forward to it). Stops at the first
+   * step that does nothing; each step is a normal undo/redo, so recovery journals and the undo buttons stay in agreement.
+   */
+  readonly jumpTo = async (target: number): Promise<void> => {
+    for (let guard = 0; guard < 10_000; guard++) {
+      const n = this.state.history.past.length;
+      if (n === target) return;
+      const out = await (n > target ? this.undo() : this.redo());
+      if (!out || !out.changed) return;
+    }
+  };
 
   readonly setSelection = (selection: ReadonlySet<string>): void => {
     if (selection !== this.state.selection) this.set({ selection: selection.size === 0 ? NO_SELECTION : selection });

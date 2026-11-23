@@ -75,11 +75,14 @@ export function mediaRef(id: string, name: string, uri: string, probed: Probed, 
  * The ops that record an import: the media entry and, for the first picture, the sequence's frame rate and size. Applied together with
  * the timeline insert (first import) as one undo step.
  */
-export function importOps(p: Project, ref: MediaRef, probed: Probed): Op[] {
+export function importOps(p: Project, ref: MediaRef, probed: Probed, keep: { size?: boolean; rate?: boolean } = {}): Op[] {
   const ops: Op[] = [{ op: "add_media", media: ref }];
   const seq = p.sequences[0];
-  const adopt = sequenceIsUnset(p) ? sequenceFrom(probed) : null;
-  if (seq && adopt) ops.push({ op: "set_sequence_format", sequence: seq.id, ...adopt });
+  const from = sequenceIsUnset(p) ? sequenceFrom(probed) : null;
+  // A canvas or frame rate the user chose when making the project (`keep`) is not replaced by the first clip's.
+  if (seq && from && !(keep.size && keep.rate)) {
+    ops.push({ op: "set_sequence_format", sequence: seq.id, frame_rate: keep.rate ? seq.frame_rate : from.frame_rate, resolution: keep.size ? seq.resolution : from.resolution });
+  }
   return ops;
 }
 

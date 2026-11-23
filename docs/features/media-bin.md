@@ -34,3 +34,5 @@ Unit: classify, first-picture settings, op shapes, placement, labels. Smoke (des
 ## Offline media that comes back (relink)
 - Media offline at first request used to stay a placeholder until reload. The bin now exposes `readyIds`; when an id turns ready (relink, restored handle permission) the timeline's `MediaLayer.refresh(id)` closes the stale decoder handle, drops the cached waveform error and redraws (waveforms and filmstrips are requested again), and the preview Worker is handed the file (`useWorkerMedia`, keyed on `readyIds`).
 - When a media item leaves the project, `MediaLayer.release(id)` closes its decoder handle (`MediaHost.release`, `engineMediaHost`). Tests: `tests/unit/engine-host.test.ts`, `tests/unit/offline-media.test.ts`.
+
+Note (Projects slice): a canvas size or frame rate chosen in the New project sheet, or by changing the canvas in the preview, is kept when the first picture is imported; only "Match first clip" (the default) adopts the clip's size and rate (`importOps(..., keep)`; `projects-home.md`).

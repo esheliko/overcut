@@ -25,6 +25,10 @@ export interface DesktopApi {
   saveExport(fileName: string, suggested: string): Promise<string | null>;
   /** Shows the file in the system file manager. */
   reveal(path: string): Promise<void>;
+  /** The system Open dialog for a `.overcut` project file: its bytes, or null when cancelled. */
+  openProjectFile(): Promise<Uint8Array | null>;
+  /** The system Save dialog for a project file; writes the bytes and returns the path, or null when cancelled. */
+  saveProjectFile(bytes: Uint8Array, suggested: string): Promise<string | null>;
   codecs(): Promise<DesktopCodecs>;
   /** The opt-in OpenH264 download. Rejects with `{code: "not_yet"}` where the build has no downloader. */
   enableH264(): Promise<void>;
@@ -116,6 +120,11 @@ export function createDesktopApi(invoke: Invoke, listen: Listen): DesktopApi {
     chooseProjectsFolder: () => invoke<string | null>("desktop_choose_projects_folder"),
     saveExport: (fileName, suggested) => invoke<string | null>("desktop_save_export", { fileName, suggested }),
     reveal: (path) => invoke<void>("desktop_reveal", { path }),
+    openProjectFile: async () => {
+      const buf = await invoke<ArrayBuffer>("desktop_open_project_file");
+      return buf.byteLength === 0 ? null : new Uint8Array(buf);
+    },
+    saveProjectFile: (bytes, suggested) => invoke<string | null>("desktop_save_project_file", { bytes: Array.from(bytes), suggested }),
     codecs: async () => JSON.parse(await invoke<string>("desktop_codecs")) as DesktopCodecs,
     enableH264: () => invoke<void>("desktop_enable_h264"),
   };

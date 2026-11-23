@@ -19,8 +19,8 @@ export interface RatioChoice { id: string; value: number }
 export function sequenceView(project: Project | null) {
   const seq = project?.sequences[0];
   const has = !!project && !!seq && clipCount(project) > 0;
-  const rate: Rate = has ? seq.frame_rate : IDLE.rate;
-  const size = has ? seq.resolution : IDLE.size;
+  const rate: Rate = seq ? seq.frame_rate : IDLE.rate; // the project's own canvas, also before the first clip (a new project may set it)
+  const size = seq ? seq.resolution : IDLE.size;
   const endTicks = has ? timelineEnd(project) : IDLE.endTicks;
   return { has, rate, size, endTicks, endFrame: Math.ceil((endTicks * rate.num) / (TICKS_PER_SECOND * rate.den)), sequence: seq?.id ?? "" };
 }
@@ -158,7 +158,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, rati
   }, []);
 
   const p = () => playerRef.current;
-  const ar = view.has ? size.width / size.height : ratios.find((r) => r.id === ratio)!.value;
+  const ar = size.width / size.height;
   const badge = rateLabel(playing ? speed : 1);
   const tcNow = timecodeHMS(frame, rate);
   const total = timecodeHMS(endFrame, rate);
@@ -193,7 +193,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, rati
         </div>
         <label className="ratio">
           <span className="sr-only">{t("ratio.label")}</span>
-          <select value={ratio} disabled={view.has} title={view.has ? t("ratio.fixed") : undefined} onChange={(e) => onRatio(e.target.value)}>
+          <select value={ratio} onChange={(e) => onRatio(e.target.value)} data-testid="ratio-select">
             {ratios.map((r) => <option key={r.id} value={r.id}>{r.id === ratio ? r.id : t(`ratio.${r.id}`)}</option>)}
           </select>
         </label>

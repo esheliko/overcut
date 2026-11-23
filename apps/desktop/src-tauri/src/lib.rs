@@ -357,6 +357,8 @@ macro_rules! handlers {
             desktop::desktop_projects_folder,
             desktop::desktop_choose_projects_folder,
             desktop::desktop_save_export,
+            desktop::desktop_open_project_file,
+            desktop::desktop_save_project_file,
             desktop::desktop_reveal,
             desktop::desktop_codecs,
             desktop::desktop_enable_h264 $(, $extra)*]

@@ -49,3 +49,6 @@ export { memoryStorage } from "./persist/memory";
 export { openProjectSession, ProjectSession, type OpenedSession, type RecoveryNote, type SaveStatus, type SessionOptions } from "./persist/session";
 export { acquireProjectLock, openProjectStorage } from "./persist/open";
 export { newId, newProject, PROJECT_SCHEMA_VERSION } from "./project";
+export { ProjectLibrary, LEGACY_PROJECT_ID, copyName, type ProjectMeta, type KeyValue } from "./persist/library";
+export { VersionStore, AUTO_INTERVAL_MS, AUTO_KEEP, VERSION_CAP_BYTES, type VersionMeta } from "./persist/versions";
+export { PROJECT_FILE } from "./persist/session";

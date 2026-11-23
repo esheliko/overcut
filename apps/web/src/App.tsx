@@ -1,17 +1,25 @@
-import { createEngine, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
+import { AUTO_INTERVAL_MS, createEngine, ProjectLibrary, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
 import { Icon, type IconName } from "./icons";
-import { PersistenceNotes, usePersistence } from "./persistence";
+import { NEW_SPECS, PersistenceNotes, usePersistence, type NewSpec } from "./persistence";
+import { deliverProjectFile } from "./project/actions";
+import { HistorySheet } from "./project/HistorySheet";
+import { NewProjectSheet } from "./project/NewProjectSheet";
+import { nearestRatio, presetSize, type RatioId } from "./project/presets";
+import { ProjectsHome } from "./project/ProjectsHome";
+import { restoreOps } from "./project/restore";
+import { useProjectMeta } from "./project/useProjectMeta";
+import { VersionsSheet } from "./project/VersionsSheet";
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
 import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
 import { Timeline } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { ExportControl } from "./export/ExportDialog";
 import { MediaBin } from "./media/MediaBin";
-import { TICKS, clipCount } from "./media/plan";
+import { TICKS } from "./media/plan";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickOne, setDesktop, type Source } from "./media/sources";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
@@ -116,7 +124,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode }) {
+function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { home(): void; create(): void; versions(): void; history(): void; exportFile(): void; canEdit: boolean } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -148,6 +156,11 @@ function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: 
               <div className="menu-row menu-status" role="presentation">{status}</div>
             </>
           )}
+          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={() => { setOpen(false); project.create(); }}><Icon name="plus" size={20} /><span>{t("menu.new")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={() => { setOpen(false); project.home(); }}><Icon name="home" size={20} /><span>{t("menu.projects")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-history" disabled={!project.canEdit} onClick={() => { setOpen(false); project.history(); }}><Icon name="history" size={20} /><span>{t("menu.history")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-versions" disabled={!project.canEdit} onClick={() => { setOpen(false); project.versions(); }}><Icon name="check" size={20} /><span>{t("menu.versions")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-export-file" disabled={!project.canEdit} onClick={() => { setOpen(false); project.exportFile(); }}><Icon name="download" size={20} /><span>{t("menu.exportFile")}</span></button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
         </div>
@@ -167,11 +180,14 @@ function Editor({ store }: { store: ProjectStore }) {
   const [themePref, setThemePref] = useState<ThemePref>(loadPref);
   const [engine, setEngine] = useState<EngineState>({ status: "loading" });
   const [core, setCore] = useState<Engine | null>(null);
-  const persistence = usePersistence(core);
+  const [library] = useState(() => new ProjectLibrary());
+  const [projectId, setProjectId] = useState<string | null>(() => library.currentId());
+  const persistence = usePersistence(core, projectId);
+  const [dialog, setDialog] = useState<null | "new" | "history" | "versions">(null);
+  const [fix, setFix] = useState(() => ({ size: library.get(library.currentId() ?? "")?.fixSize ?? false, rate: library.get(library.currentId() ?? "")?.fixRate ?? false }));
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
-  const [name, setName] = useState<string | null>(null); // null = the localized default name
-  const [ratio, setRatio] = useState<(typeof RATIOS)[number]["id"]>("16:9");
+  const [name, setName] = useState<string | null>(null); // null = the name in the project list (or the localized default)
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
@@ -219,7 +235,7 @@ function Editor({ store }: { store: ProjectStore }) {
     failed: (n) => t("media.err.failed", { name: n }),
     imported: (count) => t("media.imported", { count }),
     announce,
-  });
+  }, fix);
   const importFiles = media.importSources;
   const [dragging, setDragging] = useState(false);
   const [tlOver, setTlOver] = useState(false);
@@ -274,14 +290,67 @@ function Editor({ store }: { store: ProjectStore }) {
     }),
   };
   const seq = sequenceView(project);
-  const hasClips = project ? clipCount(project) > 0 : false;
-  // The first picture sets the sequence size: show it in the preview shape closest to it.
-  const res = project?.sequences[0]?.resolution;
+  // The preview picker shows the project's real canvas and changes it: one undoable edit (PM-01).
+  const seq0 = project?.sequences[0];
+  const ratio: RatioId = seq0 ? nearestRatio(seq0.resolution) : "16:9";
+  const changeRatio = (id: string) => {
+    if (!seq0 || !projectId) return;
+    const resolution = presetSize(id as RatioId);
+    void store.apply({ op: "set_sequence_format", sequence: seq0.id, frame_rate: seq0.frame_rate, resolution }).then((out) => {
+      if (!out) return;
+      library.upsert(projectId, { fixSize: true });
+      setFix((f) => ({ ...f, size: true }));
+      announce(t("canvas.changed", { size: `${resolution.width}×${resolution.height}` }));
+    });
+  };
+  const posterOf = (id: string) => media.items.find((i) => i.id === id)?.poster;
+  useProjectMeta(library, projectId, project, posterOf);
+  useEffect(() => { setName(null); setFix({ size: library.get(projectId ?? "")?.fixSize ?? false, rate: library.get(projectId ?? "")?.fixRate ?? false }); }, [library, projectId]);
+
+  // ---- projects: home, new, open, versions (PM-01, PM-06, PM-07) ----
+  const openId = (id: string) => { library.setCurrent(id); setPlaying(false); setDialog(null); setProjectId(id); };
+  const goHome = () => { library.setCurrent(null); setPlaying(false); setDialog(null); setProjectId(null); };
+  const createNew = (spec: NewSpec) => {
+    const id = ProjectLibrary.newId();
+    NEW_SPECS.set(id, spec);
+    library.upsert(id, { name: spec.name, fixSize: spec.size !== null, fixRate: spec.rate !== null, width: spec.size?.width ?? 0, height: spec.size?.height ?? 0, fps: spec.rate?.num ?? 0 });
+    openId(id);
+  };
+  const session = persistence.session;
+  const versions = persistence.versions;
+  const projectName = name ?? (projectId ? library.get(projectId)?.name : undefined) ?? t("app.untitled");
+  const saveVersion = async (label: string) => {
+    if (!session || !versions) return;
+    await versions.save(await session.snapshot(), label || t("versions.defaultName", { when: new Intl.DateTimeFormat(undefined, { timeStyle: "short" }).format(Date.now()) }));
+  };
+  const restoreVersion = async (id: string) => {
+    if (!session || !versions || !core) return;
+    const bytes = await versions.read(id);
+    const cur = store.getState().project;
+    if (!bytes || !cur) throw new Error("version missing");
+    const ops = restoreOps(cur, (await core.openProject(bytes)).project);
+    if (!ops) throw new Error("incompatible");
+    await versions.save(await session.snapshot(), t("versions.beforeRestore")); // a copy of what is about to be replaced, besides the Undo step
+    if (ops.length > 0 && !(await store.apply(ops, undefined, { key: "history.restore", params: {} }))) throw new Error("busy");
+    announce(t("versions.restored"));
+    setDialog(null);
+  };
+  const exportFile = () => void (async () => {
+    if (!session) return;
+    try { if (await deliverProjectFile(await session.snapshot(), projectName)) announce(t("home.exported", { name: projectName })); } catch { setToast(t("home.exportFailed")); }
+  })();
+  // An automatic version every 10 minutes of editing (the last 20 are kept); only when something changed since the last one.
+  const autoMs = new URLSearchParams(location.search).has("e2e") ? Number(new URLSearchParams(location.search).get("autoversion")) || AUTO_INTERVAL_MS : AUTO_INTERVAL_MS;
   useEffect(() => {
-    if (!res || !hasClips) return;
-    const a = res.width / res.height;
-    setRatio(RATIOS.reduce((best, r) => (Math.abs(Math.log(r.value / a)) < Math.abs(Math.log(best.value / a)) ? r : best)).id);
-  }, [res?.width, res?.height, hasClips]);
+    if (!session || !versions || session.readOnly) return;
+    let last = session.editCount;
+    const timer = setInterval(() => {
+      if (session.editCount === last) return;
+      last = session.editCount;
+      void session.snapshot().then((b) => versions.save(b, null)).catch(() => undefined);
+    }, autoMs);
+    return () => clearInterval(timer);
+  }, [session, versions, autoMs]);
   const pick = (id: string) => { setSheet(id === tool ? !sheet : true); setTool(id); };
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId) ?? TOOLS[0]!;
@@ -292,13 +361,25 @@ function Editor({ store }: { store: ProjectStore }) {
     : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
     : t("engine.failed", { message: engine.message });
 
+  const sheets = (
+    <>
+      {dialog === "new" && <NewProjectSheet onCreate={createNew} onClose={() => setDialog(null)} />}
+      {dialog === "history" && <HistorySheet onClose={() => setDialog(null)} />}
+      {dialog === "versions" && versions && <VersionsSheet versions={versions} onSave={saveVersion} onRestore={restoreVersion} onClose={() => setDialog(null)} />}
+    </>
+  );
+  if (projectId === null) return <><ProjectsHome engine={core} library={library} onOpen={openId} onNew={() => setDialog("new")} />{sheets}<PersistenceNotes state={persistence} /></>;
+
   return (
     <div className="editor">
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           {!compact && <button className="icon-btn" aria-label={t("theme.change", { theme: themeName })} title={themeName} onClick={cycleTheme} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>}
         </div>
-        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => setName((n) => n?.trim() || null)} aria-label={t("project.name")} spellCheck={false} />
+        <div className="title-wrap">
+          <input className="project-name" value={projectName} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim(); if (n && projectId) library.upsert(projectId, { name: n, updatedAt: library.get(projectId)?.updatedAt ?? Date.now() }); setName(null); }} aria-label={t("project.name")} spellCheck={false} data-testid="project-name-input" />
+          <span className="save-status" role="status" data-testid="save-status" data-state={persistence.status}>{t(`save.${persistence.status}`)}</span>
+        </div>
         <div className="top-actions">
           <span className="chip" data-testid="engine" data-state={engine.status} aria-live="polite">
             <span className="dot" aria-hidden="true" />
@@ -308,8 +389,9 @@ function Editor({ store }: { store: ProjectStore }) {
               {engine.status === "error" && <span role="alert" data-testid="engine-error">{t("engine.failed", { message: engine.message })}</span>}
             </span>
           </span>
+          {!compact && <button className="icon-btn" aria-label={t("menu.history")} title={t("menu.history")} disabled={!session} onClick={() => setDialog("history")} data-testid="history-open"><Icon name="history" size={20} /></button>}
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
+          <AppMenu project={{ home: goHome, create: () => setDialog("new"), versions: () => setDialog("versions"), history: () => setDialog("history"), exportFile, canEdit: !!session }} compact={compact} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
         </div>
       </header>
 
@@ -328,7 +410,7 @@ function Editor({ store }: { store: ProjectStore }) {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
         </section>
 
-        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onImport={binProps.onImport} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onPlaying={setPlaying} />
+        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onImport={binProps.onImport} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={changeRatio} onPlaying={setPlaying} />
 
         {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
@@ -344,6 +426,7 @@ function Editor({ store }: { store: ProjectStore }) {
       </main>
 
       <PersistenceNotes state={persistence} />
+      {sheets}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       <div className="toast" role="status">{toast}</div>
     </div>

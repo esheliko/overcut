@@ -35,6 +35,8 @@ const PATHS = {
   check: "M5 12.5l4.5 4.5L19 7",
   download: "M12 4v12M7 11l5 5 5-5M4 20h16",
   share: `${c(18, 5, 2.5)}${c(6, 12, 2.5)}${c(18, 19, 2.5)}M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6`,
+  history: `M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2`,
+  home: "M4 11l8-7 8 7M6 10v10h12V10M10 20v-6h4v6",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
 } as const;
 

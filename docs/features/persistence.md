@@ -24,6 +24,10 @@ The `.overcut` zip keeps its reserved `journal` entry unused: a zip cannot be ap
 ## Media fingerprints and relink (host)
 `Engine.fingerprintMedia(size, first, last)` (wasm `media_fingerprint`, Tauri command of the same name) and `fingerprintFile(engine, file)` read at most 128 KiB of any file. `SetMedia { media, uri, hash }` is the op that records a fingerprint on import and updates a moved file's uri (undoable, journaled). `relinkMedia(engine, project, candidates, current)` implements the relink steps of `project-file.md`: keep what still matches, else find a same-size candidate with the same fingerprint (each file hashed once) and return `set_media` ops, or list the media as offline (references and clips stay). Folder scanning and the import UI are M1 import work; they call these.
 
+## Versions and many projects (PM-06, PM-07)
+- Each project has its own storage folder (`openProjectStorage(id)`) and lock; the project list and last-open id live in a small `localStorage` index (`persist/library.ts`). `ProjectSession.snapshot()` returns the current project as `.overcut` bytes without touching the base or the journal; `editCount` says whether anything changed since the last automatic snapshot.
+- Versions are snapshots next to the project: `versions.json` + `v-<id>.overcut` (atomic writes), automatic every 10 minutes of editing (last 20), named ones kept, 64 MiB cap (`persist/versions.ts`). Restoring is an ordinary undoable edit built from existing ops (`apps/web/src/project/restore.ts`), so it is journaled like any edit and never destroys the current state. Details: `projects-home.md`.
+
 ## Numbers (reference machine: this CI container, Chromium, OPFS)
 - Autosave: one journal append per edit burst: 9 appends for a 41-op session, slowest 7 ms (opens a sync handle per append; a cached handle is a follow-up if it shows up).
 - Engine side: log line serialisation is part of `apply` (< 1 ms at 5k clips, S7 bar unchanged).
@@ -36,4 +40,4 @@ The `.overcut` zip keeps its reserved `journal` entry unused: a zip cannot be ap
 - `tests/smoke/persistence.spec.ts`: real engine and real OPFS in Chromium: edit stream, terminate the Worker mid-stream, reload, state equals the last acknowledged op, undo reaches the session start, Undo recovery.
 
 ## Not covered / follow-ups
-Tauri commands are compile-checked by `desktop-check` only (no webview in CI). Raw IPC bodies instead of number arrays for large bytes. Multi-project list and open/save-as UI (M1-034). Folding the journal into the zip entry. Cached sync handle for appends.
+Tauri commands are compile-checked by `desktop-check` only (no webview in CI). Raw IPC bodies instead of number arrays for large bytes. Folding the journal into the zip entry. Cached sync handle for appends.

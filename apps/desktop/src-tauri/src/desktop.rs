@@ -131,6 +131,56 @@ pub async fn desktop_save_export(
     .await?
 }
 
+/// The system "open" dialog for a `.overcut` project file. Returns the file's bytes; an empty response means cancelled
+/// (a project file is never empty). Files over 256 MiB are refused (the format's own limit).
+#[tauri::command]
+pub async fn desktop_open_project_file(app: tauri::AppHandle) -> Result<Response, String> {
+    blocking(move || -> Result<Response, String> {
+        let Some(path) = app
+            .dialog()
+            .file()
+            .add_filter("OverCut project", &["overcut"])
+            .blocking_pick_file()
+            .and_then(|p| p.into_path().ok())
+        else {
+            return Ok(Response::new(Vec::new()));
+        };
+        let len = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+        if len > 256 * 1024 * 1024 {
+            return Err("project file is too large".into());
+        }
+        Ok(Response::new(std::fs::read(&path).map_err(|e| e.to_string())?))
+    })
+    .await?
+}
+
+/// The system Save dialog for a project file: writes `bytes` where the user chooses and returns the path, or `null` when cancelled.
+#[tauri::command]
+pub async fn desktop_save_project_file(
+    app: tauri::AppHandle,
+    bytes: Vec<u8>,
+    suggested: String,
+) -> Result<Option<String>, String> {
+    if suggested.contains(['/', '\\']) {
+        return Err("invalid file name".into());
+    }
+    blocking(move || -> Result<Option<String>, String> {
+        let Some(dest) = app
+            .dialog()
+            .file()
+            .set_file_name(&suggested)
+            .add_filter("OverCut project", &["overcut"])
+            .blocking_save_file()
+            .and_then(|p| p.into_path().ok())
+        else {
+            return Ok(None);
+        };
+        std::fs::write(&dest, &bytes).map_err(|e| e.to_string())?;
+        Ok(Some(dest.to_string_lossy().into_owned()))
+    })
+    .await?
+}
+
 /// Shows a file in the system file manager (selected where the system can).
 #[tauri::command]
 pub fn desktop_reveal(path: String) -> Result<(), String> {
