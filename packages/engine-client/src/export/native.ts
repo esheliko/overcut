@@ -117,6 +117,7 @@ export async function createNativeEnv(
   } catch (e) {
     dispose();
     const msg = e instanceof Error ? e.message : String(e);
+    if (/not found|not allowed|unknown command/i.test(msg)) throw new ExportError("not_yet", "This build of the desktop app cannot export yet (no native encoder). Use the web app.");
     throw new ExportError(/no H\.264 encoder/.test(msg) ? "unsupported" : "encode_failed", `Could not start encoding: ${msg}`);
   }
   const { id } = session;

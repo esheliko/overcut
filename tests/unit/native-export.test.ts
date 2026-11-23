@@ -156,3 +156,9 @@ test("native decoder: frameIndexAt picks the last frame not after the time (VFR 
   assert.deepEqual([-5, 0, 99, 100, 299, 300, 301, 10_000].map((t) => frameIndexAtTicks(pts, t)), [0, 0, 0, 1, 1, 2, 3, 3]);
   assert.equal(frameIndexAtTicks([], 5), 0);
 });
+
+test("native export: a shell built without the native-media feature says 'not_yet', not a crash", async () => {
+  const { host } = fake({ failBegin: "Command native_export_begin not found" });
+  const job = await createNativeExportApi(host).start({ sequence: "s", sources: { m: new Blob([]) } });
+  await assert.rejects(job.result, (e: unknown) => e instanceof ExportError && e.code === "not_yet");
+});

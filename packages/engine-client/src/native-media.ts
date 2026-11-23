@@ -5,6 +5,9 @@ import type { DecodedFrame, FrameStream, MediaFileInfo, MediaHandle, MediaApi, O
 /** A file the webview picked that also knows where it lives (a Tauri dialog / drag-drop result): decoded in place, never copied. */
 export type PathBlob = Blob & { path?: string };
 
+/** What Tauri rejects with when the shell was built without the `native-media` feature (the command is not registered). */
+export const isMissingCommand = (e: unknown): boolean => /not found|not allowed|unknown command/i.test(e instanceof Error ? e.message : String(e));
+
 /** Tauri's `invoke` (passed in by `tauri.ts`, the only file allowed to import `@tauri-apps/*`). A `Uint8Array` argument is sent as a raw binary body. */
 export type Invoke = <T>(cmd: string, args?: Record<string, unknown> | Uint8Array, options?: { headers: Record<string, string> }) => Promise<T>;
 
@@ -70,6 +73,7 @@ export function createTauriMedia(invoke: Invoke): MediaApi {
         return new NativeHandle(invoke, r.id, info, audioRate, r.pts, staged);
       } catch (e) {
         if (staged !== undefined) await invoke("native_stash_remove", { id: staged }).catch(() => undefined);
+        if (isMissingCommand(e)) throw new MediaDecodeError("unsupported", "This build of the desktop app has no native media decoder. Use the web app, or a build with the native-media feature.");
         throw toMediaError(e);
       }
     },
