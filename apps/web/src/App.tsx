@@ -1,5 +1,5 @@
 import { createEngine, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
@@ -114,8 +114,9 @@ function Details() {
   );
 }
 
-/** The "..." menu: small, out of the way. Holds About / Diagnostics for now. */
-function AppMenu() {
+/** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
+ *  no longer fit the top bar next to the project name and Export. */
+function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -130,7 +131,17 @@ function AppMenu() {
   return (
     <div className="menu" ref={ref}>
       <button className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
-      {open && <div className="menu-pop" role="menu"><a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a></div>}
+      {open && (
+        <div className="menu-pop" role="menu">
+          {compact && (
+            <>
+              <button className="menu-row" role="menuitem" onClick={theme.cycle} data-testid="theme-toggle"><Icon name="theme" size={20} /><span>{t("theme.change", { theme: theme.name })}</span></button>
+              <div className="menu-row menu-status" role="presentation">{status}</div>
+            </>
+          )}
+          <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
+        </div>
+      )}
     </div>
   );
 }
@@ -163,6 +174,7 @@ function Editor({ store }: { store: ProjectStore }) {
   };
   useEffect(() => watchSystem(() => loadPref(), () => undefined), []);
   const wide = useMedia("(min-width: 1100px)");
+  const compact = useMedia("(max-width: 479px)"); // small phone: theme toggle and engine status live in the "..." menu
   const roomy = useMedia("(min-width: 720px)"); // tablet and up: the tool panel is always open
 
   useEffect(() => {
@@ -257,12 +269,15 @@ function Editor({ store }: { store: ProjectStore }) {
   const activeLabel = t(`tool.${active.id}.label`);
   const rail = wide ? TOOLS.filter((x) => x.id !== "edit") : TOOLS;
   const themeName = t(`theme.${themePref}`);
+  const engineText = engine.status === "loading" ? t("engine.starting")
+    : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
+    : t("engine.failed", { message: engine.message });
 
   return (
     <div className="editor">
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
-          <button className="icon-btn" aria-label={t("theme.change", { theme: themeName })} title={themeName} onClick={cycleTheme} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>
+          {!compact && <button className="icon-btn" aria-label={t("theme.change", { theme: themeName })} title={themeName} onClick={cycleTheme} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>}
         </div>
         <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => setName((n) => n?.trim() || null)} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
@@ -275,7 +290,7 @@ function Editor({ store }: { store: ProjectStore }) {
             </span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu />
+          <AppMenu compact={compact} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
         </div>
       </header>
 
@@ -294,7 +309,7 @@ function Editor({ store }: { store: ProjectStore }) {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
         </section>
 
-        <PreviewPanel engine={core} fileOf={media.fileOf} onImport={binProps.onImport} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onPlaying={setPlaying} />
+        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onImport={binProps.onImport} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onPlaying={setPlaying} />
 
         {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
@@ -305,7 +320,7 @@ function Editor({ store }: { store: ProjectStore }) {
           e.preventDefault();
           void media.addToTimeline(id, Math.round((store.getState().playhead * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
         }}>
-          <Timeline playing={playing} zoom={zoom} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} engine={core} fileOf={media.fileOf} />
+          <Timeline playing={playing} zoom={zoom} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} />
         </div>
       </main>
 

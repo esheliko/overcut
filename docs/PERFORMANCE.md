@@ -47,7 +47,19 @@
 | Full-HD layers at 60 fps | >= 3 | 11 (pass) | not measured: no WebGPU in this Chrome |
 | VideoFrame to GPU, best path p50 | no budget | 5.9 ms (copy; direct import 22.8 ms is slower here) | not measured (no WebGPU) |
 
-Findings: seek on long-GOP media is the weak spot on both (200-380 ms p95 against a 50-80 ms scrub budget for GOP 30), so proxies or a keyframe cache matter for long-GOP sources. The S24's Chrome exposes no WebGPU, so the compositor needs its WebGL2 path there (WebGL2 is available). The Mac, the iPhone 14 and the low-end proxy are not measured yet: the low tier needs the published SoC ratio (ADR 0013) passed as `--proxy-ratio`, which nobody has supplied, so no proxy numbers are recorded.
+Findings: seek on long-GOP media is the weak spot on both (200-380 ms p95 against a 50-80 ms scrub budget for GOP 30), so proxies or a keyframe cache matter for long-GOP sources. The S24's Chrome exposes no WebGPU, so the compositor needs its WebGL2 path there (WebGL2 is available). The Mac and the iPhone 14 are not measured yet.
+
+### Low-end Android (Galaxy A15-class), calibrated proxy
+
+**Calibrated proxy, not a measurement** (ADR 0013; file `tests/perf/devices/galaxy-a15-proxy.json`). Galaxy S24 report scaled with `npm run perf:device -- --tier low --name galaxy-a15-proxy --proxy-ratio 3.333`. Target: Galaxy A15 (MediaTek Helio G99, Mali-G57 MC2, 4 GB) vs Galaxy S24 (Exynos 2400, Xclipse 940). **Ratios are conservative estimates to verify** against published figures (not yet cited): CPU about 0.30 (Geekbench 6 multi-core class), GPU about 0.15. The tool takes one slowdown factor, so every metric below uses the CPU one (1 / 0.30 = 3.333: times x 3.333, rates / 3.333). The GPU ratio (0.15, slowdown 6.7) applies to the fill-rate and upload metrics, which have no S24 number (no WebGPU), so none is produced. Hardware decode speed does not really scale with CPU, so the decode figure is a pessimistic bound.
+
+| Metric | Budget (low) | Calibrated proxy |
+|---|---|---|
+| 1080p H.264 decode | >= 30 fps | 70 fps (pass) |
+| Random seek p50, GOP 30 | <= 120 ms | 195 ms (**fails**) |
+| Random seek p95, GOP 150 | no budget | 1254 ms |
+
+Finding: scrubbing long-GOP media on a low phone misses budget on the proxy, so automatic proxies / a keyframe cache are required for low-tier devices.
 
 ## Measurement status per metric and tier
 `C` = measured in the container harness (trend number: shared Xeon CPU, software decode, no real GPU; compare only with a baseline from the same kind of machine). `D` = real-device number from `/diagnostics` (Windows laptop and Galaxy S24 so far, table above). `P` = calibrated proxy (S24 number scaled by the SoC benchmark ratio, ADR 0013; always labelled). `-` = not measured anywhere yet.

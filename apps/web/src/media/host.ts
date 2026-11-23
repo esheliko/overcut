@@ -11,6 +11,8 @@ export interface MediaHost {
   readAudio(media: MediaRef, startFrame: number, frames: number): Promise<Int16Array>;
   /** A decoded video frame near `seconds`, scaled to fit `width` x `height` (cover). The caller owns (and closes) the bitmap. */
   thumbnail(media: MediaRef, seconds: number, width: number, height: number): Promise<ImageBitmap>;
+  /** Frees whatever the host holds open for this media id (decoder handles). The next request opens it again from the current file. */
+  release?(mediaId: string): Promise<void>;
 }
 
 function seed(s: string): number {
@@ -65,6 +67,7 @@ export function onlyFixtures(host: MediaHost): MediaHost {
     audioFormat: async (m) => (ok(m) ? host.audioFormat(m) : null),
     readAudio: (m, s, n) => (ok(m) ? host.readAudio(m, s, n) : Promise.resolve(new Int16Array(0))),
     thumbnail: (m, t, w, h) => (ok(m) ? host.thumbnail(m, t, w, h) : Promise.reject(new Error("no decoder for this media"))),
+    release: (id) => host.release?.(id) ?? Promise.resolve(),
   };
 }
 
@@ -75,5 +78,6 @@ export function routeMedia(fixtures: MediaHost, real: MediaHost): MediaHost {
     audioFormat: (m) => pick(m).audioFormat(m),
     readAudio: (m, s, n) => pick(m).readAudio(m, s, n),
     thumbnail: (m, t, w, h) => pick(m).thumbnail(m, t, w, h),
+    release: async (id) => { await Promise.all([fixtures.release?.(id), real.release?.(id)]); },
   };
 }

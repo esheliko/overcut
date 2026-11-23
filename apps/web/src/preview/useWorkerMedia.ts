@@ -7,7 +7,7 @@ import type { PreviewHost } from "./host";
  * decoders from them), and tells it when an item leaves the project (undo of an import). Stills are not decoded by the engine and are skipped.
  * `hostVersion` bumps when a (new) Worker is attached, so everything is sent again.
  */
-export function useWorkerMedia(host: PreviewHost | null, project: Project | null, fileOf: (id: string) => Promise<File | null>, hostVersion: number): void {
+export function useWorkerMedia(host: PreviewHost | null, project: Project | null, fileOf: (id: string) => Promise<File | null>, hostVersion: number, readyIds = ""): void {
   const sent = useRef(new Set<string>());
   const asking = useRef(new Set<string>());
   const fileRef = useRef(fileOf);
@@ -38,5 +38,5 @@ export function useWorkerMedia(host: PreviewHost | null, project: Project | null
         }
       })();
     }
-  }, [host, project, hostVersion]);
+  }, [host, project, hostVersion, readyIds]); // readyIds: a relink changes no project data but makes a file available
 }
