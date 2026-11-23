@@ -266,7 +266,7 @@
   "diag.t.seek.title": "Jumping around in a video",
   "diag.t.seek.what": "How long it takes to show a frame when you drag the playhead to a random spot. Lower is snappier scrubbing.",
   "diag.t.gpuUpload.title": "Sending frames to the graphics chip",
-  "diag.t.gpuUpload.what": "How fast a video frame reaches the graphics chip, the step before any effect is drawn. Direct is the fast route; the others are fallbacks.",
+  "diag.t.gpuUpload.what": "How fast a video frame reaches the graphics chip, the step before any effect is drawn. Several routes are tried on every graphics API the device has (WebGPU and WebGL2); the quickest one counts.",
   "diag.t.fillRate.title": "Drawing layers (effects speed)",
   "diag.t.fillRate.what": "How many full-HD layers of effects the graphics chip can draw per frame. More layers means room for titles, overlays and effects.",
   "diag.s.unsupported": "Not supported on this device. {reason}",
@@ -275,8 +275,13 @@
   "diag.s.errorUnknown": "unknown error",
   "diag.s.decode": "{fps} full-HD frames per second (a smooth video needs 30 to 60).",
   "diag.s.seek": "Typical jump: {a} ms on an editor-friendly video, {b} ms on a phone-style video (worst 1 in 20: {c} ms).",
-  "diag.s.gpuUpload": "Per frame: direct {direct}, copy {copy}, through the processor {cpu}.",
+  "diag.s.gpuUpload": "Quickest route: {best}. All routes, per frame: {all}.",
+  "diag.route.direct": "WebGPU direct import",
+  "diag.route.copy": "WebGPU copy",
+  "diag.route.cpu": "WebGPU through the processor",
+  "diag.route.gl_frame": "WebGL2 frame",
+  "diag.route.gl_cpu": "WebGL2 through the processor",
   "diag.s.ms": "{n} ms",
   "diag.s.failed": "failed",
-  "diag.s.fillRate": "{ms} ms to draw {layers} full-HD layers: room for about {at60} layers at 60 frames per second."
+  "diag.s.fillRate": "{ms} ms to draw {layers} full-HD layers on {api}: room for about {at60} layers at 60 frames per second."
 }

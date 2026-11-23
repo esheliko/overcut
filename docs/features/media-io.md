@@ -100,3 +100,10 @@ Rust (`crates/audio`): level 0 against brute force for any chunking, every pyram
 
 ## Native decoder (desktop, M1-015)
 `Engine.media` in the Tauri shell is libav (`apps/desktop/native-media`, ADR 0004 "S4 results") behind the same `PacketDecoder` / `HostDecoder` as the web: the Rust demuxer plans packets, libav decodes them (CPU RGBA frames, `frameKind: "cpu"`). Same `MediaFileInfo`, same errors (`unsupported` names the codec). A `Blob` with a `path` (dialog / drop) is decoded in place; any other is staged to a temp file first. The first request in a GOP decodes the whole GOP and caches its raw frames (<= 384 MB), so sequential access is linear. Opus mid-stream alignment is within 1 ms (container timestamps). Hardware decode and GPU frames: follow-up. The `native-media` cargo feature is off by default; without it the commands do not exist and `media.open` rejects `unsupported`.
+
+## Device seek numbers (owner, 2026-11-23, `/diagnostics`, hardware decode)
+| Device | decode fps | GOP 30 p50 / p95 | GOP 150 p50 / p95 |
+|---|---|---|---|
+| Windows laptop, Intel UHD 630, Chrome 157 | 720 | 37.6 / 60.7 ms | 130 / 202 ms |
+| Galaxy S24 (Xclipse 940), Chrome 157 | 234 | 58.5 / 88.4 ms | 239 / 376 ms |
+Random access always restarts at a keyframe, so long GOPs (phones) cost 130 to 240 ms: the preview covers that with stand-ins and decode-ahead (`preview.md`), not by changing the decoder.

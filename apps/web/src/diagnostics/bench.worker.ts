@@ -137,12 +137,46 @@ async function gpuDevice(): Promise<{ device: any; info: string }> {
 
 const p50p95 = (a: number[]) => { const s = summarize(a); return { p50: s.p50, p95: s.p95 }; };
 
-// 3. How a decoded frame reaches a GPU texture (S1: direct import vs copy vs CPU upload).
-async function gpuUploadTest(): Promise<Record<string, number | string>> {
-  const clip = await loadClip("clip-gop30");
-  await requireDecoder(clip);
-  const { device, info } = await gpuDevice();
-  const out: Record<string, number | string> = { gpu: info };
+// WebGL2 plumbing (phones without WebGPU, and the browsers' second path): a full-screen triangle sampling one texture.
+const GL_VS = "#version 300 es\nvoid main(){ vec2 p[3]=vec2[3](vec2(-1.,-1.),vec2(3.,-1.),vec2(-1.,3.)); gl_Position=vec4(p[gl_VertexID],0.,1.); }";
+const GL_FS_TEX = "#version 300 es\nprecision mediump float; uniform sampler2D t; out vec4 o; void main(){ o=texture(t, gl_FragCoord.xy/vec2(1920.,1080.)); }";
+const GL_FS_FILL = `#version 300 es
+precision highp float; out vec4 o;
+void main(){ vec2 uv=gl_FragCoord.xy/vec2(1920.,1080.); vec3 c=vec3(uv,.5);
+  for(int i=0;i<6;i++){ c=c*.9+.1*vec3(sin(c.y*7.+float(i)),cos(c.x*5.),sin(c.z*3.)); }
+  o=vec4(c*.5+.25,.35); }`;
+
+interface Gl { gl: WebGL2RenderingContext; info: string; program(fs: string): WebGLProgram; finish(): void }
+function openGl(): Gl | null {
+  if (typeof OffscreenCanvas === "undefined") return null;
+  const c = new OffscreenCanvas(W, H);
+  const gl = c.getContext("webgl2", { antialias: false, alpha: false, powerPreference: "high-performance" });
+  if (!gl) return null;
+  const ext = gl.getExtension("WEBGL_debug_renderer_info");
+  const info = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)).slice(0, 80);
+  const px = new Uint8Array(4);
+  return {
+    gl, info,
+    program(fs) {
+      const sh = (type: number, src: string) => { const x = gl.createShader(type)!; gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x) ?? "shader failed"); return x; };
+      const p = gl.createProgram()!;
+      gl.attachShader(p, sh(gl.VERTEX_SHADER, GL_VS));
+      gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? "link failed");
+      return p;
+    },
+    finish() { gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }, // reading a pixel waits for the GPU
+  };
+}
+
+type UploadPaths = Record<string, (f: VideoFrame) => Promise<void>>;
+interface UploadApi { prefix: string; info: string; paths: UploadPaths; sync(): Promise<void>; dispose(): void }
+
+async function webgpuUpload(): Promise<UploadApi | null> {
+  let g: { device: any; info: string };
+  try { g = await gpuDevice(); } catch (e) { if (e instanceof Unsupported) return null; throw e; }
+  const { device, info } = g;
   const mk = (code: string) => { const module = device.createShaderModule({ code }); return device.createRenderPipeline({ layout: "auto", vertex: { module, entryPoint: "vs" }, fragment: { module, entryPoint: "fs", targets: [{ format: FMT }] } }); };
   const pExt = mk(SAMPLE("texExt: texture_external", `textureSampleBaseClampToEdge(texExt, smp, pos.xy / vec2f(${W}, ${H}))`));
   const p2d = mk(SAMPLE("tex2d: texture_2d<f32>", `textureSample(tex2d, smp, pos.xy / vec2f(${W}, ${H}))`));
@@ -156,48 +190,140 @@ async function gpuUploadTest(): Promise<Record<string, number | string>> {
     pass.setPipeline(pipe); pass.setBindGroup(0, bind); pass.draw(3); pass.end();
     device.queue.submit([enc.finish()]);
   };
-  const paths: Record<string, (f: VideoFrame) => Promise<void>> = {
-    direct: async (f) => draw(pExt, device.importExternalTexture({ source: f })),
-    copy: async (f) => { device.queue.copyExternalImageToTexture({ source: f }, { texture: upload }, [f.displayWidth, f.displayHeight]); draw(p2d, upload.createView()); },
-    cpu: async (f) => {
-      const buf = new Uint8Array(f.displayWidth * f.displayHeight * 4);
-      await f.copyTo(buf, { format: "RGBA" });
-      device.queue.writeTexture({ texture: upload }, buf, { bytesPerRow: f.displayWidth * 4 }, [f.displayWidth, f.displayHeight]);
-      draw(p2d, upload.createView());
+  return {
+    prefix: "", info,
+    paths: {
+      // `direct` = importExternalTexture (zero copy). The compositor does not use it; it is measured so we never assume it is the fast one (S1: 4x slower on Intel UHD 630).
+      direct: async (f) => draw(pExt, device.importExternalTexture({ source: f })),
+      copy: async (f) => { device.queue.copyExternalImageToTexture({ source: f }, { texture: upload }, [f.displayWidth, f.displayHeight]); draw(p2d, upload.createView()); },
+      cpu: async (f) => {
+        const buf = new Uint8Array(f.displayWidth * f.displayHeight * 4);
+        await f.copyTo(buf, { format: "RGBA" });
+        device.queue.writeTexture({ texture: upload }, buf, { bytesPerRow: f.displayWidth * 4 }, [f.displayWidth, f.displayHeight]);
+        draw(p2d, upload.createView());
+      },
     },
+    sync: () => device.queue.onSubmittedWorkDone(),
+    dispose: () => device.destroy?.(),
   };
+}
+
+function webgl2Upload(): UploadApi | null {
+  const g = openGl();
+  if (!g) return null;
+  const { gl } = g;
+  const prog = g.program(GL_FS_TEX);
+  gl.useProgram(prog);
+  gl.viewport(0, 0, W, H);
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const draw = () => gl.drawArrays(gl.TRIANGLES, 0, 3);
+  return {
+    prefix: "gl_", info: g.info,
+    paths: {
+      frame: async (f) => { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, f as unknown as TexImageSource); draw(); },
+      cpu: async (f) => {
+        const buf = new Uint8Array(f.displayWidth * f.displayHeight * 4);
+        await f.copyTo(buf, { format: "RGBA" });
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, f.displayWidth, f.displayHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        draw();
+      },
+    },
+    sync: async () => g.finish(),
+    dispose: () => gl.getExtension("WEBGL_lose_context")?.loseContext(),
+  };
+}
+
+// 3. How a decoded frame reaches a GPU texture, on each API the device has: WebGPU (direct import vs copy vs CPU upload, S1) and WebGL2
+// (texImage2D(VideoFrame) vs CPU upload; this is all a phone without WebGPU has). `fastest` names the quickest route measured.
+async function gpuUploadTest(): Promise<Record<string, number | string>> {
+  const clip = await loadClip("clip-gop30");
+  await requireDecoder(clip);
+  const apis = [await webgpuUpload(), webgl2Upload()].filter((a): a is UploadApi => a !== null);
+  if (apis.length === 0) throw new Unsupported("Neither WebGPU nor WebGL2 is available here (in a worker).");
+  const out: Record<string, number | string> = {};
+  for (const a of apis) out[a.prefix ? "gl_gpu" : "gpu"] = a.info;
   const seeker = makeSeeker(clip);
   const list = targets(clip, 30, 777);
-  const times: Record<string, number[]> = { direct: [], copy: [], cpu: [] };
+  const times: Record<string, number[]> = {};
   const failed: Record<string, string> = {};
   try {
     for (let i = 0; i < list.length; i++) {
       const f = await seeker.seek(list[i]!);
-      for (const [name, run] of Object.entries(paths)) {
-        if (failed[name]) continue;
-        try {
-          const t0 = performance.now();
-          await run(f);
-          await device.queue.onSubmittedWorkDone();
-          if (i >= 4) times[name]!.push(performance.now() - t0);
-        } catch (e) { failed[name] = e instanceof Error ? e.message : String(e); }
+      for (const a of apis) {
+        for (const [name, run] of Object.entries(a.paths)) {
+          const id = a.prefix + name;
+          if (failed[id]) continue;
+          try {
+            const t0 = performance.now();
+            await run(f);
+            await a.sync();
+            if (i >= 4) (times[id] ??= []).push(performance.now() - t0);
+          } catch (e) { failed[id] = e instanceof Error ? e.message : String(e); }
+        }
       }
       f.close();
       progress("gpuUpload", (i + 1) / list.length);
     }
-  } finally { seeker.close(); device.destroy?.(); }
-  for (const name of Object.keys(paths)) {
-    if (failed[name] || times[name]!.length === 0) { out[`${name}_p50_ms`] = "failed"; out[`${name}_error`] = (failed[name] ?? "no samples").slice(0, 80); continue; }
-    const s = p50p95(times[name]!);
-    out[`${name}_p50_ms`] = s.p50; out[`${name}_p95_ms`] = s.p95;
+  } finally { seeker.close(); for (const a of apis) a.dispose(); }
+  let fastest = "", fastestMs = Infinity;
+  for (const a of apis) {
+    for (const name of Object.keys(a.paths)) {
+      const id = a.prefix + name;
+      if (failed[id] || !times[id]?.length) { out[`${id}_p50_ms`] = "failed"; out[`${id}_error`] = (failed[id] ?? "no samples").slice(0, 80); continue; }
+      const s = p50p95(times[id]!);
+      out[`${id}_p50_ms`] = s.p50; out[`${id}_p95_ms`] = s.p95;
+      if (s.p50 < fastestMs) { fastestMs = s.p50; fastest = `${a.prefix ? "webgl2" : "webgpu"} ${name}`; }
+    }
   }
+  if (fastest) { out.fastest = fastest; out.fastest_p50_ms = fastestMs; }
   return out;
 }
 
 // 4. Fill rate: full-HD layers with a little shader maths, alpha blended, like stacked overlays and effects.
+const LAYERS = 8, FRAMES = 90;
+
+/** The same blended full-HD layers on WebGL2: what a phone without WebGPU can do. */
+async function fillRateGl(): Promise<Record<string, number | string> | null> {
+  const g = openGl();
+  if (!g) return null;
+  const { gl } = g;
+  try {
+    gl.useProgram(g.program(GL_FS_FILL));
+    gl.viewport(0, 0, W, H);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    const ms: number[] = [];
+    const t00 = performance.now();
+    for (let f = 0; f < FRAMES + 10; f++) {
+      const t0 = performance.now();
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      for (let l = 0; l < LAYERS; l++) gl.drawArrays(gl.TRIANGLES, 0, 3);
+      g.finish();
+      if (f >= 10) ms.push(performance.now() - t0);
+      if (f % 10 === 0) await Promise.resolve();
+      if (performance.now() - t00 > 12_000) break;
+    }
+    const s = summarize(ms);
+    return { gl_gpu: g.info, gl_layers: LAYERS, gl_frame_p50_ms: s.p50, gl_frame_p95_ms: s.p95, gl_layers_at_60fps: Math.round((LAYERS * 16.7) / Math.max(s.p50, 0.1)), gl_frames: s.n };
+  } finally { gl.getExtension("WEBGL_lose_context")?.loseContext(); }
+}
+
 async function fillRateTest(): Promise<Record<string, number | string>> {
+  let gpuPart: Record<string, number | string> | null = null;
+  try { gpuPart = await fillRateGpu(); } catch (e) { if (!(e instanceof Unsupported)) throw e; }
+  const glPart = await fillRateGl();
+  if (!gpuPart && !glPart) throw new Unsupported("Neither WebGPU nor WebGL2 is available here (in a worker).");
+  return { ...gpuPart, ...glPart };
+}
+
+async function fillRateGpu(): Promise<Record<string, number | string>> {
   const { device, info } = await gpuDevice();
-  const LAYERS = 8, FRAMES = 90;
   const module = device.createShaderModule({ code: `
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f { var p = array<vec2f,3>(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3)); return vec4f(p[i], 0, 1); }
 @fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {

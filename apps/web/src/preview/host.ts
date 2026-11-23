@@ -8,6 +8,19 @@ import { createWebAudio } from "./audio";
 import type { AudioOut } from "./player";
 import { epochNow, type FromPreview, type PreviewConfig, type PreviewRpc, type ToPreview } from "./protocol";
 import { TICKS_PER_SECOND } from "./timing";
+import { onThumb } from "../media/thumbBus";
+import { UPLOAD_STORE } from "./uploadPath";
+
+function readUpload(key: string): unknown {
+  try { return (JSON.parse(localStorage.getItem(UPLOAD_STORE) ?? "{}") as Record<string, unknown>)[key] ?? null; } catch { return null; }
+}
+function writeUpload(key: string, value: unknown): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(UPLOAD_STORE) ?? "{}") as Record<string, unknown>;
+    all[key] = value;
+    localStorage.setItem(UPLOAD_STORE, JSON.stringify(all));
+  } catch { /* storage is blocked or full: the path is measured again next time */ }
+}
 
 export interface HostHandlers {
   onFrame(frame: number): void;
@@ -53,7 +66,12 @@ export class PreviewHost {
     this.worker.addEventListener("message", (e: MessageEvent<FromPreview>) => this.onMessage(e.data));
     this.worker.addEventListener("error", (e) => this.onReady?.reject(new Error(e.message || "preview worker failed")));
     this.send({ type: "init", canvas: offscreen, prefer }, [offscreen]);
+    this.offThumb = onThumb((media, seconds, bmp) => {
+      // A copy: the timeline keeps its own bitmap. Transferred, so the Worker owns it.
+      void createImageBitmap(bmp).then((copy) => (this.disposed ? copy.close() : this.send({ type: "thumb", media, seconds, bitmap: copy }, [copy])), () => undefined);
+    });
   }
+  private offThumb: (() => void) | undefined;
   private onReady: { resolve(i: RendererInfo): void; reject(e: Error): void } | undefined;
 
   send(m: ToPreview, transfer: Transferable[] = []): void {
@@ -88,6 +106,7 @@ export class PreviewHost {
     if (this.disposed) return;
     this.send({ type: "dispose" });
     this.disposed = true;
+    this.offThumb?.();
     this.stopClock();
     this.audio?.stop();
     this.worker.terminate();
@@ -120,7 +139,11 @@ export class PreviewHost {
       case "error": this.h.onError(m.message); return;
       case "audio": this.audio?.schedule(m.left, m.right, m.when); return;
       case "audio-stop": this.audio?.stop(); return;
-      case "request": void this.answerAudio(m.id); return;
+      case "request":
+        if (m.name === "upload-get") this.send({ type: "reply", id: m.id, value: readUpload(m.key) });
+        else void this.answerAudio(m.id);
+        return;
+      case "upload-set": writeUpload(m.key, m.value); return;
       case "reply": this.waiting.get(m.id)?.(m.value); this.waiting.delete(m.id); return;
     }
   }

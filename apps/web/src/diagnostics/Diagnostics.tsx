@@ -2,6 +2,7 @@ import { createEngine, type Capabilities, type CodecSupport } from "@app/engine-
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { buildReport, sentence, verdict } from "./report";
+import { readStoredChoices } from "../preview/uploadPath";
 import { createRunner } from "./runner";
 import { TEST_IDS, type TestId, type TestResult } from "./types";
 
@@ -111,7 +112,7 @@ export default function Diagnostics() {
     setCurrent(null); setPhase("done");
   }, []);
 
-  const report = phase === "done" ? buildReport(caps, results, app) : "";
+  const report = phase === "done" ? buildReport(caps, results, { ...app, uploadPath: readStoredChoices() }) : "";
   const copy = async () => {
     try { await navigator.clipboard.writeText(report); setCopied("ok"); } catch {
       text.current?.focus(); text.current?.select(); setCopied("manual");
