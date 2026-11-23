@@ -16,7 +16,7 @@ h2, p { margin: 0; }
 .icon-btn:disabled:hover { background: none; }
 .tl-sel { margin-left: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 
-.editor { display: grid; grid-template-rows: var(--top) minmax(0, 1fr); height: 100%; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.editor { container: editor / size; display: grid; grid-template-rows: var(--top) minmax(0, 1fr); height: 100%; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 
 /* Top bar */
 .topbar { display: grid; grid-template-columns: 1fr minmax(0, auto) 1fr; align-items: center; gap: 8px; padding: 0 10px; min-width: 0; }
@@ -75,7 +75,7 @@ h2, p { margin: 0; }
 .segmented button[aria-selected="true"] { background: var(--surface-3); color: var(--fg); }
 
 /* Preview */
-.stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+.stage { container: stage / inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
 .stage-view { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 12px; container-type: size; }
 .canvas { position: relative; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); max-height: 100cqh; display: grid; place-items: center; background: var(--stage); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), var(--shadow); transition: width var(--dur-slow) ease, aspect-ratio var(--dur-slow) ease; }
 .preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: var(--stage); }
@@ -137,10 +137,13 @@ h2, p { margin: 0; }
 .player-bar { grid-template-areas: "tc transport ratio"; }
 .ratio { grid-area: ratio; justify-self: end; }
 .transport .play { width: max(var(--target), 44px); height: max(var(--target), 44px); }
-@media (max-width: 479px) { .player-bar { grid-template-columns: 1fr auto; grid-template-areas: "tc ratio" "transport transport"; row-gap: 2px; } .transport { justify-content: center; } }
+@container stage (max-width: 640px) { .player-bar { grid-template-columns: 1fr auto; grid-template-areas: "tc ratio" "transport transport"; row-gap: 2px; } .transport { justify-content: center; } }
+
+/* Form-factor profiles. The shell is a size container, so the layout follows the space the app really has (split view, foldable, embedded), not the window.
+   Numbers match src/layout/profiles.ts (a unit test compares them). Default above = phone portrait: preview / timeline / tool bar, tools open as a bottom sheet. */
 
 /* Tablet and up: rail | tool panel | preview over a full-width timeline */
-@media (min-width: 720px) {
+@container editor (min-width: 720px) {
   .workspace { grid-template-columns: 84px minmax(240px, 300px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) clamp(200px, 38%, 380px); grid-template-areas: "tools library stage" "timeline timeline timeline"; gap: 6px; padding: 0 6px 6px; }
   .tools, .library, .stage, .timeline { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
   .stage { background: var(--surface); }
@@ -150,16 +153,33 @@ h2, p { margin: 0; }
   .library::before, .library[data-open="true"]::before, .sheet-close { display: none; }
   .toast { bottom: 24px; }
 }
+/* Tablet in portrait: the preview needs height more than the timeline does */
+@container editor (min-width: 720px) and (max-width: 1099px) and (orientation: portrait) {
+  .workspace { grid-template-rows: minmax(0, 1fr) clamp(200px, 30%, 320px); grid-template-columns: 84px minmax(220px, 260px) minmax(0, 1fr); }
+}
 /* Laptop and desktop: details panel on the right */
-@media (min-width: 1100px) {
+@container editor (min-width: 1100px) {
   .workspace { grid-template-columns: 84px 320px minmax(0, 1fr) 300px; grid-template-areas: "tools library stage inspector" "timeline timeline timeline timeline"; }
   .inspector { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 }
-/* Short landscape screens (phone on its side): give the preview more room */
-@media (min-width: 720px) and (max-height: 520px) {
-  .workspace { grid-template-rows: minmax(0, 1fr) minmax(130px, 42%); }
-  .tool { min-height: 52px; }
+/* Ultrawide (>= 1900 px and at least 2:1): wider side panels, the timeline gets the extra width and more height */
+@container editor (min-width: 1900px) and (min-aspect-ratio: 2/1) {
+  .workspace { grid-template-columns: 96px 360px minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr) clamp(240px, 42%, 460px); gap: 8px; padding: 0 8px 8px; }
 }
+/* Phone landscape (short screen on its side): slim tool rail | preview over timeline; the tool panel slides in from the side over the preview */
+@container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) {
+  .workspace { grid-template-columns: 72px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(112px, 40%); grid-template-areas: "tools stage" "tools timeline"; gap: 4px; padding: 0 4px 4px; }
+  .tools { padding: 4px; }
+  .tool { width: 100%; min-width: 0; min-height: 52px; }
+  .library:not([data-open="true"]) { display: none; }
+  .library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: auto; inset-inline-start: calc(80px + env(safe-area-inset-left)); bottom: calc(env(safe-area-inset-bottom) + 4px); top: calc(var(--top) + env(safe-area-inset-top)); width: min(340px, 52%); height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); animation: slide-in var(--dur-base) ease-out; }
+  .library[data-open="true"]::before { display: none; }
+  .sheet-close { display: inline-grid; top: 6px; }
+  .toast { bottom: 12px; }
+  .persist-notes { bottom: 12px; }
+  .player-bar { min-height: 44px; padding-block-end: 2px; }
+}
+@keyframes slide-in { from { transform: translateX(-24px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 /* Diagnostics page (/diagnostics): a normal scrolling document, readable at 320 px. */
