@@ -63,6 +63,8 @@ Update (seek decode change, `docs/features/preview.md`): the proxy numbers above
 
 Finding: scrubbing long-GOP media on a low phone misses budget on the proxy, so automatic proxies / a keyframe cache are required for low-tier devices.
 
+**Scrub strip (done, `docs/features/preview.md` "Smooth scrubbing")**: clips the rule flags (estimated or measured seek p95 > 120 ms) get a background-built strip of small JPEGs, and the first picture of a scrub is the strip's picture of the exact frame (<= 1 frame off), so "first frame after seek <= 120 ms" is met by the strip while the exact frame still decodes in 200-380 ms (laptop/S24) or ~1.2 s (low proxy) and replaces it. The exact-frame time is unchanged by design (playback and export use the original). Container numbers on a 1280x720 GOP-150 fixture: stand-in distance p50/p95 12/83 -> 0/1 frames; exact frame ~95/175 ms before and after. **Not measured on a device**: re-run `/diagnostics` plus a real phone clip on the S24 before claiming the low-tier budget.
+
 ## Measurement status per metric and tier
 `C` = measured in the container harness (trend number: shared Xeon CPU, software decode, no real GPU; compare only with a baseline from the same kind of machine). `D` = real-device number from `/diagnostics` (Windows laptop and Galaxy S24 so far, table above). `P` = calibrated proxy (S24 number scaled by the SoC benchmark ratio, ADR 0013; always labelled). `-` = not measured anywhere yet.
 

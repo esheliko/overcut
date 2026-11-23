@@ -113,6 +113,11 @@ export interface MediaHandle {
    */
   frameIndexAt(ticks: number): number;
   /**
+   * Keyframe spacing of the video track from the demuxer index (web backend; absent where the engine does not expose it): `frames`, the longest and the
+   * mean number of frames between keyframes. The preview uses it to decide whether a clip needs a scrub strip.
+   */
+  gop?(): { frames: number; maxGop: number; meanGop: number };
+  /**
    * Sequential decode for playback: frames `startIndex, startIndex+1, ...` in order, each decoded once from one decoder run (a
    * `videoFrame` call per frame would restart at the keyframe every time). At most `maxBuffered` frames are held ahead of `next()`.
    * Independent of `videoFrame`: scrubbing never disturbs a running stream. Call `close()` to free the decoder and held frames.

@@ -57,6 +57,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, onCa
   const [hostVersion, setHostVersion] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [problem, setProblem] = useState<string | null>(null);
+  const [prep, setPrep] = useState<number | null>(null);
   const { open, field } = useImportPicker(onImport, "preview-input");
   const noGpu = useRef(t("preview.noGpu"));
   noGpu.current = t("preview.noGpu");
@@ -76,7 +77,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, onCa
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
-    const { host, release } = acquirePreviewHost(c, { onFrame: emit, onState: (pl, r) => { cb.current.onPlaying(pl); setSpeed(r || 1); }, onError: (m) => setProblem(m) });
+    const { host, release } = acquirePreviewHost(c, { onFrame: emit, onState: (pl, r) => { cb.current.onPlaying(pl); setSpeed(r || 1); }, onError: (m) => setProblem(m), onStrip: (p) => setPrep(p === null ? null : Math.min(99, Math.floor(p * 100))) });
     hostRef.current = host;
     playerRef.current = host.player;
     setHostVersion((v) => v + 1);
@@ -91,6 +92,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, onCa
       gpu: () => host.rpc({ name: "gpu" }),
       parity: (f: number) => host.rpc({ name: "parity", frame: f }),
       bench: (width: number, height: number, frames: number) => host.rpc({ name: "bench", width, height, frames }),
+      strip: () => host.rpc({ name: "strip" }),
       rpc: (r: Parameters<typeof host.rpc>[0]) => host.rpc(r),
     };
     return () => { release(); if (hostRef.current === host) { hostRef.current = null; playerRef.current = null; } };
@@ -178,6 +180,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, onCa
             </div>
           )}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
+          {prep !== null && <span className="scrub-prep" role="status" data-testid="scrub-prep">{t("scrub.preparing", { percent: prep })}</span>}
         </div>
         {field}
       </div>

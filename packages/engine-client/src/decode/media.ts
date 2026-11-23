@@ -113,6 +113,16 @@ class Handle implements MediaHandle {
     return this.table ? frameIndexAt(this.table, ticks) : 0;
   }
 
+  gop(): { frames: number; maxGop: number; meanGop: number } {
+    const frames = this.table?.pts.length ?? 0;
+    const keys = this.table?.keys ?? new Int32Array(0);
+    if (frames === 0) return { frames: 0, maxGop: 0, meanGop: 0 };
+    if (keys.length === 0) return { frames, maxGop: frames, meanGop: frames };
+    let max = 0;
+    for (let i = 0; i < keys.length; i++) max = Math.max(max, (i + 1 < keys.length ? keys[i + 1]! : frames) - keys[i]!);
+    return { frames, maxGop: max, meanGop: frames / keys.length };
+  }
+
   stream(startIndex: number, maxBuffered = 8): FrameStream {
     if (this.closed) throw new MediaDecodeError("invalid", "media is closed");
     if (!this.table || !this.streamTrack) throw new MediaDecodeError("invalid", "no video track");

@@ -79,6 +79,7 @@ h2, p { margin: 0; }
 .stage-view { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 12px; container-type: size; }
 .canvas { position: relative; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); max-height: 100cqh; display: grid; place-items: center; background: var(--stage); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), var(--shadow); transition: width var(--dur-slow) ease, aspect-ratio var(--dur-slow) ease; }
 .preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: var(--stage); }
+.scrub-prep { position: absolute; bottom: 8px; inset-inline-start: 8px; max-width: calc(100% - 16px); padding: 2px 10px; border-radius: 999px; background: var(--surface-3); color: var(--muted); font: 500 12px/1.6 var(--font-ui, inherit); pointer-events: none; }
 .rate-badge { position: absolute; top: 8px; inset-inline-end: 8px; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--fg); font: 700 12px/1.6 var(--font-mono); direction: ltr; }
 .chip-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--fg); font-weight: 600; font-size: 13px; }
 .chip-btn:hover:not(:disabled) { background: var(--surface-3); }

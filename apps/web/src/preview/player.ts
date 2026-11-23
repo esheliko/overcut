@@ -50,6 +50,13 @@ export interface PlayerDeps {
   upload?(frame: DecodedFrame, slot: number): LayerSource | Promise<LayerSource>;
   /** The timeline's filmstrip thumbnail nearest to `seconds` of media `media` (upright), used as a stand-in when nothing decoded is near. */
   standIn?(media: string, seconds: number): Thumb<ImageBitmap> | undefined;
+  /**
+   * The scrub strip's small picture of source frame `index` of `media` (coded orientation; the player applies the clip's display rotation), when one is built.
+   * Shown at once while the exact frame decodes, then replaced. The player closes the bitmap.
+   */
+  strip?(media: string, index: number): Promise<{ bitmap: ImageBitmap; width: number; height: number; index: number } | undefined>;
+  /** An exact (uncached) seek of `media` took `ms`: the measured seek times the strip rule uses. */
+  onSeek?(media: string, ms: number): void;
 }
 
 export interface PlayerStats {
@@ -76,6 +83,10 @@ export interface PlayerStats {
   /** Scrub draws that showed a stand-in first (nearest cached frame or thumbnail), and how many of those were thumbnails. */
   standIns: number;
   thumbStandIns: number;
+  /** How far (frames) each first-picture stand-in was from the frame asked for: 0 = exact. Shows what the strip buys over thumbnails (test and measurement). */
+  standInOff: number[];
+  /** Scrub draws whose first picture was a scrub-strip frame (exact to within half the strip's stride). */
+  stripStandIns: number;
   /** Scrub draws whose exact frame was already in the cache (frame step, small scrub, after decode-ahead). */
   cacheHits: number;
 }
@@ -98,7 +109,7 @@ interface Feed {
 }
 
 export class Player {
-  readonly stats: PlayerStats = { presented: 0, dropped: 0, stalls: 0, maxLateMs: 0, late: [], scrubMs: [], times: [], audioTrimmed: 0, marks: [], firstUpdateMs: [], standIns: 0, thumbStandIns: 0, cacheHits: 0 };
+  readonly stats: PlayerStats = { presented: 0, dropped: 0, stalls: 0, maxLateMs: 0, late: [], scrubMs: [], times: [], audioTrimmed: 0, marks: [], firstUpdateMs: [], standIns: 0, thumbStandIns: 0, stripStandIns: 0, standInOff: [], cacheHits: 0 };
   private cache: FrameCache<DecodedFrame>;
   private warmToken = 0;
   private warmStreams = new Set<FrameStream>();
@@ -119,6 +130,7 @@ export class Player {
   private scrubTarget: { frame: number; t0: number } | undefined;
   private scrubbing = false;
   private disposed = false;
+  private lastActive = 0;
 
   constructor(private d: PlayerDeps) {
     this.clock = d.fallbackClock;
@@ -133,6 +145,9 @@ export class Player {
 
   get frame(): number { return this.frameNo; }
   get isPlaying(): boolean { return this.playing; }
+
+  /** True when nobody is playing or scrubbing and nothing happened for 400 ms: background work (the scrub strip) may run. */
+  isIdle(): boolean { return !this.playing && !this.scrubbing && !this.scrubTarget && performance.now() - this.lastActive > 400; }
   get speed(): number { return this.rate; }
   get endFrame(): number { return Math.ceil((this.d.endTicks * this.d.rate.num) / (TICKS_PER_SECOND * this.d.rate.den)); }
 
@@ -155,6 +170,7 @@ export class Player {
   /** Jump to `frame` and draw it (paused). Latest call wins: scrubbing never queues stale work. */
   seek(frame: number, t0 = performance.now()): void {
     const f = Math.min(this.endFrame, Math.max(0, Math.floor(frame)));
+    this.lastActive = performance.now();
     if (this.playing) this.pause();
     this.frameNo = f;
     this.cancelWarm();
@@ -179,6 +195,7 @@ export class Player {
 
   async play(rate = 1): Promise<void> {
     if (this.disposed) return;
+    this.lastActive = performance.now();
     if (this.frameNo >= this.endFrame && rate > 0) this.frameNo = 0;
     if (this.frameNo <= 0 && rate < 0) this.frameNo = this.endFrame;
     const wasPlaying = this.playing;
@@ -213,6 +230,7 @@ export class Player {
   }
 
   pause(): void {
+    this.lastActive = performance.now();
     if (!this.playing) return;
     const end = this.position();
     this.playing = false;
@@ -366,6 +384,7 @@ export class Player {
       }
     } finally {
       this.scrubbing = false;
+      this.lastActive = performance.now();
     }
   }
 
@@ -379,7 +398,7 @@ export class Player {
     const desc = await this.d.evaluate(ticks, 0);
     if (this.scrubTarget) return; // a newer target arrived while evaluating
     const pinned: DecodedFrame[] = [];
-    const wants: { l: FrameDescription["layers"][number]; media: MediaHandle; idx: number; exact?: DecodedFrame }[] = [];
+    const wants: { l: FrameDescription["layers"][number]; media: MediaHandle; idx: number; exact?: DecodedFrame; strip?: { bitmap: ImageBitmap; width: number; height: number; index: number } }[] = [];
     try {
       for (const l of desc.layers) {
         const media = this.d.media(l.media);
@@ -389,6 +408,10 @@ export class Player {
         if (exact) pinned.push(exact);
         wants.push({ l, media, idx, exact });
       }
+      // The scrub strip's small picture of the exact frame index (a few ms) beats the nearest cached frame or thumbnail as the first picture.
+      if (this.d.strip) {
+        await Promise.all(wants.map(async (w) => { if (!w.exact) w.strip = await this.d.strip!(w.l.media, w.idx).catch(() => undefined); }));
+      }
       const draw = async (allowStandIns: boolean): Promise<boolean> => {
         const layers: RenderLayer[] = [];
         let shown = false;
@@ -396,11 +419,24 @@ export class Player {
           let frame = w.exact;
           if (!frame && !allowStandIns) continue;
           if (frame) layers.push(await this.layer(w.l, frame, w.media, layers.length));
-          else {
+          else if (w.strip) {
+            layers.push(layerOf(w.l, { source: w.strip.bitmap, width: w.strip.width, height: w.strip.height, rotation: w.media.info.video?.rotation ?? 0 }, this.d.size));
+            this.stats.standIns++;
+            this.stats.stripStandIns++;
+            this.stats.standInOff.push(Math.abs(w.strip.index - w.idx));
+            shown = true;
+          } else {
             frame = this.cache.nearest(w.l.media, w.idx);
-            if (frame) { pinned.push(frame); layers.push(await this.layer(w.l, frame, w.media, layers.length)); this.stats.standIns++; shown = true; continue; }
+            if (frame) { pinned.push(frame); layers.push(await this.layer(w.l, frame, w.media, layers.length)); this.stats.standIns++; this.stats.standInOff.push(Math.abs(frame.index - w.idx)); shown = true; continue; }
             const t = this.d.standIn?.(w.l.media, w.l.source_time / TICKS_PER_SECOND);
-            if (t) { layers.push(this.thumbLayer(w.l, t, w.media)); this.stats.standIns++; this.stats.thumbStandIns++; shown = true; }
+            if (t) {
+              layers.push(this.thumbLayer(w.l, t, w.media));
+              this.stats.standIns++;
+              this.stats.thumbStandIns++;
+              const fps = w.media.info.video?.fps;
+              this.stats.standInOff.push(Math.round(Math.abs(t.seconds - w.l.source_time / TICKS_PER_SECOND) * (fps && fps.den > 0 ? fps.num / fps.den : 30)));
+              shown = true;
+            }
           }
         }
         if (this.scrubTarget || this.playing || this.disposed) return false; // stale: drop it
@@ -423,7 +459,9 @@ export class Player {
       if (standIn) this.stats.firstUpdateMs.push(performance.now() - t0);
       if (this.scrubTarget || this.playing) return;
       await Promise.all(missing.map(async (w) => {
+        const t1 = performance.now();
         const frame = await w.media.videoFrame(w.idx);
+        this.d.onSeek?.(w.l.media, performance.now() - t1);
         w.exact = this.cache.put(w.l.media, frame);
         pinned.push(w.exact);
       }));
@@ -435,6 +473,7 @@ export class Player {
       void this.warmAround(wants);
     } finally {
       for (const p of pinned) this.cache.unpin(p);
+      for (const w of wants) w.strip?.bitmap.close();
     }
   }
 
