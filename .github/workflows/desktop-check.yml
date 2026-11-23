@@ -25,3 +25,26 @@ jobs:
       - name: Tauri needs the frontend folder to exist at compile time
         run: mkdir -p apps/web/dist
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
+  # Native media (libav) crate: not part of verify. Needs the distro libav dev files.
+  desktop-native:
+    # Pinned: ubuntu-latest now ships FFmpeg 8 headers (no avfft.h), which the ffmpeg-sys-next 7.1 bindings cannot parse.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: 'rustfmt, clippy' }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: 'apps/desktop/native-media -> target' }
+      - name: libav and webview libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libopenh264-dev pkg-config clang ffmpeg libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev patchelf
+      - run: mkdir -p apps/web/dist
+      - name: native-media crate
+        working-directory: apps/desktop/native-media
+        run: cargo fmt --check && cargo clippy --release --all-targets -- -D warnings && cargo test --release
+      - name: shell with native-media
+        working-directory: apps/desktop/src-tauri
+        run: cargo check --features native-media
