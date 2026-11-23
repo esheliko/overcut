@@ -254,7 +254,7 @@ export function App() {
 
         {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
-        <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onSoon={soon} />
+        <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onNotice={soon} editing={persistence.session?.editing} epoch={persistence.epoch} />
       </main>
 
       <PersistenceNotes state={persistence} />

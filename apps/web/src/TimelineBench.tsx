@@ -1,10 +1,10 @@
 /** S8 benchmark page: open `/#timeline-bench` (production or dev build). Drives scripted pan and zoom over a 1000-clip, 20-track project
  *  and reports frame intervals and draw time. Automated by `node tests/perf/timeline-bench.mjs`. Not linked from the UI. */
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { fixtureProject } from "./timeline/fixture";
 import { buildScene } from "./timeline/scene";
 import { TimelineCanvas, type CanvasHandle } from "./timeline/TimelineCanvas";
-import { zoomAt } from "./timeline/view";
+import { GUTTER, LANE, RULER, zoomAt } from "./timeline/view";
 
 type Phase = { name: string; fps: number; p95Ms: number; maxMs: number; drawAvgMs: number; drawP95Ms: number; flushAvgMs: number; clipsDrawn: number; frames: number };
 const q = (a: Float64Array, p: number) => a[Math.min(a.length - 1, Math.floor(a.length * p))]!;
@@ -12,6 +12,8 @@ const q = (a: Float64Array, p: number) => a[Math.min(a.length - 1, Math.floor(a.
 export function TimelineBench() {
   const scene = useMemo(() => buildScene(fixtureProject({ tracks: 20, clipsPerTrack: 50 })), []);
   const handle = useRef<CanvasHandle | null>(null);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const edits = useRef<unknown[]>([]);
   const ready = useCallback((h: CanvasHandle) => {
     handle.current = h;
     const phases = ["pan", "zoom", "pan+zoom"] as const;
@@ -43,11 +45,38 @@ export function TimelineBench() {
       return { clips: scene.clipCount, tracks: scene.trackCount, phases: out };
     };
     (window as unknown as { __timelineBench: typeof run }).__timelineBench = run;
+
+    /** Input-to-paint while dragging clips: per pointermove, the synchronous work to produce the frame (event handler + draw + raster flush).
+     *  Frame alignment (waiting for vsync) is excluded: that is the display, not the code. `all` drags a selection of every clip. */
+    const drag = async (all: boolean, moves = 240) => {
+      const el = h.el, probe = el.getContext("2d")!;
+      h.view.scrollX = 0; h.view.scrollY = 0; h.view.pps = 40; h.draw();
+      const fire = (type: string, x: number, y: number, extra: PointerEventInit = {}) => {
+        const r = el.getBoundingClientRect();
+        el.dispatchEvent(new PointerEvent(type, { pointerId: 7, pointerType: "mouse", bubbles: true, cancelable: true, clientX: r.left + x, clientY: r.top + y, buttons: 1, ...extra }));
+      };
+      if (all) { el.dispatchEvent(new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true })); await new Promise((r) => requestAnimationFrame(r)); }
+      const x0 = GUTTER + 60, y0 = RULER + LANE / 2;
+      fire("pointerdown", x0, y0);
+      await new Promise((r) => requestAnimationFrame(r));
+      const dt = new Float64Array(moves);
+      for (let i = 0; i < moves; i++) {
+        const t0 = performance.now();
+        fire("pointermove", x0 + 10 + Math.round(24 * Math.sin(i / 12)), y0 + (i % 80 < 40 ? 0 : LANE));
+        h.draw();
+        probe.getImageData(0, 0, 1, 1);
+        dt[i] = performance.now() - t0;
+      }
+      fire("pointerup", x0, y0, { buttons: 0 });
+      const s = dt.slice().sort();
+      return { clips: scene.clipCount, selected: all ? scene.clipCount : 1, p50Ms: q(s, 0.5), p95Ms: q(s, 0.95), maxMs: s[s.length - 1]!, moves };
+    };
+    (window as unknown as { __timelineDragBench: () => Promise<unknown> }).__timelineDragBench = async () => ({ single: await drag(false), all: await drag(true), edits: edits.current.length });
   }, [scene]);
   return (
     <div style={{ position: "fixed", inset: 0, display: "grid" }}>
       <div style={{ position: "relative" }}>
-        <TimelineCanvas scene={scene} fps={30} frame={0} endFrame={30 * 3600} playing={false} zoom={40} onFrame={() => undefined} onZoom={() => undefined} summary="Benchmark timeline." onReady={ready} />
+        <TimelineCanvas scene={scene} fps={30} frame={0} endFrame={30 * 3600} playing={false} zoom={40} onFrame={() => undefined} onZoom={() => undefined} summary="Benchmark timeline." selected={selected} onSelect={setSelected} onEdit={(ops) => edits.current.push(ops)} onReady={ready} />
       </div>
     </div>
   );
