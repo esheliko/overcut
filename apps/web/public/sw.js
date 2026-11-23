@@ -15,5 +15,6 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(fetch(req).then((r) => { const copy = r.clone(); caches.open(VERSION).then((c) => c.put("/", copy)); return r; }).catch(() => caches.match("/")));
     return;
   }
-  e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); return r; })));
+  // ignoreVary: the server sends `Vary: Origin`, and a module script asks with an Origin header the stored copy (warmed by main.tsx) lacks: without this the app would not start offline.
+  e.respondWith(caches.match(req, { ignoreVary: true }).then((hit) => hit || fetch(req).then((r) => { const copy = r.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); return r; })));
 });

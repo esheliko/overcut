@@ -25,5 +25,24 @@ createRoot(document.getElementById("root")!).render(
 );
 
 if ("serviceWorker" in navigator && import.meta.env.PROD && !("__TAURI_INTERNALS__" in window)) {
-  addEventListener("load", () => void navigator.serviceWorker.register("/sw.js").catch(() => undefined));
+  addEventListener("load", () => void navigator.serviceWorker.register("/sw.js").then(cacheLoadedAssets).catch(() => undefined));
+}
+
+/**
+ * First visit: files loaded before the service worker took control (the JS chunks, the engine .wasm) never passed through it, so they are
+ * not in its cache and the app would not start offline. Once it controls the page, re-request each same-origin file the page has loaded or
+ * loads later (served from the HTTP cache, no new download) so the worker stores it. Best effort; offline use is checked by tests/smoke/network.spec.ts.
+ */
+async function cacheLoadedAssets(): Promise<void> {
+  await navigator.serviceWorker.ready;
+  if (!navigator.serviceWorker.controller) await new Promise<void>((done) => navigator.serviceWorker.addEventListener("controllerchange", () => done(), { once: true }));
+  const seen = new Set<string>();
+  // buffered: also the files loaded before this point; the engine chunks arrive a little later, so keep observing
+  new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      if (new URL(e.name).origin !== location.origin || seen.has(e.name)) continue;
+      seen.add(e.name);
+      void fetch(e.name).catch(() => undefined);
+    }
+  }).observe({ type: "resource", buffered: true });
 }
