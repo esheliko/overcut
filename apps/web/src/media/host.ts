@@ -67,3 +67,13 @@ export function onlyFixtures(host: MediaHost): MediaHost {
     thumbnail: (m, t, w, h) => (ok(m) ? host.thumbnail(m, t, w, h) : Promise.reject(new Error("no decoder for this media"))),
   };
 }
+
+/** Sample-project media (`fixture:` uris) goes to `fixtures`, everything else to `real`. */
+export function routeMedia(fixtures: MediaHost, real: MediaHost): MediaHost {
+  const pick = (m: MediaRef) => (m.uri.startsWith("fixture:") ? fixtures : real);
+  return {
+    audioFormat: (m) => pick(m).audioFormat(m),
+    readAudio: (m, s, n) => pick(m).readAudio(m, s, n),
+    thumbnail: (m, t, w, h) => pick(m).thumbnail(m, t, w, h),
+  };
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Engine, Op, Project } from "@app/engine-client";
-import { FakeMediaHost, onlyFixtures } from "./media/host";
+import { importedMediaHost } from "./media/engine-host";
+import { FakeMediaHost, routeMedia } from "./media/host";
 import { MediaLayer } from "./timeline/media-layer";
 import { announce } from "./a11y/announcer";
 import { useI18n } from "./i18n";
@@ -30,6 +31,8 @@ type Props = {
   endFrame?: number;
   /** Engine for waveform extraction; without it the canvas draws placeholders. */
   engine?: Engine | null;
+  /** The file behind an imported media id (the bin's), for real waveforms and filmstrips; without it imported clips show placeholders. */
+  fileOf?: (id: string) => Promise<File | null>;
 };
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
@@ -39,10 +42,16 @@ const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 
-export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine }: Props) {
+export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf }: Props) {
   const { t } = useI18n();
-  // Synthetic media serves the sample project only; imported files keep placeholders until they are wired to a real MediaHost (media/engine-host.ts, follow-up).
-  const media = useMemo(() => (engine ? new MediaLayer(engine, onlyFixtures(new FakeMediaHost({ seconds: 30 }))) : undefined), [engine]);
+  // The sample project uses synthetic media; imported files are decoded by the engine from the bin's files (placeholders while extracting or offline).
+  const fileOfRef = useRef(fileOf);
+  fileOfRef.current = fileOf;
+  const media = useMemo(() => {
+    if (!engine) return undefined;
+    const real = importedMediaHost(engine, async (id) => (await fileOfRef.current?.(id)) ?? null);
+    return new MediaLayer(engine, routeMedia(new FakeMediaHost({ seconds: 30 }), real));
+  }, [engine]);
   // The one shared project (M1-024): read here, changed only through the store's engine ops. Without a project the sample is shown read-only.
   const store = useStore();
   const project = useProjectStore((s) => s.project);

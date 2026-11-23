@@ -1,6 +1,6 @@
 // Hand-written surface of the generated WebAssembly package (`npm run build:wasm` writes the real one to ../wasm-pkg).
 // tsconfig `paths` and the Vite alias both map "@app/wasm-pkg": types come from here (so typecheck works before the engine is built),
-// code comes from the generated package. Keep in sync with crates/wasm/src/lib.rs.
+// code comes from the generated package ("@app/wasm-pkg-gpu" = the same plus the GPU compositor, for Workers only). Keep in sync with crates/wasm/src/lib.rs.
 declare module "@app/wasm-pkg" {
   export default function init(module?: unknown): Promise<unknown>;
   export function engine_info(): string;
@@ -29,19 +29,6 @@ declare module "@app/wasm-pkg" {
     setGpu(gpu: boolean): void;
     videoFrame(index: number): Promise<FrameRef>;
     audio(startSample: number, count: number): Promise<Float32Array>;
-    free(): void;
-  }
-  /** The GPU compositor on an OffscreenCanvas (WebGPU, else WebGL2). Mirrors `GpuRenderer` in crates/wasm/src/render.rs. */
-  export class GpuRenderer {
-    static create(canvas: OffscreenCanvas, prefer: string): Promise<GpuRenderer>;
-    info(): string;
-    alloc_stats(): string;
-    resize(w: number, h: number): void;
-    begin(): void;
-    add_rgba(rgba: Uint8Array, w: number, h: number, params: Float64Array): void;
-    add_external(source: unknown, w: number, h: number, params: Float64Array): void;
-    render(seqW: number, seqH: number, outW: number, outH: number, present: boolean): void;
-    read_rgba8(seqW: number, seqH: number, outW: number, outH: number, dest: Uint8Array): Promise<void>;
     free(): void;
   }
   export class Editor {
@@ -77,5 +64,24 @@ declare module "@app/wasm-pkg" {
     frames(): number;
     complete(): boolean;
     columns(startFrame: number, framesPerPx: number, count: number): Int16Array;
+  }
+}
+
+/** The package the compositing Workers load (`npm run build:wasm` writes it to ../wasm-pkg/gpu): everything above plus the GPU compositor (cargo feature `render`). */
+declare module "@app/wasm-pkg-gpu" {
+  export * from "@app/wasm-pkg";
+  export { default } from "@app/wasm-pkg";
+  /** The GPU compositor on an OffscreenCanvas (WebGPU, else WebGL2). Mirrors `GpuRenderer` in crates/wasm/src/render.rs. */
+  export class GpuRenderer {
+    static create(canvas: OffscreenCanvas, prefer: string): Promise<GpuRenderer>;
+    info(): string;
+    alloc_stats(): string;
+    resize(w: number, h: number): void;
+    begin(): void;
+    add_rgba(rgba: Uint8Array, w: number, h: number, params: Float64Array): void;
+    add_external(source: unknown, w: number, h: number, params: Float64Array): void;
+    render(seqW: number, seqH: number, outW: number, outH: number, present: boolean): void;
+    read_rgba8(seqW: number, seqH: number, outW: number, outH: number, dest: Uint8Array): Promise<void>;
+    free(): void;
   }
 }

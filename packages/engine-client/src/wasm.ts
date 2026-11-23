@@ -3,11 +3,11 @@ import { probeHost } from "./probe";
 import { createExportApi, type WorkerLike } from "./export/job";
 import { opfsStorage } from "./export/storage";
 import { createWebMedia, type WasmMediaClass } from "./decode/media";
-import type { GpuRenderer as GpuRendererClass } from "@app/wasm-pkg";
+import type { GpuRenderer as GpuRendererClass } from "@app/wasm-pkg-gpu";
 import { wrapRenderer, type GpuRenderer } from "./render";
 import { parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine, type FrameDescription, type MediaApi } from "./types";
 
-/** Browser backend: loads the WebAssembly build once. Run the engine inside a Web Worker when it starts doing real work (see docs). */
+/** Browser backend: loads the UI-thread WebAssembly build once (no GPU code: the compositing Workers load `@app/wasm-pkg-gpu` below). Run the engine inside a Web Worker when it starts doing real work (see docs). */
 export async function createWasmEngine(opts: { spawnExportWorker: () => WorkerLike }): Promise<Engine> {
   const wasm = await import("@app/wasm-pkg");
   await wasm.default();
@@ -110,7 +110,7 @@ export interface Evaluator {
 }
 
 export async function openWasmEvaluator(projectJson: string): Promise<Evaluator> {
-  const wasm = await import("@app/wasm-pkg");
+  const wasm = await import("@app/wasm-pkg-gpu");
   await wasm.default();
   const editor = new wasm.Editor(projectJson);
   return {
@@ -154,7 +154,7 @@ async function webgpuWorks(wasm: { GpuRenderer: typeof GpuRendererClass }): Prom
  * "webgl2" (both forced, no test). Rejects with a plain message when no GPU backend can be set up.
  */
 export async function openWasmRenderer(canvas: OffscreenCanvas, prefer: "auto" | "webgpu" | "webgl2" = "auto"): Promise<GpuRenderer> {
-  const wasm = await import("@app/wasm-pkg");
+  const wasm = await import("@app/wasm-pkg-gpu");
   await wasm.default();
   const backend = prefer === "auto" ? ((await webgpuWorks(wasm)) ? "webgpu" : "webgl2") : prefer;
   return wrapRenderer(await wasm.GpuRenderer.create(canvas, backend), canvas);
@@ -162,7 +162,7 @@ export async function openWasmRenderer(canvas: OffscreenCanvas, prefer: "auto" |
 
 /** The production decoder (`Engine.media`) on its own, for a Worker that decodes but does not own a project. */
 export async function openWasmMedia(): Promise<MediaApi> {
-  const wasm = await import("@app/wasm-pkg");
+  const wasm = await import("@app/wasm-pkg-gpu");
   await wasm.default();
   return createWebMedia(wasm.MediaFile as unknown as WasmMediaClass);
 }

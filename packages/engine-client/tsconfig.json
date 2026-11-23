@@ -4,7 +4,7 @@
     "outDir": "../../node_modules/.cache/tsc/engine-client",
     "rootDir": "src",
     "tsBuildInfoFile": "../../node_modules/.cache/tsc/engine-client.tsbuildinfo",
-    "paths": { "@app/wasm-pkg": ["./src/wasm-module.d.ts"] }
+    "paths": { "@app/wasm-pkg": ["./src/wasm-module.d.ts"], "@app/wasm-pkg-gpu": ["./src/wasm-module.d.ts"] }
   },
   "include": ["src"]
 }

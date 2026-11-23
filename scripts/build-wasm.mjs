@@ -14,8 +14,11 @@ if (pinned && !have.stdout.includes(pinned)) { console.error(`wasm-bindgen CLI i
 
 const profile = dev ? 'debug' : 'release';
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: 'inherit' });
-run('cargo', ['build', '-p', 'app-wasm', '--target', 'wasm32-unknown-unknown', ...(dev ? [] : ['--release'])]);
-const wasm = `target/wasm32-unknown-unknown/${profile}/app_wasm.wasm`;
-run('wasm-bindgen', ['--target', 'web', '--out-dir', 'packages/engine-client/wasm-pkg', '--out-name', 'app_wasm', ...(dev ? ['--debug'] : []), wasm]);
-if (!dev && spawnSync('wasm-opt', ['--version']).status === 0) run('wasm-opt', ['-O3', '-o', 'packages/engine-client/wasm-pkg/app_wasm_bg.wasm', 'packages/engine-client/wasm-pkg/app_wasm_bg.wasm']);
-console.log('wasm built: packages/engine-client/wasm-pkg');
+const canOpt = !dev && spawnSync('wasm-opt', ['--version']).status === 0;
+// Two packages from one crate (ADR 0003): `wasm-pkg` (no GPU code) is what the UI thread loads; `wasm-pkg/gpu` (feature `render`) is what the Workers that composite load.
+for (const [features, outDir] of [[[], 'packages/engine-client/wasm-pkg'], [['render'], 'packages/engine-client/wasm-pkg/gpu']]) {
+  run('cargo', ['build', '-p', 'app-wasm', '--target', 'wasm32-unknown-unknown', ...(dev ? [] : ['--release']), ...(features.length ? ['--features', features.join(',')] : [])]);
+  run('wasm-bindgen', ['--target', 'web', '--out-dir', outDir, '--out-name', 'app_wasm', ...(dev ? ['--debug'] : []), `target/wasm32-unknown-unknown/${profile}/app_wasm.wasm`]);
+  if (canOpt) run('wasm-opt', ['-O3', '-o', `${outDir}/app_wasm_bg.wasm`, `${outDir}/app_wasm_bg.wasm`]);
+}
+console.log('wasm built: packages/engine-client/wasm-pkg (UI thread) and wasm-pkg/gpu (compositing Workers)');
