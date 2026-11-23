@@ -237,3 +237,24 @@ fn a_host_returning_the_wrong_amount_of_audio_is_an_error() {
         MediaError::OutOfRange
     );
 }
+
+#[test]
+fn opus_audio_gets_at_least_600_ms_of_preroll_so_the_decoder_has_converged() {
+    let (d, p) = decoder("vp9_opus.webm");
+    let a = p.audio().unwrap();
+    assert!(a.codec.starts_with("opus"));
+    let total = d.info().audio.as_ref().unwrap().sample_count;
+    // Ask for a block 0.8 s in (or as late as the file allows): the plan must start at least 0.6 s before it, S4 found 4 packets (80 ms) too few.
+    let start = 38_400.min(total - 4_800);
+    let r = d.plan_audio(start, 4_800).unwrap();
+    let wanted_us = ticks_to_us(Time::from_sample_index(start, 48_000).unwrap());
+    assert!(r.preroll_packets > 4, "preroll {}", r.preroll_packets);
+    assert!(
+        wanted_us - r.first_ts_us >= 600_000 || r.from_start,
+        "pre-roll covers only {} us",
+        wanted_us - r.first_ts_us
+    );
+    // Near the start there is simply less to prime with: the plan begins at the first packet.
+    let r0 = d.plan_audio(0, 960).unwrap();
+    assert!(r0.from_start);
+}
