@@ -78,6 +78,7 @@ test("aspect ratio: an empty project's preview takes the chosen shape (a project
 });
 
 test("device check: reachable from the menu, shows capabilities, runs the test, fits the screen, makes no outside requests", async ({ page }) => {
+  test.setTimeout(480_000);
   const outside: string[] = [];
   const origin = new URL(page.url() === "about:blank" ? "http://localhost" : page.url()).origin;
   page.on("request", (r) => { const u = new URL(r.url()); if (/^https?:$/.test(u.protocol) && u.hostname !== new URL(test.info().project.use.baseURL ?? origin).hostname) outside.push(r.url()); });
@@ -98,11 +99,11 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
 
   await run.click();
   // headless CI often has no GPU or hardware codecs: every test must still END with a readable answer, never hang or crash
-  await expect(page.getByTestId("copy")).toBeVisible({ timeout: 240_000 });
-  await expect(page.getByTestId("results").locator("li")).toHaveCount(4);
+  await expect(page.getByTestId("copy")).toBeVisible({ timeout: 420_000 });
+  await expect(page.getByTestId("results").locator("li")).toHaveCount(6);
   const report = JSON.parse(await page.getByTestId("report").inputValue());
   expect(report.overcut_device_report).toBe(1);
-  expect(Object.keys(report.tests)).toEqual(["decode", "seek", "gpuUpload", "fillRate"]);
+  expect(Object.keys(report.tests)).toEqual(["decode", "seek", "gpuUpload", "fillRate", "playback", "exportSpeed"]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
   expect(outside).toEqual([]);

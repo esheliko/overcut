@@ -1,5 +1,5 @@
 /** What the page and the benchmark worker say to each other. */
-export type TestId = "decode" | "seek" | "gpuUpload" | "fillRate";
+export type TestId = "decode" | "seek" | "gpuUpload" | "fillRate" | "playback" | "exportSpeed";
 
 export type Verdict = "good" | "ok" | "slow" | "na";
 
@@ -18,4 +18,4 @@ export type ToWorker = { type: "run"; id: TestId };
 export type FromWorker = { type: "result"; result: TestResult } | { type: "progress"; id: TestId; frac: number };
 
 /** The tests in the order they run. Titles and explanations are in i18n/en.json (`diag.t.<id>.title` / `.what`). */
-export const TEST_IDS: TestId[] = ["decode", "seek", "gpuUpload", "fillRate"];
+export const TEST_IDS: TestId[] = ["decode", "seek", "gpuUpload", "fillRate", "playback", "exportSpeed"];

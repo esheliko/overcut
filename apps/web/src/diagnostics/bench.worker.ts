@@ -356,11 +356,11 @@ async function fillRateGpu(): Promise<Record<string, number | string>> {
   return { gpu: info, layers: LAYERS, frame_p50_ms: s.p50, frame_p95_ms: s.p95, layers_at_60fps: Math.round((LAYERS * 16.7) / Math.max(s.p50, 0.1)), frames: s.n };
 }
 
-const RUNNERS: Record<TestId, () => Promise<Record<string, number | string>>> = { decode: decodeTest, seek: seekTest, gpuUpload: gpuUploadTest, fillRate: fillRateTest };
+const RUNNERS: Record<Exclude<TestId, "playback" | "exportSpeed">, () => Promise<Record<string, number | string>>> = { decode: decodeTest, seek: seekTest, gpuUpload: gpuUploadTest, fillRate: fillRateTest };
 
 ctx.onmessage = async (e) => {
   if (e.data.type !== "run") return;
-  const id = e.data.id;
+  const id = e.data.id as Exclude<TestId, "playback" | "exportSpeed">;
   const t0 = performance.now();
   let result: TestResult;
   try {

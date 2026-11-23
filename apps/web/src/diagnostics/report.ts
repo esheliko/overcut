@@ -32,6 +32,8 @@ export function verdict(r: TestResult): Verdict {
     case "seek": return grade(num(r, "gop150_p95_ms"), 150, 400, false);
     case "gpuUpload": return grade(fastestUpload(r)?.ms ?? null, 6, 20, false);
     case "fillRate": return grade(bestFill(r), 8, 4, true);
+    case "playback": return grade(num(r, "fps"), 28, 24, true);
+    case "exportSpeed": return grade(num(r, "x_realtime"), 1, 0.5, true);
   }
 }
 
@@ -52,6 +54,8 @@ export function sentence(r: TestResult, t: T): string {
       const all = UPLOAD_ROUTES.filter((k) => `${k}_p50_ms` in m).map((k) => `${t(`diag.route.${k}`)} ${typeof m[`${k}_p50_ms`] === "number" ? t("diag.s.ms", { n: n(`${k}_p50_ms`) }) : t("diag.s.failed")}`).join(", ");
       return t("diag.s.gpuUpload", { best: best ? `${t(`diag.route.${best.route}`)}, ${t("diag.s.ms", { n: best.ms })}` : t("diag.s.failed"), all });
     }
+    case "playback": return t("diag.s.playback", { fps: n("fps"), dropped: n("dropped"), presented: n("presented"), path: String(m.upload_path ?? "n/a"), backend: String(m.backend ?? "") });
+    case "exportSpeed": return t("diag.s.exportSpeed", { x: n("x_realtime"), codec: String(m.codec ?? "") });
     case "fillRate": {
       const gl = (num(r, "gl_layers_at_60fps") ?? -1) > (num(r, "layers_at_60fps") ?? -1);
       const p = gl ? "gl_" : "";

@@ -1,6 +1,7 @@
 import { createEngine, type Capabilities, type CodecSupport } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
+import { PIPELINE_TESTS, runPipelineTest } from "./pipeline";
 import { buildReport, sentence, verdict } from "./report";
 import { readStoredChoices } from "../preview/uploadPath";
 import { createRunner } from "./runner";
@@ -104,7 +105,7 @@ export default function Diagnostics() {
     const out: TestResult[] = [];
     for (const id of TEST_IDS) {
       setCurrent(id); setFrac(0);
-      const res = await r.run(id, setFrac);
+      const res = PIPELINE_TESTS.includes(id) ? await runPipelineTest(id, setFrac) : await r.run(id, setFrac);
       out.push(res);
       setResults([...out]);
     }

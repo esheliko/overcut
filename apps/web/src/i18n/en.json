@@ -267,6 +267,10 @@
   "diag.t.seek.what": "How long it takes to show a frame when you drag the playhead to a random spot. Lower is snappier scrubbing.",
   "diag.t.gpuUpload.title": "Sending frames to the graphics chip",
   "diag.t.gpuUpload.what": "How fast a video frame reaches the graphics chip, the step before any effect is drawn. Several routes are tried on every graphics API the device has (WebGPU and WebGL2); the quickest one counts.",
+  "diag.t.playback.title": "Playback, 1080p with 3 layers",
+  "diag.t.playback.what": "Plays a generated full-HD 30 fps clip with 3 stacked layers for about 5 seconds through the real preview, and counts the frames shown and dropped.",
+  "diag.t.exportSpeed.title": "Export speed",
+  "diag.t.exportSpeed.what": "Exports a generated 10 second full-HD 30 fps clip with sound through the real exporter (default format) and reports how many times faster than real time it ran.",
   "diag.t.fillRate.title": "Drawing layers (effects speed)",
   "diag.t.fillRate.what": "How many full-HD layers of effects the graphics chip can draw per frame. More layers means room for titles, overlays and effects.",
   "diag.s.unsupported": "Not supported on this device. {reason}",
@@ -283,5 +287,7 @@
   "diag.route.gl_cpu": "WebGL2 through the processor",
   "diag.s.ms": "{n} ms",
   "diag.s.failed": "failed",
+  "diag.s.playback": "{fps} frames per second ({presented} shown, {dropped} dropped) on {backend}, frames sent to the graphics chip by: {path}.",
+  "diag.s.exportSpeed": "{x}x real time ({codec}); 1 means a 10 second video takes 10 seconds.",
   "diag.s.fillRate": "{ms} ms to draw {layers} full-HD layers on {api}: room for about {at60} layers at 60 frames per second."
 }
