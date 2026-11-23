@@ -7,6 +7,6 @@
     "resolveJsonModule": true,
     "paths": { "@app/wasm-pkg": ["../../packages/engine-client/src/wasm-module.d.ts"], "@app/wasm-pkg-gpu": ["../../packages/engine-client/src/wasm-module.d.ts"] }
   },
-  "include": ["src", "src/**/*.json", "vite.config.ts"],
+  "include": ["src", "src/**/*.json", "vite.config.ts", "csp.ts"],
   "references": [{ "path": "../../packages/engine-client" }]
 }
