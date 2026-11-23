@@ -13,6 +13,7 @@ import { ExportControl } from "./export/ExportDialog";
 import { MediaBin } from "./media/MediaBin";
 import { TICKS, clipCount } from "./media/plan";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickOne, setDesktop, type Source } from "./media/sources";
+import { useShellProfile } from "./layout/useShellProfile";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
 type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; engine: Engine } | { status: "error"; message: string };
@@ -37,18 +38,6 @@ const RATIOS = [
   { id: "1:1", value: 1 },
   { id: "4:5", value: 4 / 5 },
 ] as const;
-
-function useMedia(query: string) {
-  const [match, setMatch] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const m = window.matchMedia(query);
-    const on = () => setMatch(m.matches);
-    on();
-    m.addEventListener("change", on);
-    return () => m.removeEventListener("change", on);
-  }, [query]);
-  return match;
-}
 
 function EmptyState({ icon, title, text }: { icon: IconName; title: string; text: string }) {
   return (
@@ -183,9 +172,10 @@ function Editor({ store }: { store: ProjectStore }) {
     announce(t("theme.changed", { theme: t(`theme.${next === "system" ? "system" : theme}`) }));
   };
   useEffect(() => watchSystem(() => loadPref(), () => undefined), []);
-  const wide = useMedia("(min-width: 1100px)");
-  const compact = useMedia("(max-width: 479px)"); // small phone: theme toggle and engine status live in the "..." menu
-  const roomy = useMedia("(min-width: 720px)"); // tablet and up: the tool panel is always open
+  const editorRef = useRef<HTMLDivElement>(null);
+  const { profile, compact } = useShellProfile(editorRef); // compact: small phone, theme toggle and engine status live in the "..." menu
+  const wide = profile === "desktop" || profile === "ultrawide"; // details panel gets its own column
+  const roomy = profile === "tablet" || wide; // tablet and up: the tool panel is always docked open (phones: a sheet)
 
   useEffect(() => {
     let alive = true;
@@ -293,7 +283,7 @@ function Editor({ store }: { store: ProjectStore }) {
     : t("engine.failed", { message: engine.message });
 
   return (
-    <div className="editor">
+    <div className="editor" ref={editorRef} data-profile={profile} data-testid="editor">
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           {!compact && <button className="icon-btn" aria-label={t("theme.change", { theme: themeName })} title={themeName} onClick={cycleTheme} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>}
