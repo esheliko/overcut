@@ -20,7 +20,7 @@ M0 Foundations ──► M1 First cut ──► M2 Real editing ──► M3 Sou
 **Goal**: cut a clip and export it, on web and desktop, fast.
 - **Status (2026-11-23): not complete.** The import, trim, split, undo, play, export slice works on web (and a desktop path exists); open: device proofs, ADRs 0003/0004 acceptance, activation test, perf CI job, and several P0 rows (canvas presets, `.overcut` open/save UI, duplicate/copy/paste, history panel, XT-06 network log). Table and gap list: [M1-STATUS.md](M1-STATUS.md).
 - Spikes S1-S4, S7 done and their ADRs accepted (see [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)). "Done" means code merged; hardware bars count only once proven on the reference devices (plan section 4a).
-- PM-01/02/03/06/07/12, TL-02/06, PV-01, EX-01/02/04, AU-01 (waveform), UX-01/05, XT-06.
+- PM-01/02/03/06/07/12, TL-02/06, PV-01, EX-01/02/04, AU-01 (waveform), UX-01/05, XT-06 (no telemetry, visible network log, no third-party scripts; opt-in crash reports moved to M2 as XT-06b: they need a server endpoint, see FEATURES.md).
 - One video track + one audio track; import, trim, split, delete, undo/redo, play/scrub, export 1080p30 H.264 (WebCodecs on web, native on desktop).
 - **Exit**: the activation test (import, trim, export) takes < 90 s for a first-time user; 1080p preview 60 fps on the reference laptop, export >= 1x realtime on the reference phone browser; autosave survives `kill -9`; no network calls (CI checks); budgets measured in CI.
 

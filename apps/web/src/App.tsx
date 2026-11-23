@@ -5,7 +5,7 @@ import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
-import { CanvasDialog, ConfirmDialog } from "./ProjectDialogs";
+import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
 import { canvasSummary, hasPicture } from "./canvas";
 import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
@@ -106,7 +106,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onNew(): void; onOpen(): void; onSave(): void } }) {
+function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -143,6 +143,7 @@ function AppMenu({ compact, theme, status, project }: { compact: boolean; theme:
           <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={() => { setOpen(false); project.onOpen(); }}>{t("menu.openProject")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={() => { setOpen(false); project.onSave(); }}>{t("menu.saveProject")}</button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
+          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={() => { setOpen(false); project.onPrivacy(); }}>{t("menu.privacy")}</button>
           <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
         </div>
@@ -166,7 +167,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
-  const [dialog, setDialog] = useState<null | "canvas" | { title: string; body: string; confirm: string; run(): Promise<void> }>(null);
+  const [dialog, setDialog] = useState<null | "canvas" | "privacy" | { title: string; body: string; confirm: string; run(): Promise<void> }>(null);
   const [locating, setLocating] = useState(false); // after opening a file: offer to reconnect media that is not on this device
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
@@ -388,7 +389,7 @@ function Editor({ store }: { store: ProjectStore }) {
             </span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} project={{ onNew, onOpen: () => void onOpen(), onSave: () => void onSave() }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
+          <AppMenu compact={compact} project={{ onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
         </div>
       </header>
 
@@ -429,8 +430,9 @@ function Editor({ store }: { store: ProjectStore }) {
           <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setLocating(false)}>×</button>
         </div>
       ) : null} />
+      {dialog === "privacy" && <PrivacyDialog onClose={() => setDialog(null)} />}
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
-      {dialog && dialog !== "canvas" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
+      {dialog && dialog !== "canvas" && dialog !== "privacy" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       <div className="toast" role="status">{toast}</div>
     </div>

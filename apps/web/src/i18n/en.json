@@ -425,5 +425,19 @@
   "project.cancel": "Keep current project",
   "project.offline": "{count, plural, one {# media file is} other {# media files are}} not on this device yet.",
   "project.locate": "Locate files…",
-  "project.located": "Reconnected {done} of {total} media files."
+  "project.located": "Reconnected {done} of {total} media files.",
+  "menu.privacy": "Privacy: network activity",
+  "net.title": "Network activity",
+  "net.intro": "Every request OverCut made this session. Nothing is sent anywhere else, and your files never leave this device.",
+  "net.none": "OverCut made no requests outside its own files.",
+  "net.outside": "Contacted outside OverCut's own files: {hosts}",
+  "net.count": "{n, plural, one {# request} other {# requests}}, {size} loaded this session",
+  "net.col.time": "Time",
+  "net.col.url": "Address",
+  "net.col.size": "Size",
+  "net.col.from": "Started by",
+  "net.from.app-asset": "App file",
+  "net.from.worker": "Background worker",
+  "net.from.service-worker": "Service worker",
+  "net.from.user-download": "Your download"
 }

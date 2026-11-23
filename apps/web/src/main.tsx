@@ -2,6 +2,7 @@ import { StrictMode, Suspense, createElement, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { applyLocale, initialLocale, I18nProvider } from "./i18n";
+import { startNetworkCapture } from "./privacy/networkLog";
 import { watchInstallPrompt } from "./install";
 import { applyAccent, applyTheme, loadAccent, loadPref } from "./theme/theme";
 import "./theme/tokens.css";
@@ -12,6 +13,7 @@ applyTheme(loadPref());
 applyAccent(loadAccent());
 watchInstallPrompt(); // the browser fires `beforeinstallprompt` early: keep it until the menu can offer it
 applyLocale(initialLocale());
+startNetworkCapture(); // the visible network log (Privacy menu, /diagnostics)
 
 // `/#timeline-bench` opens the S8 benchmark page (lazy chunk, not linked from the UI).
 const Diagnostics = lazy(() => import("./diagnostics/Diagnostics"));

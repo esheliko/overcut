@@ -1,6 +1,7 @@
 import { createEngine, type Capabilities, type CodecSupport } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
+import { NetworkLog } from "../privacy/NetworkLog";
 import { PIPELINE_TESTS, runPipelineTest } from "./pipeline";
 import { buildReport, sentence, verdict } from "./report";
 import { readStoredChoices } from "../preview/uploadPath";
@@ -171,6 +172,11 @@ export default function Diagnostics() {
         {!caps && !capsError && <p className="diag-muted">{t("diag.caps.checking")}</p>}
         {capsError && <p role="alert" className="diag-bad">{t("diag.caps.error", { message: capsError })}</p>}
         {caps && <CapabilityTable caps={caps} t={t} />}
+      </section>
+      <section aria-labelledby="diag-net" className="diag-card">
+        <h2 id="diag-net">{t("net.title")}</h2>
+        <p className="diag-muted">{t("net.intro")}</p>
+        <NetworkLog />
       </section>
     </div>
   );

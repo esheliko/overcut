@@ -2,7 +2,7 @@
  * The preview Worker (M1-023): the Rust GPU compositor on the transferred canvas, the player loop (`Player`), decoding and audio mixing, all off the
  * UI thread. The UI thread sends commands and the audible clock; it receives the playhead, state, and mixed audio to schedule.
  */
-import { openEvaluator, openMediaApi, openRenderer, layerOf, renderExportFrame, type DecodedFrame, type Evaluator, type GpuLayer, type GpuRenderer, type LayerSource, type MediaApi, type MediaHandle } from "@app/engine-client";
+import { reportWorkerNetwork, openEvaluator, openMediaApi, openRenderer, layerOf, renderExportFrame, type DecodedFrame, type Evaluator, type GpuLayer, type GpuRenderer, type LayerSource, type MediaApi, type MediaHandle } from "@app/engine-client";
 import { epochNow, type FromPreview, type PreviewConfig, type PreviewRpc, type ToPreview } from "./protocol";
 import { Player, type AudioOut } from "./player";
 import { frameStartTicks } from "./timing";
@@ -10,6 +10,7 @@ import { ThumbStore } from "./scrubCache";
 import { createRemoteMedia, type NativeCall } from "./nativeMedia";
 import { chooseUploadPath, median, uploadKey, type UploadChoice, type UploadPath } from "./uploadPath";
 
+reportWorkerNetwork(); // visible network log (XT-06)
 const scope = self as unknown as {
   postMessage(m: FromPreview, transfer?: Transferable[]): void;
   addEventListener(type: "message", l: (e: MessageEvent<ToPreview>) => void): void;

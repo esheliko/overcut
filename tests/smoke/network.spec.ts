@@ -67,6 +67,17 @@ test("a full session (load, import, edit, play, export, offline reload) talks on
   expect(download.suggestedFilename()).toMatch(/\.(mp4|webm)$/);
   await page.getByTestId("export-done-close").click();
 
+  // the visible network log (Privacy menu): it lists the app's own files, says nothing left, and names no foreign host
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByTestId("menu-privacy").click();
+  const log = page.getByTestId("network-log");
+  await expect(log).toBeVisible();
+  await expect(page.getByTestId("network-summary")).toContainText("OverCut made no requests outside its own files");
+  const shown = await log.locator("tbody tr").count();
+  expect(shown).toBeGreaterThan(3);
+  for (const url of await log.locator(".net-url").allTextContents()) expect(new URL(url).host, `listed request ${url}`).toBe(own);
+  await page.keyboard.press("Escape");
+
   // diagnostics page, if the app has one yet
   const diag = await page.goto("/diagnostics");
   if (diag?.ok()) await page.waitForLoadState("load");
