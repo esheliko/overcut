@@ -47,6 +47,9 @@ export const networkLog = createNetworkLog();
  * For code that makes a network call the browser cannot see (the desktop app's native downloader, e.g. the optional OpenH264 codec, M1-041).
  * Call it when the user-started download begins or finishes: `recordNetworkEvent({ url, bytes, initiator: "user-download" })`.
  */
+/** Host of the desktop-only, user-started OpenH264 download (mirrors `HOST` in apps/desktop/native-media/src/openh264.rs and config/network-allowlist.json). */
+export const OPENH264_HOST_URL = "https://ciscobinary.openh264.org/";
+
 export const recordNetworkEvent = (e: NetworkEventInput): void => networkLog.record(e);
 
 export type Summary = { total: number; bytes: number; outside: string[]; downloads: number };
