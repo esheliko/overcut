@@ -25,8 +25,12 @@ js-sys = "=0.3.107"
 serde_json = "1"
 
 
-# The GPU compositor binding (src/render.rs) exists only for the browser build: surfaces on an OffscreenCanvas, WebCodecs frame import.
+[features]
+# `render`: the GPU compositor binding (src/render.rs; surfaces on an OffscreenCanvas, WebCodecs frame import). It adds ~2.5 MB of wgpu code, so
+# `scripts/build-wasm.mjs` builds the package twice: without it for the UI thread, with it for the Workers that composite (ADR 0003).
+render = ["dep:app-render", "dep:wgpu", "dep:web-sys"]
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-app-render = { path = "../render" }
-wgpu = { version = "26.0.1", default-features = false, features = ["wgsl", "webgpu", "webgl"] }
-web-sys = { version = "=0.3.107", features = ["OffscreenCanvas", "ImageBitmap", "VideoFrame", "console"] }
+app-render = { path = "../render", optional = true }
+wgpu = { version = "26.0.1", default-features = false, features = ["wgsl", "webgpu", "webgl"], optional = true }
+web-sys = { version = "=0.3.107", features = ["OffscreenCanvas", "ImageBitmap", "VideoFrame", "console"], optional = true }

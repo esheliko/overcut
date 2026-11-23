@@ -24,7 +24,7 @@ Crate `app-render`. ADR 0003. Milestone M1 (M1-020/021; export path M1-022; the 
 - WebGL2 cannot copy from a canvas (`UNRESTRICTED_EXTERNAL_TEXTURE_COPIES` missing): sources are `VideoFrame`, `ImageBitmap` or RGBA bytes only.
 - The `Instance` is kept alive for the renderer's lifetime. wgpu's default error handler would abort the module: validation errors go to `console.error` instead.
 - Build: `.cargo/config.toml` sets `--cfg=web_sys_unstable_apis` for wasm32 (web-sys gates the `VideoFrame` binding behind it).
-- Size: `app_wasm_bg.wasm` 881 KB -> 3.40 MB (gzip 329 KB -> 1.19 MB; no `wasm-opt` here). It is loaded by the UI thread, the preview Worker and each export Worker. Follow-up: split the GPU code into its own module so only the Workers that composite load it.
+- Size: the GPU code made `app_wasm_bg.wasm` 881 KB -> 3.40 MB (gzip 329 KB -> 1.19 MB; no `wasm-opt` here), so it is a separate build: cargo feature `render` of `crates/wasm`, built by `scripts/build-wasm.mjs` into `wasm-pkg/gpu` (3.40 MB, gzip 1.19 MB; the Workers that composite or decode import `@app/wasm-pkg-gpu`: preview Worker, export Worker) next to `wasm-pkg` (881 KB, gzip 329 KB; the UI thread, `@app/wasm-pkg`, no GPU code). Cold load, production build, Fast 3G, to engine ready: 6.0 s before #44, 10.5 s after #44, 7.5 s with the split (wasm downloaded before ready: 323 KB / 1164 KB / 323 KB gzip; the remaining 1.5 s over the baseline is shell JS and chunks added by other PRs since, 201 -> 280 KB gzip, not wasm).
 
 ## Edge cases
 Odd widths/heights use `ceil(w/2)` chroma; plane byte lengths are asserted. Opacity is clamped to 0..=1. Zero layers renders black. Chroma is bilinearly upsampled with centred siting (v0; left-sited MPEG-2 chroma is a later refinement).
