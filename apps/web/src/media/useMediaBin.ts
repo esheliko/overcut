@@ -82,6 +82,13 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     // A reopened project: files whose stored handle still has permission come back by themselves; the rest show "Relink".
     for (const m of p.media) {
       if (live.current.has(m.id)) continue;
+      // Another project opened in this window: a file already open under the same name (and the size the fingerprint records) is the same file.
+      const same = [...live.current.values()].find((l) => l.file.name === m.name && (!m.hash || fingerprintSize(m.hash) === l.file.size));
+      if (same) {
+        live.current.set(m.id, same);
+        setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, status: "ready", size: same.file.size } : i)));
+        continue;
+      }
       const file = await loadHandle(m.uri);
       // A file found by its stored path must still be the same file (size from the fingerprint); otherwise it shows "Relink".
       const sameSize = !m.uri.startsWith("path:") || !m.hash || fingerprintSize(m.hash) === file?.size;
@@ -221,6 +228,21 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     return true;
   }, [engine, ed, store, enqueue, patch]);
 
+  /**
+   * A reopened project's offline media, matched to the files the person picked by name (and size, from the fingerprint); each match is verified like
+   * a single relink. Returns how many came back.
+   */
+  const relinkMany = useCallback(async (sources: Source[]): Promise<number> => {
+    let n = 0;
+    for (const ref of store.getState().project?.media ?? []) {
+      if (live.current.has(ref.id)) continue;
+      const size = fingerprintSize(ref.hash ?? "");
+      const match = sources.find((s) => s.file.name.toLowerCase() === ref.name.toLowerCase() && (size === null || size === s.file.size));
+      if (match && (await relink(ref.id, match).catch(() => false))) n += 1;
+    }
+    return n;
+  }, [store, relink]);
+
   /** The file behind a media item (for the preview's decoders), or null while it is offline. */
   const fileOf = useCallback(async (id: string): Promise<File | null> => {
     const ref = store.getState().project?.media.find((m) => m.id === id);
@@ -229,5 +251,5 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
 
   /** Ids of the media whose file is readable now (ready cards), as a stable string: consumers re-request derived data when it changes. */
   const readyIds = items.filter((i) => i.status === "ready").map((i) => i.id).sort().join(",");
-  return { items, readyIds, importSources, addToTimeline, remove, relink, fileOf };
+  return { items, readyIds, importSources, addToTimeline, remove, relink, relinkMany, fileOf };
 }

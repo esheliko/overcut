@@ -59,6 +59,20 @@ export async function pickOne(): Promise<Source | null> {
   });
 }
 
+/** Several files, for relinking a whole reopened project: the handle picker where there is one, else a throwaway multi-file input. Empty on cancel. */
+export async function pickMany(): Promise<Source[]> {
+  if (hasHandlePicker()) return pickWithHandles();
+  return new Promise((ok) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = ACCEPT;
+    input.onchange = () => ok(Array.from(input.files ?? [], (file) => ({ file })));
+    input.oncancel = () => ok([]);
+    input.click();
+  });
+}
+
 export const fromFileList = (files: FileList | File[] | null | undefined): Source[] => Array.from(files ?? [], (file) => ({ file }));
 
 /** Files from a drop, with handles where the browser gives them. Folders are ignored. */

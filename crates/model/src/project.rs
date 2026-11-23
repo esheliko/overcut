@@ -34,9 +34,20 @@ pub struct Sequence {
     pub name: String,
     pub frame_rate: Rational,
     pub resolution: Resolution,
+    /// True once the user chose the canvas size (an aspect/size preset or a custom one). While false the first picture imported sets
+    /// `resolution` ("match first clip", the zero-question default). Absent in older files = false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub size_fixed: bool,
+    /// Same for `frame_rate`: true once the user picked a frame rate; while false the first picture imported sets it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub rate_fixed: bool,
     pub sample_rate: u32,
     /// Bottom-to-top for video (later tracks draw over earlier ones). Any number of tracks of either kind.
     pub tracks: Vec<Track>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -170,6 +181,8 @@ impl Project {
                 name: "Sequence 1".to_string(),
                 frame_rate,
                 resolution,
+                size_fixed: false,
+                rate_fixed: false,
                 sample_rate: 48_000,
                 tracks: vec![video, audio],
             }],

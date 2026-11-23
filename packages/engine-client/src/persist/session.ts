@@ -266,6 +266,37 @@ export class ProjectSession {
     return this.baseProject;
   }
 
+  /** The project as a `.overcut` file ("Save project as"): the engine's current project written over the file the session began from, so fields this version does not know survive. */
+  async exportBytes(): Promise<Uint8Array> {
+    await this.whenDurable().catch(() => undefined);
+    return this.engine.saveProject(await this.engine.editing.project(), this.baseBytes);
+  }
+
+  /**
+   * "Open project" / "New project": the session carries on with another project. `bytes` is a `.overcut` file (it is parsed first: a damaged or
+   * newer-than-this-app file is refused with the engine's `ProjectFileError` and nothing changes). The new project becomes the stored base
+   * (replaced atomically BEFORE the old journal and checkpoint go, so a crash in between leaves a journal whose base no longer matches: recognised
+   * as stale and dropped on the next open, never replayed onto the wrong project). Undo history starts empty. The previous project is gone from
+   * storage: the UI confirms first when it has changes the user has not saved to a file.
+   */
+  async replaceProject(bytes: Uint8Array): Promise<Project> {
+    if (this.closed) throw new Error("the project is closed");
+    const opened = await this.engine.openProject(bytes);
+    if (opened.readOnly) throw new StorageError("io", "That project was made with a newer version of OverCut. Update the app to open it.");
+    await this.whenDurable().catch(() => undefined);
+    clearTimeout(this.timer);
+    await this.storage.writeAtomic(PROJECT_FILE, bytes);
+    await Promise.all([this.storage.remove(JOURNAL_FILE), this.storage.remove(CHECKPOINT_FILE)]);
+    await this.engine.editing.open(opened.project);
+    this.baseBytes = bytes;
+    this.baseProject = opened.project;
+    this.headerWritten = false;
+    this.needRepair = false;
+    this.sinceCheckpoint = 0;
+    this.unwritten = "";
+    return opened.project;
+  }
+
   /** Clean end of the session: the current state becomes the saved project, then the log and checkpoint are deleted (in that order: a crash in between leaves a stale log that the next open recognises and discards). */
   async close(): Promise<void> {
     if (this.closed) return;

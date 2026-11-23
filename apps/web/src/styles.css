@@ -92,7 +92,7 @@ h2, p { margin: 0; }
 .play { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--fg); color: var(--bg); transition: transform var(--dur-instant); }
 .play:active { transform: scale(0.92); }
 .ratio { justify-self: end; }
-.ratio select { height: var(--target); min-width: 64px; padding: 0 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); font-size: 13px; font-weight: 500; }
+.ratio { padding: 0 12px; }
 
 /* Timeline */
 .timeline { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-top: 1px solid var(--line); }
@@ -286,6 +286,10 @@ h2, p { margin: 0; }
 .export-facts div { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-2); min-inline-size: 0; }
 .export-facts dt { color: var(--muted); font-size: var(--text-sm); }
 .export-facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.pj-dialog { inline-size: min(480px, calc(100vw - 24px)); max-block-size: min(92dvh, 760px); margin: auto; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow); overflow: auto; }
+.pj-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+.pj-dialog h2 { font-size: var(--text-lg); font-weight: 700; outline: none; }
+.export-fields input { min-block-size: var(--target); padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--fg); font-size: var(--text-base); min-inline-size: 0; }
 @media (max-width: 719px) {
   .export-dialog { inline-size: 100vw; max-inline-size: none; block-size: 100dvh; max-block-size: none; border: 0; border-radius: 0; }
   .export-head { padding-block-start: calc(var(--space-4) + env(safe-area-inset-top)); }

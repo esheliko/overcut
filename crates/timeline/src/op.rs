@@ -54,6 +54,15 @@ pub enum Op {
         frame_rate: Rational,
         resolution: Resolution,
     },
+    /// The project canvas (PM-01): frame rate and size as the user chose them, and whether each is now fixed (`true`) or follows the
+    /// first picture imported (`false`, "match first clip"). Undoable; clips are untouched (times are ticks, frame rate only changes sampling).
+    SetCanvas {
+        sequence: SequenceId,
+        frame_rate: Rational,
+        resolution: Resolution,
+        size_fixed: bool,
+        rate_fixed: bool,
+    },
 }
 
 /// Ops that undo an applied op, in the order they must be applied.

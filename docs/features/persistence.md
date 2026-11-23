@@ -21,6 +21,9 @@ The `.overcut` zip keeps its reserved `journal` entry unused: a zip cannot be ap
 - `navigator.storage.persist()` is requested when a project is first created. `acquireProjectLock` (Web Locks) allows one window per project.
 - Open path: no `project.overcut` -> create; journal with records for this base -> `Editing.recover` -> note; otherwise `Editing.open` and clear stale files.
 
+## Replacing the project (Open / New project)
+`ProjectSession.replaceProject(bytes)`: the engine parses the file first (a refused file changes nothing); then the new bytes are written atomically as `project.overcut` BEFORE the old journal and checkpoint are removed, so a crash in between leaves a journal whose header base no longer matches: recognised as stale and discarded, never replayed onto the wrong project. Then `Editing.open`, the session's base is the new file, undo history starts empty. `exportBytes()` is the live project in the file format (Save project as).
+
 ## Media fingerprints and relink (host)
 `Engine.fingerprintMedia(size, first, last)` (wasm `media_fingerprint`, Tauri command of the same name) and `fingerprintFile(engine, file)` read at most 128 KiB of any file. `SetMedia { media, uri, hash }` is the op that records a fingerprint on import and updates a moved file's uri (undoable, journaled). `relinkMedia(engine, project, candidates, current)` implements the relink steps of `project-file.md`: keep what still matches, else find a same-size candidate with the same fingerprint (each file hashed once) and return `set_media` ops, or list the media as offline (references and clips stay). Folder scanning and the import UI are M1 import work; they call these.
 
@@ -36,4 +39,4 @@ The `.overcut` zip keeps its reserved `journal` entry unused: a zip cannot be ap
 - `tests/smoke/persistence.spec.ts`: real engine and real OPFS in Chromium: edit stream, terminate the Worker mid-stream, reload, state equals the last acknowledged op, undo reaches the session start, Undo recovery.
 
 ## Not covered / follow-ups
-Tauri commands are compile-checked by `desktop-check` only (no webview in CI). Raw IPC bodies instead of number arrays for large bytes. Multi-project list and open/save-as UI (M1-034). Folding the journal into the zip entry. Cached sync handle for appends.
+Tauri commands are compile-checked by `desktop-check` only (no webview in CI). Raw IPC bodies instead of number arrays for large bytes. Multi-project list (M1-034); open/save-as is in the app menu (`canvas.md`). Folding the journal into the zip entry. Cached sync handle for appends.

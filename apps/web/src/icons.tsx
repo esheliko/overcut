@@ -42,6 +42,7 @@ const PATHS = {
   paste: "M9 4h6v3H9zM7 5.5H5v15h14v-15h-2",
   timing: `${c(12, 13, 8)}M12 9v4l3 2M9 2h6`,
   history: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2",
+  canvas: "M3 7h18v10H3zM7 3v4M17 3v4M7 17v4M17 17v4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
 } as const;
 

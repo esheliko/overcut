@@ -5,6 +5,7 @@ import { Icon } from "./icons";
 import { clipCount, timelineEnd } from "./media/plan";
 import { useImportPicker } from "./media/MediaBin";
 import type { Source } from "./media/sources";
+import { canvasSummary, shapeOf } from "./canvas";
 import { canvasBackingSize } from "./preview/layout";
 import { acquirePreviewHost, type PlayerProxy, type PreviewHost } from "./preview/host";
 import { rateLabel, TICKS_PER_SECOND, timecodeHMS, type Rate } from "./preview/timing";
@@ -13,14 +14,13 @@ import { useProjectStore, useStore } from "./store/projectStore";
 
 const IDLE = { rate: { num: 30, den: 1 } as Rate, size: { width: 1920, height: 1080 }, endTicks: 60 * TICKS_PER_SECOND };
 
-export interface RatioChoice { id: string; value: number }
-
 /** The sequence the editor shows: the project's once it has clips, the idle sample before that. Shared by the preview and the timeline's length. */
 export function sequenceView(project: Project | null) {
   const seq = project?.sequences[0];
   const has = !!project && !!seq && clipCount(project) > 0;
-  const rate: Rate = has ? seq.frame_rate : IDLE.rate;
-  const size = has ? seq.resolution : IDLE.size;
+  // The canvas the user chose counts before the first clip; "match first clip" (not fixed) shows the idle sample until a clip arrives.
+  const rate: Rate = has || seq?.rate_fixed ? seq!.frame_rate : IDLE.rate;
+  const size = has || seq?.size_fixed ? seq!.resolution : IDLE.size;
   const endTicks = has ? timelineEnd(project) : IDLE.endTicks;
   return { has, rate, size, endTicks, endFrame: Math.ceil((endTicks * rate.num) / (TICKS_PER_SECOND * rate.den)), sequence: seq?.id ?? "" };
 }
@@ -34,9 +34,8 @@ interface Props {
   /** Import files (the same flow as the bin; the empty preview offers it too). */
   onImport(s: Source[]): void;
   playing: boolean;
-  ratios: readonly RatioChoice[];
-  ratio: string;
-  onRatio(id: string): void;
+  /** Opens the canvas settings (the project's shape, size and frame rate). */
+  onCanvas(): void;
   onPlaying(p: boolean): void;
 }
 
@@ -46,7 +45,7 @@ interface Props {
  * The player, the GPU compositor and the decoders live in the preview Worker (`preview/worker.ts`); this component sends it the project, the files and
  * the transport commands, and shows the playhead it reports.
  */
-export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, ratios, ratio, onRatio, onPlaying }: Props) {
+export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, onCanvas, onPlaying }: Props) {
   const { t } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
@@ -130,7 +129,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, rati
     const ro = new ResizeObserver(fit);
     ro.observe(box);
     return () => ro.disconnect();
-  }, [size.width, size.height, ratio, view.has, hostVersion]);
+  }, [size.width, size.height, view.has, hostVersion]);
 
   // Transport keys. Space and the shuttle keys also work with the timeline focused; arrows/Home/End leave a focused slider alone (it handles them itself).
   useEffect(() => {
@@ -158,7 +157,8 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, rati
   }, []);
 
   const p = () => playerRef.current;
-  const ar = view.has ? size.width / size.height : ratios.find((r) => r.id === ratio)!.value;
+  const ar = size.width / size.height;
+  const canvasText = canvasSummary(size, rate);
   const badge = rateLabel(playing ? speed : 1);
   const tcNow = timecodeHMS(frame, rate);
   const total = timecodeHMS(endFrame, rate);
@@ -191,12 +191,9 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, rati
           <button className="icon-btn" aria-label={t("player.stepForward")} onClick={() => p()?.step(1)}><Icon name="stepForward" size={20} /></button>
           <button className="icon-btn" aria-label={t("player.end")} onClick={() => p()?.seek(p()!.endFrame)}><Icon name="forward" size={20} /></button>
         </div>
-        <label className="ratio">
-          <span className="sr-only">{t("ratio.label")}</span>
-          <select value={ratio} disabled={view.has} title={view.has ? t("ratio.fixed") : t("ratio.hint")} onChange={(e) => onRatio(e.target.value)}>
-            {ratios.map((r) => <option key={r.id} value={r.id}>{r.id === ratio ? t("ratio.shown", { id: r.id }) : t(`ratio.${r.id}`)}</option>)}
-          </select>
-        </label>
+        <button className="ratio chip-btn" onClick={onCanvas} aria-label={t("canvas.open", { summary: canvasText })} title={t("canvas.hint")} data-testid="canvas-open">
+          <Icon name="canvas" size={18} /><span>{shapeOf(size)}</span>
+        </button>
       </div>
     </section>
   );

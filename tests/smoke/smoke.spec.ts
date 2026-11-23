@@ -70,11 +70,14 @@ test("transport and timeline: play advances the playhead, the canvas timeline pa
   await expect.poll(painted).toBeGreaterThan(4);
 });
 
-test("aspect ratio: an empty project's preview takes the chosen shape (a project with clips follows its first clip)", async ({ page }) => {
+test("canvas: an empty project's preview takes the chosen shape from the canvas settings", async ({ page }) => {
   await page.goto("/");
+  await expect(page.getByTestId("canvas-open")).toBeEnabled({ timeout: 30_000 });
   const canvas = page.locator(".canvas");
   const wide = (await canvas.boundingBox())!;
-  await page.getByLabel("Preview shape").selectOption("9:16");
+  await page.getByTestId("canvas-open").click();
+  await page.getByTestId("canvas-shape").selectOption("9:16");
+  await page.getByTestId("canvas-apply").click();
   await expect.poll(async () => (await canvas.boundingBox())!.height > (await canvas.boundingBox())!.width).toBe(true);
   expect(wide.width).toBeGreaterThan(wide.height);
 });
