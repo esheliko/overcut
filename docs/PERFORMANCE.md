@@ -34,7 +34,7 @@
 |---|---|---|---|
 | 1080p preview 60 fps on the reference laptop | `device.decode_fps`, `device.fill_layers_at_60fps` (+ `preview.fps`) | decode >= 60 fps, >= 3 layers at 60 fps | **container only** (software decode, 320x180 clip): trend. Windows laptop: decode 720 fps, 11 layers at 60 fps (pass); `/diagnostics` has no end-to-end preview test, so 60 fps preview itself is still unproven on a device; Mac pending |
 | Export >= 1x realtime on the reference phone browser | `export.speed_x` | low phone >= 0.7x, mid >= 1.5x | **container only**: 1080p30 5 s synthetic project, H.264 via software WebCodecs, about 0.16x, which says nothing about a phone with a hardware encoder. Phone numbers need an in-app export on the S24 and iPhone 14 (not in `/diagnostics` yet) |
-| Activation test (import, trim, export) < 90 s | not automated | 90 s | **manual** (a person with a stopwatch on a first-time user); no harness number |
+| Activation test (import, trim, export) < 90 s | not automated | 90 s | **manual** (a person with a stopwatch on a first-time user, script in [ACTIVATION-TEST.md](ACTIVATION-TEST.md)); no harness number |
 | Startup | `startup.warm_ms`, `startup.cold_ms`, `size.*` | table above | **container** (headless Chromium, no throttle): trend; sizes are exact |
 | Budgets measured in CI | `npm run perf` + `perf:compare` | warn +10%, fail +25% | the CI job is requested separately (`process: perf job`), not wired yet |
 
