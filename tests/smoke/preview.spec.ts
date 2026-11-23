@@ -45,9 +45,20 @@ test("play 2 s, pause, frame-step; numbers reported", async ({ page }, info) => 
   const t0 = Date.now();
   await page.keyboard.press("Space");
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  // The "2 s of playback" window opens when playback is RUNNING (the clock is anchored and the first frame has advanced), not at the key press:
+  // the press-to-running start-up (audio resume, decoder open, first frame, 60 ms lead) is a separate, reported number and varies with machine load.
+  // Counting it inside the 2 s made the frame count depend on start-up speed (a loaded runner lost 0.5 s and failed `frame > 45`).
+  const f0 = await page.evaluate(async () => {
+    const h = (window as unknown as { __overcutPreview: Hook }).__overcutPreview;
+    const until = performance.now() + 10_000;
+    while (h.player.frame < 1 && performance.now() < until) await new Promise((r) => setTimeout(r, 5));
+    return h.player.frame;
+  });
+  const startupMs = Date.now() - t0;
+  const t1 = Date.now();
   await page.waitForTimeout(2000);
   await page.keyboard.press("Space");
-  const wall = (Date.now() - t0) / 1000;
+  const wall = (Date.now() - t1) / 1000;
   await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
   const r = await page.evaluate(async () => {
     const h = (window as unknown as { __overcutPreview: Hook }).__overcutPreview;
@@ -60,7 +71,7 @@ test("play 2 s, pause, frame-step; numbers reported", async ({ page }, info) => 
   });
   const offsetMs = r.flash === null ? null : (r.flash - TICKS) / (TICKS / 1000);
   expect(await page.getByTestId("preview-problem").allTextContents()).toEqual([]);
-  console.log("preview playback (headless, software decode and GL, fake audio sink; 320x180):", JSON.stringify({ ...r, wallS: wall, avOffsetMs: offsetMs }));
+  console.log("preview playback (headless, software decode and GL, fake audio sink; 320x180):", JSON.stringify({ ...r, wallS: wall, startupMs, avOffsetMs: offsetMs }));
   expect(r.presented).toBeGreaterThan(30);
   expect(r.flash, "the white frame at 1.000 s was drawn").not.toBeNull();
   // ... and it is the white frame: frame 30 on the canvas is white, frame 29 is not (pixels read back from the Worker's canvas).
@@ -78,7 +89,7 @@ test("play 2 s, pause, frame-step; numbers reported", async ({ page }, info) => 
   expect(await white(30)).toBeGreaterThan(200);
   expect(await white(29)).toBeLessThan(200);
   expect(Math.abs(offsetMs!)).toBeLessThan(150);
-  expect(r.frame).toBeGreaterThan(45); // ~2 s at 30 fps, minus start-up
+  expect(r.frame - f0, "the clock ran ~2 s (60 frames at 30 fps) while playing").toBeGreaterThan(45);
   // Frame step moves exactly one frame, forward and back.
   const tc = page.getByTestId("timecode");
   const before = await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.frame);

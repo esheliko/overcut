@@ -36,6 +36,12 @@ const PATHS = {
   check: "M5 12.5l4.5 4.5L19 7",
   download: "M12 4v12M7 11l5 5 5-5M4 20h16",
   share: `${c(18, 5, 2.5)}${c(6, 12, 2.5)}${c(18, 19, 2.5)}M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6`,
+  copy: "M9 9h11v11H9zM5 15V4h10",
+  duplicate: "M4 4h10v10H4zM10 10h10v10H10z",
+  cut: `${c(6, 18, 2.5)}${c(18, 18, 2.5)}M7.8 16.2L17 4M16.2 16.2L7 4`,
+  paste: "M9 4h6v3H9zM7 5.5H5v15h14v-15h-2",
+  timing: `${c(12, 13, 8)}M12 9v4l3 2M9 2h6`,
+  history: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2",
   canvas: "M3 7h18v10H3zM7 3v4M17 3v4M7 17v4M17 17v4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
 } as const;

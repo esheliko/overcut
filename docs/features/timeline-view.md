@@ -19,6 +19,14 @@ All edits are `Op`s sent to `Engine.editing`; after each one the shared project 
 - Locked tracks: selectable, never edited ("That track is locked").
 - Rejected edits (engine error) leave the project unchanged, show a toast and are announced.
 
+## Clipboard, numeric timing, history (TL-02 / TL-06)
+No new engine ops: everything is existing ops (`insert_clip`, `delete`, `trim_in`, `trim_out`) in ONE batch = one undo step, planned by pure code in `timeline/clipboard.ts` (tests: `timeline-clipboard.test.ts`; Rust: `duplicate_paste_and_cut_are_single_undo_steps_of_existing_ops`, `numeric_trim_sets_exact_boundaries_and_undoes`). A second toolbar row (44 px targets, no hover-only controls) holds Duplicate, Copy, Cut, Paste, Clip timing, History; keys Ctrl/Cmd+D/C/X/V.
+- **Duplicate**: copies of the selection placed right after the group's last end on the same tracks; if that overlaps, the whole group slides to the next free slot. The copies become the selection.
+- **Copy / Cut / Paste**: in-app clipboard (copies, independent of later edits). Paste puts the earliest clip at the playhead, keeping offsets; the track is the selected clip's track when the clipboard came from one track of the same kind, else each clip's own track. Locked, missing or wrong-kind tracks are skipped and reported; overlaps slide later, never overwrite. Cut = copy + delete (editable clips).
+- **Clip timing** (one clip selected, unlocked): dialog with Start, End, Length as `MM:SS:FF` (`parseTimecode`: also `SS:FF`, `H:MM:SS:FF`, bare frames). Each Set is one trim (start -> `trim_in`, end/length -> `trim_out`); outside the allowed range (neighbours, source length, one frame) shows the range, no silent clamp.
+- **History**: dialog listing the session's steps oldest first (names from the undo labels: "Import of clip.mp4", "Split 1 clip"...), current step marked, undone steps dimmed; tap to jump (`ProjectStore.jumpTo`: undo/redo the difference in one queued job). A recovered session shows one "Earlier edits" row (older steps are not named) on purpose: the journal stores the ops of each step but not its label (that is UI text given at commit time), and deriving names from op kinds would need a new engine API on both backends and give worse names than the live ones). Bottom sheet on a phone, card on a desktop; native `<dialog>` (Esc, focus return).
+- **Ripple delete** stays M2 (needs the ripple op, TL-04); delete lifts and leaves a gap.
+
 ## Structure (`apps/web/src/timeline/`)
 - `scene.ts`: `Project` -> flat typed arrays (seconds as floats for drawing only; the model keeps integer ticks, ADR 0010), clips sorted per track, binary search.
 - `view.ts`: viewport math (zoom-at-anchor, clamping, slider mapping, tick step, fling decay). `hit.ts`: pure hit-testing (ruler, gutter, clip body/edge, gap, empty) reused by M1-034. Both unit-tested in `tests/unit/timeline.test.ts`.

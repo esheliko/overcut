@@ -34,7 +34,7 @@
 |---|---|---|---|
 | 1080p preview 60 fps on the reference laptop | `device.decode_fps`, `device.fill_layers_at_60fps` (+ `preview.fps`) | decode >= 60 fps, >= 3 layers at 60 fps | **container only** (software decode, 320x180 clip): trend. Windows laptop: decode 720 fps, 11 layers at 60 fps (pass); `/diagnostics` has no end-to-end preview test, so 60 fps preview itself is still unproven on a device; Mac pending |
 | Export >= 1x realtime on the reference phone browser | `export.speed_x` | low phone >= 0.7x, mid >= 1.5x | **container only**: 1080p30 5 s synthetic project, H.264 via software WebCodecs, about 0.16x, which says nothing about a phone with a hardware encoder. Phone numbers need an in-app export on the S24 and iPhone 14 (not in `/diagnostics` yet) |
-| Activation test (import, trim, export) < 90 s | not automated | 90 s | **manual** (a person with a stopwatch on a first-time user); no harness number |
+| Activation test (import, trim, export) < 90 s | not automated | 90 s | **manual** (a person with a stopwatch on a first-time user, script in [ACTIVATION-TEST.md](ACTIVATION-TEST.md)); no harness number |
 | Startup | `startup.warm_ms`, `startup.cold_ms`, `size.*` | table above | **container** (headless Chromium, no throttle): trend; sizes are exact |
 | Budgets measured in CI | `npm run perf` + `perf:compare` | warn +10%, fail +25% | the CI job is requested separately (`process: perf job`), not wired yet |
 
@@ -84,7 +84,7 @@ The 4x CPU throttle approximates a phone but is not one; a throttled-container n
 ## How we measure
 - **One command: `npm run perf`** (`tests/perf/run.mjs`) builds once, then runs everything headless and writes `tests/perf/perf-results.json` with the environment (CPU, cores, Node, browser, commit). Metrics and their budgets live in `tests/perf/metrics.mjs` (keep it in step with the tables above). `--no-build` reuses the last build; `--out <file>` writes elsewhere. About 2 minutes. Needs the Rust toolchain, the `wasm-bindgen` CLI and Playwright's Chromium (`PLAYWRIGHT_CHROMIUM_PATH` if it is installed elsewhere).
   - Timeline pan/zoom fps and drag input-to-paint at desktop, desktop 4x throttle, and phone 390x844 dpr3 4x throttle: `tests/perf/timeline-bench.mjs` (S8), reduced to the worst phase / worst drag p95.
-  - Preview: 2 s of playback of `crates/media/tests/fixtures/flash_click.mp4` (presented fps, dropped frames, lateness p95) and 40 random seeks (scrub p50/p95), same method as `tests/smoke/preview.spec.ts`.
+  - Preview: 2 s of playback of `crates/media/tests/fixtures/flash_click.mp4` (presented fps, dropped frames, lateness p95); the 2 s window opens once playback is running (first frame advanced), and press-to-running start-up is reported separately as `startupMs` and 40 random seeks (scrub p50/p95), same method as `tests/smoke/preview.spec.ts`.
   - Export: 5 s 1080p30 synthetic project through the export harness (H.264 if the browser can encode it, else VP9); `export.speed_x` = video seconds per wall second.
   - Startup: cold (empty cache) and cached load until the engine badge says `(wasm)`. Sizes: gzip of the built shell JS/CSS, engine glue JS and the largest `.wasm`.
   - Rust: `cargo run --release -p app-timeline --example bench` (apply one op and evaluate one frame on 5000 clips, best of 5 rounds; no extra dependency).
