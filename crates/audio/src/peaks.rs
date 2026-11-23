@@ -43,7 +43,9 @@ impl std::fmt::Display for PeaksError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             PeaksError::Invalid(s) => write!(f, "invalid peaks file: {s}"),
-            PeaksError::Unsupported(v) => write!(f, "peaks file version {v} is newer than this build"),
+            PeaksError::Unsupported(v) => {
+                write!(f, "peaks file version {v} is newer than this build")
+            }
         }
     }
 }
@@ -157,7 +159,13 @@ impl Peaks {
             let prev = levels.last().unwrap();
             let next: Vec<[i16; 2]> = prev
                 .chunks(2)
-                .map(|c| if c.len() == 2 { merge(c[0], c[1]) } else { c[0] })
+                .map(|c| {
+                    if c.len() == 2 {
+                        merge(c[0], c[1])
+                    } else {
+                        c[0]
+                    }
+                })
                 .collect();
             levels.push(next);
         }
@@ -190,7 +198,13 @@ impl Peaks {
 
     /// Min/max for `count` pixel columns, column `i` covering frames `[start + i*fpp, start + (i+1)*fpp)`.
     /// Appends `count` pairs to `out`; columns with no extracted data (yet) are [`NO_DATA`]. Allocation-free if `out` has room.
-    pub fn columns(&self, start_frame: f64, frames_per_px: f64, count: usize, out: &mut Vec<[i16; 2]>) {
+    pub fn columns(
+        &self,
+        start_frame: f64,
+        frames_per_px: f64,
+        count: usize,
+        out: &mut Vec<[i16; 2]>,
+    ) {
         let fpp = frames_per_px.max(1e-6);
         let level = self.level_for(fpp);
         let bins = &self.levels[level];
@@ -236,7 +250,11 @@ impl Peaks {
             return Err(PeaksError::Invalid("bad header"));
         }
         if bytes[4] != FORMAT_VERSION {
-            return Err(if bytes[4] > FORMAT_VERSION { PeaksError::Unsupported(bytes[4]) } else { PeaksError::Invalid("unknown version") });
+            return Err(if bytes[4] > FORMAT_VERSION {
+                PeaksError::Unsupported(bytes[4])
+            } else {
+                PeaksError::Invalid("unknown version")
+            });
         }
         if bytes[6] as u32 != BASE_LOG2 {
             return Err(PeaksError::Invalid("unsupported base resolution"));
@@ -244,14 +262,27 @@ impl Peaks {
         let sample_rate = u32::from_le_bytes(bytes[8..12].try_into().unwrap());
         let frames = u64::from_le_bytes(bytes[12..20].try_into().unwrap());
         let n = u32::from_le_bytes(bytes[20..24].try_into().unwrap()) as usize;
-        if sample_rate == 0 || n as u64 != frames.div_ceil(BASE_FRAMES) || bytes.len() != HEADER + n * 4 {
+        if sample_rate == 0
+            || n as u64 != frames.div_ceil(BASE_FRAMES)
+            || bytes.len() != HEADER + n * 4
+        {
             return Err(PeaksError::Invalid("length mismatch"));
         }
         let base = bytes[HEADER..]
             .chunks_exact(4)
-            .map(|c| [i16::from_le_bytes([c[0], c[1]]), i16::from_le_bytes([c[2], c[3]])])
+            .map(|c| {
+                [
+                    i16::from_le_bytes([c[0], c[1]]),
+                    i16::from_le_bytes([c[2], c[3]]),
+                ]
+            })
             .collect();
-        Ok(Peaks::from_base(sample_rate, frames, bytes[5] & 1 == 1, base))
+        Ok(Peaks::from_base(
+            sample_rate,
+            frames,
+            bytes[5] & 1 == 1,
+            base,
+        ))
     }
 }
 
@@ -305,7 +336,11 @@ mod tests {
         for (k, level) in p.levels.iter().enumerate() {
             let w = (256usize) << k;
             for (i, bin) in level.iter().enumerate() {
-                assert_eq!(*bin, brute(&pcm, 1, i * w, ((i + 1) * w).min(pcm.len())), "level {k} bin {i}");
+                assert_eq!(
+                    *bin,
+                    brute(&pcm, 1, i * w, ((i + 1) * w).min(pcm.len())),
+                    "level {k} bin {i}"
+                );
             }
         }
     }
@@ -403,6 +438,11 @@ mod tests {
         }
         let p = b.finish();
         let s = t.elapsed().as_secs_f64();
-        println!("peaks: 60 s stereo in {:.2} ms = {:.0}x realtime ({} bins)", s * 1e3, 60.0 / s, p.levels[0].len());
+        println!(
+            "peaks: 60 s stereo in {:.2} ms = {:.0}x realtime ({} bins)",
+            s * 1e3,
+            60.0 / s,
+            p.levels[0].len()
+        );
     }
 }

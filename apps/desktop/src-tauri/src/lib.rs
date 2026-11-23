@@ -12,7 +12,10 @@ fn with_editor<T>(
     state: &State<'_, EditorState>,
     f: impl FnOnce(&mut app_timeline::Editor) -> Result<T, String>,
 ) -> Result<T, String> {
-    let mut guard = state.0.lock().map_err(|_| "editor state poisoned".to_string())?;
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| "editor state poisoned".to_string())?;
     f(guard.as_mut().ok_or("no project is open")?)
 }
 
@@ -24,7 +27,10 @@ fn engine_info() -> String {
 #[tauri::command]
 fn editor_open(state: State<'_, EditorState>, project_json: String) -> Result<(), String> {
     let editor = app_timeline::Editor::open(&project_json)?;
-    *state.0.lock().map_err(|_| "editor state poisoned".to_string())? = Some(editor);
+    *state
+        .0
+        .lock()
+        .map_err(|_| "editor state poisoned".to_string())? = Some(editor);
     Ok(())
 }
 
@@ -75,19 +81,21 @@ fn editor_recover(
     checkpoint_json: Option<String>,
     log: String,
 ) -> Result<String, String> {
-    let (editor, report) = app_timeline::Editor::recover_json(
-        base_json.as_deref(),
-        checkpoint_json.as_deref(),
-        &log,
-    )?;
-    *state.0.lock().map_err(|_| "editor state poisoned".to_string())? = Some(editor);
+    let (editor, report) =
+        app_timeline::Editor::recover_json(base_json.as_deref(), checkpoint_json.as_deref(), &log)?;
+    *state
+        .0
+        .lock()
+        .map_err(|_| "editor state poisoned".to_string())? = Some(editor);
     Ok(report)
 }
 
 #[tauri::command]
 fn media_fingerprint(size: f64, first: Vec<u8>, last: Vec<u8>) -> Result<String, String> {
     if !(size >= 0.0 && size.fract() == 0.0 && size < 9_007_199_254_740_992.0) {
-        return Err(r#"{"code":"invalid","message":"file size must be a whole number of bytes"}"#.into());
+        return Err(
+            r#"{"code":"invalid","message":"file size must be a whole number of bytes"}"#.into(),
+        );
     }
     app_model::fingerprint(size as u64, &first, &last).map_err(|e| e.to_json())
 }
@@ -124,23 +132,48 @@ fn io_err(e: std::io::Error) -> String {
 }
 
 #[tauri::command]
-fn store_read(app: tauri::AppHandle, project: String, name: String) -> Result<Option<Vec<u8>>, String> {
+fn store_read(
+    app: tauri::AppHandle,
+    project: String,
+    name: String,
+) -> Result<Option<Vec<u8>>, String> {
     project_dir(&app, &project)?.read(&name).map_err(io_err)
 }
 
 #[tauri::command]
-fn store_write_atomic(app: tauri::AppHandle, project: String, name: String, bytes: Vec<u8>) -> Result<(), String> {
-    project_dir(&app, &project)?.write_atomic(&name, &bytes).map_err(io_err)
+fn store_write_atomic(
+    app: tauri::AppHandle,
+    project: String,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    project_dir(&app, &project)?
+        .write_atomic(&name, &bytes)
+        .map_err(io_err)
 }
 
 #[tauri::command]
-fn store_append(app: tauri::AppHandle, project: String, name: String, bytes: Vec<u8>) -> Result<(), String> {
-    project_dir(&app, &project)?.append(&name, &bytes).map_err(io_err)
+fn store_append(
+    app: tauri::AppHandle,
+    project: String,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    project_dir(&app, &project)?
+        .append(&name, &bytes)
+        .map_err(io_err)
 }
 
 #[tauri::command]
-fn store_truncate(app: tauri::AppHandle, project: String, name: String, size: u64) -> Result<(), String> {
-    project_dir(&app, &project)?.truncate(&name, size).map_err(io_err)
+fn store_truncate(
+    app: tauri::AppHandle,
+    project: String,
+    name: String,
+    size: u64,
+) -> Result<(), String> {
+    project_dir(&app, &project)?
+        .truncate(&name, size)
+        .map_err(io_err)
 }
 
 #[tauri::command]
@@ -181,7 +214,9 @@ fn with_peaks<T>(
     state: &State<'_, Mutex<PeaksState>>,
     f: impl FnOnce(&mut PeaksState) -> Result<T, String>,
 ) -> Result<T, String> {
-    let mut guard = state.lock().map_err(|_| "peaks state poisoned".to_string())?;
+    let mut guard = state
+        .lock()
+        .map_err(|_| "peaks state poisoned".to_string())?;
     f(&mut guard)
 }
 
@@ -207,7 +242,11 @@ fn peaks_job_begin(
 }
 
 #[tauri::command]
-fn peaks_job_push(state: State<'_, Mutex<PeaksState>>, id: u32, pcm: Vec<i16>) -> Result<(), String> {
+fn peaks_job_push(
+    state: State<'_, Mutex<PeaksState>>,
+    id: u32,
+    pcm: Vec<i16>,
+) -> Result<(), String> {
     with_peaks(&state, |s| {
         s.jobs.get_mut(&id).ok_or("no such job")?.push(&pcm);
         Ok(())
@@ -216,12 +255,16 @@ fn peaks_job_push(state: State<'_, Mutex<PeaksState>>, id: u32, pcm: Vec<i16>) -
 
 #[tauri::command]
 fn peaks_job_snapshot(state: State<'_, Mutex<PeaksState>>, id: u32) -> Result<Vec<u8>, String> {
-    with_peaks(&state, |s| Ok(s.jobs.get(&id).ok_or("no such job")?.snapshot().to_bytes()))
+    with_peaks(&state, |s| {
+        Ok(s.jobs.get(&id).ok_or("no such job")?.snapshot().to_bytes())
+    })
 }
 
 #[tauri::command]
 fn peaks_job_finish(state: State<'_, Mutex<PeaksState>>, id: u32) -> Result<Vec<u8>, String> {
-    with_peaks(&state, |s| Ok(s.jobs.remove(&id).ok_or("no such job")?.finish().to_bytes()))
+    with_peaks(&state, |s| {
+        Ok(s.jobs.remove(&id).ok_or("no such job")?.finish().to_bytes())
+    })
 }
 
 #[tauri::command]
@@ -258,7 +301,12 @@ fn peaks_view_columns(
 ) -> Result<Vec<i16>, String> {
     with_peaks(&state, |s| {
         let mut pairs = Vec::with_capacity(count);
-        s.views.get(&id).ok_or("no such peaks view")?.columns(start_frame, frames_per_px, count, &mut pairs);
+        s.views.get(&id).ok_or("no such peaks view")?.columns(
+            start_frame,
+            frames_per_px,
+            count,
+            &mut pairs,
+        );
         Ok(pairs.into_iter().flatten().collect())
     })
 }

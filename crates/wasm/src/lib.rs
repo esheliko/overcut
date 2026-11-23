@@ -142,7 +142,9 @@ pub struct PeaksView(app_audio::peaks::Peaks);
 impl PeaksView {
     #[wasm_bindgen(constructor)]
     pub fn new(bytes: &[u8]) -> Result<PeaksView, String> {
-        app_audio::peaks::Peaks::from_bytes(bytes).map(PeaksView).map_err(|e| e.to_string())
+        app_audio::peaks::Peaks::from_bytes(bytes)
+            .map(PeaksView)
+            .map_err(|e| e.to_string())
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -161,7 +163,8 @@ impl PeaksView {
     /// `count` (min, max) pairs, interleaved; min > max marks "no data yet".
     pub fn columns(&self, start_frame: f64, frames_per_px: f64, count: usize) -> Vec<i16> {
         let mut pairs = Vec::with_capacity(count);
-        self.0.columns(start_frame, frames_per_px, count, &mut pairs);
+        self.0
+            .columns(start_frame, frames_per_px, count, &mut pairs);
         pairs.into_iter().flatten().collect()
     }
 }
