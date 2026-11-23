@@ -32,6 +32,8 @@ export interface BinText {
   unsupported: (name: string, ext: string, detail: string) => string;
   failed: (name: string) => string;
   imported: (count: number) => string;
+  /** What Undo / Redo call the import step of this file ("import of clip.mp4"). */
+  importLabel: (name: string) => string;
   announce: (message: string) => void;
 }
 
@@ -164,7 +166,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
             if (place) { ops.push(...place); added++; }
           }
           patch(id, { status: "ready", durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
-          await store.apply(ops);
+          await store.apply(ops, undefined, t.importLabel(s.file.name));
         } catch (e) {
           const ext = extOf(s.file.name).toUpperCase();
           const message = e instanceof MediaDecodeError && e.kind === "unsupported" ? t.unsupported(s.file.name, ext, e.message) : t.failed(s.file.name);

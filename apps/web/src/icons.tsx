@@ -28,6 +28,7 @@ const PATHS = {
   plus: "M12 5v14M5 12h14",
   close: "M6 6l12 12M18 6L6 18",
   minus: "M5 12h14",
+  fit: "M4 6v12M20 6v12M8 12h8M8 12l3-3M8 12l3 3M16 12l-3-3M16 12l-3 3",
   video: "M3 6h12v12H3zM15 10l6-3v10l-6-3z",
   search: `${c(11, 11, 6)}M20 20l-4.5-4.5`,
   upload: "M12 16V4M7 9l5-5 5 5M4 20h16",

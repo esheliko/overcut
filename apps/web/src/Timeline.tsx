@@ -11,7 +11,7 @@ import { clampN, deleteOps, type Say, editable, indicesOf, moveOps, moveRoom, ne
 import { sampleProject } from "./timeline/fixture";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
-import { clampPps, ppsToSlider, sliderToPps } from "./timeline/view";
+import { clampPps, fitPps, ppsToSlider, sliderToPps } from "./timeline/view";
 import { TimelineCanvas, type CanvasHandle } from "./timeline/TimelineCanvas";
 import { useProjectStore, useStore } from "./store/projectStore";
 
@@ -61,6 +61,8 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const canRedo = useProjectStore((s) => s.canRedo);
   const selected = useProjectStore((s) => s.selection);
   const frame = useProjectStore((s) => s.playhead);
+  const undoLabel = useProjectStore((s) => s.undoLabel);
+  const redoLabel = useProjectStore((s) => s.redoLabel);
   // Media that became readable (relink, permission restored) is asked for again; media that left the project closes its decoder handle.
   const known = useRef(new Set<string>());
   const readyBefore = useRef(new Set<string>());
@@ -83,6 +85,24 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
 
   const live = useRef({ scene, selected, frame, proj });
   live.current = { scene, selected, frame, proj };
+  const undoLabelRef = useRef(undoLabel);
+  const redoLabelRef = useRef(redoLabel);
+  undoLabelRef.current = undoLabel;
+  redoLabelRef.current = redoLabel;
+  const canvasHandle = useRef<CanvasHandle | null>(null);
+  const lengthSec = Math.max(endFrame / fps, scene.endSec);
+  const lengthRef = useRef(lengthSec);
+  lengthRef.current = lengthSec;
+  const fit = useCallback(() => { if (canvasHandle.current) onZoom(fitPps(canvasHandle.current.view, lengthRef.current)); }, [onZoom]);
+  const ready = useCallback((h: CanvasHandle) => { canvasHandle.current = h; onReady?.(h); }, [onReady]);
+  // The first clips on an empty timeline fill the width: a 1 s clip must not be 40 px on a 30 s ruler.
+  const hasClips = project !== null && scene.clipCount > 0;
+  const hadClips = useRef<boolean | null>(null); // null until the project is open: opening a project with clips keeps the zoom
+  useEffect(() => {
+    if (project === null) return;
+    if (hasClips && hadClips.current === false) fit();
+    hadClips.current = hasClips;
+  }, [project, hasClips, fit]);
 
   const commit = useCallback((ops: Op[], s: Say) => {
     const p = live.current.proj;
@@ -97,8 +117,12 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const undoRedo = useCallback((which: "undo" | "redo") => {
     const p = live.current.proj;
     if (!p.ready) return;
+    const what = which === "undo" ? undoLabelRef.current : redoLabelRef.current;
     (which === "undo" ? p.undo() : p.redo())
-      .then((out) => speak(say(DONE[which][out?.changed ? 0 : 1])))
+      .then((out) => {
+        if (out?.changed && what) { const s = say(which === "undo" ? "timeline.say.undid" : "timeline.say.redid", { what }); speak(s); onNotice(t(s.key, s.values)); } // a visible hint too: "Undid import of clip.mp4"
+        else speak(say(DONE[which][out?.changed ? 0 : 1]));
+      })
       .catch(() => onNotice(t("timeline.say.failed")));
   }, [speak, onNotice, t]);
 
@@ -113,7 +137,12 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       case "undo": case "redo": undoRedo(cmd.c); break;
       case "split": {
         const hit = splittable(sc, tick, picked.length ? picked : null);
-        if (hit.length === 0) { speak(locked ?? say("timeline.say.nothingToSplit")); break; }
+        if (hit.length === 0) {
+          const s = locked ?? say("timeline.say.nothingToSplit");
+          speak(s);
+          if (!locked) onNotice(t(s.key, s.values)); // not only for screen readers: a sighted user must see why nothing happened
+          break;
+        }
         commit(splitOps(sc, hit, tick, newClipId), say("timeline.say.split", { count: hit.length, time: timecode(f) }));
         break;
       }
@@ -142,7 +171,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       }
       default: break;
     }
-  }, [speak, commit, undoRedo]);
+  }, [speak, commit, undoRedo, onNotice, t]);
 
   // Shortcuts that work anywhere except while typing in a field.
   useEffect(() => {
@@ -159,13 +188,15 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
 
   const summary = t("timeline.summary", { name: source.name, tracks: scene.trackCount, clips: scene.clipCount, seconds: Math.round(scene.endSec), sample: proj.project ? "no" : "yes" });
   const off = !proj.ready;
+  const undoText = undoLabel && proj.canUndo ? t("timeline.undo.what", { what: undoLabel }) : t("timeline.undo");
+  const redoText = redoLabel && proj.canRedo ? t("timeline.redo.what", { what: redoLabel }) : t("timeline.redo");
   const none = selected.size === 0;
   return (
     <section className="timeline" aria-label={t("timeline.label")} data-testid="panel-timeline">
       <div className="tl-bar">
         <div className="tl-group" role="toolbar" aria-label={t("timeline.edit")}>
-          <button className="icon-btn" aria-label={t("timeline.undo")} title={tip(t("timeline.undo"), KEYS.undo)} disabled={off || !proj.canUndo} onClick={() => run({ c: "undo" })}><Icon name="undo" /></button>
-          <button className="icon-btn" aria-label={t("timeline.redo")} title={tip(t("timeline.redo"), KEYS.redo)} disabled={off || !proj.canRedo} onClick={() => run({ c: "redo" })}><Icon name="redo" /></button>
+          <button className="icon-btn" aria-label={undoText} title={tip(undoText, KEYS.undo)} disabled={off || !proj.canUndo} onClick={() => run({ c: "undo" })}><Icon name="undo" /></button>
+          <button className="icon-btn" aria-label={redoText} title={tip(redoText, KEYS.redo)} disabled={off || !proj.canRedo} onClick={() => run({ c: "redo" })}><Icon name="redo" /></button>
           <span className="sep" aria-hidden="true" />
           <button className="icon-btn" aria-label={t("timeline.split")} title={tip(t("timeline.split"), KEYS.split)} disabled={off} onClick={() => run({ c: "split" })}><Icon name="split" /></button>
           <button className="icon-btn" aria-label={t("timeline.delete")} title={tip(t("timeline.delete"), KEYS.del)} disabled={off || none} onClick={() => run({ c: "delete" })}><Icon name="trash" /></button>
@@ -175,11 +206,12 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
           <button type="button" className="icon-btn" aria-label={t("timeline.zoomOut")} onClick={() => onZoom(clampPps(zoom / 1.25))}><Icon name="minus" size={18} /></button>
           <input type="range" min={0} max={1} step={0.005} value={ppsToSlider(zoom)} onChange={(e) => onZoom(sliderToPps(Number(e.target.value)))} aria-label={t("timeline.zoom")} />
           <button type="button" className="icon-btn" aria-label={t("timeline.zoomIn")} onClick={() => onZoom(clampPps(zoom * 1.25))}><Icon name="plus" size={18} /></button>
+          <button type="button" className="icon-btn tl-fit" aria-label={t("timeline.fit")} title={tip(t("timeline.fit"), "0")} data-testid="tl-fit" onClick={fit}><Icon name="fit" size={18} /></button>
         </label>
       </div>
       <div className="tl-stage">
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={setSelected} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={onReady} media={media} />
+          selected={selected} onSelect={setSelected} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} />
       </div>
     </section>
   );

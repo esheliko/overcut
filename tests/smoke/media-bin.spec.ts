@@ -35,9 +35,11 @@ test("add from the bin with the + button (44 px), keyboard reachable; a second f
   await ready(page);
   await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4"));
   await expect(summary(page)).toContainText("2 clips");
+  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); // the sheet closed itself after the import
   await page.getByTestId("import-more").click({ trial: true });
   await page.getByTestId("media-input").setInputFiles(file("vp9_opus.webm"));
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
+  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); // closed again after this import
   await expect(summary(page)).toContainText("2 clips"); // only the first import auto-adds
   const add = page.getByRole("button", { name: "Add vp9_opus.webm to the timeline" });
   expect((await add.boundingBox())!.height).toBeGreaterThanOrEqual(44);

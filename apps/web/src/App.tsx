@@ -19,6 +19,10 @@ import { useMediaBin, type BinItem } from "./media/useMediaBin";
 type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; engine: Engine } | { status: "error"; message: string };
 
 type Tool = { id: string; icon: IconName; soon?: string };
+/** M1 ships Media only. Tools with a `soon` milestone, and the Details panel, are kept in the code for the milestone that builds them but are not shown:
+ *  a first-time user must not click into empty promises. Flip `DETAILS_READY` when Details has real controls. */
+const DETAILS_READY = false;
+export const shown = (x: Tool): boolean => (x.soon ? false : x.id === "edit" ? DETAILS_READY : true);
 /** CapCut-style tool strip: the left rail on desktop and tablet, the bottom bar on a phone. */
 const TOOLS: Tool[] = [
   { id: "media", icon: "media" },
@@ -208,9 +212,17 @@ function Editor({ store }: { store: ProjectStore }) {
     unsupported: (n, ext, detail) => t("media.err.unsupported", { name: n, ext: ext || "?", detail }),
     failed: (n) => t("media.err.failed", { name: n }),
     imported: (count) => t("media.imported", { count }),
+    importLabel: (name) => t("media.importLabel", { name }),
     announce,
   });
   const importFiles = media.importSources;
+  // Phone: the Media sheet covers the Split / Undo toolbar, so it closes once an import has succeeded (the bin is one tap away on the tool bar).
+  const readyCount = media.items.filter((i) => i.status === "ready").length;
+  const readyBefore = useRef(readyCount);
+  useEffect(() => {
+    if (readyCount > readyBefore.current && !roomy) setSheet(false);
+    readyBefore.current = readyCount;
+  }, [readyCount, roomy]);
   const [dragging, setDragging] = useState(false);
   const [tlOver, setTlOver] = useState(false);
   useEffect(() => {
@@ -274,9 +286,9 @@ function Editor({ store }: { store: ProjectStore }) {
   }, [res?.width, res?.height, hasClips]);
   const pick = (id: string) => { setSheet(id === tool ? !sheet : true); setTool(id); };
   const activeId = wide && tool === "edit" ? "media" : tool;
-  const active = TOOLS.find((x) => x.id === activeId) ?? TOOLS[0]!;
+  const active = TOOLS.find((x) => x.id === activeId && shown(x)) ?? TOOLS[0]!;
   const activeLabel = t(`tool.${active.id}.label`);
-  const rail = wide ? TOOLS.filter((x) => x.id !== "edit") : TOOLS;
+  const rail = TOOLS.filter((x) => shown(x) && !(wide && x.id === "edit"));
   const themeName = t(`theme.${themePref}`);
   const engineText = engine.status === "loading" ? t("engine.starting")
     : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
@@ -303,7 +315,7 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
       </header>
 
-      <main className="workspace">
+      <main className="workspace" data-inspector={wide && DETAILS_READY}>
         <nav className="tools" aria-label={t("tools.nav")}>
           {rail.map((x) => (
             <button key={x.id} className="tool" aria-pressed={activeId === x.id && (roomy || sheet)} onClick={() => pick(x.id)}>
@@ -320,7 +332,7 @@ function Editor({ store }: { store: ProjectStore }) {
 
         <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onImport={binProps.onImport} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onPlaying={setPlaying} />
 
-        {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
+        {wide && DETAILS_READY && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
         <div className="tl-drop" data-over={tlOver} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
           const id = e.dataTransfer.getData(BIN_DRAG_TYPE);

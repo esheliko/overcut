@@ -87,6 +87,7 @@ test("cancel really cancels and returns to the settings; the editor is read-only
   await ready(page);
   // About 8 s of footage, so the export is still running when we reach for Cancel.
   const add = page.getByRole("button", { name: "Add vp9_opus.webm to the timeline" });
+  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); // the sheet closed itself after the import
   for (let i = 0; i < 3; i++) await add.first().click();
   await page.getByTestId("export-open").click();
   await page.getByTestId("export-go").click();
