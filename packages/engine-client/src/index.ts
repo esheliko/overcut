@@ -6,6 +6,8 @@ export { createExportApi, exportNotYet, type ExportHost, type WorkerLike } from 
 import type { WorkerLike } from "./export/job";
 import type { GpuRenderer } from "./render";
 import type { Evaluator } from "./wasm";
+export { probeExportFormats, type ExportFormatId, type ExportFormatOption, type ExportFormats } from "./export/options";
+export { defaultVideoBitrate } from "./export/presets";
 export { cleanupStaleExports, opfsStorage, type ExportStorage } from "./export/storage";
 export { registerMediaResolver, type MediaResolver, type OpenedMedia, type MediaVideo, type MediaAudio, type DrawableFrame } from "./export/media";
 export { layerOf, renderExportFrame, type GpuLayer, type GpuRenderer, type LayerSource, type RendererInfo } from "./render";

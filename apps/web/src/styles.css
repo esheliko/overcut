@@ -170,3 +170,51 @@ h2, p { margin: 0; }
 .tl-drop { grid-area: timeline; display: contents; }
 .tl-drop[data-over="true"] > .timeline { outline: 2px dashed var(--accent); outline-offset: -3px; }
 .drop-overlay { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: color-mix(in srgb, var(--bg) 82%, var(--accent)); color: var(--fg); border: 3px dashed var(--accent); pointer-events: none; }
+
+/* Export (M1-035): modal on desktop, full-screen sheet on a phone */
+.export-chip { position: relative; overflow: hidden; min-block-size: var(--target); background: var(--surface-3); color: var(--fg); }
+.export-chip-bar { position: absolute; inset-block: 0; inset-inline-start: 0; background: var(--accent-soft); transition: inline-size var(--dur-base); }
+.export-chip-text { position: relative; font-variant-numeric: tabular-nums; }
+.export-dialog { inline-size: min(560px, 100vw); max-block-size: min(92dvh, 760px); margin: auto; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow); overflow: auto; }
+.export-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+.export-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-4) var(--space-2) var(--space-5); position: sticky; inset-block-start: 0; background: var(--surface); }
+.export-head h2 { font-size: var(--text-lg); font-weight: 700; outline: none; }
+.export-body { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-2) var(--space-5) calc(var(--space-5) + env(safe-area-inset-bottom)); }
+.export-summary, .export-estimate { color: var(--muted); }
+.export-estimate { color: var(--fg); font-weight: 600; }
+.export-note { color: var(--muted); font-size: var(--text-base); }
+.export-error { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-2); color: var(--danger); font-weight: 600; }
+.export-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; padding: 0; border: 0; min-inline-size: 0; }
+.export-presets legend { grid-column: 1 / -1; padding: 0 0 var(--space-2); font-weight: 600; }
+.export-chip-choice { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 2px; min-block-size: 76px; padding: var(--space-3) var(--space-4); border: 2px solid var(--line); border-radius: var(--radius); background: var(--surface-2); cursor: pointer; transition: border-color var(--dur-fast), background var(--dur-fast); }
+.export-chip-choice span { color: var(--muted); font-size: var(--text-sm); }
+.export-chip-choice[data-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.export-chip-choice input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.export-chip-choice:has(input:focus-visible) { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: var(--focus-ring-offset); }
+.export-adv > summary { display: flex; align-items: center; min-block-size: var(--target); cursor: pointer; font-weight: 600; }
+.export-adv > summary::after { content: ""; margin-inline-start: auto; inline-size: 8px; block-size: 8px; border-inline-end: 2px solid var(--muted); border-block-end: 2px solid var(--muted); transform: rotate(45deg); transition: transform var(--dur-fast); }
+.export-adv[open] > summary::after { transform: rotate(-135deg); }
+.export-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); padding-block-end: var(--space-2); }
+.export-fields label { display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--text-sm); min-inline-size: 0; }
+.export-fields select { min-block-size: var(--target); padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--fg); font-size: var(--text-base); min-inline-size: 0; }
+.export-go, .export-secondary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-block-size: 52px; padding: 0 var(--space-5); border-radius: var(--radius); font-weight: 700; font-size: var(--text-md); }
+.export-go:disabled { opacity: 0.45; cursor: default; }
+.export-secondary { border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); }
+.export-secondary:hover { background: var(--surface-3); }
+.export-danger { color: var(--danger); }
+.export-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.export-actions > * { flex: 1 1 140px; }
+.export-percent { font-size: 56px; font-weight: 800; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; padding-block: var(--space-4) 0; }
+.export-bar { block-size: 12px; border-radius: var(--radius-full); background: var(--surface-3); overflow: hidden; }
+.export-bar span { display: block; block-size: 100%; border-radius: inherit; background: var(--accent); transition: inline-size var(--dur-base) linear; }
+.export-meta { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+.export-ok { display: grid; place-items: center; inline-size: 56px; block-size: 56px; margin-inline: auto; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.export-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
+.export-facts div { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-2); min-inline-size: 0; }
+.export-facts dt { color: var(--muted); font-size: var(--text-sm); }
+.export-facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 719px) {
+  .export-dialog { inline-size: 100vw; max-inline-size: none; block-size: 100dvh; max-block-size: none; border: 0; border-radius: 0; }
+  .export-head { padding-block-start: calc(var(--space-4) + env(safe-area-inset-top)); }
+  .export-fields { grid-template-columns: minmax(0, 1fr); }
+}
