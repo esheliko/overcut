@@ -20,6 +20,8 @@ pub enum OpError {
     BadFormat,
     /// `SetMedia` / `AddMedia` with an empty uri, or a hash that is not a `b3-64k` fingerprint.
     BadMediaRef,
+    /// `SetMediaTags` with an empty, untrimmed, duplicate or too long tag, or too many tags.
+    BadTags,
     /// The id of a new clip is already used by something in the document.
     IdInUse(String),
     TrackLocked(TrackId),
@@ -208,6 +210,22 @@ fn restore_geometry(loc_clip: &Clip) -> Op {
     }
 }
 
+pub const MAX_TAGS: usize = 16;
+pub const MAX_TAG_LEN: usize = 40;
+
+/// Tags are trimmed, non-empty, unique (case-insensitively), short, and few.
+fn valid_tags(tags: &[String]) -> bool {
+    tags.len() <= MAX_TAGS
+        && tags.iter().enumerate().all(|(i, t)| {
+            !t.is_empty()
+                && t.trim() == t
+                && t.chars().count() <= MAX_TAG_LEN
+                && !tags[..i]
+                    .iter()
+                    .any(|o| o.to_lowercase() == t.to_lowercase())
+        })
+}
+
 /// Applies `op` and returns the ops that undo it. On `Err` the project is exactly as it was.
 pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
     match op {
@@ -228,6 +246,21 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 media,
                 uri: std::mem::replace(&mut m.uri, uri),
                 hash: std::mem::replace(&mut m.hash, hash),
+            };
+            Ok(Inverse(vec![old]))
+        }
+        Op::SetMediaTags { media, tags } => {
+            if !valid_tags(&tags) {
+                return Err(OpError::BadTags);
+            }
+            let m = p
+                .media
+                .iter_mut()
+                .find(|m| m.id == media)
+                .ok_or(OpError::UnknownMediaId(media))?;
+            let old = Op::SetMediaTags {
+                media,
+                tags: std::mem::replace(&mut m.tags, tags),
             };
             Ok(Inverse(vec![old]))
         }

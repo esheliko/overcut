@@ -46,6 +46,7 @@ export * from "./model.generated";
 export { codecName } from "./decode/errors";
 export { FINGERPRINT_WINDOW, fingerprintFile, fingerprintSize, relinkMedia, type Candidate, type RelinkResult, type Sliceable } from "./media";
 export { StorageError, toStorageError, type ProjectStorage, type StorageErrorCode } from "./persist/storage";
+export { MAX_AUTO, SnapshotStore, retain, type SnapshotInfo, type SnapshotKind } from "./persist/snapshots";
 export { memoryStorage } from "./persist/memory";
 export { openProjectSession, ProjectSession, type OpenedSession, type RecoveryNote, type SaveStatus, type SessionOptions } from "./persist/session";
 export { acquireProjectLock, openProjectStorage } from "./persist/open";

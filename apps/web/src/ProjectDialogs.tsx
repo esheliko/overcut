@@ -6,7 +6,7 @@ import { Icon } from "./icons";
 import { NetworkLog } from "./privacy/NetworkLog";
 
 /** A modal `<dialog>` that closes on Esc and starts focused on its title. Shared by the canvas settings and the confirmations. */
-function Modal({ title, titleId, testId, onClose, children, role }: { title: string; titleId: string; testId: string; onClose(): void; children: ReactNode; role?: "alertdialog" }) {
+export function Modal({ title, titleId, testId, onClose, children, role }: { title: string; titleId: string; testId: string; onClose(): void; children: ReactNode; role?: "alertdialog" }) {
   const { t } = useI18n();
   const ref = useRef<HTMLDialogElement>(null);
   const head = useRef<HTMLHeadingElement>(null);

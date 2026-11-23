@@ -1,6 +1,7 @@
 import type { Editing, EditOutcome, Engine, Op, Recovery } from "../types";
 import type { Project } from "../model.generated";
 import { StorageError, crc32, decode, encode, toStorageError, type ProjectStorage } from "./storage";
+import { SnapshotStore } from "./snapshots";
 
 export const PROJECT_FILE = "project.overcut";
 export const JOURNAL_FILE = "journal.jsonl";
@@ -119,6 +120,8 @@ export class ProjectSession {
   /** Cost of the most recent journal append (ms) and how many there have been, for the performance notes in the docs. */
   readonly stats = { appends: 0, lastAppendMs: 0, maxAppendMs: 0 };
   readonly editing: Editing;
+  /** Version snapshots kept beside the journal (`persist/snapshots.ts`). */
+  readonly snapshots: SnapshotStore;
 
   constructor(
     private readonly engine: Engine,
@@ -128,6 +131,7 @@ export class ProjectSession {
     private baseProject: Project | null,
     readonly readOnly: boolean,
   ) {
+    this.snapshots = new SnapshotStore(storage);
     const e = engine.editing;
     const after = async <T extends EditOutcome>(p: Promise<T>): Promise<T> => {
       if (this.closed) throw new Error("the project is closed");

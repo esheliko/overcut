@@ -44,6 +44,9 @@ pub enum Op {
         uri: String,
         hash: Option<String>,
     },
+    /// Replace a media item's tags (the media bin's labels, `docs/features/media-bin.md`). Tags are trimmed, non-empty, unique, at most
+    /// `MAX_TAGS` of at most `MAX_TAG_LEN` characters each, else `BadTags`. Undoable; clips are untouched.
+    SetMediaTags { media: MediaId, tags: Vec<String> },
     /// Add a source file to the project's media list (import). Its id must be new; clips are untouched.
     AddMedia { media: MediaRef },
     /// Remove a media entry that no clip uses (the inverse of `AddMedia`).

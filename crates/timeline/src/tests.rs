@@ -22,6 +22,7 @@ fn media(ids: &mut SeqIds, kind: MediaKind, units: Option<i64>) -> MediaRef {
         uri: "m".into(),
         hash: None,
         duration: units.map(t),
+        tags: vec![],
     }
 }
 
@@ -898,7 +899,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 12, "one example per Op variant");
+    assert_eq!(ops.len(), 13, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -1139,6 +1140,7 @@ fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
         uri: "file:a.mp4:1".into(),
         hash: None,
         duration: Some(Time::from_ticks(1000)),
+        tags: vec![],
     };
     let seq = p.sequences[0].id;
     let fmt = Op::SetSequenceFormat {
@@ -1191,6 +1193,67 @@ fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
             .unwrap();
         assert!(h.apply(&mut p, Op::RemoveMedia { media: m }, None).is_err());
     }
+}
+
+#[test]
+fn set_media_tags_is_undoable_validated_and_survives_the_file_format() {
+    let (mut p, _) = base();
+    let m = p.media[0].id;
+    let before = p.clone();
+    let mut h = History::new();
+    let tags = vec!["b-roll".to_string(), "Interview".to_string()];
+    h.apply(
+        &mut p,
+        Op::SetMediaTags {
+            media: m,
+            tags: tags.clone(),
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(p.media[0].tags, tags);
+    let json = serde_json::to_string(&p).unwrap();
+    assert_eq!(serde_json::from_str::<Project>(&json).unwrap(), p);
+    h.undo(&mut p).unwrap();
+    assert_eq!(p, before);
+    assert!(
+        !serde_json::to_string(&p).unwrap().contains("tags"),
+        "no tags = no key, old files stay identical"
+    );
+    h.redo(&mut p).unwrap();
+    let after = p.clone();
+    let long = "x".repeat(41);
+    let many: Vec<String> = (0..17).map(|i| format!("t{i}")).collect();
+    for bad in [
+        vec![String::new()],
+        vec![" pad".to_string()],
+        vec!["a".to_string(), "A".to_string()],
+        vec![long],
+        many,
+    ] {
+        assert!(h
+            .apply(
+                &mut p,
+                Op::SetMediaTags {
+                    media: m,
+                    tags: bad
+                },
+                None
+            )
+            .is_err());
+    }
+    assert_eq!(p, after, "a refused edit changes nothing");
+    let unknown = MediaId::new(&mut SeqIds::default());
+    assert!(h
+        .apply(
+            &mut p,
+            Op::SetMediaTags {
+                media: unknown,
+                tags: vec![]
+            },
+            None
+        )
+        .is_err());
 }
 
 #[test]
