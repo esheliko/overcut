@@ -17,6 +17,8 @@ const PATHS = {
   pause: "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z",
   back: "M6 5v14M19 5L9 12l10 7z",
   forward: "M18 5v14M5 5l10 7-10 7z",
+  stepBack: "M15 5l-7 7 7 7",
+  stepForward: "M9 5l7 7-7 7",
   undo: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
   redo: "M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3",
   split: `M12 3v18${c(5, 6, 2.5)}${c(5, 18, 2.5)}M7.5 7.5L12 12M7.5 16.5L12 12M12 12l8-6M12 12l8 6`,

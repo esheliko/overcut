@@ -29,6 +29,9 @@ type Props = {
   epoch?: number;
   /** Benchmark/dev hook. */
   onReady?: (h: CanvasHandle) => void;
+  /** Frames per second and length (frames) of the previewed sequence; defaults are the sample timeline's. */
+  fps?: number;
+  endFrame?: number;
 };
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
@@ -38,7 +41,7 @@ const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 
-export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, editing, epoch, onReady }: Props) {
+export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, editing, epoch, onReady, fps = FPS, endFrame = END_FRAME }: Props) {
   const { t } = useI18n();
   const proj = useProject(editing, epoch);
   const fallback = useMemo(() => sampleProject(), []);
@@ -154,7 +157,7 @@ export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, edit
         </label>
       </div>
       <div className="tl-stage">
-        <TimelineCanvas scene={scene} fps={FPS} frame={frame} endFrame={END_FRAME} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
+        <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
           selected={selected} onSelect={setSelected} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={onReady} />
       </div>
     </section>
