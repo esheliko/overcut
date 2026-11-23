@@ -2,7 +2,7 @@ import { MediaDecodeError, fingerprintFile, fingerprintSize, newProject, type Ed
 import { useCallback, useEffect, useRef, useState } from "react";
 import { probeFile } from "./probe";
 import { STILL_SECONDS, TICKS, classify, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
-import { loadHandle, saveHandle, type Source } from "./sources";
+import { loadHandle, pathOf, saveHandle, type Source } from "./sources";
 import { useProjectStore, useStore } from "../store/projectStore";
 
 export type BinStatus = "probing" | "ready" | "unsupported" | "offline";
@@ -81,7 +81,9 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     for (const m of p.media) {
       if (live.current.has(m.id)) continue;
       const file = await loadHandle(m.uri);
-      if (file) setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, status: "ready", size: file.size } : i)));
+      // A file found by its stored path must still be the same file (size from the fingerprint); otherwise it shows "Relink".
+      const sameSize = !m.uri.startsWith("path:") || !m.hash || fingerprintSize(m.hash) === file?.size;
+      if (file && sameSize) setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, status: "ready", size: file.size } : i)));
     }
   }, []);
 
@@ -147,7 +149,8 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           const res = await probeFile(engine, s.file, kind);
           if (res.poster) posters.current.add(res.poster);
           const cur = store.getState().project ?? (await ed.project());
-          const uri = s.handle ? `fs:${id}` : `file:${s.file.name}:${s.file.size}`;
+          const path = pathOf(s.file); // desktop: the file stays where it is, the project remembers its path
+          const uri = s.handle ? `fs:${id}` : path ? `path:${path}` : `file:${s.file.name}:${s.file.size}`;
           if (s.handle) await saveHandle(uri, s.handle);
           const hash = await fingerprintFile(engine, s.file).catch(() => null); // 128 KiB read at most, however big the file
           const ref = mediaRef(id, s.file.name, uri, res.probed, hash);

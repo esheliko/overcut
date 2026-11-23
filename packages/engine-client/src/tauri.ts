@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { createDesktopApi } from "./desktop";
 import { createEditing } from "./editing";
 import { probeHost } from "./probe";
 import { createNativeExportApi } from "./export/native";
@@ -24,6 +26,7 @@ export function createTauriEngine(): Engine {
   });
   return {
     backend: "tauri",
+    desktop: createDesktopApi(invoke, (event, handler) => listen(event, handler)),
     media,
     info: async () => parseEngineInfo(await invoke<string>("engine_info")),
     openProject: async (bytes) => {

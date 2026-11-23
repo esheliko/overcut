@@ -12,7 +12,7 @@ import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref }
 import { ExportControl } from "./export/ExportDialog";
 import { MediaBin } from "./media/MediaBin";
 import { TICKS, clipCount } from "./media/plan";
-import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, pickOne, type Source } from "./media/sources";
+import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickOne, setDesktop, type Source } from "./media/sources";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
 type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; engine: Engine } | { status: "error"; message: string };
@@ -120,6 +120,15 @@ function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: 
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // Desktop app: where projects are saved. The open project stays where it is; the new folder is used from the next start.
+  const chooseFolder = async () => {
+    try {
+      const dir = await getDesktop()?.chooseProjectsFolder();
+      if (dir) announce(t("menu.projectsFolder.set", { path: dir }), "polite");
+    } catch {
+      announce(t("menu.projectsFolder.failed"), "assertive");
+    }
+  };
   useEffect(() => {
     if (!open) return;
     const away = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
@@ -139,6 +148,7 @@ function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: 
               <div className="menu-row menu-status" role="presentation">{status}</div>
             </>
           )}
+          {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
         </div>
       )}
@@ -181,7 +191,7 @@ function Editor({ store }: { store: ProjectStore }) {
     let alive = true;
     createEngine()
       .then(async (e) => ({ info: await e.info(), backend: e.backend, engine: e }))
-      .then(({ engine: e, ...r }) => alive && (setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
+      .then(({ engine: e, ...r }) => alive && (setDesktop(e.desktop), setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
       .catch((e: unknown) => alive && setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }));
     return () => { alive = false; };
   }, []);
@@ -243,6 +253,15 @@ function Editor({ store }: { store: ProjectStore }) {
       window.removeEventListener("paste", paste);
     };
   }, [importFiles]);
+  // Desktop app: files dropped from the OS arrive as paths (never copies); the window shows the same drop hint as in the browser.
+  const desktopApi = engine.status === "ready" ? engine.engine.desktop : undefined;
+  useEffect(() => {
+    if (!desktopApi) return;
+    let off: (() => void) | undefined;
+    let alive = true;
+    void desktopApi.onDrop((files) => void importFiles(fromFileList(files)), setDragging).then((un) => (alive ? (off = un) : un())).catch(() => undefined);
+    return () => { alive = false; off?.(); };
+  }, [desktopApi, importFiles]);
   const binProps: BinProps = {
     items: media.items,
     onImport: (s) => void importFiles(s),

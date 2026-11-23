@@ -1,11 +1,12 @@
 /** The export dialog itself (settings, progress, done, failed). Loaded on first use so it stays out of the first-load JavaScript. */
-import { probeExportFormats, type ExportFormats } from "@app/engine-client";
+import { probeExportFormats, type DesktopCodecs, type ExportFormats } from "@app/engine-client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { canShareFile, saveFile, shareFile } from "./deliver";
-import { QUALITIES, PRESET_IDS, buildSettings, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, presetChoice, presetHint, resolutionSteps, saveName, saveRemembered, usableCustom, type Choice, type PresetId, type QualityId, type Source } from "./model";
+import { getDesktop } from "../media/sources";
+import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, presetChoice, presetHint, resolutionSteps, saveName, saveRemembered, usableCustom, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
 
 const probes = new Map<string, Promise<ExportFormats>>();
@@ -85,11 +86,20 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
     return [...m.entries()];
   }, [src, choice]);
   const [formats, setFormats] = useState<Record<string, ExportFormats>>({});
+  // Desktop app: the native encoder decides (not the webview's WebCodecs); asked again after the person enables MP4.
+  const desktop = getDesktop();
+  const [codecs, setCodecs] = useState<DesktopCodecs | null>(null);
+  const [codecRev, setCodecRev] = useState(0);
   useEffect(() => {
     let alive = true;
+    if (desktop) {
+      void desktop.codecs().then((c) => { if (alive) { setCodecs(c); setFormats(Object.fromEntries(keys.map(([k]) => [k, desktopFormats(c)]))); } })
+        .catch(() => { if (alive) { const none: DesktopCodecs = { h264: "none", webm: false, canEnableH264: false }; setCodecs(none); setFormats(Object.fromEntries(keys.map(([k]) => [k, desktopFormats(none)]))); } });
+      return () => { alive = false; };
+    }
     for (const [k, [w, h, f]] of keys) void probeOnce(w, h, f).then((r) => alive && setFormats((cur) => (cur[k] ? cur : { ...cur, [k]: r })));
     return () => { alive = false; };
-  }, [keys]);
+  }, [keys, desktop, codecRev]);
   const formatsOf = (c: Choice) => formats[fmtKey(c.width, c.height, outputFps(c, src))];
   const ready = keys.every(([k]) => formats[k]);
   const offered = PRESET_IDS.filter((id) => (formatsOf(presetChoice(id, src))?.options.length ?? 0) > 0);
@@ -114,13 +124,15 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
     onStart(buildSettings(choice, src, format));
   };
 
-  const fmtName = (id: string) => t(`export.format.${id}`);
+  const fmtName = (id: string) => desktop && id === "webm-vp9" ? t("export.format.webm-vp9.offline") : t(`export.format.${id}`);
   const fps = src.fps % 1 === 0 ? String(src.fps) : src.fps.toFixed(2);
 
   if (!ready) return <p className="export-note" role="status">{t("export.checking")}</p>;
-  if (offered.length === 0) return <p className="export-error" role="alert" data-testid="export-nodevice">{t("export.err.noEncoder")}</p>;
+  const notice = desktop && codecs ? <H264Notice codecs={codecs} onEnabled={() => setCodecRev((n) => n + 1)} /> : null;
+  if (offered.length === 0) return <>{notice}<p className="export-error" role="alert" data-testid="export-nodevice">{t(desktop ? "export.desktop.noneAtAll" : "export.err.noEncoder")}</p></>;
   return (
     <>
+      {notice}
       <p className="export-summary" data-testid="export-summary">{t("export.summary", { size: `${src.width}×${src.height}`, fps, length: formatClock(src.seconds) })}</p>
       <fieldset className="export-presets">
         <legend>{t("export.presets")}</legend>
@@ -206,6 +218,35 @@ function Progress({ state, onCancel, onTuck }: { state: Extract<ExportState, { p
   );
 }
 
+/** Desktop, no H.264 encoder: say so, and offer the opt-in download. Nothing is fetched until the button is pressed. */
+function H264Notice({ codecs, onEnabled }: { codecs: DesktopCodecs; onEnabled(): void }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (codecs.h264 !== "none") return null;
+  const enable = async () => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      await getDesktop()?.enableH264();
+      onEnabled();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="export-note" data-testid="export-h264-notice">
+      <p>{t("export.desktop.noH264")}</p>
+      {canOfferH264Download(codecs) && (
+        <button className="export-secondary" onClick={() => void enable()} disabled={busy} data-testid="export-enable-h264">{t(busy ? "export.desktop.enabling" : "export.desktop.enable")}</button>
+      )}
+      {failed && <p className="export-error" role="alert" data-testid="export-enable-failed">{t("export.desktop.enableFailed")}</p>}
+    </div>
+  );
+}
+
 // ---- 3. done ----
 function Done({ state, src, locale, onClose, onAgain }: { state: Extract<ExportState, { phase: "done" }>; src: Source; locale: string; onClose(): void; onAgain(): void }) {
   const { t } = useI18n();
@@ -213,12 +254,18 @@ function Done({ state, src, locale, onClose, onAgain }: { state: Extract<ExportS
   const file = useMemo(() => new File([state.file], saveName(result.fileName), { type: state.file.type }), [state.file, result.fileName]);
   const [note, setNote] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const share = useMemo(() => canShareFile(file), [file]);
+  const share = useMemo(() => !getDesktop() && canShareFile(file), [file]);
   const kind = result.mime.startsWith("video/webm") ? "WebM" : "MP4";
+  const desktop = getDesktop();
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const run = async (what: "save" | "share") => {
     setFailed(false);
     try {
-      if (what === "save") {
+      if (what === "save" && desktop) {
+        // Native Save dialog; the finished file is copied straight to the chosen place (never through the webview).
+        const path = await desktop.saveExport(result.fileName, file.name);
+        if (path) { setSavedAt(path); setNote(t("export.savedTo", { path })); }
+      } else if (what === "save") {
         const r = await saveFile(file);
         if (r !== "dismissed") setNote(t(r === "saved" ? "export.saved" : "export.downloaded", { name: file.name }));
       } else if ((await shareFile(file, file.name)) === "shared") setNote(t("export.shared"));
@@ -241,6 +288,7 @@ function Done({ state, src, locale, onClose, onAgain }: { state: Extract<ExportS
       {note && <p className="export-note" role="status" data-testid="export-note">{note}</p>}
       <div className="export-actions">
         <button className="primary export-go" onClick={() => void run("save")} data-testid="export-save"><Icon name="download" size={20} /><span>{t("export.save")}</span></button>
+        {desktop && savedAt && <button className="export-secondary" onClick={() => void desktop.reveal(savedAt).catch(() => setFailed(true))} data-testid="export-reveal"><Icon name="media" size={20} /><span>{t("export.showFolder")}</span></button>}
         {share && <button className="export-secondary" onClick={() => void run("share")} data-testid="export-share"><Icon name="share" size={20} /><span>{t("export.share")}</span></button>}
       </div>
       <div className="export-actions">

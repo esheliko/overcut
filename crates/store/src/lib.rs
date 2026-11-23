@@ -7,6 +7,8 @@
 //! **Does not own**: what the files mean (the engine does), the web storage (OPFS / IndexedDB live in `packages/engine-client`), or any
 //! platform API: only `std::fs`. The Tauri shell (`apps/desktop/src-tauri`) exposes these as commands and holds no logic of its own.
 
+pub mod desktop;
+
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
