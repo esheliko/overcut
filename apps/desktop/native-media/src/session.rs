@@ -90,6 +90,11 @@ pub struct NativeExport {
     enc: Mp4Encoder,
 }
 
+// SAFETY: libav contexts have no thread affinity (no thread-local state; the software paths used here touch only the context's own memory),
+// so moving one to another thread is sound as long as it is used from one thread at a time. The Tauri commands guarantee that with a Mutex.
+unsafe impl Send for NativeExport {}
+unsafe impl Send for NativeMedia {}
+
 impl NativeExport {
     pub fn begin(p: ExportParams) -> Result<Self, String> {
         let enc = Mp4Encoder::create(EncoderConfig {

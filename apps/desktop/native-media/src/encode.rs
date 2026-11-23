@@ -21,6 +21,14 @@ pub const H264_PREFERENCE: &[&str] = &[
     "libopenh264",
 ];
 
+/// The pixel format an encoder takes from system memory: the Intel / Media Foundation / AMD hardware paths want NV12, the rest planar 4:2:0.
+fn pixel_format_for(encoder: &str) -> Pixel {
+    match encoder {
+        "h264_qsv" | "h264_mf" | "h264_amf" => Pixel::NV12,
+        _ => Pixel::YUV420P,
+    }
+}
+
 /// True when libav in this process has the named encoder compiled in (it may still fail to open without the hardware).
 pub fn encoder_available(name: &str) -> bool {
     let _ = crate::init();
@@ -125,7 +133,7 @@ impl Mp4Encoder {
                 .map_err(e)?;
             v.set_width(cfg.width);
             v.set_height(cfg.height);
-            v.set_format(Pixel::YUV420P);
+            v.set_format(pixel_format_for(name));
             v.set_time_base(v_tb);
             v.set_frame_rate(Some(Rational::new(cfg.fps_num as i32, cfg.fps_den as i32)));
             v.set_bit_rate(cfg.video_bitrate as usize);

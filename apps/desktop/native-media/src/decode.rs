@@ -1,12 +1,13 @@
 use app_media::{
-    probe, AudioRequest, FrameKind, FrameKinds, HostDecoder, MediaError, PacketDecoder, Source,
-    Track, VideoOut, VideoRequest,
+    packet_ref, probe, ticks_to_us, AudioRequest, FrameKind, FrameKinds, HostDecoder, MediaError,
+    PacketDecoder, PacketRef, Source, Track, VideoOut, VideoRequest,
 };
 use app_media::{FrameData, RgbaFrame};
 use ff::codec::{self, Id};
 use ff::format::Pixel;
 use ff::software::{resampling, scaling};
 use ffmpeg_next as ff;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -78,6 +79,8 @@ impl Source for FileSource {
 /// Native packet decoder: libav software codecs, plus hardware decoders where libav offers them (see `docs/adr/0004` S4 results).
 pub struct LibavHost {
     file: File,
+    gop: Gop,
+    scaler: Option<scaling::Context>,
     video: Option<Track>,
     audio: Option<Track>,
 }
@@ -105,6 +108,8 @@ pub fn open_probed(
     }
     let host = LibavHost {
         file: File::open(path).map_err(io)?,
+        gop: Gop::default(),
+        scaler: None,
         video: video.clone(),
         audio: audio.clone(),
     };
@@ -198,60 +203,29 @@ impl PacketDecoder for LibavHost {
             ));
         }
         let track = self.video_track()?.clone();
-        let mut dec = new_context(&track)?.decoder().video().map_err(io)?;
-        let mut frame = ff::frame::Video::empty();
-        let mut found: Option<RgbaFrame> = None;
-        let mut scaler: Option<scaling::Context> = None;
-        let mut take = |dec: &mut ff::decoder::Video,
-                        found: &mut Option<RgbaFrame>|
-         -> Result<(), MediaError> {
-            while dec.receive_frame(&mut frame).is_ok() {
-                if found.is_none() && frame.pts() == Some(req.target_ts_us) {
-                    let (w, h) = (frame.width(), frame.height());
-                    if scaler.is_none() {
-                        scaler = Some(
-                            scaling::Context::get(
-                                frame.format(),
-                                w,
-                                h,
-                                Pixel::RGBA,
-                                w,
-                                h,
-                                scaling::Flags::BICUBIC,
-                            )
-                            .map_err(io)?,
-                        );
-                    }
-                    let mut out = ff::frame::Video::empty();
-                    scaler.as_mut().unwrap().run(&frame, &mut out).map_err(io)?;
-                    let stride = out.stride(0);
-                    let src = out.data(0);
-                    let mut data = Vec::with_capacity(w as usize * h as usize * 4);
-                    for row in 0..h as usize {
-                        data.extend_from_slice(&src[row * stride..row * stride + w as usize * 4]);
-                    }
-                    *found = Some(RgbaFrame {
-                        width: w,
-                        height: h,
-                        data: Arc::from(data),
-                    });
-                }
+        // Sequential access (export, playback) asks for frame i, then i + 1, ...: decoding each from its keyframe would cost O(GOP^2). So the
+        // first request in a GOP decodes the WHOLE GOP once and keeps the raw (YUV) frames; the next requests in it are a lookup + a colour conversion.
+        if !self.gop.frames.contains_key(&req.target_ts_us) {
+            let first = req.packets.first().ok_or(MediaError::OutOfRange)?;
+            let whole = gop_packets(&track, first.ts_us, self.gop_budget_frames(&track));
+            let packets = whole.as_deref().unwrap_or(&req.packets);
+            let mut frames = decode_packets(&track, &mut self.file, packets)?;
+            if whole.is_none() {
+                // Long GOP / big frames: keep only the target (the old, memory-flat path).
+                frames.retain(|ts, _| *ts == req.target_ts_us);
             }
-            Ok(())
-        };
-        for p in &req.packets {
-            let pkt = read_packet(&mut self.file, p.offset, p.size, p.ts_us, p.keyframe)?;
-            dec.send_packet(&pkt).map_err(io)?;
-            take(&mut dec, &mut found)?;
+            self.gop = Gop { frames };
         }
-        dec.send_eof().map_err(io)?;
-        take(&mut dec, &mut found)?;
-        let f = found
+        let frame = self
+            .gop
+            .frames
+            .get(&req.target_ts_us)
             .ok_or_else(|| MediaError::Io(format!("frame {} not produced", req.frame_index)))?;
+        let rgba = to_rgba(frame, &mut self.scaler)?;
         Ok(VideoOut {
-            width: f.width,
-            height: f.height,
-            data: FrameData::Cpu(f),
+            width: rgba.width,
+            height: rgba.height,
+            data: FrameData::Cpu(rgba),
         })
     }
 
@@ -327,6 +301,103 @@ impl PacketDecoder for LibavHost {
         }
         Ok(out)
     }
+}
+
+/// The raw decoded frames of one GOP, by presentation timestamp (microseconds).
+#[derive(Default)]
+struct Gop {
+    frames: HashMap<i64, ff::frame::Video>,
+}
+
+/// Raw-frame memory kept per GOP.
+const GOP_BYTES: usize = 384 * 1024 * 1024;
+
+impl LibavHost {
+    /// How many frames of this track fit the GOP budget (4:2:0 = 1.5 bytes per pixel).
+    fn gop_budget_frames(&self, t: &Track) -> usize {
+        GOP_BYTES / ((t.width as usize * t.height as usize * 3 / 2).max(1))
+    }
+}
+
+/// The packets of the GOP that starts at the keyframe with timestamp `key_ts_us`, in decode order, up to the next keyframe.
+/// `None` when the GOP is longer than `max_frames` (then the caller decodes only up to its target).
+fn gop_packets(track: &Track, key_ts_us: i64, max_frames: usize) -> Option<Vec<PacketRef>> {
+    let start = track
+        .packets
+        .iter()
+        .position(|p| p.keyframe && ticks_to_us(p.pts) == key_ts_us)?;
+    let end = track.packets[start + 1..]
+        .iter()
+        .position(|p| p.keyframe)
+        .map_or(track.packets.len(), |i| start + 1 + i);
+    (end - start <= max_frames).then(|| track.packets[start..end].iter().map(packet_ref).collect())
+}
+
+/// Feeds `packets` (decode order) to a fresh decoder and returns every frame it outputs, by timestamp.
+fn decode_packets(
+    track: &Track,
+    file: &mut File,
+    packets: &[PacketRef],
+) -> Result<HashMap<i64, ff::frame::Video>, MediaError> {
+    let mut dec = new_context(track)?.decoder().video().map_err(io)?;
+    let mut out = HashMap::new();
+    let mut frame = ff::frame::Video::empty();
+    let mut take = |dec: &mut ff::decoder::Video| {
+        while dec.receive_frame(&mut frame).is_ok() {
+            if let Some(ts) = frame.pts() {
+                out.insert(ts, frame.clone());
+            }
+        }
+    };
+    for p in packets {
+        let pkt = read_packet(file, p.offset, p.size, p.ts_us, p.keyframe)?;
+        dec.send_packet(&pkt).map_err(io)?;
+        take(&mut dec);
+    }
+    dec.send_eof().map_err(io)?;
+    take(&mut dec);
+    Ok(out)
+}
+
+fn to_rgba(
+    frame: &ff::frame::Video,
+    scaler: &mut Option<scaling::Context>,
+) -> Result<RgbaFrame, MediaError> {
+    let (w, h) = (frame.width(), frame.height());
+    let needs_new = scaler.as_ref().is_none_or(|s| {
+        s.input().format != frame.format() || s.input().width != w || s.input().height != h
+    });
+    if needs_new {
+        *scaler = Some(
+            scaling::Context::get(
+                frame.format(),
+                w,
+                h,
+                Pixel::RGBA,
+                w,
+                h,
+                scaling::Flags::BICUBIC,
+            )
+            .map_err(io)?,
+        );
+    }
+    let mut out = ff::frame::Video::empty();
+    scaler
+        .as_mut()
+        .ok_or_else(|| MediaError::Io("no scaler".into()))?
+        .run(frame, &mut out)
+        .map_err(io)?;
+    let stride = out.stride(0);
+    let src = out.data(0);
+    let mut data = Vec::with_capacity(w as usize * h as usize * 4);
+    for row in 0..h as usize {
+        data.extend_from_slice(&src[row * stride..row * stride + w as usize * 4]);
+    }
+    Ok(RgbaFrame {
+        width: w,
+        height: h,
+        data: Arc::from(data),
+    })
 }
 
 fn push_f32(frame: &ff::frame::Audio, ch: usize, into: &mut Vec<f32>) {

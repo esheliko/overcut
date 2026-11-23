@@ -24,6 +24,13 @@ app-core = { path = "../../../crates/core" }
 app-model = { path = "../../../crates/model" }
 app-timeline = { path = "../../../crates/timeline" }
 app-store = { path = "../../../crates/store" }
+# libav decode + H.264/AAC encode (needs the libav development files: `apps/desktop/native-media`). Off by default so `verify` and the plain shell build without them.
+app-native-media = { path = "../native-media", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[features]
+native-media = ["dep:app-native-media", "dep:serde", "dep:serde_json"]
 
 [profile.release]
 opt-level = 3
