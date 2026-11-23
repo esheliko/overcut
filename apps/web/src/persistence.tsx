@@ -1,6 +1,7 @@
 import { acquireProjectLock, newProject, openProjectSession, openProjectStorage, type Engine, type ProjectSession, type RecoveryNote, type SaveStatus } from "@app/engine-client";
 import { useEffect, useState } from "react";
 import { useI18n } from "./i18n";
+import { sampleProject } from "./timeline/fixture";
 
 /** One project for now ("default"); the project list arrives with M1-034. */
 const PROJECT_ID = "default";
@@ -16,6 +17,8 @@ export function usePersistence(engine: Engine | null) {
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [problem, setProblem] = useState<string | null>(null);
   const [session, setSession] = useState<ProjectSession | null>(null);
+  /** Bumps when the project is replaced under the UI (undo recovery), so views re-read it. */
+  const [epoch, setEpoch] = useState(0);
 
   useEffect(() => {
     if (!engine) return;
@@ -33,7 +36,8 @@ export function usePersistence(engine: Engine | null) {
         if (!alive) return terminate?.();
         const opened = await openProjectSession(engine, storage, {
           createProject: () => {
-            const p = newProject("Untitled project");
+            // Until media import exists (M1), a new project starts with the sample clips so there is something to edit; e2e keeps it empty.
+            const p = e2e ? newProject("Untitled project") : { ...sampleProject(), name: "Untitled project" };
             if (e2e) p.media.push({ id: "00000000000000000000000000000e2e", kind: "video", name: "e2e.mp4", uri: "media/e2e.mp4", hash: null, duration: 600 * 705_600_000 });
             return p;
           },
@@ -67,12 +71,13 @@ export function usePersistence(engine: Engine | null) {
   const undoRecovery = async () => {
     try {
       await session?.undoRecovery();
+      setEpoch((n) => n + 1);
       setRecovered(null);
     } catch (err) {
       setProblem(err instanceof Error ? err.message : String(err));
     }
   };
-  return { recovered, status, problem, undoRecovery, dismiss: () => setRecovered(null) };
+  return { session, epoch, recovered, status, problem, undoRecovery, dismiss: () => setRecovered(null) };
 }
 
 /** Small, non-blocking notes: what was recovered (with an undo) and why saving is not working. */

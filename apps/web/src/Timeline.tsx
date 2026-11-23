@@ -25,6 +25,8 @@ type Props = {
   onNotice: (what: string) => void;
   /** The engine's edit surface; without it the timeline shows the sample project read-only. */
   editing?: Editing;
+  /** Changes when the open project was replaced outside the timeline (undo recovery): re-read it. */
+  epoch?: number;
   /** Benchmark/dev hook. */
   onReady?: (h: CanvasHandle) => void;
 };
@@ -36,9 +38,9 @@ const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 
-export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, editing, onReady }: Props) {
+export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, editing, epoch, onReady }: Props) {
   const { t } = useI18n();
-  const proj = useProject(editing, sampleProject);
+  const proj = useProject(editing, epoch);
   const fallback = useMemo(() => sampleProject(), []);
   const source: Project = proj.project ?? fallback;
   const scene = useMemo(() => buildScene(source), [source]);

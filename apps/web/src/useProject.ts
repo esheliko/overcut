@@ -5,18 +5,18 @@ interface State { project: Project | null; canUndo: boolean; canRedo: boolean }
 
 /** The open project as the UI sees it: a read-only copy refreshed from `Engine.editing` after every change. The UI never edits it directly (ADR 0006);
  *  calls are serialised so the engine sees them in the order the user made them. */
-export function useProject(editing: Editing | undefined, initial: () => Project) {
+export function useProject(editing: Editing | undefined, epoch = 0) {
   const [state, setState] = useState<State>({ project: null, canUndo: false, canRedo: false });
   const chain = useRef<Promise<unknown>>(Promise.resolve());
-  const initialRef = useRef(initial);
 
+  // The persistence session (M1-040) opens the project; we only read it, and again whenever it is replaced under us (`epoch`).
   useEffect(() => {
     if (!editing) { setState({ project: null, canUndo: false, canRedo: false }); return; }
     let alive = true;
-    chain.current = editing.open(initialRef.current()).then(() => editing.project()).then((project) => { if (alive) setState({ project, canUndo: false, canRedo: false }); });
+    chain.current = chain.current.catch(() => undefined).then(() => editing.project()).then((project) => { if (alive) setState({ project, canUndo: false, canRedo: false }); });
     chain.current.catch(() => undefined);
     return () => { alive = false; };
-  }, [editing]);
+  }, [editing, epoch]);
 
   const run = useCallback((call: (e: Editing) => Promise<EditOutcome>): Promise<EditOutcome | null> => {
     if (!editing) return Promise.resolve(null);
