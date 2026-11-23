@@ -94,3 +94,12 @@ test("dragging a bin item onto the timeline adds it", async ({ page }, info) => 
   await page.getByTestId("bin-item").first().dragTo(page.getByTestId("panel-timeline"), { targetPosition: { x: 400, y: 80 } });
   await expect(summary(page)).toContainText("6 clips");
 });
+
+test("an imported clip's waveform is real, not a placeholder (M1-013)", async ({ page }) => {
+  await ready(page);
+  await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4"));
+  await expect(summary(page)).toContainText("2 clips");
+  const canvas = page.getByTestId("timeline-canvas");
+  await expect(canvas).toHaveAttribute("data-wave-tiles", /^[1-9]\d*$/, { timeout: 30_000 }); // waveform tiles rendered from the engine's peaks
+  await expect(canvas).toHaveAttribute("data-thumbs", /^[1-9]\d*$/, { timeout: 30_000 }); // filmstrip frames decoded
+});
