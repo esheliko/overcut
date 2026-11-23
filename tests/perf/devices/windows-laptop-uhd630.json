@@ -1,0 +1,77 @@
+{
+  "overcut_perf_device": 1,
+  "name": "windows-laptop-uhd630",
+  "tier": "laptop",
+  "label": "measured on device",
+  "proxyRatio": null,
+  "at": "2026-11-23T12:12:15.794Z",
+  "app": "0.1.0 wasm",
+  "device": {
+    "platform": "Win32",
+    "cores": 12,
+    "mem_gb": 32,
+    "gpu": "intel / gen-9",
+    "gl2": "ANGLE Intel UHD 630 D3D11",
+    "webgpu": true,
+    "webgl2": true,
+    "codecs": {
+      "h264": "dec:hw enc:hw",
+      "hevc": "dec:hw enc:hw",
+      "vp9": "dec:hw enc:sw",
+      "av1": "dec:sw enc:sw"
+    }
+  },
+  "metrics": {
+    "device.decode_fps": 720,
+    "device.seek_gop30_p50_ms": 37.6,
+    "device.seek_gop150_p95_ms": 201.7,
+    "device.fill_layers_at_60fps": 11,
+    "device.upload_p50_ms": 22.8
+  },
+  "report": {
+    "overcut_device_report": 1,
+    "at": "2026-11-23T12:12:15.794Z",
+    "app": "0.1.0 wasm",
+    "device": {
+      "platform": "Win32",
+      "cores": 12,
+      "mem_gb": 32,
+      "gpu": "intel / gen-9",
+      "gl2": "ANGLE Intel UHD 630 D3D11",
+      "webgpu": true,
+      "webgl2": true,
+      "codecs": {
+        "h264": "dec:hw enc:hw",
+        "hevc": "dec:hw enc:hw",
+        "vp9": "dec:hw enc:sw",
+        "av1": "dec:sw enc:sw"
+      }
+    },
+    "tests": {
+      "decode": {
+        "fps": 720,
+        "first_run_ms": 306
+      },
+      "seek": {
+        "gop30_p50_ms": 37.6,
+        "gop30_p95_ms": 60.7,
+        "gop150_p50_ms": 130.5,
+        "gop150_p95_ms": 201.7
+      },
+      "gpuUpload": {
+        "direct_p50_ms": 22.8,
+        "direct_p95_ms": 40,
+        "copy_p50_ms": 5.9,
+        "copy_p95_ms": 7.9,
+        "cpu_p50_ms": 27.2,
+        "cpu_p95_ms": 39.1
+      },
+      "fillRate": {
+        "layers": 8,
+        "frame_p50_ms": 12.1,
+        "frame_p95_ms": 15.2,
+        "layers_at_60fps": 11
+      }
+    }
+  }
+}

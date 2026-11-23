@@ -32,14 +32,25 @@
 ## M1 exit criteria and where each is measured
 | Exit criterion (ROADMAP M1) | Metric (`tests/perf/metrics.mjs`) | Budget | Measured today |
 |---|---|---|---|
-| 1080p preview 60 fps on the reference laptop | `device.decode_fps`, `device.fill_layers_at_60fps` (+ `preview.fps`) | decode >= 60 fps, >= 3 layers at 60 fps | **container only** (software decode, 320x180 clip): trend. Real laptop numbers pending the owner's `/diagnostics` runs |
+| 1080p preview 60 fps on the reference laptop | `device.decode_fps`, `device.fill_layers_at_60fps` (+ `preview.fps`) | decode >= 60 fps, >= 3 layers at 60 fps | **container only** (software decode, 320x180 clip): trend. Windows laptop: decode 720 fps, 11 layers at 60 fps (pass); `/diagnostics` has no end-to-end preview test, so 60 fps preview itself is still unproven on a device; Mac pending |
 | Export >= 1x realtime on the reference phone browser | `export.speed_x` | low phone >= 0.7x, mid >= 1.5x | **container only**: 1080p30 5 s synthetic project, H.264 via software WebCodecs, about 0.16x, which says nothing about a phone with a hardware encoder. Phone numbers need an in-app export on the S24 and iPhone 14 (not in `/diagnostics` yet) |
 | Activation test (import, trim, export) < 90 s | not automated | 90 s | **manual** (a person with a stopwatch on a first-time user); no harness number |
 | Startup | `startup.warm_ms`, `startup.cold_ms`, `size.*` | table above | **container** (headless Chromium, no throttle): trend; sizes are exact |
 | Budgets measured in CI | `npm run perf` + `perf:compare` | warn +10%, fail +25% | the CI job is requested separately (`process: perf job`), not wired yet |
 
+## Real-device results (from `/diagnostics`, 2026-11-23; files in `tests/perf/devices/`)
+| Metric | Budget (laptop / mid) | Windows laptop (UHD 630, Chrome 157; 12 cores, 32 GB: **not** the assumed i5 8 GB) | Galaxy S24 (Xclipse 940, Chrome 157) |
+|---|---|---|---|
+| 1080p H.264 decode | >= 60 fps | 720 fps (pass) | 234 fps (pass) |
+| Random seek p50, GOP 30 | <= 50 / 80 ms | 37.6 ms (pass) | 58.5 ms (pass) |
+| Random seek p95, GOP 150 | no budget | 201.7 ms | 376.2 ms |
+| Full-HD layers at 60 fps | >= 3 | 11 (pass) | not measured: no WebGPU in this Chrome |
+| VideoFrame to GPU, best path p50 | no budget | 5.9 ms (copy; direct import 22.8 ms is slower here) | not measured (no WebGPU) |
+
+Findings: seek on long-GOP media is the weak spot on both (200-380 ms p95 against a 50-80 ms scrub budget for GOP 30), so proxies or a keyframe cache matter for long-GOP sources. The S24's Chrome exposes no WebGPU, so the compositor needs its WebGL2 path there (WebGL2 is available). The Mac, the iPhone 14 and the low-end proxy are not measured yet: the low tier needs the published SoC ratio (ADR 0013) passed as `--proxy-ratio`, which nobody has supplied, so no proxy numbers are recorded.
+
 ## Measurement status per metric and tier
-`C` = measured in the container harness (trend number: shared Xeon CPU, software decode, no real GPU; compare only with a baseline from the same kind of machine). `D` = real-device number from `/diagnostics`. `P` = calibrated proxy (S24 number scaled by the SoC benchmark ratio, ADR 0013; always labelled). `-` = not measured anywhere yet.
+`C` = measured in the container harness (trend number: shared Xeon CPU, software decode, no real GPU; compare only with a baseline from the same kind of machine). `D` = real-device number from `/diagnostics` (Windows laptop and Galaxy S24 so far, table above). `P` = calibrated proxy (S24 number scaled by the SoC benchmark ratio, ADR 0013; always labelled). `-` = not measured anywhere yet.
 
 | Metric | Low phone | Mid phone (iPhone 14) | Laptop (i5 / M1) | Desktop |
 |---|---|---|---|---|

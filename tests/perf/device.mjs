@@ -19,7 +19,8 @@ export function metricsOf(report) {
   put('device.seek_gop30_p50_ms', n(t.seek?.gop30_p50_ms));
   put('device.seek_gop150_p95_ms', n(t.seek?.gop150_p95_ms));
   put('device.fill_layers_at_60fps', n(t.fillRate?.layers_at_60fps));
-  put('device.upload_p50_ms', n(t.gpuUpload?.direct_p50_ms) ?? n(t.gpuUpload?.copy_p50_ms) ?? n(t.gpuUpload?.cpu_p50_ms));
+  const up = [t.gpuUpload?.direct_p50_ms, t.gpuUpload?.copy_p50_ms, t.gpuUpload?.cpu_p50_ms].filter((x) => typeof x === 'number');
+  put('device.upload_p50_ms', up.length ? Math.min(...up) : undefined); // the fastest path that works
   return out;
 }
 
