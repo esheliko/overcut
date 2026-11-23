@@ -10,13 +10,15 @@ async function thumbOf(url: string): Promise<string | null> {
   if (cache.has(url)) return cache.get(url)!;
   let out: string | null = null;
   try {
-    const bitmap = await createImageBitmap(await (await fetch(url)).blob());
-    const w = Math.min(THUMB_WIDTH, bitmap.width);
+    // an <img> (not fetch: the page's CSP allows blob: images, not blob: connections)
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const w = Math.min(THUMB_WIDTH, img.naturalWidth);
     const c = document.createElement("canvas");
     c.width = w;
-    c.height = Math.max(1, Math.round((bitmap.height * w) / bitmap.width));
-    c.getContext("2d")?.drawImage(bitmap, 0, 0, c.width, c.height);
-    bitmap.close();
+    c.height = Math.max(1, Math.round((img.naturalHeight * w) / img.naturalWidth));
+    c.getContext("2d")?.drawImage(img, 0, 0, c.width, c.height);
     out = c.toDataURL("image/jpeg", 0.7);
   } catch {
     out = null;

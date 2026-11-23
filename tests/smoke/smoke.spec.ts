@@ -68,8 +68,11 @@ test("transport and timeline: play advances the playhead, the canvas timeline pa
   await expect.poll(painted).toBeGreaterThan(4);
 });
 
-test("aspect ratio: an empty project's preview takes the chosen shape (a project with clips follows its first clip)", async ({ page }) => {
+test("aspect ratio: the picker changes the project's real canvas, and the preview takes its shape", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Menu" }).click();
+  await expect(page.getByTestId("menu-history")).toBeEnabled(); // the project is open
+  await page.keyboard.press("Escape");
   const canvas = page.locator(".canvas");
   const wide = (await canvas.boundingBox())!;
   await page.getByLabel("Aspect ratio").selectOption("9:16");
