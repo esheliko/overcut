@@ -198,34 +198,97 @@ pub fn desktop_reveal(path: String) -> Result<(), String> {
 }
 
 /// What the desktop can encode: `{ "h264": "hardware"|"software"|"none", "webm": bool, "canEnableH264": bool }`.
-/// Hardware = an OS / GPU encoder opens; software = the Cisco OpenH264 library is present; WebM and the opt-in OpenH264 download are not built yet.
+/// Hardware = an OS / GPU encoder opens; software = Cisco's OpenH264 library is stored and loaded and libav's `libopenh264` opens; WebM = libav has
+/// libvpx-vp9 + libopus (no network, no hardware); `canEnableH264` = none of the above for H.264 but this libav has the `libopenh264` wrapper and a
+/// pinned Cisco release exists for this OS / CPU (so the opt-in button can work).
 #[tauri::command]
 pub fn desktop_codecs() -> String {
     #[cfg(feature = "native-media")]
-    let h264 = {
+    let (h264, webm, can_enable) = {
         let _ = app_native_media::init();
         let hardware = app_native_media::H264_PREFERENCE
             .iter()
             .copied()
             .filter(|n| *n != "libopenh264")
             .any(app_native_media::encoder_available);
-        if hardware {
+        let h264 = if hardware {
             "hardware"
-        } else if app_native_media::encoder_available("libopenh264") {
+        } else if app_native_media::encoder_opens("libopenh264") {
             "software"
         } else {
             "none"
-        }
+        };
+        let can = h264 == "none"
+            && app_native_media::encoder_available("libopenh264")
+            && app_native_media::openh264::current_pin().is_some();
+        (h264, app_native_media::webm_available(), can)
     };
     #[cfg(not(feature = "native-media"))]
-    let h264 = "none";
-    format!(r#"{{"h264":"{h264}","webm":false,"canEnableH264":false}}"#)
+    let (h264, webm, can_enable) = ("none", false, false);
+    format!(r#"{{"h264":"{h264}","webm":{webm},"canEnableH264":{can_enable}}}"#)
 }
 
-/// The opt-in OpenH264 download (ADR 0004, `docs/features/privacy-network.md`). Not built yet: refuses, downloads nothing.
+/// Shared by the opt-in download and its Cancel button.
+#[derive(Default)]
+#[cfg_attr(not(feature = "native-media"), allow(dead_code))]
+pub struct H264Download {
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    running: std::sync::atomic::AtomicBool,
+}
+
+/// The opt-in OpenH264 download (ADR 0004, `docs/features/privacy-network.md`). Only ever called by the click on "Enable MP4": downloads Cisco's
+/// binary, checks the pinned SHA-256, stores it once in `<app data>/openh264/` and loads it. Progress arrives as `overcut://h264-progress`
+/// (`{done, total}`); failures reject with `{"code": "offline"|"checksum"|"cancelled"|"unsupported"|"io", "message": ...}`.
 #[tauri::command]
-pub fn desktop_enable_h264() -> Result<(), String> {
-    Err(r#"{"code":"not_yet","message":"The OpenH264 download is not available in this build yet."}"#.into())
+pub async fn desktop_enable_h264(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, H264Download>,
+) -> Result<(), String> {
+    #[cfg(not(feature = "native-media"))]
+    {
+        let _ = (&app, &state);
+        Err(r#"{"code":"unsupported","message":"This build of the desktop app has no native media (libav), so it cannot use the codec."}"#.into())
+    }
+    #[cfg(feature = "native-media")]
+    {
+        use app_native_media::openh264 as oh;
+        use std::sync::atomic::Ordering;
+        if state.running.swap(true, Ordering::SeqCst) {
+            return Err(r#"{"code":"busy","message":"The download is already running."}"#.into());
+        }
+        state.cancel.store(false, Ordering::SeqCst);
+        let cancel = state.cancel.clone();
+        let data = app_data(&app)?;
+        let handle = app.clone();
+        let result = blocking(move || -> Result<(), oh::Failure> {
+            let pin = oh::current_pin().ok_or(oh::Failure::Unsupported)?;
+            let path = oh::download(&data, &pin, &oh::HttpFetcher, &cancel, |p| {
+                let _ = handle.emit(
+                    "overcut://h264-progress",
+                    serde_json::json!({"done": p.done, "total": p.total}),
+                );
+            })?;
+            oh::activate(&path)?;
+            let _ = app_native_media::init();
+            if !app_native_media::encoder_opens("libopenh264") {
+                // Stored but unusable (this libav expects another version of the library): do not leave it counting as installed.
+                let _ = std::fs::remove_file(&path);
+                return Err(oh::Failure::Io(
+                    "the downloaded codec does not match this build of the app".into(),
+                ));
+            }
+            Ok(())
+        })
+        .await;
+        state.running.store(false, Ordering::SeqCst);
+        result?.map_err(|f| f.to_json())
+    }
+}
+
+/// Stops a running codec download (the Cancel button). Safe to call at any time.
+#[tauri::command]
+pub fn desktop_cancel_h264(state: tauri::State<'_, H264Download>) {
+    state.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Forwards OS file drops onto the window to the page as `overcut://drop` (media paths only) and hover state as `overcut://drag` (bool).

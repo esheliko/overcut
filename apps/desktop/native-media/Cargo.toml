@@ -14,7 +14,14 @@ license = "GPL-3.0-or-later"
 [dependencies]
 app-media = { path = "../../../crates/media" }
 app-model = { path = "../../../crates/model" }
+bzip2 = "0.5"
 # Dynamic link only (no `build` / `static` feature): the app links the LGPL libav it ships or finds, never a GPL build of its own.
 ffmpeg-next = { version = "7.1", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
 ffmpeg-sys-next = { version = "7.1", default-features = false }
+libloading = "0.8"
 serde_json = "1"
+sha2 = "0.10"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+
+[dev-dependencies]
+tempfile = "3"

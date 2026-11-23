@@ -3,6 +3,7 @@
  * decoding and audio mixing; the UI thread keeps the AudioContext (Web Audio does not exist in workers), which stays the master clock.
  */
 import type { RendererInfo } from "@app/engine-client";
+import type { NativeOp } from "./nativeMedia";
 import type { Rate } from "./timing";
 
 export type PreviewCommand =
@@ -38,6 +39,8 @@ export type ToPreview =
   | ({ type: "config" } & PreviewConfig)
   /** The file behind a media item (cloned, not copied): the Worker opens its own decoder. */
   | { type: "media"; id: string; file: File }
+  /** A file that stays on disk (desktop): the Worker cannot hold it, so it asks the UI thread's native decoder for frames (`NativeOp`). */
+  | { type: "media-native"; id: string; path: string }
   | { type: "unmedia"; id: string }
   /** A filmstrip thumbnail the timeline made (upright, transferred): kept as a scrub stand-in for media `media` at `seconds`. */
   | { type: "thumb"; media: string; seconds: number; bitmap: ImageBitmap }
@@ -59,6 +62,8 @@ export type FromPreview =
   | { type: "audio-stop" }
   /** The worker asks the UI thread to start the audio output; answered with a `reply` `{ running, audio, epoch }`. */
   | { type: "request"; id: number; name: "audio-resume" }
+  /** A question for the UI thread's native decoder (desktop preview of on-disk files); answered with a `reply` (a `NativeReply`). */
+  | { type: "request"; id: number; name: "native"; op: NativeOp }
   /** The stored upload-path choice for `key` (local storage lives on the UI thread); answered with a `reply` (the stored value or null). */
   | { type: "request"; id: number; name: "upload-get"; key: string }
   /** Remember the measured upload path for `key` (re-measured when the GPU or browser version changes). */

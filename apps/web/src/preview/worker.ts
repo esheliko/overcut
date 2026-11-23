@@ -7,6 +7,7 @@ import { epochNow, type FromPreview, type PreviewConfig, type PreviewRpc, type T
 import { Player, type AudioOut } from "./player";
 import { frameStartTicks } from "./timing";
 import { ThumbStore } from "./scrubCache";
+import { createRemoteMedia, type NativeCall } from "./nativeMedia";
 import { chooseUploadPath, median, uploadKey, type UploadChoice, type UploadPath } from "./uploadPath";
 
 const scope = self as unknown as {
@@ -24,6 +25,7 @@ let handles = new Map<string, MediaHandle>();
 let player: Player | undefined;
 let cfg: PreviewConfig | undefined;
 let mediaApi: MediaApi | undefined;
+let remote: ReturnType<typeof createRemoteMedia> | undefined;
 let projectJson = "";
 let backing = { width: 1, height: 1 };
 
@@ -32,6 +34,7 @@ let anchor: { audio: number; epoch: number } | undefined;
 const audioClock = { now: () => (anchor ? anchor.audio + (epochNow() - anchor.epoch) / 1000 : performance.now() / 1000) };
 let nextReq = 1;
 const pending = new Map<number, (v: unknown) => void>();
+const callNative: NativeCall = (op) => new Promise((res) => { const id = nextReq++; pending.set(id, res as (v: unknown) => void); post({ type: "request", id, name: "native", op }); });
 const request = (name: "audio-resume"): Promise<unknown> => new Promise((res) => { const id = nextReq++; pending.set(id, res); post({ type: "request", id, name }); });
 const requestUpload = (key: string): Promise<unknown> => new Promise((res) => { const id = nextReq++; pending.set(id, res); post({ type: "request", id, name: "upload-get", key }); });
 
@@ -121,9 +124,9 @@ async function configure(c: PreviewConfig): Promise<void> {
   else startPlayer(c);
 }
 
-async function addMedia(id: string, file: File): Promise<void> {
+async function addMedia(id: string, file: File | { path: string }): Promise<void> {
   if (!mediaApi || handles.has(id)) return;
-  const h = await mediaApi.open(file, { audioRate: 48_000 });
+  const h = "path" in file ? await (remote ??= createRemoteMedia(callNative)).openPath(file.path) : await mediaApi.open(file, { audioRate: 48_000 });
   if (handles.has(id)) return void h.close();
   handles.set(id, h);
   player?.reconfigure({}); // redraw with the new picture
@@ -330,6 +333,9 @@ async function handle(m: ToPreview): Promise<void> {
       return;
     case "media":
       await addMedia(m.id, m.file);
+      return;
+    case "media-native":
+      await addMedia(m.id, { path: m.path });
       return;
     case "unmedia":
       removeMedia(m.id);

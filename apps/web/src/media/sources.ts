@@ -3,7 +3,7 @@
  * plus, where the browser allows it (Chromium's File System Access API), a persistent handle so a reopened project finds the file again.
  */
 
-import type { DesktopApi } from "@app/engine-client";
+import type { DesktopApi, MediaApi } from "@app/engine-client";
 
 export interface Source {
   file: File;
@@ -22,6 +22,10 @@ export const ACCEPT = "video/*,audio/*,image/*";
 let desktop: DesktopApi | undefined;
 export const setDesktop = (api: DesktopApi | undefined): void => { desktop = api; };
 export const getDesktop = (): DesktopApi | undefined => desktop;
+// The native decoder (`Engine.media` in the desktop app): the preview Worker cannot reach it, so the UI thread answers for it (preview/nativeMedia.ts).
+let nativeMedia: MediaApi | undefined;
+export const setNativeMedia = (m: MediaApi | undefined): void => { nativeMedia = m; };
+export const getNativeMedia = (): MediaApi | undefined => nativeMedia;
 /** The path of a file that stays on disk (picked or dropped in the desktop app), else undefined. */
 export const pathOf = (f: File): string | undefined => (f as File & { path?: string }).path;
 

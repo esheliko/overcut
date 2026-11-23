@@ -4,14 +4,15 @@
 //! reports speeds. Exit code 1 on any failure or when the loaded libav is not LGPL.
 use app_media::Decoder;
 use app_native_media::{
-    block_on, libav_is_lgpl, libav_license, open_file, AudioConfig, EncoderConfig, Mp4Encoder,
-    H264_PREFERENCE,
+    block_on, libav_is_lgpl, libav_license, open_file, AudioConfig, Container, EncoderConfig,
+    Mp4Encoder, H264_PREFERENCE,
 };
 use std::time::Instant;
 
 fn config(path: &std::path::Path, encoders: Option<Vec<String>>, w: u32, h: u32) -> EncoderConfig {
     EncoderConfig {
         path: path.to_path_buf(),
+        container: Container::Mp4,
         width: w,
         height: h,
         fps_num: 30,
