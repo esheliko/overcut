@@ -1,0 +1,39 @@
+# Feature: export dialog (M1-035; FEATURES EX-01, EX-02, EX-04 UI)
+
+Code: `apps/web/src/export/` (`ExportDialog.tsx` UI, `model.ts` pure logic, `useExport.ts` job state, `deliver.ts` save and share). Engine side: `docs/features/export.md` (`Engine.export.start`), `probeExportFormats` in `packages/engine-client/src/export/options.ts`. Codec policy: ADR 0004. Activation test (PRODUCT.md): import, trim, export in under 90 s for a first-time user, so **one click on "Export" must just work**.
+
+## Behaviour
+- **Top-bar "Export"** is disabled until the timeline has a clip. While an export runs it becomes a progress chip ("Exporting 42%"); the chip reopens the dialog.
+- **Settings view.** One big primary button, **Export**, with a sensible default already chosen: the project's own size and frame rate, the best format this device can encode (ADR 0004 order: MP4 H.264 + AAC where the encoder probe passes, else WebM VP9 + Opus), quality High. Below the summary line ("Your project: 1280×720 · 30 fps · 0:12") sit the **preset chips** (radio group, 76 px tall, 2 per row):
+  - **Original**: the project's size and rate.
+  - **YouTube 1080p**: short side 1080 (1920×1080), frame rate capped at 60.
+  - **TikTok / Reels / Shorts**: 9:16, up to 1080×1920. A wider project is placed inside the tall frame with black bars (shown as a note); reframing comes with the aspect-ratio work, not here.
+  - **Small file**: 720p, at most 30 fps, quality Medium (60% of the default bitrate).
+  - Presets only shrink: a 720p project exported as "YouTube 1080p" stays 720p (no upscaling).
+  - A preset is offered only if `probeExportFormats` finds at least one format this device can encode at that size and rate. If none can, the dialog says so plainly and the button is not offered.
+- **Advanced** (a disclosure): Resolution (the project's own plus standard steps below it), Frame rate (project's own plus 60/50/30/25/24 below it), Format (only the formats that pass the probe: MP4 H.264, WebM VP9, WebM AV1; a format whose audio falls back to Opus in MP4 is marked "limited support"), Quality (High 100%, Medium 60%, Low 35% of the default bitrate for the size). A **live size estimate** ("About 14 MB · MP4 (H.264)") is shown under the controls: target video bitrate plus audio bitrate times the length. Touching any Advanced control unselects the chips (the choice is "custom").
+- **Progress view.** Percentage, a progress bar (`role=progressbar`), "N of M frames", "About 12 seconds left" (from the engine's ETA; "Working out the time left…" for the first second, "Finishing the file…" in the last step). **Cancel export** calls `job.cancel()`: the worker closes the encoders and deletes the partial file; the dialog returns to the settings with the same choices. **Keep browsing** (also Esc and the close button while exporting) tucks the dialog into the top-bar chip; the export keeps running. While exporting the project store is read-only (`ProjectStore.readOnly`): edits, undo and redo are refused, while playback, scrubbing and selection work; the progress view says so. The export snapshots the project at start, so the file never contains half of an edit.
+- **Done view.** File name, size, length, format. **Save** uses the File System Access save picker where it exists (`showSaveFilePicker`, the file is streamed to disk, not read into memory), else a normal download. **Share** appears only when `navigator.canShare({ files })` accepts the file (phones). A warning shows when the container/codec combination has limited player support. "Export again" returns to the settings; closing frees the temporary file. If the export finishes while the dialog is tucked away, it reopens by itself and announces it.
+- **Errors** are plain sentences with a retry; the engine's own message is under "Technical details". Out of storage -> "There isn't enough free storage..."; encoder error -> "The video encoder stopped unexpectedly..."; unreadable clip -> "reconnect it in the Media panel"; desktop app -> "not ready yet" (`not_yet` until native encode, M1-015). "Try again" re-runs the same settings; "Change settings" goes back. A cancelled export is not an error.
+- **Remembered** in `localStorage["overcut.export"]`: the last preset used (or the custom choice, when it still fits the project). Storage failures are ignored.
+
+## Layout and access
+Native `<dialog>` opened with `showModal()` (focus trap, Esc, inert background for free). Phone (< 720 px): full-screen sheet respecting safe-area insets; desktop: a 560 px modal. Controls are at least 44 px (chips 76 px, buttons 52 px). Each view moves focus to its heading so a screen reader reads where it is; progress is announced at every 25% (not every update), plus done and failed. All strings go through `t()` (`export.*` in `en.json`); layout uses logical CSS properties and theme tokens only.
+
+## Data and engine changes
+- `ExportSettings.frameRate?: { num, den }`: export at a lower frame rate than the project (`planExport` uses it for frame times, audio length and the muxer).
+- `probeExportFormats({ width, height, fps })`: the formats this device can encode at that size and rate, plus the auto choice. It uses the same `resolvePreset` as the export itself, so an offered format cannot fail for lack of an encoder. In the Tauri shell it reports what the webview supports; `export.start` still answers `not_yet` there.
+- Media files for the export are collected from the bin (`fileOf`) for every clip's media; one that is offline stops the export at 0% with the "reconnect it" message.
+
+## Edge cases
+No AAC encoder (sandbox Chromium): WebM VP9 is the default; MP4 is offered with the "limited support" mark. A remembered preset that the device can no longer encode falls back to the first available one. Frame rate 29.97 stays "same as project" (no rounding to 30). Very small projects: presets never upscale, and the vertical preset is as wide as the project (e.g. 640×1138).
+
+## Test plan
+- Unit (`tests/unit/export-dialog.test.ts`): preset sizes and rates, advanced steps, estimate, settings, format offering with fake probes (Chrome, no-AAC sandbox, no encoder), plan at a lower frame rate, remembered choice, error keys, save (download, picker, dismissed, failed), share.
+- Smoke (`tests/smoke/export-dialog.spec.ts`, phone and desktop): Export disabled when empty; import fixture -> Export (default) -> done -> Save downloads a non-empty `.mp4`/`.webm`; chip sizes, no horizontal overflow, full-screen on the phone; preset remembered; cancel returns to the settings and the chip disappears. The save-picker path is not driven in a browser (a native dialog): covered by the unit test.
+
+## Not done (follow-ups)
+- Platform presets beyond the four chips (X, Facebook, WhatsApp, Discord size caps, size-targeted bitrate: EX-02 "Size-targeted bitrate for upload caps").
+- A measured trial encode for the time estimate before starting (ADR 0004 asks for one); today the ETA appears about a second into the export.
+- Reframing a 16:9 project into 9:16 (currently black bars). Export range (in/out) and a "this device is slow for this size" warning.
+- Hardware vs software choice and the real-device speed numbers (reference devices, ADR 0013).

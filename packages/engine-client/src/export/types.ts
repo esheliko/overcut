@@ -15,6 +15,8 @@ export interface ExportSettings {
   /** Output size in pixels (default: the sequence resolution). Rounded down to even numbers (4:2:0 video). */
   width?: number;
   height?: number;
+  /** Output frame rate (default: the sequence's). Frames are evaluated from the project at this rate; the export dialog offers only rates at or below the project's. */
+  frameRate?: { num: number; den: number };
   /** Bits per second. Defaults scale with pixels and frame rate. */
   videoBitrate?: number;
   audioBitrate?: number;

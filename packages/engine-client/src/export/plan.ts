@@ -51,8 +51,8 @@ export function sequenceEnd(seq: Sequence): number {
 export function planExport(project: Project, settings: ExportSettings): ExportPlan {
   const sequence = project.sequences.find((s) => s.id === settings.sequence);
   if (!sequence) throw new ExportError("invalid_settings", `The project has no sequence "${settings.sequence}".`);
-  const { num: fpsNum, den: fpsDen } = sequence.frame_rate;
-  if (!(fpsNum > 0 && fpsDen > 0)) throw new ExportError("invalid_settings", "The sequence has an invalid frame rate.");
+  const { num: fpsNum, den: fpsDen } = settings.frameRate ?? sequence.frame_rate;
+  if (!(Number.isInteger(fpsNum) && Number.isInteger(fpsDen) && fpsNum > 0 && fpsDen > 0 && fpsNum / fpsDen <= 240)) throw new ExportError("invalid_settings", "The sequence has an invalid frame rate.");
   const endTicks = sequenceEnd(sequence);
   const seqFrames = Number((BigInt(endTicks) * BigInt(fpsNum) + TICKS_PER_SECOND * BigInt(fpsDen) - 1n) / (TICKS_PER_SECOND * BigInt(fpsDen)));
   const startFrame = settings.range?.startFrame ?? 0;
