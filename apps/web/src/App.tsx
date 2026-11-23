@@ -8,8 +8,12 @@ import { PersistenceNotes, usePersistence } from "./persistence";
 import { END_FRAME, Timeline } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { FPS, timecode } from "./timecode";
+import { MediaBin } from "./media/MediaBin";
+import { TICKS, clipCount } from "./media/plan";
+import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, type Source } from "./media/sources";
+import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
-type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend } | { status: "error"; message: string };
+type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; engine: Engine } | { status: "error"; message: string };
 
 type Tool = { id: string; icon: IconName; soon?: string };
 /** CapCut-style tool strip: the left rail on desktop and tablet, the bottom bar on a phone. */
@@ -54,8 +58,17 @@ function EmptyState({ icon, title, text }: { icon: IconName; title: string; text
   );
 }
 
-function Library({ tool, onSoon }: { tool: Tool; onSoon: (m: string) => void }) {
+type BinProps = {
+  items: BinItem[];
+  onImport: (s: Source[]) => void;
+  onAdd: (id: string) => void;
+  onRemove: (id: string) => void;
+  onRelink: (id: string) => void;
+};
+
+function Library({ tool, bin }: { tool: Tool; bin: BinProps }) {
   const { t } = useI18n();
+  const [query, setQuery] = useState("");
   const label = t(`tool.${tool.id}.label`);
   const search = t("panel.search", { tool: label.toLowerCase() });
   return (
@@ -66,15 +79,11 @@ function Library({ tool, onSoon }: { tool: Tool; onSoon: (m: string) => void }) 
       </header>
       <label className="search">
         <Icon name="search" size={18} />
-        <input type="search" placeholder={search} aria-label={search} disabled={!!tool.soon} />
+        <input type="search" placeholder={search} aria-label={search} disabled={!!tool.soon} value={tool.id === "media" ? query : ""} onChange={(e) => setQuery(e.target.value)} />
       </label>
       <div className="panel-body">
         {tool.id === "media" ? (
-          <button className="dropzone" onClick={() => onSoon(t("media.importSoon"))}>
-            <span className="drop-icon"><Icon name="upload" size={26} /></span>
-            <strong>{t("media.import")}</strong>
-            <span>{t("media.importHint")}</span>
-          </button>
+          <MediaBin {...bin} query={query} />
         ) : (
           <EmptyState icon={tool.icon} title={label} text={t(`tool.${tool.id}.blurb`)} />
         )}
@@ -133,8 +142,8 @@ export function App() {
   useEffect(() => {
     let alive = true;
     createEngine()
-      .then(async (e) => ({ info: await e.info(), backend: e.backend, e }))
-      .then(({ e, ...r }) => alive && (setEngine({ status: "ready", ...r }), setCore(e)))
+      .then(async (e) => ({ info: await e.info(), backend: e.backend, engine: e }))
+      .then(({ engine: e, ...r }) => alive && (setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
       .catch((e: unknown) => alive && setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }));
     return () => { alive = false; };
   }, []);
@@ -185,6 +194,64 @@ export function App() {
   }, [togglePlay]);
 
   const soon = useCallback((m: string) => setToast(m), []);
+
+  // ---- media import (M1-032) ----
+  const media = useMediaBin(engine.status === "ready" ? engine.engine : null, t("app.untitled"), {
+    notMedia: (n) => t("media.err.notMedia", { name: n }),
+    unsupported: (n, ext, detail) => t("media.err.unsupported", { name: n, ext: ext || "?", detail }),
+    failed: (n) => t("media.err.failed", { name: n }),
+    imported: (count) => t("media.imported", { count }),
+    announce,
+  });
+  const importFiles = media.importSources;
+  const [dragging, setDragging] = useState(false);
+  const [tlOver, setTlOver] = useState(false);
+  useEffect(() => {
+    let depth = 0;
+    const over = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer)) e.preventDefault(); };
+    const enter = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer)) { depth++; setDragging(true); } };
+    const leave = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer) && --depth <= 0) { depth = 0; setDragging(false); } };
+    const drop = (e: DragEvent) => {
+      depth = 0;
+      setDragging(false);
+      if (!e.dataTransfer || !dragHasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      void fromDataTransfer(e.dataTransfer).then(importFiles);
+    };
+    const paste = (e: ClipboardEvent) => {
+      if (e.target instanceof Element && e.target.closest("input, textarea, [contenteditable]")) return;
+      const files = fromFileList(e.clipboardData?.files);
+      if (files.length > 0) { e.preventDefault(); void importFiles(files); }
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    window.addEventListener("paste", paste);
+    return () => {
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+      window.removeEventListener("paste", paste);
+    };
+  }, [importFiles]);
+  const binProps: BinProps = {
+    items: media.items,
+    onImport: (s) => void importFiles(s),
+    onAdd: (id) => void media.addToTimeline(id).then((ok) => ok && announce(t("media.added"))),
+    onRemove: media.remove,
+    onRelink: (id) => void media.relink(id).then((ok) => { if (!ok) setToast(t("media.relinkFailed")); }),
+  };
+  const project = media.project;
+  const hasClips = project ? clipCount(project) > 0 : false;
+  // The first picture sets the sequence size: show it in the preview shape closest to it.
+  const res = project?.sequences[0]?.resolution;
+  useEffect(() => {
+    if (!res || !hasClips) return;
+    const a = res.width / res.height;
+    setRatio(RATIOS.reduce((best, r) => (Math.abs(Math.log(r.value / a)) < Math.abs(Math.log(best.value / a)) ? r : best)).id);
+  }, [res?.width, res?.height, hasClips]);
   const pick = (id: string) => { setSheet(id === tool ? !sheet : true); setTool(id); };
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId) ?? TOOLS[0]!;
@@ -227,7 +294,7 @@ export function App() {
 
         <section className="library" data-open={sheet} aria-label={activeLabel} data-testid="panel-tool">
           <button className="sheet-close icon-btn" aria-label={t("panel.close")} onClick={() => setSheet(false)}><Icon name="close" size={18} /></button>
-          {active.id === "edit" ? <Details /> : <Library tool={active} onSoon={soon} />}
+          {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
         </section>
 
         <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview">
@@ -254,10 +321,19 @@ export function App() {
 
         {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
-        <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onSoon={soon} />
+        <div className="tl-drop" data-over={tlOver} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
+          const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
+          setTlOver(false);
+          if (!id) return;
+          e.preventDefault();
+          void media.addToTimeline(id, Math.round((frame * TICKS) / FPS)).then((ok) => ok && announce(t("media.added")));
+        }}>
+          <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onSoon={soon} project={hasClips ? project ?? undefined : undefined} />
+        </div>
       </main>
 
       <PersistenceNotes state={persistence} />
+      {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       <div className="toast" role="status">{toast}</div>
     </div>
   );
