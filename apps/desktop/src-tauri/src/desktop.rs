@@ -131,6 +131,56 @@ pub async fn desktop_save_export(
     .await?
 }
 
+/// The system "Open project" dialog (`.overcut`). Returns `[name, bytes]`, or `null` when cancelled. Bytes cross IPC as a JSON array, like `project_open`.
+#[tauri::command]
+pub async fn desktop_open_project(app: tauri::AppHandle) -> Result<Option<(String, Vec<u8>)>, String> {
+    blocking(move || -> Result<Option<(String, Vec<u8>)>, String> {
+        let Some(path) = app
+            .dialog()
+            .file()
+            .add_filter("OverCut project", &["overcut"])
+            .blocking_pick_file()
+            .and_then(|p| p.into_path().ok())
+        else {
+            return Ok(None);
+        };
+        let bytes = disk::read_project_file(&path).map_err(|e| e.to_string())?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        Ok(Some((name, bytes)))
+    })
+    .await?
+}
+
+/// The system "Save project as" dialog (`suggested` is the file name to offer). Writes the whole file or nothing; returns its path, or `null` when cancelled.
+#[tauri::command]
+pub async fn desktop_save_project(
+    app: tauri::AppHandle,
+    bytes: Vec<u8>,
+    suggested: String,
+) -> Result<Option<String>, String> {
+    if suggested.contains(['/', '\\']) {
+        return Err("invalid file name".into());
+    }
+    blocking(move || -> Result<Option<String>, String> {
+        let Some(dest) = app
+            .dialog()
+            .file()
+            .set_file_name(&suggested)
+            .add_filter("OverCut project", &["overcut"])
+            .blocking_save_file()
+            .and_then(|p| p.into_path().ok())
+        else {
+            return Ok(None);
+        };
+        disk::write_project_file(&dest, &bytes).map_err(|e| e.to_string())?;
+        Ok(Some(dest.to_string_lossy().into_owned()))
+    })
+    .await?
+}
+
 /// Shows a file in the system file manager (selected where the system can).
 #[tauri::command]
 pub fn desktop_reveal(path: String) -> Result<(), String> {

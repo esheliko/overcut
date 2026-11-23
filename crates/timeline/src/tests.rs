@@ -777,7 +777,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 11, "one example per Op variant");
+    assert_eq!(ops.len(), 12, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -1070,4 +1070,70 @@ fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
             .unwrap();
         assert!(h.apply(&mut p, Op::RemoveMedia { media: m }, None).is_err());
     }
+}
+
+#[test]
+fn set_canvas_is_one_undoable_step_and_validates() {
+    let (mut p, mut ids) = base();
+    let seq = p.sequences[0].id;
+    let before = p.clone();
+    let mut h = History::new();
+    let op = Op::SetCanvas {
+        sequence: seq,
+        frame_rate: Rational::new(25, 1).unwrap(),
+        resolution: Resolution {
+            width: 1080,
+            height: 1350,
+        },
+        size_fixed: true,
+        rate_fixed: false,
+    };
+    h.apply(&mut p, op.clone(), None).unwrap();
+    let s = &p.sequences[0];
+    assert_eq!((s.resolution.width, s.resolution.height), (1080, 1350));
+    assert_eq!(s.frame_rate, Rational::new(25, 1).unwrap());
+    assert!(s.size_fixed && !s.rate_fixed);
+    p.validate().unwrap();
+    h.undo(&mut p).unwrap();
+    assert_eq!(p, before, "undo restores size, rate and both flags");
+    h.redo(&mut p).unwrap();
+    assert!(p.sequences[0].size_fixed);
+    // refused without touching anything
+    let after = p.clone();
+    for bad in [
+        Op::SetCanvas {
+            sequence: seq,
+            frame_rate: Rational::new(25, 1).unwrap(),
+            resolution: Resolution {
+                width: 0,
+                height: 1080,
+            },
+            size_fixed: true,
+            rate_fixed: true,
+        },
+        Op::SetCanvas {
+            sequence: seq,
+            frame_rate: Rational::new(25, 1).unwrap(),
+            resolution: Resolution {
+                width: 100_000,
+                height: 1080,
+            },
+            size_fixed: true,
+            rate_fixed: true,
+        },
+    ] {
+        assert!(h.apply(&mut p, bad, None).is_err());
+    }
+    let unknown = Op::SetCanvas {
+        sequence: app_model::SequenceId::new(&mut ids),
+        frame_rate: Rational::new(25, 1).unwrap(),
+        resolution: Resolution {
+            width: 1080,
+            height: 1350,
+        },
+        size_fixed: true,
+        rate_fixed: true,
+    };
+    assert!(h.apply(&mut p, unknown, None).is_err());
+    assert_eq!(p, after);
 }

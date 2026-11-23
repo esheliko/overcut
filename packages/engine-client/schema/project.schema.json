@@ -189,6 +189,10 @@
         "name": {
           "type": "string"
         },
+        "rate_fixed": {
+          "description": "Same for `frame_rate`: true once the user picked a frame rate; while false the first picture imported sets it.",
+          "type": "boolean"
+        },
         "resolution": {
           "$ref": "#/$defs/Resolution"
         },
@@ -196,6 +200,10 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0
+        },
+        "size_fixed": {
+          "description": "True once the user chose the canvas size (an aspect/size preset or a custom one). While false the first picture imported sets\n`resolution` (\"match first clip\", the zero-question default). Absent in older files = false.",
+          "type": "boolean"
         },
         "tracks": {
           "description": "Bottom-to-top for video (later tracks draw over earlier ones). Any number of tracks of either kind.",

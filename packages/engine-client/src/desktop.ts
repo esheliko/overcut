@@ -23,6 +23,10 @@ export interface DesktopApi {
   chooseProjectsFolder(): Promise<string | null>;
   /** The system Save dialog for a finished export; writes straight to disk and returns the path, or null when cancelled. */
   saveExport(fileName: string, suggested: string): Promise<string | null>;
+  /** The system "Open project" dialog: the `.overcut` file's name and bytes, or null when cancelled. */
+  openProject(): Promise<{ name: string; bytes: Uint8Array } | null>;
+  /** The system "Save project as" dialog: writes the bytes to the chosen `.overcut` file and returns its path, or null when cancelled. */
+  saveProject(bytes: Uint8Array, suggested: string): Promise<string | null>;
   /** Shows the file in the system file manager. */
   reveal(path: string): Promise<void>;
   codecs(): Promise<DesktopCodecs>;
@@ -115,6 +119,11 @@ export function createDesktopApi(invoke: Invoke, listen: Listen): DesktopApi {
     projectsFolder: () => invoke<string>("desktop_projects_folder"),
     chooseProjectsFolder: () => invoke<string | null>("desktop_choose_projects_folder"),
     saveExport: (fileName, suggested) => invoke<string | null>("desktop_save_export", { fileName, suggested }),
+    openProject: async () => {
+      const f = await invoke<[string, number[]] | null>("desktop_open_project");
+      return f ? { name: f[0], bytes: Uint8Array.from(f[1]) } : null;
+    },
+    saveProject: (bytes, suggested) => invoke<string | null>("desktop_save_project", { bytes: Array.from(bytes), suggested }),
     reveal: (path) => invoke<void>("desktop_reveal", { path }),
     codecs: async () => JSON.parse(await invoke<string>("desktop_codecs")) as DesktopCodecs,
     enableH264: () => invoke<void>("desktop_enable_h264"),

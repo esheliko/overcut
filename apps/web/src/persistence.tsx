@@ -1,5 +1,5 @@
 import { acquireProjectLock, newProject, openProjectSession, openProjectStorage, type Engine, type ProjectSession, type RecoveryNote, type SaveStatus } from "@app/engine-client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "./i18n";
 import { sampleProject } from "./timeline/fixture";
 
@@ -82,12 +82,13 @@ export function usePersistence(engine: Engine | null) {
 }
 
 /** Small, non-blocking notes: what was recovered (with an undo) and why saving is not working. */
-export function PersistenceNotes({ state }: { state: ReturnType<typeof usePersistence> }) {
+export function PersistenceNotes({ state, extra }: { state: ReturnType<typeof usePersistence>; extra?: ReactNode }) {
   const { t } = useI18n();
   const { recovered, problem, undoRecovery, dismiss } = state;
-  if (!recovered && !problem) return null;
+  if (!recovered && !problem && !extra) return null;
   return (
     <div className="persist-notes">
+      {extra}
       {problem && <div className="persist-note danger" role="alert" data-testid="save-problem">{problem}</div>}
       {recovered && (
         <div className="persist-note" role="status" data-testid="recovery-note">

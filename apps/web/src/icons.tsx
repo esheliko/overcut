@@ -36,6 +36,7 @@ const PATHS = {
   check: "M5 12.5l4.5 4.5L19 7",
   download: "M12 4v12M7 11l5 5 5-5M4 20h16",
   share: `${c(18, 5, 2.5)}${c(6, 12, 2.5)}${c(18, 19, 2.5)}M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6`,
+  canvas: "M3 7h18v10H3zM7 3v4M17 3v4M7 17v4M17 17v4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
 } as const;
 

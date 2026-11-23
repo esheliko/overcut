@@ -230,7 +230,9 @@ export type Op =
   | { op: "set_media"; media: MediaId; uri: string; hash: string | null }
   | { op: "add_media"; media: MediaRef }
   | { op: "remove_media"; media: MediaId }
-  | { op: "set_sequence_format"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution };
+  | { op: "set_sequence_format"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution }
+  /** The project canvas (PM-01). `*_fixed` false = follows the first picture imported ("match first clip"). */
+  | { op: "set_canvas"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution; size_fixed: boolean; rate_fixed: boolean };
 
 /** What the engine reports after every edit. Re-read `project()` when `revision` moved. */
 export interface EditOutcome {
