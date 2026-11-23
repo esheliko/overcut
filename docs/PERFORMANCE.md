@@ -59,6 +59,8 @@ Findings: seek on long-GOP media is the weak spot on both (200-380 ms p95 agains
 | Random seek p50, GOP 30 | <= 120 ms | 195 ms (**fails**) |
 | Random seek p95, GOP 150 | no budget | 1254 ms |
 
+Update (seek decode change, `docs/features/preview.md`): the proxy numbers above are from before it and are **not re-derived**; the ratios are still estimates, and the change only helps streams with B-frames (about -25 % p50 on a container B-frame GOP-150 clip, ~0 on IPPP and GOP 30). Re-run `/diagnostics` on the S24 before claiming the low-tier budget.
+
 Finding: scrubbing long-GOP media on a low phone misses budget on the proxy, so automatic proxies / a keyframe cache are required for low-tier devices.
 
 ## Measurement status per metric and tier
