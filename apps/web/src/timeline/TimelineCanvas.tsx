@@ -219,6 +219,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     const r = pointerDown(ctxNow(), pev(e, p));
     g.mode = r.g.k === "scrub" ? "scrub" : r.g.k === "pan" ? "pan" : r.g.k === "idle" ? "none" : "edit";
     run(r);
+    c.dataset.pointer = ""; // focus by pointer: no focus frame (keyboard focus shows it, see .tl-canvas:focus-visible)
     c.focus({ preventScroll: true });
   };
   const onMove = (e: React.PointerEvent) => {
@@ -362,7 +363,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onCancel}
-        onKeyDown={onKey}
+        onKeyDown={(e) => { delete e.currentTarget.dataset.pointer; onKey(e); }}
+        onBlur={(e) => { delete e.currentTarget.dataset.pointer; }}
       />
       <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>
     </>

@@ -190,3 +190,18 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
   await expect(summary).toContainText("14 clips");
   await expect(undo).toBeDisabled();
 });
+
+test("the timeline toolbar fits at 320 and 390 px: zoom + stays visible, inside the viewport, 44 px on touch", async ({ page }, info) => {
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    const plus = page.getByRole("button", { name: "Zoom in" });
+    await expect(plus).toBeVisible();
+    const box = (await plus.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    if (info.project.name === "phone") { expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44); } // desktop pointers use a 36 px target
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  }
+});

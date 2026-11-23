@@ -43,8 +43,11 @@ export class ProjectStore {
     for (const l of [...this.listeners]) l();
   }
 
-  /** Point the store at an engine edit surface (or none) and read its project. Call again with the same surface to re-read it (undo recovery). */
-  attach(editing: Editing | null): Promise<void> {
+  /**
+   * Point the store at an engine edit surface (or none) and read its project. Call again with the same surface to re-read it (undo recovery).
+   * `history` says what the engine can already undo/redo at this moment (a recovered session has history before the first edit); default none.
+   */
+  attach(editing: Editing | null, history: { canUndo?: boolean; canRedo?: boolean } = {}): Promise<void> {
     const mine = ++this.token;
     this.editing = editing;
     if (!editing) {
@@ -53,7 +56,7 @@ export class ProjectStore {
     }
     return this.enqueue(async () => {
       const project = await editing.project().catch(() => null); // no project open yet: stay empty until the opener calls reload()
-      if (project && this.token === mine) this.set({ project, canUndo: false, canRedo: false, selection: this.pruned(project) });
+      if (project && this.token === mine) this.set({ project, canUndo: history.canUndo ?? false, canRedo: history.canRedo ?? false, selection: this.pruned(project) });
     });
   }
 

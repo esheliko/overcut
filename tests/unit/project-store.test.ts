@@ -104,3 +104,12 @@ test("the player takes a new length and rate without being rebuilt", () => {
   assert.equal(p.endFrame, 72);
   p.dispose();
 });
+
+test("attach reports the history the engine already has (a recovered session can undo before its first edit)", async () => {
+  const s = new ProjectStore();
+  await s.attach(engine(["a"]), { canUndo: true });
+  assert.equal(s.getState().canUndo, true);
+  assert.equal(s.getState().canRedo, false);
+  await s.attach(engine(["a"])); // a fresh history (undo recovery, a new project)
+  assert.equal(s.getState().canUndo, false);
+});
