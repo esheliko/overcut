@@ -27,6 +27,7 @@ export function usePersistence(engine: Engine | null) {
     let current: ProjectSession | undefined;
     let terminate: (() => void) | undefined;
     const e2e = new URLSearchParams(location.search).has("e2e"); // test hook: exposes the session as window.__overcut
+    const sample = new URLSearchParams(location.search).has("sample");
     void (async () => {
       try {
         release = await acquireProjectLock(PROJECT_ID);
@@ -36,8 +37,8 @@ export function usePersistence(engine: Engine | null) {
         if (!alive) return terminate?.();
         const opened = await openProjectSession(engine, storage, {
           createProject: () => {
-            // Until media import exists (M1), a new project starts with the sample clips so there is something to edit; e2e keeps it empty.
-            const p = e2e ? newProject("Untitled project") : { ...sampleProject(), name: "Untitled project" };
+            // A new project is empty: the first import fills it (M1-032). `?sample` (tests, demos) starts with sample clips instead.
+            const p = sample ? { ...sampleProject(), name: "Untitled project" } : newProject("Untitled project");
             if (e2e) p.media.push({ id: "00000000000000000000000000000e2e", kind: "video", name: "e2e.mp4", uri: "media/e2e.mp4", hash: null, duration: 600 * 705_600_000 });
             return p;
           },

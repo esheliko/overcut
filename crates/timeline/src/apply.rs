@@ -13,7 +13,12 @@ pub enum OpError {
     UnknownMedia(ClipId),
     /// `SetMedia` names a media id the project does not have.
     UnknownMediaId(MediaId),
-    /// `SetMedia` with an empty uri, or a hash that is not a `b3-64k` fingerprint.
+    /// `RemoveMedia` of a media some clip still uses.
+    MediaInUse(MediaId),
+    UnknownSequence(app_model::SequenceId),
+    /// A frame rate or size of zero.
+    BadFormat,
+    /// `SetMedia` / `AddMedia` with an empty uri, or a hash that is not a `b3-64k` fingerprint.
     BadMediaRef,
     /// The id of a new clip is already used by something in the document.
     IdInUse(String),
@@ -223,6 +228,63 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 media,
                 uri: std::mem::replace(&mut m.uri, uri),
                 hash: std::mem::replace(&mut m.hash, hash),
+            };
+            Ok(Inverse(vec![old]))
+        }
+        Op::AddMedia { media } => {
+            if media.uri.is_empty()
+                || media
+                    .hash
+                    .as_deref()
+                    .is_some_and(|h| app_model::fingerprint_size(h).is_none())
+            {
+                return Err(OpError::BadMediaRef);
+            }
+            if id_in_use(p, media.id.0) {
+                return Err(OpError::IdInUse(media.id.to_string()));
+            }
+            let id = media.id;
+            p.media.push(media);
+            Ok(Inverse(vec![Op::RemoveMedia { media: id }]))
+        }
+        Op::RemoveMedia { media } => {
+            let i = p
+                .media
+                .iter()
+                .position(|m| m.id == media)
+                .ok_or(OpError::UnknownMediaId(media))?;
+            let used = p.sequences.iter().any(|s| {
+                s.tracks
+                    .iter()
+                    .any(|t| t.clips.iter().any(|c| c.media == media))
+            });
+            if used {
+                return Err(OpError::MediaInUse(media));
+            }
+            let removed = p.media.remove(i);
+            Ok(Inverse(vec![Op::AddMedia { media: removed }]))
+        }
+        Op::SetSequenceFormat {
+            sequence,
+            frame_rate,
+            resolution,
+        } => {
+            if frame_rate.num <= 0
+                || frame_rate.den <= 0
+                || resolution.width == 0
+                || resolution.height == 0
+            {
+                return Err(OpError::BadFormat);
+            }
+            let s = p
+                .sequences
+                .iter_mut()
+                .find(|s| s.id == sequence)
+                .ok_or(OpError::UnknownSequence(sequence))?;
+            let old = Op::SetSequenceFormat {
+                sequence,
+                frame_rate: std::mem::replace(&mut s.frame_rate, frame_rate),
+                resolution: std::mem::replace(&mut s.resolution, resolution),
             };
             Ok(Inverse(vec![old]))
         }

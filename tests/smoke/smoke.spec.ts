@@ -44,7 +44,7 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
 });
 
 test("transport and timeline: play advances the playhead, the aspect ratio changes the preview", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/?sample");
   const playhead = page.getByRole("slider", { name: "Playhead position" });
   await expect(playhead).toHaveAttribute("aria-valuenow", "0");
   await playhead.focus();
@@ -112,7 +112,7 @@ test("language and direction: the page declares lang and dir, and a right-to-lef
 
 test("timeline editing: select, split, delete, undo and redo go through the engine", async ({ page }, info) => {
   const phone = info.project.name === "phone";
-  await page.goto("/");
+  await page.goto("/?sample");
   await expect(page.getByTestId("engine")).toContainText(/Engine .+ \(wasm\)/, { timeout: 30_000 });
   const summary = page.locator("#tl-summary");
   const live = page.locator('[data-announcer="polite"]');
