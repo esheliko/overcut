@@ -8,7 +8,7 @@ import { TICKS } from "../media/plan";
 import { sequenceView } from "../PreviewPanel";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { canShareFile, saveFile, shareFile } from "./deliver";
-import { QUALITIES, PRESET_IDS, buildSettings, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, presetChoice, resolutionSteps, saveName, saveRemembered, usableCustom, type Choice, type PresetId, type QualityId, type Source } from "./model";
+import { QUALITIES, PRESET_IDS, buildSettings, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, presetChoice, presetHint, resolutionSteps, saveName, saveRemembered, usableCustom, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import { useExport, type ExportState } from "./useExport";
 
 const probes = new Map<string, Promise<ExportFormats>>();
@@ -201,12 +201,12 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
       <fieldset className="export-presets">
         <legend>{t("export.presets")}</legend>
         {offered.map((id) => {
-          const c = presetChoice(id, src);
+          const hint = presetHint(id, src);
           return (
             <label key={id} className="export-chip-choice" data-checked={preset === id}>
               <input type="radio" name="export-preset" value={id} checked={preset === id} onChange={() => pickPreset(id)} data-testid={`export-preset-${id}`} />
               <strong>{t(`export.preset.${id}`)}</strong>
-              <span>{t(`export.preset.${id}.hint`, { size: shape(c) })}</span>
+              <span>{t(hint.key, hint.values)}</span>
             </label>
           );
         })}

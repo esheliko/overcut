@@ -7,7 +7,7 @@ import type { CodecProbe } from "../../packages/engine-client/src/export/presets
 import type { Project } from "../../packages/engine-client/src/model.generated";
 import { canShareFile, saveFile, shareFile } from "../../apps/web/src/export/deliver";
 import {
-  buildSettings, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, pickFormat, presetChoice, saveName, resolutionSteps, saveRemembered, scaledSize, usableCustom, videoBitrate,
+  buildSettings, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, pickFormat, presetChoice, presetHint, saveName, resolutionSteps, saveRemembered, scaledSize, usableCustom, videoBitrate,
   type Choice, type Source,
 } from "../../apps/web/src/export/model";
 
@@ -191,4 +191,28 @@ test("share: only offered when the browser can take the file; closing the sheet 
   assert.equal(await shareFile(file, "x", { share: async () => undefined }), "shared");
   assert.equal(await shareFile(file, "x", { share: async () => { throw new DOMException("no", "AbortError"); } }), "dismissed");
   await assert.rejects(shareFile(file, "x", { share: async () => { throw new DOMException("no", "NotAllowedError"); } }));
+});
+
+test("preset hints never promise more than the output delivers", () => {
+  const tiny: Source = { width: 160, height: 120, fps: 30, seconds: 5 };
+  assert.deepEqual(presetHint("youtube", tiny), { key: "export.preset.youtube.capped", values: { size: "160×120" } });
+  assert.deepEqual(presetHint("small", tiny), { key: "export.preset.small.capped", values: { size: "160×120" } });
+  assert.equal(presetHint("youtube", { ...HD, width: 3840, height: 2160 }).key, "export.preset.youtube.hint");
+  assert.deepEqual(presetHint("youtube", HD), { key: "export.preset.youtube.hint", values: { size: "1920×1080" } });
+  assert.equal(presetHint("small", HD).key, "export.preset.small.hint");
+  assert.equal(presetHint("small", SMALL).key, "export.preset.small.hint"); // 720p source: exactly 720p
+  // 9:16 from a wide or square project has bars; from a portrait project it fills the frame
+  assert.equal(presetHint("vertical", HD).key, "export.preset.vertical.bars");
+  assert.equal(presetHint("vertical", { ...HD, width: 1080, height: 1080 }).key, "export.preset.vertical.bars");
+  assert.equal(presetHint("vertical", PHONE).key, "export.preset.vertical.hint");
+});
+
+test("size estimate follows codec bits per pixel with no floor that inflates tiny frames", () => {
+  const tiny: Source = { width: 160, height: 120, fps: 30, seconds: 5 };
+  const c = presetChoice("original", tiny);
+  const bytes = estimateBytes(c, tiny, OPT("webm-vp9"));
+  assert.ok(bytes < 200_000, `${bytes}`); // the 1 Mbps floor gave about 705 KB for a file that came out at 182 KB
+  // 1080p30 VP9 high: 1920*1080*30*0.075 = 4.67 Mbps video + 128 kbps audio over 60 s
+  assert.equal(estimateBytes(presetChoice("original", HD), HD, OPT("webm-vp9")), Math.round(((4_665_600 + 128_000) * 60) / 8));
+  assert.ok(videoBitrate({ ...c, width: 7680, height: 4320 }, HD, "h264") <= 80_000_000);
 });

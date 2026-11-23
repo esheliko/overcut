@@ -1,6 +1,6 @@
 /** Export dialog logic with no React and no DOM: presets, sizes, bitrates, the size estimate, formatting, the remembered choice, and error mapping.
  *  Unit-tested in tests/unit/export-dialog.test.ts. Rules: docs/features/export-dialog.md. */
-import { defaultVideoBitrate, ExportError, type ExportErrorCode, type ExportFormatId, type ExportFormatOption, type ExportSettings } from "@app/engine-client";
+import { ExportError, type ExportErrorCode, type ExportFormatId, type ExportFormatOption, type ExportSettings } from "@app/engine-client";
 
 export type PresetId = "original" | "youtube" | "vertical" | "small";
 export type QualityId = "high" | "medium" | "low";
@@ -71,8 +71,10 @@ export function presetChoice(id: PresetId, src: Source): Choice {
 export const outputFps = (c: Choice, src: Source): number => c.fps ?? src.fps;
 
 export function videoBitrate(c: Choice, src: Source, codec: ExportFormatOption["videoCodec"]): number {
-  const name = codec === "h264" ? "avc" : codec;
-  return Math.max(500_000, Math.round(defaultVideoBitrate(name, c.width, c.height, outputFps(c, src)) * QUALITY_FACTOR[c.quality]));
+  // Bits per pixel per frame (ADR 0004). No 1 Mbps floor like the engine default: on a tiny frame that floor made the estimate several times too big.
+  const bpp = codec === "h264" ? 0.1 : codec === "vp9" ? 0.075 : 0.06;
+  const rate = c.width * c.height * outputFps(c, src) * bpp * QUALITY_FACTOR[c.quality];
+  return Math.min(80_000_000, Math.max(100_000, Math.round(rate)));
 }
 
 export const audioBitrate = (audio: "aac" | "opus"): number => (audio === "aac" ? 192_000 : 128_000);
@@ -178,4 +180,17 @@ export const isCancel = (e: unknown): boolean => e instanceof ExportError && e.c
 export function saveName(internal: string, date: Date = new Date()): string {
   const ext = internal.includes(".") ? internal.slice(internal.lastIndexOf(".")) : "";
   return `OverCut export ${date.toISOString().slice(0, 10)}${ext}`;
+}
+
+/** The chip's second line, as a message key plus values, so it never promises more than the output delivers. */
+export function presetHint(id: PresetId, src: Source): { key: string; values: { size: string } } {
+  const c = presetChoice(id, src);
+  const size = `${c.width}×${c.height}`;
+  const short = Math.min(src.width, src.height);
+  switch (id) {
+    case "original": return { key: "export.preset.original.hint", values: { size } };
+    case "youtube": return { key: short < 1080 ? "export.preset.youtube.capped" : "export.preset.youtube.hint", values: { size } };
+    case "small": return { key: short < 720 ? "export.preset.small.capped" : "export.preset.small.hint", values: { size } };
+    case "vertical": return { key: src.width / src.height > 0.57 ? "export.preset.vertical.bars" : "export.preset.vertical.hint", values: { size } };
+  }
 }
