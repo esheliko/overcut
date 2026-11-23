@@ -6,6 +6,7 @@ import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
+import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
 import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
 
@@ -234,12 +235,15 @@ function H264Notice({ codecs, onEnabled }: { codecs: DesktopCodecs; onEnabled():
     setBusy(true);
     setFailure(null);
     setProgress(null);
+    let last: H264Progress | null = null;
     try {
-      await getDesktop()?.enableH264(setProgress);
+      await getDesktop()?.enableH264((p) => { last = p; setProgress(p); });
       onEnabled();
     } catch (e) {
       setFailure(parseH264Failure(e).code);
     } finally {
+      // The native downloader is invisible to the browser, so it is listed in the Network activity log by hand (XT-06).
+      recordNetworkEvent({ url: OPENH264_HOST_URL, bytes: (last as H264Progress | null)?.done ?? null, initiator: "user-download" });
       setBusy(false);
     }
   };
