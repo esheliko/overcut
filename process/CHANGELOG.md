@@ -47,6 +47,7 @@ Status: pending
 ## 2026-11-23 · owner (direct edit) · Rate gate keys on the 5-hour window; active orchestrators retire at ~600k
 What: orchestration rule: pause only when the 5-hour limit is not allowed, any status is `rejected`, or weekly use is about 80% or more; a weekly `allowed_warning` alone no longer blocks starts or resumes. Orchestrator retire threshold raised from ~250k to ~600k (while kept active); the 1-hour cache rule (hand off instead of waking a big session after a long idle) stays.
 Why: the manager read the weekly `allowed_warning` (owner: 34% used) as a reason to pause all work until the weekly reset and to retire itself at 270k. An active session keeps a warm cache, so early retirement saves little; the 5-hour window is the limit that was actually hit.
-Expected effect: no needless pauses; fewer manager restarts. Worker cap of 3 and worker handoff at ~200k unchanged.
+Also (owner, same day): ALL work stops at 90% of the 5-hour limit; every running worker pushes WIP and stops until the window resets. Sessions only see a status (no percentage), so `five_hour` not `allowed` stands in for 90%.
+Expected effect: no needless pauses; fewer manager restarts; no workers dying unsaved at the 5-hour wall. Worker cap of 3 and worker handoff at ~200k unchanged.
 Review by: 2026-12-07
 Status: pending
