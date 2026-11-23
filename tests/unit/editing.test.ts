@@ -24,13 +24,16 @@ function fake(over: Partial<RawEditing> = {}) {
     project: () => '{"schema_version":1}',
     journal: () => '{"op":"delete"}\n',
     evaluate: () => "{}",
+    takeLog: () => '{"n":1,"r":"undo"}\n',
+    checkpoint: () => '{"seq":0,"project":{}}',
+    recover: () => '{"replayed":1,"dropped":0,"full_history":true,"valid_log":"x"}',
     ...over,
   };
   return { editing: createEditing(raw), calls };
 }
 
 test("the contract holds one example of every op the Op type allows", () => {
-  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["delete", "insert_clip", "move", "set_clip", "split", "trim_in", "trim_out"]);
+  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["delete", "insert_clip", "move", "set_clip", "set_media", "split", "trim_in", "trim_out"]);
 });
 
 test("a single op and a list go over as JSON (a list is one undo step); the coalesce key rides along", async () => {

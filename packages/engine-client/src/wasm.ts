@@ -1,5 +1,6 @@
 import { createEditing } from "./editing";
 import { probeHost } from "./probe";
+import { createWebMedia, type WasmMediaClass } from "./decode/media";
 import { parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
 /** Browser backend: loads the WebAssembly build once. Run the engine inside a Web Worker when it starts doing real work (see docs). */
@@ -13,6 +14,7 @@ export async function createWasmEngine(): Promise<Engine> {
   };
   return {
     backend: "wasm",
+    media: createWebMedia(wasm.MediaFile as unknown as WasmMediaClass),
     info: async () => parseEngineInfo(wasm.engine_info()),
     openProject: async (bytes) => {
       try {
@@ -24,6 +26,13 @@ export async function createWasmEngine(): Promise<Engine> {
     saveProject: async (project, previous) => {
       try {
         return wasm.project_save(JSON.stringify(project), previous ?? new Uint8Array());
+      } catch (e) {
+        throw toProjectFileError(e);
+      }
+    },
+    fingerprintMedia: async (size, first, last) => {
+      try {
+        return wasm.media_fingerprint(size, first, last);
       } catch (e) {
         throw toProjectFileError(e);
       }
@@ -40,6 +49,14 @@ export async function createWasmEngine(): Promise<Engine> {
       project: () => open().project(),
       journal: () => open().journal(),
       evaluate: (sequence, ticks, audioSamples) => open().evaluate(sequence, ticks, audioSamples),
+      takeLog: () => open().take_log(),
+      checkpoint: () => open().checkpoint(),
+      recover: (baseJson, checkpointJson, log) => {
+        const next = wasm.Editor.recover(baseJson ?? undefined, checkpointJson ?? undefined, log); // throws, keeping the old editor
+        editor?.free();
+        editor = next;
+        return next.recovery() ?? "{}";
+      },
     }),
     capabilities: async () => parseCapabilities(wasm.capabilities(await probeHost())),
   };

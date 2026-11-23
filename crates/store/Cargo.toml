@@ -1,0 +1,13 @@
+[package]
+name = "app-store"
+description = "OverCut host storage for native shells: a project folder with atomic replace and durable append (no engine logic)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

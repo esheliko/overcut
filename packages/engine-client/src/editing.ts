@@ -1,4 +1,4 @@
-import type { Editing, EditOutcome, FrameDescription, Op } from "./types";
+import { parseRecovery, type Editing, type EditOutcome, type FrameDescription, type Op } from "./types";
 import type { Project } from "./model.generated";
 
 /** What each backend supplies: the engine's string-in, string-out editor calls. Rejections/throws carry the engine's message. */
@@ -11,6 +11,10 @@ export interface RawEditing {
   journal(): Promise<string> | string;
   /** `ticks` is an exact integer (i64 on the engine side). */
   evaluate(sequence: string, ticks: bigint, audioSamples: number): Promise<string> | string;
+  takeLog(): Promise<string> | string;
+  checkpoint(): Promise<string> | string;
+  /** Returns the `Recovery` report JSON (snake_case, as the engine writes it). */
+  recover(baseJson: string | null, checkpointJson: string | null, log: string): Promise<string> | string;
 }
 
 export function parseEditOutcome(json: string): EditOutcome {
@@ -54,5 +58,9 @@ export function createEditing(raw: RawEditing): Editing {
         if (!Number.isInteger(audioSamples) || audioSamples < 0 || audioSamples > 0xffff_ffff) throw new Error("audioSamples must be an integer in 0..2^32-1");
         return JSON.parse(await raw.evaluate(sequence, BigInt(ticks), audioSamples)) as FrameDescription;
       }),
+    takeLog: () => call(async () => raw.takeLog()),
+    checkpoint: () => call(async () => raw.checkpoint()),
+    recover: (base: Project | null, checkpoint: string | null, log: string) =>
+      call(async () => parseRecovery(await raw.recover(base ? JSON.stringify(base) : null, checkpoint, log))),
   };
 }

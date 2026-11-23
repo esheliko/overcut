@@ -89,6 +89,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "app-store"
+version = "0.1.0"
+
+[[package]]
 name = "app-timeline"
 version = "0.1.0"
 dependencies = [
@@ -103,10 +107,13 @@ name = "app-wasm"
 version = "0.1.0"
 dependencies = [
  "app-core",
+ "app-media",
  "app-model",
  "app-timeline",
+ "js-sys",
  "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

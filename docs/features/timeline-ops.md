@@ -1,7 +1,7 @@
 # Feature: edit operations (`app-timeline`, M1-003 / spike S7)
 
 ## Behaviour
-The project changes only through `apply(&mut Project, Op) -> Result<Inverse, OpError>` (ADR 0006). `Op` is a serializable enum addressed by id: `InsertClip`, `Split`, `TrimIn`, `TrimOut`, `Move`, `Delete`, `SetClip` (exact geometry; used by inverses, also a valid edit). New ops (M2 ripple/roll/slip/slide) are new variants (`#[non_exhaustive]`, JSON tag `op`) with their own inverse.
+The project changes only through `apply(&mut Project, Op) -> Result<Inverse, OpError>` (ADR 0006). `Op` is a serializable enum addressed by id: `InsertClip`, `Split`, `TrimIn`, `TrimOut`, `Move`, `Delete`, `SetClip` (exact geometry; used by inverses, also a valid edit), `SetMedia` (uri + fingerprint of a media file; import and relink). New ops (M2 ripple/roll/slip/slide) are new variants (`#[non_exhaustive]`, JSON tag `op`) with their own inverse.
 - **Validation before mutation**: unknown ids, locked track, new id already in the document, video/audio kind rules, `duration > 0` (in < out), `start`/`source_in >= 0`, speed > 0, source range inside the media (when its duration is known), no overlap on the destination track (touching is fine), no tick overflow. An error leaves the project byte-for-byte unchanged.
 - **Ids come from the caller** (`InsertClip.clip.id`, `Split.new_id`): replaying the same ops on the same base gives the same state, and ops stay mergeable (M8).
 - **Source offsets** scale by `speed` exactly; a speed that would need a fraction of a tick is refused (`InexactSpeed`), never rounded (ADR 0010).
@@ -10,7 +10,7 @@ The project changes only through `apply(&mut Project, Op) -> Result<Inverse, OpE
 
 ## History and journal
 - `History::apply(project, op, coalesce_key)`. Consecutive ops with the same `Some(key)` share one undo step (a drag is one Ctrl+Z). A new edit clears redo. `with_limit(n)` caps undo steps (journal is never trimmed).
-- **Journal** = every op that changed the project, in order, *including* the ops that undo and redo apply, so `replay(base, journal) == state` has no special cases. JSON Lines (`journal_to_jsonl`/`journal_from_jsonl`; a torn last line is dropped, an earlier bad line is an error). Recovery restores the document, not the undo stack.
+- **Journal** = every op that changed the project, in order, *including* the ops that undo and redo apply, so `replay(base, journal) == state` has no special cases. JSON Lines (`journal_to_jsonl`/`journal_from_jsonl`; a torn last line is dropped, an earlier bad line is an error). Recovery from this op-only journal restores the document, not the undo stack; crash recovery uses the editor's commit log instead (`persistence.md`).
 - A coalesced step keeps every inverse (undoing a 200-event drag applies 200 small ops); compressing same-clip runs is a follow-up if it ever shows up in a profile.
 
 ## Engine surface

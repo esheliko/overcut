@@ -17,6 +17,7 @@ mod editor;
 mod evaluate;
 mod history;
 mod op;
+mod recovery;
 
 pub use apply::{apply, apply_all, OpError};
 pub use editor::{EditOutcome, Editor};
@@ -25,6 +26,7 @@ pub use evaluate::{
 };
 pub use history::{journal_from_jsonl, journal_to_jsonl, replay, CoalesceKey, History};
 pub use op::{Inverse, Op};
+pub use recovery::Recovery;
 
 #[cfg(test)]
 mod tests;
