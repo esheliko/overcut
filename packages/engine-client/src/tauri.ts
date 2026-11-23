@@ -1,18 +1,30 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEditing } from "./editing";
 import { probeHost } from "./probe";
-import { exportNotYet } from "./export/job";
+import { createNativeExportApi } from "./export/native";
 import { toStorageError, type ProjectStorage } from "./persist/storage";
-import { MediaDecodeError, parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
+import { createTauriExportBackend, createTauriMedia } from "./native-media";
+import { parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
 /** Native backend: the Rust engine runs in the Tauri shell process; commands are defined in apps/desktop/src-tauri/src/lib.rs. */
 export function createTauriEngine(): Engine {
+  const media = createTauriMedia(invoke);
+  const editing = createEditing({
+    open: (projectJson) => invoke<void>("editor_open", { projectJson }),
+    apply: (opsJson, coalesce) => invoke<string>("editor_apply", { opJson: opsJson, coalesce: coalesce ?? null }),
+    undo: () => invoke<string>("editor_undo"),
+    redo: () => invoke<string>("editor_redo"),
+    project: () => invoke<string>("editor_project"),
+    journal: () => invoke<string>("editor_journal"),
+    // Tauri serializes JSON numbers: ticks are safe integers (checked in createEditing), so Number is exact.
+    evaluate: (sequence, ticks, audioSamples) => invoke<string>("editor_evaluate", { sequence, ticks: Number(ticks), audioSamples }),
+    takeLog: () => invoke<string>("editor_take_log"),
+    checkpoint: () => invoke<string>("editor_checkpoint"),
+    recover: (baseJson, checkpointJson, log) => invoke<string>("editor_recover", { baseJson, checkpointJson, log }),
+  });
   return {
     backend: "tauri",
-    media: {
-      // Native decode (libav) is M1-015; until then a typed error the UI can show.
-      open: () => Promise.reject(new MediaDecodeError("unsupported", "Opening media files in the desktop app is not available yet (native decoder, M1-015). Use the web app for now.")),
-    },
+    media,
     info: async () => parseEngineInfo(await invoke<string>("engine_info")),
     openProject: async (bytes) => {
       try {
@@ -36,7 +48,14 @@ export function createTauriEngine(): Engine {
         throw toProjectFileError(e);
       }
     },
-    export: exportNotYet,
+    // The loop (evaluate -> decode -> composite -> encode) is the browser's, run in the webview; decode and H.264 + AAC encode are libav in Rust.
+    export: createNativeExportApi({
+      backend: createTauriExportBackend(invoke),
+      project: () => editing.project(),
+      evaluate: (sequence, ticks, samples) => editing.evaluate(sequence, ticks, samples),
+      media,
+      openRenderer: async (canvas) => (await import("./wasm")).openWasmRenderer(canvas),
+    }),
     peaks: {
       // PCM crosses IPC as JSON number arrays for now; native hosts will decode and extract in Rust without crossing (follow-up).
       begin: async (sampleRate, channels, resume) => {
@@ -58,19 +77,7 @@ export function createTauriEngine(): Engine {
         };
       },
     },
-    editing: createEditing({
-      open: (projectJson) => invoke<void>("editor_open", { projectJson }),
-      apply: (opsJson, coalesce) => invoke<string>("editor_apply", { opJson: opsJson, coalesce: coalesce ?? null }),
-      undo: () => invoke<string>("editor_undo"),
-      redo: () => invoke<string>("editor_redo"),
-      project: () => invoke<string>("editor_project"),
-      journal: () => invoke<string>("editor_journal"),
-      // Tauri serializes JSON numbers: ticks are safe integers (checked in createEditing), so Number is exact.
-      evaluate: (sequence, ticks, audioSamples) => invoke<string>("editor_evaluate", { sequence, ticks: Number(ticks), audioSamples }),
-      takeLog: () => invoke<string>("editor_take_log"),
-      checkpoint: () => invoke<string>("editor_checkpoint"),
-      recover: (baseJson, checkpointJson, log) => invoke<string>("editor_recover", { baseJson, checkpointJson, log }),
-    }),
+    editing,
     capabilities: async () => parseCapabilities(await invoke<string>("capabilities", { probeJson: await probeHost() })),
   };
 }

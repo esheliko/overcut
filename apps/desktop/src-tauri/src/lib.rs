@@ -1,5 +1,8 @@
 //! Native shell. Commands here mirror `packages/engine-client/src/tauri.ts`; keep them thin and forward to `app-core` / `app-timeline`.
 
+#[cfg(feature = "native-media")]
+mod native;
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
@@ -331,12 +334,9 @@ fn peaks_view_close(state: State<'_, Mutex<PeaksState>>, id: u32) -> Result<(), 
     })
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
-        .manage(EditorState::default())
-        .manage(Mutex::new(PeaksState::default()))
-        .invoke_handler(tauri::generate_handler![
+macro_rules! handlers {
+    ($($extra:path),*) => {
+        tauri::generate_handler![
             engine_info,
             editor_open,
             editor_apply,
@@ -364,8 +364,37 @@ pub fn run() {
             peaks_job_drop,
             peaks_view_open,
             peaks_view_columns,
-            peaks_view_close
-        ])
+            peaks_view_close $(, $extra)*]
+    };
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let builder = tauri::Builder::default()
+        .manage(EditorState::default())
+        .manage(Mutex::new(PeaksState::default()));
+    #[cfg(feature = "native-media")]
+    let builder = builder.manage(native::NativeState::default()).invoke_handler(handlers![
+        native::native_info,
+        native::native_stash_begin,
+        native::native_stash_append,
+        native::native_stash_end,
+        native::native_stash_remove,
+        native::native_media_open,
+        native::native_media_frame,
+        native::native_media_audio,
+        native::native_media_close,
+        native::native_export_begin,
+        native::native_export_video,
+        native::native_export_audio,
+        native::native_export_finish,
+        native::native_export_cancel,
+        native::native_export_read,
+        native::native_export_remove
+    ]);
+    #[cfg(not(feature = "native-media"))]
+    let builder = builder.invoke_handler(handlers![]);
+    builder
         .run(tauri::generate_context!())
         .expect("error while running the application");
 }

@@ -1,0 +1,20 @@
+# Own workspace on purpose: building this crate needs the libav development files (libavcodec, libavformat, libswscale, libswresample), which the
+# main engine workspace and its `verify` job must not need. src-tauri depends on it only behind its `native-media` feature.
+[workspace]
+
+[package]
+name = "app-native-media"
+description = "OverCut desktop media: libav (LGPL, dynamically linked) behind the app_media PacketDecoder trait, and an H.264 + AAC MP4 encoder preferring hardware."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+license = "GPL-3.0-or-later"
+
+[dependencies]
+app-media = { path = "../../../crates/media" }
+app-model = { path = "../../../crates/model" }
+# Dynamic link only (no `build` / `static` feature): the app links the LGPL libav it ships or finds, never a GPL build of its own.
+ffmpeg-next = { version = "7.1", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
+ffmpeg-sys-next = { version = "7.1", default-features = false }
+serde_json = "1"
