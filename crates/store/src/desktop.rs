@@ -136,6 +136,50 @@ pub fn reveal_command(os: &str, path: &Path) -> (String, Vec<String>) {
     }
 }
 
+/// A project file is read whole (it holds the project JSON and small derived assets, never media): refuse anything absurd before allocating.
+pub const MAX_PROJECT_FILE: u64 = 300 * 1024 * 1024;
+
+fn is_overcut(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("overcut"))
+}
+
+/// Reads a `.overcut` file the person picked ("Open project").
+pub fn read_project_file(path: &Path) -> io::Result<Vec<u8>> {
+    if !is_overcut(path) {
+        return Err(invalid("a project file ends in .overcut"));
+    }
+    if fs::metadata(path)?.len() > MAX_PROJECT_FILE {
+        return Err(invalid("that project file is too large"));
+    }
+    fs::read(path)
+}
+
+/// Writes `bytes` to `dest` ("Save project as"): all of it or nothing (temp file, fsync, rename), never a half-written project.
+pub fn write_project_file(dest: &Path, bytes: &[u8]) -> io::Result<()> {
+    if !is_overcut(dest) {
+        return Err(invalid("a project is saved as .overcut"));
+    }
+    if dest.parent().is_none_or(|p| !p.is_dir()) {
+        return Err(invalid("the folder to save in does not exist"));
+    }
+    let mut part = dest.as_os_str().to_owned();
+    part.push(".part");
+    let part = PathBuf::from(part);
+    let result = (|| {
+        let mut out = fs::File::create(&part)?;
+        out.write_all(bytes)?;
+        out.flush()?;
+        out.sync_all()?;
+        fs::rename(&part, dest)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&part);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,6 +300,32 @@ mod tests {
         assert_eq!(
             (prog.as_str(), args),
             ("explorer", vec![r"/select,C:\Videos\out.mp4".to_string()])
+        );
+    }
+
+    #[test]
+    fn a_project_file_is_saved_whole_and_read_back_and_only_as_overcut() {
+        let d = tmp("projfile");
+        let dest = d.join("My Film.overcut");
+        write_project_file(&dest, b"zip-bytes").unwrap();
+        assert_eq!(read_project_file(&dest).unwrap(), b"zip-bytes");
+        write_project_file(&dest, b"newer").unwrap(); // replaced in place
+        assert_eq!(read_project_file(&dest).unwrap(), b"newer");
+        assert!(
+            !d.join("My Film.overcut.part").exists(),
+            "no temp file left"
+        );
+        assert!(write_project_file(&d.join("x.mp4"), b"x").is_err());
+        assert!(write_project_file(&d.join("no-such-dir").join("a.overcut"), b"x").is_err());
+        assert!(read_project_file(&d.join("x.mp4")).is_err());
+        assert!(read_project_file(&d.join("missing.overcut")).is_err());
+        // A failed save leaves the old file untouched.
+        fs::create_dir(d.join("blocked.overcut.part")).unwrap();
+        fs::write(d.join("blocked.overcut"), b"keep").unwrap();
+        assert!(write_project_file(&d.join("blocked.overcut"), b"new").is_err());
+        assert_eq!(
+            read_project_file(&d.join("blocked.overcut")).unwrap(),
+            b"keep"
         );
     }
 }

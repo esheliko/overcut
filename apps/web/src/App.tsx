@@ -1,18 +1,21 @@
-import { createEngine, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
+import { createEngine, newProject, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
+import { CanvasDialog, ConfirmDialog } from "./ProjectDialogs";
+import { canvasSummary, hasPicture } from "./canvas";
+import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
 import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
 import { Timeline } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { ExportControl } from "./export/ExportDialog";
 import { MediaBin } from "./media/MediaBin";
-import { TICKS, clipCount } from "./media/plan";
-import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickOne, setDesktop, type Source } from "./media/sources";
+import { TICKS } from "./media/plan";
+import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickMany, pickOne, setDesktop, type Source } from "./media/sources";
 import { useShellProfile } from "./layout/useShellProfile";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
@@ -35,13 +38,6 @@ const TOOLS: Tool[] = [
   { id: "stickers", icon: "stickers", soon: "M4" },
   { id: "edit", icon: "edit" },
 ];
-
-const RATIOS = [
-  { id: "16:9", value: 16 / 9 },
-  { id: "9:16", value: 9 / 16 },
-  { id: "1:1", value: 1 },
-  { id: "4:5", value: 4 / 5 },
-] as const;
 
 function EmptyState({ icon, title, text }: { icon: IconName; title: string; text: string }) {
   return (
@@ -109,7 +105,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode }) {
+function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onNew(): void; onOpen(): void; onSave(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -141,6 +137,9 @@ function AppMenu({ compact, theme, status }: { compact: boolean; theme: { name: 
               <div className="menu-row menu-status" role="presentation">{status}</div>
             </>
           )}
+          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={() => { setOpen(false); project.onNew(); }}>{t("menu.new")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={() => { setOpen(false); project.onOpen(); }}>{t("menu.openProject")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={() => { setOpen(false); project.onSave(); }}>{t("menu.saveProject")}</button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
         </div>
@@ -164,7 +163,8 @@ function Editor({ store }: { store: ProjectStore }) {
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
-  const [ratio, setRatio] = useState<(typeof RATIOS)[number]["id"]>("16:9");
+  const [dialog, setDialog] = useState<null | "canvas" | { title: string; body: string; confirm: string; run(): Promise<void> }>(null);
+  const [locating, setLocating] = useState(false); // after opening a file: offer to reconnect media that is not on this device
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
@@ -276,14 +276,88 @@ function Editor({ store }: { store: ProjectStore }) {
     }),
   };
   const seq = sequenceView(project);
-  const hasClips = project ? clipCount(project) > 0 : false;
-  // The first picture sets the sequence size: show it in the preview shape closest to it.
-  const res = project?.sequences[0]?.resolution;
-  useEffect(() => {
-    if (!res || !hasClips) return;
-    const a = res.width / res.height;
-    setRatio(RATIOS.reduce((best, r) => (Math.abs(Math.log(r.value / a)) < Math.abs(Math.log(best.value / a)) ? r : best)).id);
-  }, [res?.width, res?.height, hasClips]);
+
+  // ---- project lifecycle (PM-01, PM-07): canvas, new, open, save ----
+  // "Unsaved" = changed since this project was loaded, opened, created or saved to a file in this window (autosave keeps the working copy either way).
+  const clean = useRef<string | null>(null);
+  useEffect(() => { if (project && clean.current === null) clean.current = JSON.stringify(project); }, [project]);
+  const dirty = () => { const p = store.getState().project; return !!p && JSON.stringify(p) !== clean.current; };
+  const markClean = () => { const p = store.getState().project; clean.current = p ? JSON.stringify(p) : null; };
+  const fail = (key: string, e: unknown) => setToast(t(key, { why: e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e) }));
+  /** Swap the open project for `bytes` (a `.overcut` file): the autosaving session when there is one, else the bare engine. */
+  const replaceWith = async (bytes: Uint8Array): Promise<Project> => {
+    let next: Project;
+    if (persistence.session) next = await persistence.session.replaceProject(bytes);
+    else {
+      const opened = await core!.openProject(bytes);
+      if (opened.readOnly) throw new Error(t("project.open.newer"));
+      await core!.editing.open(opened.project);
+      next = opened.project;
+    }
+    await store.reload();
+    store.setPlayhead(0);
+    markClean();
+    return next;
+  };
+  const confirmThen = (what: "new" | "open", name: string, run: () => Promise<void>) => {
+    if (!dirty()) return void run();
+    setDialog({ title: t(`project.${what}.title`), body: t(`project.${what}.body`, { name }), confirm: t(`project.${what}.confirm`), run });
+  };
+  const onNew = () => {
+    if (!core) return;
+    confirmThen("new", "", async () => {
+      try {
+        await replaceWith(await core.saveProject(newProject(t("app.untitled"))));
+        setName(null);
+        setLocating(false);
+        announce(t("project.new.done"));
+        setToast(t("project.new.done"));
+      } catch (e) { fail("project.open.failed", e); }
+    });
+  };
+  const onOpen = async () => {
+    if (!core) return;
+    try {
+      const file = await pickProjectFile();
+      if (!file) return;
+      let opened;
+      try { opened = await core.openProject(file.bytes); } catch (e) { return fail("project.open.failed", e); }
+      if (opened.readOnly) return setToast(t("project.open.newer"));
+      const label = nameOfFile(file.name) || opened.project.name;
+      confirmThen("open", label, async () => {
+        try {
+          await replaceWith(file.bytes);
+          setName(label);
+          setLocating(true);
+          announce(t("project.open.done", { name: label }));
+          setToast(t("project.open.done", { name: label }));
+        } catch (e) { fail("project.open.failed", e); }
+      });
+    } catch (e) { fail("project.open.failed", e); }
+  };
+  const onSave = async () => {
+    if (!core || !project) return;
+    try {
+      const bytes = persistence.session ? await persistence.session.exportBytes() : await core.saveProject(project);
+      const saved = await saveProjectBytes(bytes, projectFileName(name ?? project.name));
+      if (!saved) return;
+      markClean();
+      announce(t("project.save.done", { name: saved }));
+      setToast(t("project.save.done", { name: saved }));
+    } catch (e) { fail("project.save.failed", e); }
+  };
+  const applyCanvas = (op: Op) => {
+    setDialog(null);
+    void store.apply(op, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
+  };
+  const offline = media.items.filter((i) => i.status === "offline").length;
+  const locate = async () => {
+    const total = offline;
+    try {
+      const done = await media.relinkMany(await pickMany());
+      setToast(t("project.located", { done, total }));
+    } catch (e) { fail("project.open.failed", e); }
+  };
   const pick = (id: string) => { setSheet(id === tool ? !sheet : true); setTool(id); };
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId && shown(x)) ?? TOOLS[0]!;
@@ -311,7 +385,7 @@ function Editor({ store }: { store: ProjectStore }) {
             </span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
+          <AppMenu compact={compact} project={{ onNew, onOpen: () => void onOpen(), onSave: () => void onSave() }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
         </div>
       </header>
 
@@ -330,7 +404,7 @@ function Editor({ store }: { store: ProjectStore }) {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
         </section>
 
-        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onImport={binProps.onImport} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onPlaying={setPlaying} />
+        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} />
 
         {wide && DETAILS_READY && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
@@ -345,7 +419,15 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
       </main>
 
-      <PersistenceNotes state={persistence} />
+      <PersistenceNotes state={persistence} extra={locating && offline > 0 ? (
+        <div className="persist-note" role="status" data-testid="offline-note">
+          <span>{t("project.offline", { count: offline })}</span>
+          <button onClick={() => void locate()} data-testid="locate-files">{t("project.locate")}</button>
+          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setLocating(false)}>×</button>
+        </div>
+      ) : null} />
+      {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
+      {dialog && dialog !== "canvas" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       <div className="toast" role="status">{toast}</div>
     </div>

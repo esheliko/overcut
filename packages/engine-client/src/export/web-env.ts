@@ -134,7 +134,7 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
           if (!v) continue;
           const frame = await v.frame(layer.source_time);
           drawn.push(frame);
-          layers.push(layerOf(layer, frame));
+          layers.push(layerOf(layer, frame, seq));
         }
         return await renderExportFrame(renderer, canvas, capture, layers, seq, outputFrameTimes(plan, index));
       } finally {

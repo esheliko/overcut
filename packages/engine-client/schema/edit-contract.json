@@ -81,6 +81,20 @@
         "width": 1080,
         "height": 1920
       }
+    },
+    {
+      "op": "set_canvas",
+      "sequence": "00000000000000000000000000000008",
+      "frame_rate": {
+        "num": 25,
+        "den": 1
+      },
+      "resolution": {
+        "width": 1080,
+        "height": 1350
+      },
+      "size_fixed": true,
+      "rate_fixed": false
     }
   ],
   "outcome": {

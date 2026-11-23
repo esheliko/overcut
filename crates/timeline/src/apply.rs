@@ -288,6 +288,37 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
             };
             Ok(Inverse(vec![old]))
         }
+        Op::SetCanvas {
+            sequence,
+            frame_rate,
+            resolution,
+            size_fixed,
+            rate_fixed,
+        } => {
+            const MAX_SIDE: u32 = 16_384;
+            if frame_rate.num <= 0
+                || frame_rate.den <= 0
+                || resolution.width == 0
+                || resolution.height == 0
+                || resolution.width > MAX_SIDE
+                || resolution.height > MAX_SIDE
+            {
+                return Err(OpError::BadFormat);
+            }
+            let s = p
+                .sequences
+                .iter_mut()
+                .find(|s| s.id == sequence)
+                .ok_or(OpError::UnknownSequence(sequence))?;
+            let old = Op::SetCanvas {
+                sequence,
+                frame_rate: std::mem::replace(&mut s.frame_rate, frame_rate),
+                resolution: std::mem::replace(&mut s.resolution, resolution),
+                size_fixed: std::mem::replace(&mut s.size_fixed, size_fixed),
+                rate_fixed: std::mem::replace(&mut s.rate_fixed, rate_fixed),
+            };
+            Ok(Inverse(vec![old]))
+        }
         Op::InsertClip { track, clip } => {
             let (si, ti) = find_track(p, track).ok_or(OpError::UnknownTrack(track))?;
             let t = &p.sequences[si].tracks[ti];

@@ -258,3 +258,25 @@ fn fingerprint_is_stable_size_aware_and_validated() {
     assert!(fingerprint(10, &data[..9], &data[..10]).is_err());
     assert_eq!(fingerprint_size("garbage"), None);
 }
+
+#[test]
+fn canvas_choice_round_trips_and_old_files_read_as_not_fixed() {
+    // A v1 file written before the canvas flags existed: both read as "follows the first picture".
+    let old = ProjectFile::read(&container(&fixture(1), &[])).unwrap();
+    let s = &old.project().sequences[0];
+    assert!(!s.size_fixed && !s.rate_fixed);
+    // The flags stay out of the file while false (small, diff-friendly), and come back when set.
+    let text = String::from_utf8_lossy(&old.write().unwrap()).into_owned();
+    assert!(!text.contains("size_fixed"));
+    let mut p = old.project().clone();
+    p.sequences[0].size_fixed = true;
+    p.sequences[0].resolution = crate::project::Resolution {
+        width: 1080,
+        height: 1350,
+    };
+    let bytes = save_bytes(&serde_json::to_string(&p).unwrap(), &[]).unwrap();
+    let back = ProjectFile::read(&bytes).unwrap();
+    let s = &back.project().sequences[0];
+    assert!(s.size_fixed && !s.rate_fixed);
+    assert_eq!((s.resolution.width, s.resolution.height), (1080, 1350));
+}

@@ -70,7 +70,7 @@ function fakeEngine() {
     media: { open: async () => { throw new Error("not used"); } },
     export: { start: async () => { throw new Error("not used"); } },
     peaks: { begin: async () => { throw new Error("not used"); }, open: async () => { throw new Error("not used"); } },
-    openProject: async (bytes) => ({ project: JSON.parse(decode(bytes)) as Project, readOnly: false, foundVersion: 1, migrated: false, entries: [] }),
+    openProject: async (bytes) => ({ project: JSON.parse(decode(bytes)) as Project, readOnly: decode(bytes).includes('"newer":true'), foundVersion: 1, migrated: false, entries: [] }),
     saveProject: async (p) => encode(JSON.stringify(p)),
     fingerprintMedia: async (size, first, last) => `b3-64k:${size}:${[...first, ...last].reduce((a, b) => (a * 31 + b) % 1_000_003, 7).toString(16).padStart(64, "0")}`,
   };
@@ -249,4 +249,35 @@ test("fingerprints read at most 128 KiB of a file; relink finds a moved file by 
   // a media whose file is still where it was is left alone
   const same = await relinkMedia(engine, project, [], (u) => (u === "old/big.mp4" ? file(u, big) : undefined));
   assert.deepEqual(same.ops, []);
+});
+
+test("replaceProject (Open / New project): the other project becomes the base, the old journal is gone, edits after it recover onto it", async () => {
+  const storage = memoryStorage();
+  const engine = fakeEngine();
+  const a = await openProjectSession(engine, storage, opts);
+  await a.session.editing.apply(op(1));
+  await a.session.whenDurable();
+  const p = await a.session.replaceProject(encode(JSON.stringify({ edits: ["seed"] })));
+  assert.deepEqual(edits(p), ["seed"]);
+  assert.equal(await storage.read(JOURNAL_FILE), null, "the old journal is dropped");
+  assert.deepEqual(edits(await engine.editing.project()), ["seed"]);
+  // new edits journal against the new base and a crash recovers them on top of it
+  await a.session.editing.apply(op(2));
+  await a.session.whenDurable();
+  const b = await openProjectSession(fakeEngine(), storage, opts);
+  assert.equal(b.recovered?.replayed, 1);
+  assert.deepEqual(edits(b.project), ["seed", JSON.stringify(op(2))]);
+  // exportBytes is the live project in the file format
+  assert.deepEqual(edits(JSON.parse(decode(await a.session.exportBytes())) as Project), ["seed", JSON.stringify(op(2))]);
+});
+
+test("replaceProject refuses a file the engine cannot use (newer version, damaged) and leaves the open project and its journal alone", async () => {
+  const storage = memoryStorage();
+  const a = await openProjectSession(fakeEngine(), storage, opts);
+  await a.session.editing.apply(op(1));
+  await a.session.whenDurable();
+  await assert.rejects(a.session.replaceProject(encode(JSON.stringify({ edits: [], newer: true }))), /newer version/);
+  await assert.rejects(a.session.replaceProject(encode("not json")));
+  assert.equal(edits(await a.session.editing.project()).length, 1);
+  assert.ok(await storage.read(JOURNAL_FILE), "journal untouched");
 });

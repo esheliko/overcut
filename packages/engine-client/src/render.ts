@@ -98,12 +98,31 @@ export function wrapRenderer(raw: RawGpuRenderer, canvas: { width: number; heigh
   };
 }
 
-/** The engine's layer description (`evaluate`) plus the decoded picture -> the compositor's layer. The one mapping both the preview and the exporter use. */
+/**
+ * How much to scale a picture of `width` x `height` (displayed, i.e. after any right-angle rotation) so it fits inside the canvas without cropping
+ * ("contain": letterbox or pillarbox). 1 when the picture already has the canvas's size or shape; never enlarges beyond fitting the canvas.
+ */
+export function containScale(pic: { width: number; height: number; rotation?: number }, canvas: { width: number; height: number }): number {
+  const turned = (((pic.rotation ?? 0) % 180) + 180) % 180 === 90;
+  const w = turned ? pic.height : pic.width;
+  const h = turned ? pic.width : pic.height;
+  if (!(w > 0 && h > 0 && canvas.width > 0 && canvas.height > 0)) return 1;
+  return Math.min(canvas.width / w, canvas.height / h);
+}
+
+/**
+ * The engine's layer description (`evaluate`) plus the decoded picture -> the compositor's layer. The one mapping both the preview and the exporter use.
+ * With `canvas` (the project's size) a picture of another size or shape is fitted inside it instead of drawn at its own pixel size (a 16:9 clip on a
+ * 9:16 canvas is letterboxed, not cropped); without it the layer keeps the scale the engine gave.
+ */
 export function layerOf(
   l: { transform: { center: [number, number]; scale: [number, number]; rotation: number }; opacity: number },
   pic: { source: LayerSource; width: number; height: number; rotation?: number },
+  canvas?: { width: number; height: number },
 ): GpuLayer {
-  return { source: pic.source, width: pic.width, height: pic.height, rotation: pic.rotation ?? 0, center: l.transform.center, scale: l.transform.scale, angle: l.transform.rotation, opacity: l.opacity };
+  const k = canvas ? containScale(pic, canvas) : 1;
+  const scale: [number, number] = k === 1 ? l.transform.scale : [l.transform.scale[0] * k, l.transform.scale[1] * k];
+  return { source: pic.source, width: pic.width, height: pic.height, rotation: pic.rotation ?? 0, center: l.transform.center, scale, angle: l.transform.rotation, opacity: l.opacity };
 }
 
 /** Frames reach the encoder tagged as full-range sRGB, like a canvas capture. */

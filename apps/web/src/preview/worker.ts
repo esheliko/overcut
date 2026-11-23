@@ -271,7 +271,7 @@ async function parity(frame: number): Promise<unknown> {
       if (!h?.info.video) continue;
       const f = await still(h, h.frameIndexAt(l.source_time));
       held.push(f);
-      layers.push(layerOf(l, { source: f.kind === "gpu" ? f.frame : { rgba: f.rgba }, width: f.width, height: f.height, rotation: h.info.video.rotation }));
+      layers.push(layerOf(l, { source: f.kind === "gpu" ? f.frame : { rgba: f.rgba }, width: f.width, height: f.height, rotation: h.info.video.rotation }, a.size));
     }
     const times = { timestamp: 0, duration: 1 };
     gpu.present(layers, a.size);

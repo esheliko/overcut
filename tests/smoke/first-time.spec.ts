@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 
-/** Fixes for what a first-time user trips over (docs/M1-STATUS.md section 4): import, split, undo, tool rail, fit, preview shape. Needs a build with the engine. */
+/** Fixes for what a first-time user trips over (docs/M1-STATUS.md section 4): import, split, undo, tool rail, fit, canvas. Needs a build with the engine. */
 const FLASH = resolve("crates/media/tests/fixtures/flash_click.mp4"); // 3 s, 30 fps, picture + sound
 
 test("first import: rail shows only working tools, the zoom fits the clip, undo says what it undoes, split at the clip start explains itself, the phone sheet closes", async ({ page }, info) => {
@@ -16,10 +16,10 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   await expect(rail.first()).toHaveText("Media");
   await expect(page.getByTestId("panel-inspector")).toHaveCount(0);
 
-  // The preview shape picker says it is only the preview.
-  const shape = page.getByLabel("Preview shape");
-  await expect(shape).toHaveAttribute("title", /Only changes the shape of this preview/);
-  await expect(shape.locator("option:checked")).toHaveText("Preview 16:9");
+  // The shape control is the project's canvas (not just the preview), and says what it is.
+  const shape = page.getByTestId("canvas-open");
+  await expect(shape).toHaveAttribute("title", /shape, size and frame rate of your video/);
+  await expect(shape).toHaveAccessibleName(/^Canvas: 16:9 · 1920 × 1080 · 30 fps/);
 
   const canvas = page.getByTestId("timeline-canvas");
   const pps = async () => Number(await canvas.getAttribute("data-pps"));

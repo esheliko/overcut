@@ -60,8 +60,13 @@ export interface Sequence {
   frame_rate: Rational;
   id: SequenceId;
   name: string;
+  /** Same for `frame_rate`: true once the user picked a frame rate; while false the first picture imported sets it. */
+  rate_fixed?: boolean;
   resolution: Resolution;
   sample_rate: number;
+  /** True once the user chose the canvas size (an aspect/size preset or a custom one). While false the first picture imported sets
+`resolution` ("match first clip", the zero-question default). Absent in older files = false. */
+  size_fixed?: boolean;
   /** Bottom-to-top for video (later tracks draw over earlier ones). Any number of tracks of either kind. */
   tracks: Track[];
 }

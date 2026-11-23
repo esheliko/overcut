@@ -56,3 +56,16 @@ test("layerOf maps an evaluated layer and a decoded picture to one compositor la
   assert.deepEqual({ ...l, source: undefined }, { source: undefined, width: 1, height: 1, rotation: 270, center: [960, 540], scale: [0.5, 0.5], angle: 0.25, opacity: 0.8 });
   assert.equal(layerOf({ transform: { center: [0, 0], scale: [1, 1], rotation: 0 }, opacity: 1 }, { source: { rgba: new Uint8Array(4) }, width: 1, height: 1 }).rotation, 0);
 });
+
+test("containScale fits a picture inside the canvas without cropping; layerOf applies it only when given a canvas", async () => {
+  const { containScale } = await import("../../packages/engine-client/src/render");
+  assert.equal(containScale({ width: 1920, height: 1080 }, { width: 1920, height: 1080 }), 1, "same size: untouched");
+  assert.equal(containScale({ width: 1920, height: 1080 }, { width: 1080, height: 1920 }), 1080 / 1920, "landscape clip on a vertical canvas: pillar width fits");
+  assert.equal(containScale({ width: 1080, height: 1920 }, { width: 1920, height: 1080 }), 1080 / 1920, "vertical clip on a landscape canvas: height fits");
+  assert.equal(containScale({ width: 1080, height: 1920, rotation: 90 }, { width: 1920, height: 1080 }), 1, "a sideways-stored phone clip is judged by its upright size");
+  assert.equal(containScale({ width: 960, height: 540 }, { width: 1920, height: 1080 }), 2, "a smaller clip is enlarged to fit");
+  const t = { transform: { center: [540, 960] as [number, number], scale: [1, 1] as [number, number], rotation: 0 }, opacity: 1 };
+  const pic = { source: { rgba: new Uint8Array(4) }, width: 1920, height: 1080 };
+  assert.deepEqual(layerOf(t, pic).scale, [1, 1]);
+  assert.deepEqual(layerOf(t, pic, { width: 1080, height: 1920 }).scale, [1080 / 1920, 1080 / 1920]);
+});

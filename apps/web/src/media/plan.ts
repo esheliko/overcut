@@ -2,6 +2,7 @@
  * Pure import logic (no DOM, no engine): what kind of file is this, what does the project look like after adding it,
  * which edit ops put it on the timeline. Unit tests: tests/unit/media-plan.test.ts. Behaviour: docs/features/media-bin.md.
  */
+import { adoptedFormat } from "../canvas";
 import type { Clip, MediaKind, MediaRef, Op, Project, Rational, Resolution } from "@app/engine-client";
 
 /** Ticks per second (ADR 0010). */
@@ -78,7 +79,9 @@ export function mediaRef(id: string, name: string, uri: string, probed: Probed, 
 export function importOps(p: Project, ref: MediaRef, probed: Probed): Op[] {
   const ops: Op[] = [{ op: "add_media", media: ref }];
   const seq = p.sequences[0];
-  const adopt = sequenceIsUnset(p) ? sequenceFrom(probed) : null;
+  // The first picture sets size and frame rate ("match first clip") except for what the user fixed in the canvas settings.
+  const from = seq && sequenceIsUnset(p) ? sequenceFrom(probed) : null;
+  const adopt = seq && from ? adoptedFormat(seq, from) : null;
   if (seq && adopt) ops.push({ op: "set_sequence_format", sequence: seq.id, ...adopt });
   return ops;
 }

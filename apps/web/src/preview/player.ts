@@ -5,7 +5,7 @@
  * the layers to the compositor. A frame that cannot be ready in time is skipped, never waited for.
  * Everything platform-specific (clock, audio output, renderer, media) is injected, so the logic runs under fake clocks in unit tests.
  */
-import { layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle } from "@app/engine-client";
+import { containScale, layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle } from "@app/engine-client";
 import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "./audioMix";
 import type { RenderLayer, Renderer } from "./renderer";
 import { FrameCache, type Thumb } from "./scrubCache";
@@ -334,7 +334,7 @@ export class Player {
 
   private async layer(l: FrameDescription["layers"][number], frame: DecodedFrame, media: MediaHandle, slot: number): Promise<RenderLayer> {
     const source = this.d.upload ? await this.d.upload(frame, slot) : frame.kind === "gpu" ? frame.frame : { rgba: frame.rgba };
-    return layerOf(l, { source, width: frame.width, height: frame.height, rotation: media.info.video?.rotation ?? 0 });
+    return layerOf(l, { source, width: frame.width, height: frame.height, rotation: media.info.video?.rotation ?? 0 }, this.d.size);
   }
 
   /** A filmstrip thumbnail as a layer: it is upright already (rotation 0) and small, so the layer's scale grows by display size / thumbnail size. */
@@ -343,8 +343,9 @@ export class Player {
     const turned = v.rotation === 90 || v.rotation === 270;
     const dw = turned ? v.height : v.width;
     const dh = turned ? v.width : v.height;
-    const sx = l.transform.scale[0] * (dw / t.width);
-    const sy = l.transform.scale[1] * (dh / t.height);
+    const k = containScale({ width: dw, height: dh }, this.d.size);
+    const sx = l.transform.scale[0] * k * (dw / t.width);
+    const sy = l.transform.scale[1] * k * (dh / t.height);
     return layerOf({ ...l, transform: { ...l.transform, scale: [sx, sy] } }, { source: t.bitmap, width: t.width, height: t.height, rotation: 0 });
   }
 
