@@ -68,6 +68,7 @@ function fakeEngine() {
     editing,
     media: { open: async () => { throw new Error("not used"); } },
     export: { start: async () => { throw new Error("not used"); } },
+    peaks: { begin: async () => { throw new Error("not used"); }, open: async () => { throw new Error("not used"); } },
     openProject: async (bytes) => ({ project: JSON.parse(decode(bytes)) as Project, readOnly: false, foundVersion: 1, migrated: false, entries: [] }),
     saveProject: async (p) => encode(JSON.stringify(p)),
     fingerprintMedia: async (size, first, last) => `b3-64k:${size}:${[...first, ...last].reduce((a, b) => (a * 31 + b) % 1_000_003, 7).toString(16).padStart(64, "0")}`,

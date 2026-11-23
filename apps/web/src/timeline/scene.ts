@@ -1,6 +1,6 @@
 /** Flat, typed-array view of a Project's timeline for the canvas (ADR 0007, S8). Built once per project change, read every frame without allocating.
  *  Times here are SECONDS as floats, for drawing and hit-testing only; the model keeps integer ticks (ADR 0010). */
-import type { Project } from "@app/engine-client";
+import type { MediaRef, Project } from "@app/engine-client";
 
 export const TICKS_PER_SECOND = 705_600_000;
 
@@ -33,6 +33,10 @@ export interface Scene {
   clipTrack: Uint16Array;
   /** Ticks per frame of the sequence (integer for every common rate). */
   frameTicks: number;
+  /** Media id per clip, where in the media the clip starts (seconds), and the project's media by id (waveforms, thumbnails). */
+  media: string[];
+  srcIn: Float64Array;
+  mediaById: Map<string, MediaRef>;
 }
 
 export const EMPTY_SCENE: Scene = buildScene(null);
@@ -41,7 +45,8 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
   const tracks = project?.sequences[sequence]?.tracks ?? [];
   const media = new Map<string, string>();
   const mediaLen = new Map<string, number>();
-  for (const m of project?.media ?? []) { media.set(m.id, m.name); if (m.duration) mediaLen.set(m.id, m.duration); }
+  const mediaById = new Map<string, MediaRef>();
+  for (const m of project?.media ?? []) { media.set(m.id, m.name); mediaById.set(m.id, m); if (m.duration) mediaLen.set(m.id, m.duration); }
   const rate = project?.sequences[sequence]?.frame_rate;
   let total = 0;
   for (const t of tracks) total += t.clips.length;
@@ -66,6 +71,9 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     trackId: [],
     clipTrack: new Uint16Array(total),
     frameTicks: rate && rate.num > 0 ? Math.round((TICKS_PER_SECOND * rate.den) / rate.num) : TICKS_PER_SECOND / 30,
+    media: new Array<string>(total),
+    srcIn: new Float64Array(total),
+    mediaById,
   };
   let i = 0;
   tracks.forEach((t, ti) => {
@@ -88,6 +96,8 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
       scene.speedNum[i] = c.speed?.num ?? 1;
       scene.speedDen[i] = c.speed?.den ?? 1;
       scene.mediaDur[i] = mediaLen.get(c.media) ?? 0;
+      scene.media[i] = c.media;
+      scene.srcIn[i] = c.source_in / TICKS_PER_SECOND;
       if (scene.end[i]! > scene.endSec) scene.endSec = scene.end[i]!;
       i++;
     }

@@ -96,6 +96,76 @@ pub fn media_fingerprint(size: f64, first: &[u8], last: &[u8]) -> Result<String,
     app_model::fingerprint(size as u64, first, last).map_err(|e| e.to_json())
 }
 
+/// A waveform extraction in progress (`app_audio::peaks::PeaksBuilder`). PCM goes in as interleaved i16 chunks.
+#[wasm_bindgen]
+pub struct PeaksJob(Option<app_audio::peaks::PeaksBuilder>);
+
+#[wasm_bindgen]
+impl PeaksJob {
+    /// `resume`: bytes of a cached partial file to continue (empty = start fresh). Check `next_frame` afterwards.
+    #[wasm_bindgen(constructor)]
+    pub fn new(sample_rate: u32, channels: u16, resume: &[u8]) -> Result<PeaksJob, String> {
+        let b = if resume.is_empty() {
+            app_audio::peaks::PeaksBuilder::new(sample_rate, channels)
+        } else {
+            app_audio::peaks::PeaksBuilder::resume(resume, channels).map_err(|e| e.to_string())?
+        };
+        Ok(PeaksJob(Some(b)))
+    }
+
+    /// First frame the next `push` must start at (0 unless resumed).
+    pub fn next_frame(&self) -> f64 {
+        self.0.as_ref().map_or(0.0, |b| b.next_frame() as f64)
+    }
+
+    pub fn push(&mut self, pcm: &[i16]) -> Result<(), String> {
+        self.0.as_mut().ok_or("job finished")?.push(pcm);
+        Ok(())
+    }
+
+    /// The peaks file so far (flagged incomplete); the job keeps running.
+    pub fn snapshot(&self) -> Result<Vec<u8>, String> {
+        Ok(self.0.as_ref().ok_or("job finished")?.snapshot().to_bytes())
+    }
+
+    /// The final peaks file (flagged complete). The job cannot be used afterwards.
+    pub fn finish(&mut self) -> Result<Vec<u8>, String> {
+        Ok(self.0.take().ok_or("job finished")?.finish().to_bytes())
+    }
+}
+
+/// A parsed peaks file, kept in memory for drawing (the pyramid is derived once on open).
+#[wasm_bindgen]
+pub struct PeaksView(app_audio::peaks::Peaks);
+
+#[wasm_bindgen]
+impl PeaksView {
+    #[wasm_bindgen(constructor)]
+    pub fn new(bytes: &[u8]) -> Result<PeaksView, String> {
+        app_audio::peaks::Peaks::from_bytes(bytes).map(PeaksView).map_err(|e| e.to_string())
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        self.0.sample_rate
+    }
+
+    /// Frames covered so far (f64: exact below 2^53).
+    pub fn frames(&self) -> f64 {
+        self.0.frames as f64
+    }
+
+    pub fn complete(&self) -> bool {
+        self.0.complete
+    }
+
+    /// `count` (min, max) pairs, interleaved; min > max marks "no data yet".
+    pub fn columns(&self, start_frame: f64, frames_per_px: f64, count: usize) -> Vec<i16> {
+        let mut pairs = Vec::with_capacity(count);
+        self.0.columns(start_frame, frames_per_px, count, &mut pairs);
+        pairs.into_iter().flatten().collect()
+    }
+}
+
 /// Opens a `.overcut` container: JSON `{project, read_only, found_version, migrated, entries}`.
 /// On failure throws a JSON string `{code, message}` (see `app_model::FileError`).
 #[wasm_bindgen]

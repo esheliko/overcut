@@ -37,6 +37,8 @@ export interface Engine {
   fingerprintMedia(size: number, first: Uint8Array, last: Uint8Array): Promise<string>;
   /** Opens video/audio files for decoding (M1-016). */
   readonly media: MediaApi;
+  /** Waveform peaks (M1-013): extract from PCM, then read min/max columns for drawing. */
+  readonly peaks: PeaksApi;
 }
 
 export { MediaDecodeError, type MediaErrorKind } from "./decode/errors";
@@ -118,6 +120,37 @@ export interface MediaHandle {
 export interface MediaApi {
   /** Opens a `File`/`Blob`; bytes are read on demand with range reads, never loaded whole. Rejects `MediaDecodeError`. */
   open(file: Blob, opts?: OpenMediaOptions): Promise<MediaHandle>;
+}
+
+/** A running waveform extraction. Dispose it (or `finish`) to free the engine-side state. */
+export interface PeaksJob {
+  /** First frame the next `push` must start at (0 unless the job resumed a cached partial file). */
+  readonly nextFrame: number;
+  /** Adds interleaved i16 PCM, in order, any chunk size. */
+  push(pcm: Int16Array): Promise<void>;
+  /** The peaks file so far (flagged incomplete); the job keeps running. */
+  snapshot(): Promise<Uint8Array>;
+  /** The final peaks file (flagged complete) and frees the job. */
+  finish(): Promise<Uint8Array>;
+  /** Frees the job without a result (cancelled). Safe after `finish`. */
+  dispose(): Promise<void>;
+}
+
+/** A parsed peaks file held by the engine for drawing. Close it when the media leaves the timeline. */
+export interface PeaksView {
+  readonly sampleRate: number;
+  /** Frames extracted so far. */
+  readonly frames: number;
+  readonly complete: boolean;
+  /** `count` columns, column i = frames [start + i*fpp, start + (i+1)*fpp), as interleaved `[min, max]` i16; min > max = no data yet. */
+  columns(startFrame: number, framesPerPx: number, count: number): Promise<Int16Array>;
+  close(): Promise<void>;
+}
+
+export interface PeaksApi {
+  /** `resume`: a cached partial file to continue from (see `PeaksJob.nextFrame`). */
+  begin(sampleRate: number, channels: number, resume?: Uint8Array): Promise<PeaksJob>;
+  open(file: Uint8Array): Promise<PeaksView>;
 }
 
 /** Result of `Engine.openProject`. Mirrors `app_model::open_json`. */

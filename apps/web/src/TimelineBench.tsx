@@ -1,6 +1,10 @@
 /** S8 benchmark page: open `/#timeline-bench` (production or dev build). Drives scripted pan and zoom over a 1000-clip, 20-track project
  *  and reports frame intervals and draw time. Automated by `node tests/perf/timeline-bench.mjs`. Not linked from the UI. */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
+import { createEngine } from "@app/engine-client";
+import { MediaCache, MemoryStore } from "./media/cache";
+import { FakeMediaHost } from "./media/host";
+import { MediaLayer } from "./timeline/media-layer";
 import { fixtureProject } from "./timeline/fixture";
 import { buildScene } from "./timeline/scene";
 import { TimelineCanvas, type CanvasHandle } from "./timeline/TimelineCanvas";
@@ -14,6 +18,14 @@ export function TimelineBench() {
   const handle = useRef<CanvasHandle | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const edits = useRef<unknown[]>([]);
+  // `#timeline-bench` = placeholders (the S8 numbers); `#timeline-bench&media` = real waveforms and thumbnails from the engine's peaks.
+  const withMedia = location.hash.includes("media");
+  const [layer, setLayer] = useState<MediaLayer | undefined>();
+  const [ready0, setReady0] = useState(!withMedia);
+  useEffect(() => {
+    if (!withMedia) return;
+    void createEngine().then((e) => { setLayer(new MediaLayer(e, new FakeMediaHost({ seconds: 120 }), new MediaCache(new MemoryStore()))); setReady0(true); });
+  }, [withMedia]);
   const ready = useCallback((h: CanvasHandle) => {
     handle.current = h;
     const phases = ["pan", "zoom", "pan+zoom"] as const;
@@ -73,10 +85,15 @@ export function TimelineBench() {
     };
     (window as unknown as { __timelineDragBench: () => Promise<unknown> }).__timelineDragBench = async () => ({ single: await drag(false), all: await drag(true), edits: edits.current.length });
   }, [scene]);
+  useEffect(() => {
+    const w = window as unknown as { __mediaIdle?: () => Promise<{ stats: unknown; thumbs: unknown }> };
+    w.__mediaIdle = layer ? async () => { await layer.waveforms.idle(); return { stats: layer.waveforms.stats, thumbs: layer.thumbs.stats }; } : undefined;
+  }, [layer]);
+  if (!ready0) return null;
   return (
     <div style={{ position: "fixed", inset: 0, display: "grid" }}>
       <div style={{ position: "relative" }}>
-        <TimelineCanvas scene={scene} fps={30} frame={0} endFrame={30 * 3600} playing={false} zoom={40} onFrame={() => undefined} onZoom={() => undefined} summary="Benchmark timeline." selected={selected} onSelect={setSelected} onEdit={(ops) => edits.current.push(ops)} onReady={ready} />
+        <TimelineCanvas scene={scene} fps={30} frame={0} endFrame={30 * 3600} playing={false} zoom={40} onFrame={() => undefined} onZoom={() => undefined} summary="Benchmark timeline." selected={selected} onSelect={setSelected} onEdit={(ops) => edits.current.push(ops)} onReady={ready} media={layer} />
       </div>
     </div>
   );
