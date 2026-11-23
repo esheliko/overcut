@@ -21,6 +21,7 @@ export type PreviewRpc =
   | { name: "frames" }
   | { name: "position" }
   | { name: "gpu" }
+  | { name: "strip" }
   | { name: "bench"; width: number; height: number; frames: number }
   | { name: "parity"; frame: number };
 
@@ -38,7 +39,9 @@ export type ToPreview =
   /** First message: the player is created. Later ones: the project changed (edit, undo, import): the evaluator is replaced and the same player reconfigured. */
   | ({ type: "config" } & PreviewConfig)
   /** The file behind a media item (cloned, not copied): the Worker opens its own decoder. */
-  | { type: "media"; id: string; file: File }
+  | { type: "media"; id: string; file: File; /** Source fingerprint (hash + size): keys the scrub strip in the cache. Without it no strip is made. */ fp?: string }
+  /** The scrub-strip setting (`strip/`): on/off and the storage cap in bytes. Sent when the Worker starts and whenever the setting changes. */
+  | { type: "strip-config"; enabled: boolean; capBytes: number }
   /** A file that stays on disk (desktop): the Worker cannot hold it, so it asks the UI thread's native decoder for frames (`NativeOp`). */
   | { type: "media-native"; id: string; path: string }
   | { type: "unmedia"; id: string }
@@ -57,6 +60,8 @@ export type FromPreview =
   | { type: "fail"; message: string }
   | { type: "frame"; frame: number }
   | { type: "state"; playing: boolean; rate: number }
+  /** Background scrub-strip work: overall progress 0..1 while something is being prepared, null when nothing is. */
+  | { type: "strip"; progress: number | null }
   | { type: "error"; message: string }
   | { type: "audio"; left: Float32Array<ArrayBuffer>; right: Float32Array<ArrayBuffer>; when: number }
   | { type: "audio-stop" }

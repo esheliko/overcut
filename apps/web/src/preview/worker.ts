@@ -8,6 +8,7 @@ import { Player, type AudioOut } from "./player";
 import { frameStartTicks } from "./timing";
 import { ThumbStore } from "./scrubCache";
 import { createRemoteMedia, type NativeCall } from "./nativeMedia";
+import { StripManager } from "./strip/manager";
 import { chooseUploadPath, median, uploadKey, type UploadChoice, type UploadPath } from "./uploadPath";
 
 reportWorkerNetwork(); // visible network log (XT-06)
@@ -44,6 +45,8 @@ let upload: UploadChoice | undefined;
 let deciding: Promise<UploadChoice> | undefined;
 const rgbaSlots: Uint8Array[] = [];
 const thumbs = new ThumbStore<ImageBitmap>();
+/** Background scrub strips for clips that seek slowly (`strip/`, docs/features/preview.md "Smooth scrubbing"). Waits while the player is busy. */
+const strips = new StripManager({ idle: () => player?.isIdle() ?? true, progress: (progress) => post({ type: "strip", progress }) });
 
 /** p50 of one upload path (ms): a fresh scratch compositor (never presented, so it can read back) draws `sample` into 64x64 and waits for the GPU. */
 async function measureUpload(path: UploadPath, sample: VideoFrame, width: number, height: number): Promise<number | null> {
@@ -125,11 +128,12 @@ async function configure(c: PreviewConfig): Promise<void> {
   else startPlayer(c);
 }
 
-async function addMedia(id: string, file: File | { path: string }): Promise<void> {
+async function addMedia(id: string, file: File | { path: string }, fp?: string): Promise<void> {
   if (!mediaApi || handles.has(id)) return;
   const h = "path" in file ? await (remote ??= createRemoteMedia(callNative)).openPath(file.path) : await mediaApi.open(file, { audioRate: 48_000 });
   if (handles.has(id)) return void h.close();
   handles.set(id, h);
+  if (fp) strips.register(id, h, fp);
   player?.reconfigure({}); // redraw with the new picture
 }
 
@@ -139,6 +143,7 @@ function removeMedia(id: string): void {
   handles.delete(id);
   player?.dropMedia(id);
   thumbs.dropMedia(id);
+  strips.forget(id);
   player?.reconfigure({}); // closes the decode feeds first
   void h.close();
 }
@@ -154,6 +159,8 @@ function startPlayer(c: PreviewConfig): void {
     media: (id) => handles.get(id),
     upload: uploadSource,
     standIn: (id, seconds) => thumbs.nearest(id, seconds),
+    strip: (id, index) => strips.picture(id, index),
+    onSeek: (id, ms) => strips.noteSeek(id, ms),
     renderer: {
       render: (layers, seq) => {
         g.present(layers, seq);
@@ -182,6 +189,7 @@ async function rpc(r: PreviewRpc): Promise<unknown> {
     case "stats": return { ...player?.stats, cached: player?.cached ?? 0 };
     case "position": return { frame: player?.frame ?? 0, playing: player?.isPlaying ?? false, ticks: player?.position() ?? 0 };
     case "frames": return [...handles.values()].map((h) => h.stats());
+    case "strip": return strips.stats();
     case "gpu": return { info: gpu?.info, alloc: gpu?.allocStats(), canvas: backing, upload };
     case "probe": return probe(r.x, r.y);
     case "bench": return bench(r.width, r.height, r.frames);
@@ -333,13 +341,17 @@ async function handle(m: ToPreview): Promise<void> {
       await configure(m);
       return;
     case "media":
-      await addMedia(m.id, m.file);
+      await addMedia(m.id, m.file, m.fp);
       return;
     case "media-native":
       await addMedia(m.id, { path: m.path });
       return;
     case "unmedia":
       removeMedia(m.id);
+      return;
+    case "strip-config":
+      strips.setCap(m.capBytes);
+      strips.setEnabled(m.enabled);
       return;
     case "thumb":
       thumbs.add(m.media, m.seconds, m.bitmap, m.bitmap.width, m.bitmap.height);
@@ -379,6 +391,7 @@ async function handle(m: ToPreview): Promise<void> {
     case "dispose":
       player?.dispose();
       player = undefined;
+      strips.dispose();
       for (const h of handles.values()) void h.close();
       handles = new Map();
       ev?.free();

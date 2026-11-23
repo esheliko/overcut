@@ -12,6 +12,7 @@ import { getNativeMedia } from "../media/sources";
 import { NativeMediaBridge, type NativeOp } from "./nativeMedia";
 import { onThumb } from "../media/thumbBus";
 import { UPLOAD_STORE } from "./uploadPath";
+import { SCRUB_PREP_EVENT, scrubPrepConfig } from "./strip/setting";
 
 function readUpload(key: string): unknown {
   try { return (JSON.parse(localStorage.getItem(UPLOAD_STORE) ?? "{}") as Record<string, unknown>)[key] ?? null; } catch { return null; }
@@ -28,6 +29,8 @@ export interface HostHandlers {
   onFrame(frame: number): void;
   onState(playing: boolean, rate: number): void;
   onError(message: string): void;
+  /** Background scrub-strip progress 0..1, or null when nothing is being prepared. */
+  onStrip?(progress: number | null): void;
 }
 
 /** The player as the UI sees it: synchronous reads of mirrored state, commands forwarded to the Worker. */
@@ -68,12 +71,17 @@ export class PreviewHost {
     this.worker.addEventListener("message", (e: MessageEvent<FromPreview>) => this.onMessage(e.data));
     this.worker.addEventListener("error", (e) => this.onReady?.reject(new Error(e.message || "preview worker failed")));
     this.send({ type: "init", canvas: offscreen, prefer }, [offscreen]);
+    this.sendStrip();
+    this.stripListener = () => this.sendStrip();
+    window.addEventListener(SCRUB_PREP_EVENT, this.stripListener);
     this.offThumb = onThumb((media, seconds, bmp) => {
       // A copy: the timeline keeps its own bitmap. Transferred, so the Worker owns it.
       void createImageBitmap(bmp).then((copy) => (this.disposed ? copy.close() : this.send({ type: "thumb", media, seconds, bitmap: copy }, [copy])), () => undefined);
     });
   }
   private offThumb: (() => void) | undefined;
+  private stripListener: (() => void) | undefined;
+  private sendStrip(): void { this.send({ type: "strip-config", ...scrubPrepConfig() }); }
   private onReady: { resolve(i: RendererInfo): void; reject(e: Error): void } | undefined;
 
   send(m: ToPreview, transfer: Transferable[] = []): void {
@@ -109,6 +117,7 @@ export class PreviewHost {
     this.send({ type: "dispose" });
     this.disposed = true;
     this.offThumb?.();
+    if (this.stripListener) window.removeEventListener(SCRUB_PREP_EVENT, this.stripListener);
     this.stopClock();
     this.audio?.stop();
     this.worker.terminate();
@@ -140,6 +149,7 @@ export class PreviewHost {
         this.h.onState(m.playing, m.rate);
         return;
       case "error": this.h.onError(m.message); return;
+      case "strip": this.h.onStrip?.(m.progress); return;
       case "audio": this.audio?.schedule(m.left, m.right, m.when); return;
       case "audio-stop": this.audio?.stop(); return;
       case "request":

@@ -109,7 +109,9 @@ test("thumbnail store returns the nearest in time and forgets a media item", () 
 const T = 705_600_000;
 const STEP = T / 30;
 
-function setup(opts: { thumb?: boolean } = {}) {
+function setup(opts: { thumb?: boolean; strip?: boolean } = {}) {
+  const closed: number[] = [];
+  const seeks: [string, number][] = [];
   const calls: number[] = [];
   const waiting = new Map<number, { resolve(f: unknown): void; reject(e: unknown): void }>();
   let latest = 0;
@@ -135,9 +137,11 @@ function setup(opts: { thumb?: boolean } = {}) {
     onFrame: () => undefined,
     raf: () => () => undefined,
     standIn: opts.thumb ? () => ({ seconds: 0, bitmap: {} as ImageBitmap, width: 160, height: 90 }) : undefined,
+    strip: opts.strip ? async (_m, index) => ({ bitmap: { close: () => void closed.push(index) } as unknown as ImageBitmap, width: 480, height: 270, index: index - 1 }) : undefined,
+    onSeek: (m, ms) => void seeks.push([m, ms]),
   });
   const finish = (index: number) => { const w = [...waiting.values()].at(-1)!; waiting.clear(); w.resolve(frame(index)); };
-  return { player, renders, calls, finish, pending: () => waiting.size };
+  return { player, renders, calls, finish, closed, seeks, pending: () => waiting.size };
 }
 const settle = () => new Promise((r) => setTimeout(r, 15));
 
@@ -156,6 +160,27 @@ test("scrub shows the nearest filmstrip thumbnail at once, scaled to the clip, t
   assert.equal(s.renders[1]!.first, 30, "then the exact frame");
   assert.deepEqual(s.renders[1]!.scale, [1, 1]);
   assert.deepEqual([s.player.stats.standIns, s.player.stats.thumbStandIns, s.player.stats.scrubMs.length], [1, 1, 1]);
+  s.player.dispose();
+});
+
+test("scrub strip: its picture of the asked-for frame comes first (before a thumbnail), is scaled to the clip and closed, then the exact frame replaces it; the exact seek time is reported", async () => {
+  const s = setup({ thumb: true, strip: true });
+  s.player.seek(30);
+  await settle();
+  assert.equal(s.renders.length, 1, "stand-in first");
+  assert.equal(s.renders[0]!.first, "bitmap");
+  assert.deepEqual(s.renders[0]!.scale, [4, 4], "1920x1080 shown from a 480x270 strip picture");
+  assert.deepEqual([s.player.stats.stripStandIns, s.player.stats.thumbStandIns, s.player.stats.standInOff], [1, 0, [1]]);
+  assert.equal(s.seeks.length, 0, "the exact frame is not there yet");
+  s.finish(30);
+  await settle();
+  assert.equal(s.renders[1]!.first, 30, "then the exact frame");
+  assert.deepEqual(s.closed, [30], "the strip bitmap is closed once drawn");
+  assert.equal(s.seeks.length, 1);
+  assert.equal(s.seeks[0]![0], "m");
+  assert.equal(s.player.isIdle(), false, "just scrubbed: background work waits");
+  await new Promise((r) => setTimeout(r, 450));
+  assert.equal(s.player.isIdle(), true, "quiet for 400 ms: the strip builder may run");
   s.player.dispose();
 });
 

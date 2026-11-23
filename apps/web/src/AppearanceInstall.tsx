@@ -4,6 +4,7 @@ import { announce } from "./a11y/announcer";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { useInstall } from "./install";
+import { loadScrubPrep, saveScrubPrep } from "./preview/strip/setting";
 import { ACCENTS, ACCENT_SWATCH, applyAccent, loadAccent, saveAccent, type Accent } from "./theme/theme";
 
 /** A radio group of colour swatches (44 px targets). The choice is stored on this device only. */
@@ -69,5 +70,16 @@ function IosHowTo({ onClose }: { onClose(): void }) {
       <p className="export-note">{t("install.ios.note")}</p>
       <button className="primary" onClick={onClose} data-testid="install-close">{t("install.ios.close")}</button>
     </dialog>
+  );
+}
+
+/** "Smooth scrubbing": the background preparation of small stand-in pictures for slow-seeking clips (on by default; off stops the work and the stand-ins). */
+export function ScrubPrepItem() {
+  const { t } = useI18n();
+  const [on, setOn] = useState(loadScrubPrep);
+  return (
+    <button className="menu-row" role="menuitemcheckbox" aria-checked={on} data-testid="menu-scrub-prep" onClick={() => { const v = !on; setOn(v); saveScrubPrep(v); announce(t(v ? "scrub.on" : "scrub.off")); }}>
+      <Icon name="film" size={20} /><span>{t(on ? "scrub.menu.on" : "scrub.menu.off")}</span>
+    </button>
   );
 }

@@ -1,5 +1,6 @@
 import type { Project } from "@app/engine-client";
 import { useEffect, useRef } from "react";
+import { fingerprint } from "../media/cache";
 import { pathOf } from "../media/sources";
 import type { PreviewHost } from "./host";
 
@@ -35,7 +36,8 @@ export function useWorkerMedia(host: PreviewHost | null, project: Project | null
             sent.current.add(id);
             // A file that stays on disk (desktop) cannot be cloned into the Worker: it opens the path through the UI thread's native decoder.
             const path = pathOf(file);
-            host.send(path ? { type: "media-native", id, path } : { type: "media", id, file });
+            const ref = project.media.find((m) => m.id === id);
+            host.send(path ? { type: "media-native", id, path } : { type: "media", id, file, fp: `${ref ? fingerprint(ref) : `n-${file.name}`}-${file.size}` });
           }
         } catch {
           /* the clip shows black; the bin already says when a file cannot be read */
