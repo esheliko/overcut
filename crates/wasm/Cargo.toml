@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [dependencies]
+app-audio = { path = "../audio" }
 app-core = { path = "../core" }
 app-media = { path = "../media" }
 app-model = { path = "../model" }

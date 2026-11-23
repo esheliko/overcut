@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Editing, Op, Project } from "@app/engine-client";
+import type { Editing, Engine, Op, Project } from "@app/engine-client";
+import { FakeMediaHost, onlyFixtures } from "./media/host";
+import { MediaLayer } from "./timeline/media-layer";
 import { announce } from "./a11y/announcer";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
@@ -32,6 +34,8 @@ type Props = {
   /** Frames per second and length (frames) of the previewed sequence; defaults are the sample timeline's. */
   fps?: number;
   endFrame?: number;
+  /** Engine for waveform extraction; without it the canvas draws placeholders. */
+  engine?: Engine | null;
 };
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
@@ -41,8 +45,10 @@ const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 
-export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, editing, epoch, onReady, fps = FPS, endFrame = END_FRAME }: Props) {
+export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, editing, epoch, onReady, fps = FPS, endFrame = END_FRAME, engine }: Props) {
   const { t } = useI18n();
+  // Synthetic media serves the sample project only; imported files keep placeholders until they are wired to a real MediaHost (media/engine-host.ts, follow-up).
+  const media = useMemo(() => (engine ? new MediaLayer(engine, onlyFixtures(new FakeMediaHost({ seconds: 30 }))) : undefined), [engine]);
   const proj = useProject(editing, epoch);
   const fallback = useMemo(() => sampleProject(), []);
   const source: Project = proj.project ?? fallback;
@@ -158,7 +164,7 @@ export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, edit
       </div>
       <div className="tl-stage">
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={setSelected} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={onReady} />
+          selected={selected} onSelect={setSelected} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={onReady} media={media} />
       </div>
     </section>
   );

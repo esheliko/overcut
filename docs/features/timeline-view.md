@@ -2,6 +2,8 @@
 
 ## Behaviour
 Canvas-rendered timeline in the editor's timeline panel: time ruler with adaptive tick labels, one row per `Track` of the first `Sequence` (generic for N tracks, video and audio), clips as rectangles with name and a filmstrip (video) or waveform (audio) placeholder, sticky track-label gutter and ruler, playhead. Reads `Project` from `@app/engine-client`; shows a sample project (`timeline/fixture.ts`) until media is imported. Editing (M1-034, below) goes through `Engine.editing`; the UI never changes the project itself.
+
+Canvas-rendered timeline in the editor's timeline panel: time ruler with adaptive tick labels, one row per `Track` of the first `Sequence` (generic for N tracks, video and audio), clips as rectangles with name and a filmstrip (video) or waveform (audio) drawn from cached bitmaps (placeholders until a `MediaLayer` is given), sticky track-label gutter and ruler, playhead. Reads `Project` from `@app/engine-client`; shows a sample project (`timeline/fixture.ts`) until media is imported. **No editing interactions yet** (M1-034).
 - **Zoom** (pixels per second, 2..1200): pinch, ctrl/cmd + wheel (and trackpad pinch), `+`/`-`/`=` keys, `0` fits the project, log-scale slider and buttons. Zoom keeps the time under the pointer (or the playhead / viewport centre) fixed.
 - **Scroll**: wheel (shift or no vertical overflow = horizontal), touch drag with momentum, Page Up/Down, Up/Down arrows for tracks.
 - **Seek**: click/drag on the ruler or (mouse) the tracks; on touch a tap seeks and a drag pans. The playhead is followed while playing.
@@ -22,6 +24,14 @@ All edits are `Op`s sent to `Engine.editing`; after each one the UI re-reads `pr
 - `view.ts`: viewport math (zoom-at-anchor, clamping, slider mapping, tick step, fling decay). `hit.ts`: pure hit-testing (ruler, gutter, clip body/edge, gap, empty) reused by M1-034. Both unit-tested in `tests/unit/timeline.test.ts`.
 - `edit.ts`: pure limits, frame snapping and op builders. `interact.ts`: pure pointer state machine (events -> gesture + effects). `shortcuts.ts`: key -> command. `hit.ts` also has `handleAt`. `useProject.ts` (app level): engine-backed project state.
 - `draw.ts`: painter; `TimelineCanvas.tsx`: sizing at real devicePixelRatio, input, rAF-on-dirty.
+
+## Waveforms and filmstrips (M1-013, `timeline/media-layer.ts`)
+Kept in their own module so interaction work on `draw.ts` does not collide: `drawTimeline(..., media?: MediaLayer)` calls `drawWaveform` / `drawFilmstrip` per visible clip when a layer is passed (the canvas takes it as the `media` prop).
+- **Audio**: 512-column tiles (`media/waveform.ts`), rendered once from `PeaksView.columns` into an offscreen canvas at the lane height times dpr, aligned to media time (so scrolling never shimmers), one tile column = 2^b frames with b = floor(log2(frames per screen pixel)) (at most one column per pixel, at least 32 frames). A draw is one `drawImage` per visible tile. While data has not arrived the clip shows a one-pixel baseline; as partial peaks arrive (every ~400 ms) only tiles that cover new data re-render (tiles over finished data are final and never redrawn). Tiles are LRU-trimmed at 64 MB and dropped when the theme colour or dpr changes.
+- **Video**: thumbnail slots at the `INTERVALS` step for the zoom, each a "cover" crop of its bitmap; slots without a bitmap yet are `videoTile` rectangles. Only the visible slots of visible clips are requested.
+- **Theme**: `paletteFromCss` now builds the palette from `readColors` (clip, accent, accent-soft, surface-3, muted, fg), so light, dark and high-contrast follow the tokens.
+- **Lean mode**: while the view moves and frames take more than 28 ms, filmstrips draw as plain placeholder slots and return 120 ms after motion stops (fast devices never enter it). Waveform tiles are capped at 2x pixel ratio and drawn without smoothing; thumbnails also without smoothing.
+- Not handled yet: clip speed other than 1x (waveform and thumbnails are laid out at 1x), timeline-side effects like gain or fades on the waveform.
 
 ## Performance (budget: docs/PERFORMANCE.md "Timeline UI")
 1000 clips x 20 tracks: 60 fps desktop, 57-59 fps at 4x CPU throttle, 34-41 fps on a phone-size dpr-3 viewport at 4x throttle (software raster). Details and method: ADR 0007 "S8 results". Run `node tests/perf/timeline-bench.mjs` (after `npm run build`).

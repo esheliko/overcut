@@ -106,6 +106,7 @@ dependencies = [
 name = "app-wasm"
 version = "0.1.0"
 dependencies = [
+ "app-audio",
  "app-core",
  "app-media",
  "app-model",

@@ -6,6 +6,7 @@ import { DARK, drawTimeline, newOverlay, paletteFromCss, type DrawStats, type Ov
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
 import { handleAt } from "./hit";
 import { applySelect, IDLE, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
+import type { MediaLayer } from "./media-layer";
 import { canvasCommand, type Command } from "./shortcuts";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
@@ -35,12 +36,14 @@ type Props = {
   onAnnounce?: (say: Say) => void;
   /** Dev/benchmark hook: receives the live view and draw function. */
   onReady?: (h: CanvasHandle) => void;
+  /** Real waveforms and filmstrips; without it the canvas draws placeholders. */
+  media?: MediaLayer;
 };
 
 const TAP_SLOP = 6;
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
-export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onReady }: Props) {
+export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onReady, media }: Props) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ pps: zoom, scrollX: 0, scrollY: 0, width: 300, height: 150 });
@@ -69,9 +72,12 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     if (!c || !ctx) return;
     const l = live.current;
     clampScroll(view.current, lengthSec(), l.scene.trackCount);
-    drawTimeline(ctx, l.scene, view.current, l.frame / l.fps, dpr.current, palette.current, stats.current, ui.current);
-  }, [lengthSec]);
+    drawTimeline(ctx, l.scene, view.current, l.frame / l.fps, dpr.current, palette.current, stats.current, ui.current, media);
+  }, [lengthSec, media]);
   const invalidate = useCallback(() => { if (!raf.current) raf.current = requestAnimationFrame(draw); }, [draw]);
+
+  // New waveform data or thumbnails: redraw.
+  useEffect(() => { if (media) media.onChange = invalidate; }, [media, invalidate]);
 
   // Re-read the palette tokens and redraw when the theme changes.
   useEffect(() => onThemeChange(() => { if (canvas.current) { palette.current = paletteFromCss(canvas.current); invalidate(); } }), [invalidate]);

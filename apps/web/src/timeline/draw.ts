@@ -3,6 +3,7 @@
 import { readColors } from "../theme/tokens";
 import { firstEndingAfter, type Scene } from "./scene";
 import { GUTTER, LANE, RULER, tickStep, timeToX, type View } from "./view";
+import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
 
 export interface Palette {
   bg: string; surface: string; line: string; lineStrong: string; fg: string; muted: string; accent: string;
@@ -60,9 +61,11 @@ const NO_UI: Overlay = newOverlay();
 export interface DrawStats { clipsDrawn: number; tracksDrawn: number }
 
 /** `dpr` is applied via setTransform; callers pass the device pixel ratio the backing store was sized with. */
-export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: View, playheadSec: number, dpr: number, p: Palette, stats: DrawStats, ui: Overlay = NO_UI) {
+export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: View, playheadSec: number, dpr: number, p: Palette, stats: DrawStats, ui: Overlay = NO_UI, media?: MediaLayer) {
   const W = v.width, H = v.height;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  media?.setStyle(p, dpr);
+  media?.beginFrame(v, performance.now());
   ctx.fillStyle = p.surface;
   ctx.fillRect(0, 0, W, H);
 
@@ -111,6 +114,11 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       if (sel !== null && sel[i] === 2) continue;
       const a = x < GUTTER ? GUTTER : x;
       const b = Math.min(W, x + w);
+      if (media) { // real waveform / filmstrip from cached tiles (media-layer.ts)
+        if (audio) drawWaveform(ctx, media, scene, i, x, a, b, y, v, p);
+        else drawFilmstrip(ctx, media, scene, i, x, a, b, y, v, p);
+        continue;
+      }
       if (audio) {
         const mid = y + 3 + (LANE - 7) / 2;
         // Deterministic pseudo waveform anchored to the clip so it does not shimmer while scrolling.

@@ -15,16 +15,28 @@ if (!base) {
   for (let i = 0; i < 50; i++) { try { if ((await fetch(base)).ok) break; } catch { /* not up yet */ } await new Promise((r) => setTimeout(r, 200)); }
 }
 const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH, args: ['--no-sandbox'] } : {});
+const withMedia = process.argv.includes('--media'); // real waveforms + thumbnails (cold = extraction running, warm = all cached)
 const results = {};
 for (const [label, viewport, rate, dsf] of [['desktop 1280x800', { width: 1280, height: 800 }, 1, 1], ['desktop 1280x800, 4x CPU throttle', { width: 1280, height: 800 }, 4, 1], ['phone 390x844 dpr3, 4x CPU throttle', { width: 390, height: 844 }, 4, 3]]) {
+  if (process.env.BENCH_ONLY && !label.includes(process.env.BENCH_ONLY)) continue;
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: dsf });
   const page = await ctx.newPage();
-  await page.goto(`${base}/#timeline-bench`);
+  await page.goto(`${base}/#timeline-bench${withMedia ? '&media' : ''}`);
   await page.waitForFunction(() => typeof globalThis.__timelineBench === 'function');
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate });
-  results[label] = await page.evaluate(() => globalThis.__timelineBench(240));
-  results[label].drag = await page.evaluate(() => globalThis.__timelineDragBench()); // input-to-paint while dragging clips (M1-034)
+  if (withMedia) {
+    await page.waitForFunction(() => typeof globalThis.__mediaIdle === 'function');
+    if (process.env.BENCH_WARM) await page.evaluate(() => globalThis.__timelineBench(30)); // warm-up so extraction and tiles start before we wait for idle
+    const cold = process.env.BENCH_WARM ? { clips: 0, tracks: 0, phases: [] } : await page.evaluate(() => globalThis.__timelineBench(240));
+    const idle = await page.evaluate(() => globalThis.__mediaIdle());
+    results[`${label} [cold: peaks extracting]`] = cold;
+    results[label + ' [warm]'] = await page.evaluate(() => globalThis.__timelineBench(240));
+    console.error('media jobs', JSON.stringify(idle));
+  } else {
+    results[label] = await page.evaluate(() => globalThis.__timelineBench(240));
+    results[label].drag = await page.evaluate(() => globalThis.__timelineDragBench()); // input-to-paint while dragging clips (M1-034)
+  }
   await ctx.close();
 }
 await browser.close();

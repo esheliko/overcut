@@ -46,4 +46,22 @@ declare module "@app/wasm-pkg" {
     static recover(baseJson: string | undefined, checkpointJson: string | undefined, log: string): Editor;
     recovery(): string | undefined;
   }
+  /** A waveform extraction. Mirrors `PeaksJob` in crates/wasm/src/lib.rs. */
+  export class PeaksJob {
+    constructor(sampleRate: number, channels: number, resume: Uint8Array);
+    free(): void;
+    next_frame(): number;
+    push(pcm: Int16Array): void;
+    snapshot(): Uint8Array;
+    finish(): Uint8Array;
+  }
+  /** A parsed peaks file. Mirrors `PeaksView`. */
+  export class PeaksView {
+    constructor(bytes: Uint8Array);
+    free(): void;
+    sample_rate(): number;
+    frames(): number;
+    complete(): boolean;
+    columns(startFrame: number, framesPerPx: number, count: number): Int16Array;
+  }
 }

@@ -59,6 +59,33 @@ export async function createWasmEngine(opts: { spawnExportWorker: () => WorkerLi
         throw toProjectFileError(e);
       }
     },
+    peaks: {
+      begin: async (sampleRate, channels, resume) => {
+        const job = new wasm.PeaksJob(sampleRate, channels, resume ?? new Uint8Array());
+        const nextFrame = job.next_frame();
+        let live = true;
+        return {
+          nextFrame,
+          push: async (pcm) => job.push(pcm),
+          snapshot: async () => job.snapshot(),
+          finish: async () => {
+            const out = job.finish();
+            live = false;
+            job.free();
+            return out;
+          },
+          dispose: async () => {
+            if (live) job.free();
+            live = false;
+          },
+        };
+      },
+      open: async (file) => {
+        const view = new wasm.PeaksView(file);
+        const sampleRate = view.sample_rate(), frames = view.frames(), complete = view.complete();
+        return { sampleRate, frames, complete, columns: async (a, b, n) => view.columns(a, b, n), close: async () => view.free() };
+      },
+    },
     editing,
     export: createExportApi({
       spawn: opts.spawnExportWorker,

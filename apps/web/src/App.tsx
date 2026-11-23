@@ -275,7 +275,7 @@ export function App() {
           e.preventDefault();
           void media.addToTimeline(id, Math.round((frame * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
         }}>
-          <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={setFrame} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} editing={media.editing ?? undefined} epoch={persistence.epoch + opened + binEpoch} />
+          <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={setFrame} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} editing={media.editing ?? undefined} epoch={persistence.epoch + opened + binEpoch} engine={core} />
         </div>
       </main>
 
