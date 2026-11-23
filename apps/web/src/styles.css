@@ -299,6 +299,17 @@ h2, p { margin: 0; }
 
 .export-loading { position: fixed; inset-block-end: calc(env(safe-area-inset-bottom) + 84px); inset-inline: 0; margin-inline: auto; width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 12px; background: var(--surface-3); color: var(--fg); z-index: 40; } /* until the export dialog chunk arrives */
 
+/* accent picker (menu) and install how-to */
+.menu-accent { padding: 6px 12px 8px; }
+.menu-accent-title { display: block; padding-block: 4px; color: var(--muted); font-size: var(--text-sm); }
+.menu-accent-row { display: flex; flex-wrap: wrap; gap: 2px; margin-inline: -8px; }
+.swatch { display: grid; place-items: center; inline-size: 44px; block-size: 44px; padding: 0; border: 0; border-radius: var(--radius-full); background: none; }
+.swatch-dot { inline-size: 24px; block-size: 24px; border-radius: var(--radius-full); border: 2px solid var(--line-strong); box-sizing: border-box; }
+.swatch[data-checked="true"] .swatch-dot { border-color: var(--fg); box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--fg); }
+.install-dialog { max-inline-size: min(420px, calc(100vw - 32px)); padding: var(--space-5); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface-2); color: var(--fg); }
+.install-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+.install-dialog h2 { margin: 0 0 var(--space-3); font-size: var(--text-lg); }
+.install-dialog ol { margin: 0 0 var(--space-3); padding-inline-start: var(--space-5); display: grid; gap: var(--space-2); }
 /* Second toolbar row (TL-02/06): duplicate, copy, cut, paste, timing, history. Six 44 px buttons fit at 320 px. */
 .tl-bar2 { justify-content: flex-start; min-height: 48px; }
 .edit-sheet { inline-size: min(380px, calc(100vw - 16px)); max-block-size: min(70dvh, 520px); margin: auto 12px 12px auto; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow); overflow: auto; }

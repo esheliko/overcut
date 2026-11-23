@@ -49,3 +49,17 @@ With `creationTime` pinned in the settings (it defaults to now), the same projec
 - Hardware-encode speed, thermal and background-tab behaviour on phones; resume after a suspended worker (EX-03, M2).
 - `speed != 1` audio uses the nearest sample (no resampling filter); video speed is the decoder's job.
 - Reference devices: the >= 1x bar for 1080p30 on a reference phone is still unconfirmed.
+
+## Platform limits (EX-02, the one table the presets read)
+Code: `PLATFORMS` in `apps/web/src/export/model.ts`; change a number here and there together. **Last checked: 2026-11-23**, by web search only; the platforms' own help pages were NOT opened, so every row is "reported", not "confirmed". Re-check before relying on a row; the UI never states a limit as fact, it says "aims under" / "limits ... on standard accounts".
+
+| Preset | What it sets | Limit we use | Why this number (reported figures) | Confidence |
+|---|---|---|---|---|
+| YouTube 1080p | short side 1080, fps <= 60 | none | no cap used | n/a |
+| TikTok / Reels / Shorts | 9:16, <= 1080x1920, fps <= 60 | none | TikTok file size reported 72 MB (Android) to 287 MB (iOS) to 1 GB (web), length 10 to 60 min; Reels 4 GB, length reported 3 to 20 min. Sources disagree, so no cap and no length warning | not used |
+| X | short side <= 1080, fps <= 60 | warn above 2:20; size 512 MB | 2:20 and 512 MB for standard accounts in several guides; X developer docs mention 8 GB / 16 GB (Premium) via the API | medium |
+| WhatsApp | short side <= 720, fps <= 30 | aims under 16 MB | the long-standing in-chat video figure; our search could NOT confirm it (some sources say 2 GB for documents) | low: unverified |
+| Discord | short side <= 720, fps <= 30 | aims under 10 MB | free-account cap was lowered to 10 MB in Sep 2024; one source reports a later rise to 20 MB. 10 MB is the lowest reported, so the file fits either way | medium |
+
+How a cap is used (`presetChoice`, `videoBitrate`, `presetWarnings`): the video aims at 90% of the cap (`CAP_MARGIN`; the encoder is variable-rate and the container adds overhead) after subtracting the audio bitrate; if that leaves fewer than 0.05 bits per pixel per frame (`MIN_BPP`; H.264 "Medium" is 0.06) the size steps down 720 -> 480 -> 360 -> 240 instead of ruining the picture; if even that cannot fit (a long video) the dialog warns "will probably not fit" instead of staying silent. The figure is the encoder's target, like the rest of the estimate: the UI says "Aims to stay under N ... check the saved file". A duration limit only warns; the video is never cut. Any Advanced edit drops the cap (it is then a custom choice).
+Presets follow the project canvas (`docs/features/canvas.md`): sizes come from the canvas, a preset only shrinks, and only the 9:16 preset has a fixed frame, so a canvas that is not 9:16 gets the "placed inside with black bars" note (reframing is TL-24, M6).

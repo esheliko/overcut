@@ -2,12 +2,15 @@ import { StrictMode, Suspense, createElement, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { applyLocale, initialLocale, I18nProvider } from "./i18n";
-import { applyTheme, loadPref } from "./theme/theme";
+import { watchInstallPrompt } from "./install";
+import { applyAccent, applyTheme, loadAccent, loadPref } from "./theme/theme";
 import "./theme/tokens.css";
 import "./styles.css";
 
 // Set theme, language and direction before the first paint so there is no flash of the wrong theme.
 applyTheme(loadPref());
+applyAccent(loadAccent());
+watchInstallPrompt(); // the browser fires `beforeinstallprompt` early: keep it until the menu can offer it
 applyLocale(initialLocale());
 
 // `/#timeline-bench` opens the S8 benchmark page (lazy chunk, not linked from the UI).
