@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createNetworkLog, hostOf, summarize } from "../../apps/web/src/privacy/networkLog";
+import { readFileSync } from "node:fs";
+import { OPENH264_HOST_URL, createNetworkLog, hostOf, summarize } from "../../apps/web/src/privacy/networkLog";
 
 test("network log: records in order, notifies, and keeps a stable list until something changes", () => {
   const log = createNetworkLog();
@@ -42,4 +43,13 @@ test("summary: own host only is quiet; another host, and downloads, are named", 
   assert.equal(s.downloads, 1);
   assert.equal(hostOf("data:text/plain,hi"), null);
   assert.equal(hostOf("not a url"), null);
+});
+
+test("the OpenH264 download host logged by the export dialog is the allow-listed desktop host", () => {
+  const allow = JSON.parse(readFileSync(new URL("../../config/network-allowlist.json", import.meta.url), "utf8")) as Record<string, unknown>;
+  const host = hostOf(OPENH264_HOST_URL);
+  assert.ok(host);
+  assert.ok(JSON.stringify(allow).includes(`"${host}"`));
+  const rs = readFileSync(new URL("../../apps/desktop/native-media/src/openh264.rs", import.meta.url), "utf8");
+  assert.ok(rs.includes(`pub const HOST: &str = "${host}";`));
 });
