@@ -77,7 +77,7 @@ export function usePersistence(engine: Engine | null) {
       setProblem(err instanceof Error ? err.message : String(err));
     }
   };
-  return { session, epoch, recovered, status, problem, undoRecovery, dismiss: () => setRecovered(null) };
+  return { ready: session !== null, session, epoch, recovered, status, problem, undoRecovery, dismiss: () => setRecovered(null) };
 }
 
 /** Small, non-blocking notes: what was recovered (with an undo) and why saving is not working. */

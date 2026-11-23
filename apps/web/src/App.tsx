@@ -1,13 +1,14 @@
 import { createEngine, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
-import { END_FRAME, Timeline } from "./Timeline";
+import { PreviewPanel, type Sequenced } from "./PreviewPanel";
+import { Timeline, TIMELINE_SECONDS } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
-import { FPS, timecode } from "./timecode";
+import { FPS } from "./timecode";
 
 type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend } | { status: "error"; message: string };
 
@@ -109,6 +110,8 @@ export function App() {
   const [engine, setEngine] = useState<EngineState>({ status: "loading" });
   const [core, setCore] = useState<Engine | null>(null);
   const persistence = usePersistence(core);
+  const [opened, setOpened] = useState(0); // bumped when the preview opens a clip: the timeline re-reads the engine's project
+  const [seq, setSeq] = useState<Sequenced>({ project: null, rate: { num: FPS, den: 1 }, endFrame: TIMELINE_SECONDS * FPS });
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
@@ -127,8 +130,6 @@ export function App() {
   useEffect(() => watchSystem(() => loadPref(), () => undefined), []);
   const wide = useMedia("(min-width: 1100px)");
   const roomy = useMedia("(min-width: 720px)"); // tablet and up: the tool panel is always open
-  const frameRef = useRef(0);
-  frameRef.current = frame;
 
   useEffect(() => {
     let alive = true;
@@ -145,51 +146,11 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Transport: advance by whole frames from the real clock.
-  useEffect(() => {
-    if (!playing) return;
-    let raf = 0;
-    let last = performance.now();
-    let acc = 0;
-    const tick = (now: number) => {
-      acc += ((now - last) * FPS) / 1000;
-      last = now;
-      const whole = Math.floor(acc);
-      if (whole > 0) {
-        acc -= whole;
-        const next = Math.min(END_FRAME, frameRef.current + whole);
-        frameRef.current = next;
-        setFrame(next);
-        if (next >= END_FRAME) { setPlaying(false); return; }
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing]);
-
-  const togglePlay = useCallback(() => {
-    if (!playing && frameRef.current >= END_FRAME) { frameRef.current = 0; setFrame(0); }
-    setPlaying((p) => !p);
-  }, [playing]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (e.code !== "Space" || e.repeat || t.closest("input, select, textarea, button, [role=slider]")) return;
-      e.preventDefault();
-      togglePlay();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [togglePlay]);
-
   const soon = useCallback((m: string) => setToast(m), []);
   const pick = (id: string) => { setSheet(id === tool ? !sheet : true); setTool(id); };
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId) ?? TOOLS[0]!;
   const activeLabel = t(`tool.${active.id}.label`);
-  const ar = RATIOS.find((r) => r.id === ratio)!.value;
   const rail = wide ? TOOLS.filter((x) => x.id !== "edit") : TOOLS;
   const themeName = t(`theme.${themePref}`);
 
@@ -230,31 +191,11 @@ export function App() {
           {active.id === "edit" ? <Details /> : <Library tool={active} onSoon={soon} />}
         </section>
 
-        <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview">
-          <div className="stage-view">
-            <div className="canvas" style={{ ["--ar" as string]: ar, aspectRatio: String(ar) }}>
-              <div className="canvas-hint"><Icon name="film" size={30} /><span>{t("preview.hint")}</span></div>
-            </div>
-          </div>
-          <div className="player-bar">
-            <div className="tc" aria-label={t("player.time")}><span>{timecode(frame)}</span><span className="tc-total"> / {timecode(END_FRAME)}</span></div>
-            <div className="transport" role="toolbar" aria-label={t("player.toolbar")}>
-              <button className="icon-btn" aria-label={t("player.start")} onClick={() => setFrame(0)}><Icon name="back" size={20} /></button>
-              <button className="play" aria-label={playing ? t("player.pause") : t("player.play")} onClick={togglePlay}><Icon name={playing ? "pause" : "play"} size={22} /></button>
-              <button className="icon-btn" aria-label={t("player.end")} onClick={() => setFrame(END_FRAME)}><Icon name="forward" size={20} /></button>
-            </div>
-            <label className="ratio">
-              <span className="sr-only">{t("ratio.label")}</span>
-              <select value={ratio} onChange={(e) => setRatio(e.target.value as typeof ratio)}>
-                {RATIOS.map((r) => <option key={r.id} value={r.id}>{r.id === ratio ? r.id : t(`ratio.${r.id}`)}</option>)}
-              </select>
-            </label>
-          </div>
-        </section>
+        <PreviewPanel engine={core} ready={persistence.ready} frame={frame} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onFrame={setFrame} onPlaying={setPlaying} onSequence={setSeq} onOpened={() => setOpened((n) => n + 1)} />
 
         {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
-        <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onNotice={soon} editing={persistence.session?.editing} epoch={persistence.epoch} />
+        <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={setFrame} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} editing={persistence.session?.editing} epoch={persistence.epoch + opened} />
       </main>
 
       <PersistenceNotes state={persistence} />

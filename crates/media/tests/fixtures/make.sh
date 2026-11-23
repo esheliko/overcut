@@ -19,3 +19,7 @@ ffmpeg $Q $V $A -c:v libvpx-vp9 -b:v 100k -g 15 -c:a libopus -b:a 24k vp9_opus.w
 ffmpeg $Q -i h264_aac.mp4 -c copy -movflags frag_keyframe+empty_moov+default_base_moof -frag_duration 500000 frag.mp4
 # Same, but the old style: base offsets relative to moof start are implicit, per-sample sizes/durations come from trex/tfhd defaults
 ffmpeg $Q -i h264_aac.mp4 -c copy -movflags frag_keyframe+empty_moov -frag_duration 500000 frag_legacy.mp4
+# A/V sync fixture for the preview (tests/smoke/preview.spec.ts): 3 s, black picture with ONE white frame at 1.000 s, and a 1 kHz click starting at the same instant
+ffmpeg $Q -f lavfi -i "color=c=black:size=320x180:rate=30:duration=3,drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='between(t,1,1.03)'" \
+  -f lavfi -i "aevalsrc='if(between(t,1,1.02),0.8*sin(2*PI*1000*t),0)':s=48000:d=3" \
+  -c:v libx264 -g 30 -bf 0 -pix_fmt yuv420p -c:a aac -b:a 64k -movflags +faststart flash_click.mp4
