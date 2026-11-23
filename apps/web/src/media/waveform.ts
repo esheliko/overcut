@@ -60,6 +60,20 @@ export class WaveformService {
     return e;
   }
 
+  /** Forgets everything known about a media id (offline when first requested, relinked, or gone): the next `request` queues extraction again. */
+  invalidate(mediaId: string) {
+    for (const [fp, e] of this.entries) {
+      if (e.media.id !== mediaId) continue;
+      for (const t of e.tiles.values()) this.tileBytes -= t.bytes;
+      e.tiles.clear(); e.rendering.clear();
+      const v = e.view; e.view = null;
+      if (v) setTimeout(() => void v.close(), 2000); // tiles may still be reading it
+      this.entries.delete(fp);
+      const q = this.queue.indexOf(e);
+      if (q >= 0) this.queue.splice(q, 1);
+    }
+  }
+
   /** Tile style (theme colour, lane height, pixel ratio). A change drops every tile so they re-render with the new look. */
   setStyle(s: TileStyle) {
     const o = this.style;
