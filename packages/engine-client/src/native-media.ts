@@ -91,6 +91,11 @@ class NativeHandle implements MediaHandle {
     return frameIndexAtTicks(this.pts, ticks);
   }
 
+  /** Timestamp (ticks) of every video frame in presentation order: the desktop preview Worker gets a copy so its `frameIndexAt` stays synchronous. */
+  presentationTicks(): readonly number[] {
+    return this.pts;
+  }
+
   async videoFrame(index: number): Promise<DecodedFrame> {
     if (this.closed) throw new MediaDecodeError("invalid", "media is closed");
     if (!this.info.video) throw new MediaDecodeError("out_of_range", "this file has no video");

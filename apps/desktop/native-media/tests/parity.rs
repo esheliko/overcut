@@ -2,7 +2,9 @@
 //! Expected pixels / samples come from (a) known content of `flash_click.mp4` and (b) the `ffmpeg` CLI when it is installed (skipped with a note otherwise).
 //! Tolerances: video mean absolute error <= 2.0 / 255 per channel (swscale rounding differs between builds); audio max abs error <= 0.02.
 use app_media::Decoder;
-use app_native_media::{encoder_available, open_file, AudioConfig, EncoderConfig, Mp4Encoder};
+use app_native_media::{
+    encoder_available, open_file, AudioConfig, Container, EncoderConfig, Mp4Encoder,
+};
 use std::future::Future;
 use std::path::PathBuf;
 use std::process::Command;
@@ -235,6 +237,7 @@ fn mp4_encoder_round_trips_through_the_native_decoder() {
     let (w, h, fps) = (320u32, 180u32, 30u32);
     let mut enc = Mp4Encoder::create(EncoderConfig {
         path: path.clone(),
+        container: Container::Mp4,
         width: w,
         height: h,
         fps_num: fps,
@@ -284,6 +287,95 @@ fn mp4_encoder_round_trips_through_the_native_decoder() {
 }
 
 #[test]
+fn webm_vp9_opus_round_trips_through_the_native_decoder() {
+    if !app_native_media::webm_available() {
+        eprintln!("this libav has no libvpx-vp9 + libopus: skipping");
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("overcut-native-{}.webm", std::process::id()));
+    let (w, h, fps) = (320u32, 180u32, 30u32);
+    let mut enc = Mp4Encoder::create(EncoderConfig {
+        path: path.clone(),
+        container: Container::WebM,
+        width: w,
+        height: h,
+        fps_num: fps,
+        fps_den: 1,
+        video_bitrate: 1_000_000,
+        keyframe_seconds: 1.0,
+        audio: Some(AudioConfig {
+            sample_rate: 48_000,
+            channels: 2,
+            bitrate: 96_000,
+        }),
+        video_encoders: None,
+        creation_time: None,
+    })
+    .expect("create webm");
+    assert_eq!(enc.video_encoder(), "libvpx-vp9");
+    for i in 0..30u32 {
+        let v = (i * 8).min(255) as u8;
+        let rgba: Vec<u8> = (0..w * h).flat_map(|_| [v, v, v, 255]).collect();
+        enc.push_video(&rgba).unwrap();
+    }
+    let pcm: Vec<f32> = (0..48_000)
+        .flat_map(|i| {
+            let s = (i as f32 * 440.0 * std::f32::consts::TAU / 48_000.0).sin() * 0.5;
+            [s, s]
+        })
+        .collect();
+    enc.push_audio(&pcm).unwrap();
+    let st = enc.finish().expect("finish");
+    assert_eq!((st.frames, st.audio_samples), (30, 48_000));
+    assert!(st.file_bytes > 1000);
+
+    let mut d = open_file(&path, 48_000).expect("reopen");
+    let info = d.info();
+    assert_eq!(info.video.as_ref().unwrap().frame_count, 30);
+    for i in [0i64, 15, 29] {
+        let f = rgba_of(&block_on(d.video_frame(i)).unwrap());
+        let want = (i as u32 * 8).min(255) as i32;
+        let got = f[0] as i32;
+        assert!(
+            (got - want).abs() <= 16,
+            "frame {i}: grey {got}, wanted about {want}"
+        );
+    }
+    let a = block_on(d.audio_f32(12_000, 12_000)).unwrap();
+    let peak = a.iter().fold(0f32, |m, v| m.max(v.abs()));
+    assert!((0.3..0.65).contains(&peak), "audio peak {peak}");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn webm_refuses_a_sample_rate_opus_cannot_take() {
+    if !app_native_media::webm_available() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!("overcut-native-bad-{}.webm", std::process::id()));
+    let r = Mp4Encoder::create(EncoderConfig {
+        path: path.clone(),
+        container: Container::WebM,
+        width: 64,
+        height: 64,
+        fps_num: 30,
+        fps_den: 1,
+        video_bitrate: 200_000,
+        keyframe_seconds: 1.0,
+        audio: Some(AudioConfig {
+            sample_rate: 44_100,
+            channels: 2,
+            bitrate: 96_000,
+        }),
+        video_encoders: None,
+        creation_time: None,
+    });
+    let err = r.err().expect("44.1 kHz must be refused");
+    assert!(err.contains("48 kHz"), "{err}");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn native_media_reports_the_same_info_shape_as_the_web_decoder() {
     let mut m =
         app_native_media::NativeMedia::open(&fixture("flash_click.mp4"), 48_000).expect("open");
@@ -311,4 +403,31 @@ fn native_media_reports_the_same_info_shape_as_the_web_decoder() {
         app_native_media::libav_is_lgpl(),
         app_native_media::libav_license().starts_with("LGPL")
     );
+}
+
+#[test]
+fn a_stored_openh264_library_loads() {
+    // Stand-in for the downloaded Cisco file: the distro's own copy, where there is one.
+    let Some(lib) = std::fs::read_dir("/usr/lib/x86_64-linux-gnu")
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("libopenh264.so."))
+        })
+    else {
+        eprintln!("no libopenh264 on this machine: skipping");
+        return;
+    };
+    app_native_media::openh264::activate(&lib).expect("load");
+    app_native_media::openh264::activate(&lib).expect("idempotent");
+    // Ubuntu's libav is built without the libopenh264 wrapper (ADR 0004), so only where it exists must it open with the library loaded.
+    if encoder_available("libopenh264") {
+        assert!(app_native_media::encoder_opens("libopenh264"));
+    }
+    assert!(!app_native_media::encoder_opens("no-such-encoder"));
 }

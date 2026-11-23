@@ -16,7 +16,7 @@ import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref }
 import { ExportControl } from "./export/ExportDialog";
 import { MediaBin } from "./media/MediaBin";
 import { TICKS } from "./media/plan";
-import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickMany, pickOne, setDesktop, type Source } from "./media/sources";
+import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickMany, pickOne, setDesktop, setNativeMedia, type Source } from "./media/sources";
 import { useShellProfile } from "./layout/useShellProfile";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
@@ -189,7 +189,7 @@ function Editor({ store }: { store: ProjectStore }) {
     let alive = true;
     createEngine()
       .then(async (e) => ({ info: await e.info(), backend: e.backend, engine: e }))
-      .then(({ engine: e, ...r }) => alive && (setDesktop(e.desktop), setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
+      .then(({ engine: e, ...r }) => alive && (setDesktop(e.desktop), setNativeMedia(e.desktop ? e.media : undefined), setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
       .catch((e: unknown) => alive && setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }));
     return () => { alive = false; };
   }, []);

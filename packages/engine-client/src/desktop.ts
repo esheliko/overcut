@@ -30,8 +30,47 @@ export interface DesktopApi {
   /** Shows the file in the system file manager. */
   reveal(path: string): Promise<void>;
   codecs(): Promise<DesktopCodecs>;
-  /** The opt-in OpenH264 download. Rejects with `{code: "not_yet"}` where the build has no downloader. */
-  enableH264(): Promise<void>;
+  /**
+   * The opt-in OpenH264 download (issue #57): only ever called from the person's click. `onProgress` gets bytes so far and the total when known.
+   * Rejects with an `H264Error` whose `code` says why (`offline`, `checksum`, `cancelled`, `unsupported`, `io`, `busy`).
+   */
+  enableH264(onProgress?: (p: H264Progress) => void): Promise<void>;
+  /** Stops a running `enableH264` (it then rejects with code `cancelled`). */
+  cancelH264(): Promise<void>;
+}
+
+export interface H264Progress {
+  done: number;
+  total: number | null;
+}
+
+export type H264FailureCode = "offline" | "checksum" | "cancelled" | "unsupported" | "io" | "busy" | "unknown";
+
+/** Why the OpenH264 download did not finish. The message is plain language from the shell. */
+export class H264Error extends Error {
+  constructor(readonly code: H264FailureCode, message: string) {
+    super(message);
+    this.name = "H264Error";
+  }
+}
+
+const H264_CODES: readonly string[] = ["offline", "checksum", "cancelled", "unsupported", "io", "busy"];
+
+/** The shell rejects with `{"code": ..., "message": ...}` as a string; anything else becomes code `unknown`. */
+export function parseH264Failure(e: unknown): H264Error {
+  const raw = e instanceof Error ? e.message : String(e);
+  try {
+    const o = JSON.parse(raw) as { code?: unknown; message?: unknown };
+    if (typeof o.code === "string") return new H264Error((H264_CODES.includes(o.code) ? o.code : "unknown") as H264FailureCode, typeof o.message === "string" ? o.message : raw);
+  } catch {
+    /* not JSON: a bare error such as "Command not found" */
+  }
+  return new H264Error("unknown", raw);
+}
+
+/** Percent done (0-100) of the download, or null while the size is not known. */
+export function h264Percent(p: H264Progress): number | null {
+  return p.total && p.total > 0 ? Math.min(100, Math.round((p.done / p.total) * 100)) : null;
 }
 
 /** `listen` from `@tauri-apps/api/event`, passed in by `tauri.ts` (the only file allowed to import `@tauri-apps/*`). */
@@ -126,6 +165,16 @@ export function createDesktopApi(invoke: Invoke, listen: Listen): DesktopApi {
     saveProject: (bytes, suggested) => invoke<string | null>("desktop_save_project", { bytes: Array.from(bytes), suggested }),
     reveal: (path) => invoke<void>("desktop_reveal", { path }),
     codecs: async () => JSON.parse(await invoke<string>("desktop_codecs")) as DesktopCodecs,
-    enableH264: () => invoke<void>("desktop_enable_h264"),
+    enableH264: async (onProgress) => {
+      const off = onProgress ? await listen<H264Progress>("overcut://h264-progress", (e) => onProgress(e.payload)) : undefined;
+      try {
+        await invoke<void>("desktop_enable_h264");
+      } catch (e) {
+        throw parseH264Failure(e);
+      } finally {
+        off?.();
+      }
+    },
+    cancelH264: () => invoke<void>("desktop_cancel_h264"),
   };
 }

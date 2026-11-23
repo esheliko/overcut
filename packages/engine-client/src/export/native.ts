@@ -62,13 +62,15 @@ const FILE_CHUNK = 4 * 1024 * 1024;
 let counter = 0;
 const newId = (): string => `${Date.now().toString(36)}-${(counter++).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-/** The native encoder writes MP4 with H.264 + AAC (ADR 0004): anything else is refused up front, in the user's words. */
-function checkSupported(settings: ExportSettings): void {
-  const bad: string[] = [];
-  if (settings.container === "webm") bad.push("WebM");
-  if (settings.videoCodec === "vp9" || settings.videoCodec === "av1") bad.push(settings.videoCodec === "vp9" ? "VP9" : "AV1");
-  if (settings.audioCodec === "opus") bad.push("Opus");
-  if (bad.length) throw new ExportError("unsupported", `The desktop app exports MP4 with H.264 and AAC for now; ${bad.join(", ")} is not available there yet.`);
+/**
+ * The native encoder writes MP4 (H.264 + AAC) or WebM (VP9 + Opus), nothing else (ADR 0004). The container follows the settings: `webm` / `vp9` / `opus`
+ * mean WebM, no settings mean MP4. A mixed request (WebM with H.264, MP4 with VP9) is refused up front, in the user's words.
+ */
+export function nativeContainer(settings: ExportSettings): "mp4" | "webm" {
+  const webm = settings.container === "webm" || settings.videoCodec === "vp9" || settings.audioCodec === "opus";
+  const mp4 = settings.container === "mp4" || settings.videoCodec === "h264" || settings.audioCodec === "aac";
+  if (webm && mp4) throw new ExportError("unsupported", "The desktop app writes MP4 with H.264 and AAC, or WebM with VP9 and Opus; those cannot be mixed.");
+  return webm ? "webm" : "mp4";
 }
 
 /** Builds the loop's environment over the native backend. Exposed for tests (fake backend, fake renderer); `createNativeExportApi` is the product entry. */
@@ -95,7 +97,8 @@ export async function createNativeEnv(
     disposeMedia();
   };
 
-  const fileName = `${jobId}.mp4`;
+  const container = nativeContainer(settings);
+  const fileName = `${jobId}.${container}`;
   const fps = plan.fpsNum / plan.fpsDen;
   let session: { id: number; encoder: string };
   try {
@@ -105,11 +108,11 @@ export async function createNativeEnv(
       height: plan.height,
       fpsNum: plan.fpsNum,
       fpsDen: plan.fpsDen,
-      videoBitrate: settings.videoBitrate ?? defaultVideoBitrate("avc", plan.width, plan.height, fps),
+      videoBitrate: settings.videoBitrate ?? defaultVideoBitrate(container === "webm" ? "vp9" : "avc", plan.width, plan.height, fps),
       keyframeSeconds: settings.keyframeIntervalSeconds ?? 2,
       audioRate: plan.sampleRate,
       audioChannels: 2,
-      audioBitrate: settings.audioBitrate ?? 192_000,
+      audioBitrate: settings.audioBitrate ?? (container === "webm" ? 128_000 : 192_000),
       hasAudio: true,
       preferSoftware: settings.hardware === "prefer-software",
       creationTime: settings.creationTime === undefined ? null : Math.floor(settings.creationTime / 1000),
@@ -118,7 +121,7 @@ export async function createNativeEnv(
     dispose();
     const msg = e instanceof Error ? e.message : String(e);
     if (/not found|not allowed|unknown command/i.test(msg)) throw new ExportError("not_yet", "This build of the desktop app cannot export yet (no native encoder). Use the web app.");
-    throw new ExportError(/no H\.264 encoder/.test(msg) ? "unsupported" : "encode_failed", `Could not start encoding: ${msg}`);
+    throw new ExportError(/no H\.264 encoder|libvpx|libopus|Opus needs/.test(msg) ? "unsupported" : "encode_failed", `Could not start encoding: ${msg}`);
   }
   const { id } = session;
 
@@ -213,7 +216,7 @@ export async function createNativeEnv(
 export function createNativeExportApi(host: NativeExportHost): ExportApi {
   return {
     async start(settings) {
-      checkSupported(settings);
+      nativeContainer(settings);
       const project = await host.project();
       planExport(project, settings); // fail fast, before anything opens
       const id = newId();
@@ -229,8 +232,9 @@ export function createNativeExportApi(host: NativeExportHost): ExportApi {
           });
           const seconds = (web.plan.totalFrames * web.plan.fpsDen) / web.plan.fpsNum;
           const fileName = web.fileName;
+          const webm = fileName.endsWith(".webm");
           return {
-            mime: "video/mp4",
+            mime: webm ? "video/webm" : "video/mp4",
             fileName,
             fileBytes: r.fileBytes,
             warnings: [],
@@ -241,12 +245,12 @@ export function createNativeExportApi(host: NativeExportHost): ExportApi {
               encodeMs: r.encodeMs,
               speedVsRealtime: seconds / (r.encodeMs / 1000),
               peakEncodeQueue: r.peakEncodeQueue,
-              codecs: `${web.encoder()} + aac`,
+              codecs: `${web.encoder()} + ${webm ? "opus" : "aac"}`,
             },
             file: async () => {
               const parts: Uint8Array[] = [];
               for (let off = 0; off < r.fileBytes; off += FILE_CHUNK) parts.push(await host.backend.read(fileName, off, Math.min(FILE_CHUNK, r.fileBytes - off)));
-              return new File(parts as BlobPart[], fileName, { type: "video/mp4" });
+              return new File(parts as BlobPart[], fileName, { type: webm ? "video/webm" : "video/mp4" });
             },
             remove: () => host.backend.remove(fileName),
           };

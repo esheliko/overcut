@@ -2,7 +2,7 @@
 //! Thin on purpose: all logic lives in `app-native-media` (tested there); these only own ids, files and binary IPC.
 //! Pixels and PCM cross as raw binary bodies / responses (never JSON): `[w u32 LE][h u32 LE][RGBA]` for a frame, f32 LE for audio.
 
-use app_native_media::{ExportParams, NativeExport, NativeMedia};
+use app_native_media::{Container, ExportParams, NativeExport, NativeMedia};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::Write;
@@ -53,7 +53,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Sen
 pub fn native_info() -> String {
     let _ = app_native_media::init();
     let enc: Vec<&str> = app_native_media::H264_PREFERENCE.iter().copied().filter(|n| app_native_media::encoder_available(n)).collect();
-    serde_json::json!({"license": app_native_media::libav_license(), "lgpl": app_native_media::libav_is_lgpl(), "h264Encoders": enc}).to_string()
+    serde_json::json!({"license": app_native_media::libav_license(), "lgpl": app_native_media::libav_is_lgpl(), "h264Encoders": enc, "webm": app_native_media::webm_available()}).to_string()
 }
 
 // ---- files picked in the webview without a path: staged in a temp file, chunk by chunk ----
@@ -160,14 +160,13 @@ pub struct BeginArgs {
 
 #[tauri::command]
 pub async fn native_export_begin(args: BeginArgs, app: tauri::AppHandle, state: State<'_, NativeState>) -> Result<String, String> {
-    if args.file_name.contains(['/', '\\']) || !args.file_name.ends_with(".mp4") {
-        return Err("invalid export file name".into());
-    }
+    let container = Container::of_file_name(&args.file_name).filter(|_| !args.file_name.contains(['/', '\\'])).ok_or("invalid export file name")?;
     let dir = crate::desktop::exports_dir(&app);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(&args.file_name);
     let p = ExportParams {
         path: path.clone(),
+        container,
         width: args.width,
         height: args.height,
         fps_num: args.fps_num,

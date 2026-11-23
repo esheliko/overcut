@@ -1,6 +1,6 @@
 //! Synchronous, command-shaped wrappers over the decoder and encoder: what the Tauri commands call, tested here without a webview.
 use crate::decode::{block_on, open_probed, LibavHost};
-use crate::encode::{AudioConfig, EncoderConfig, ExportStats, Mp4Encoder};
+use crate::encode::{AudioConfig, Container, EncoderConfig, ExportStats, MediaEncoder};
 use app_media::{Decoder, FrameData, HostDecoder, MediaError, Probe, Track};
 use serde_json::json;
 use std::path::Path;
@@ -72,6 +72,8 @@ fn presentation_ticks(p: &Probe) -> Vec<i64> {
 #[derive(Clone, Debug)]
 pub struct ExportParams {
     pub path: std::path::PathBuf,
+    /// MP4 (H.264 + AAC) or WebM (VP9 + Opus).
+    pub container: Container,
     pub width: u32,
     pub height: u32,
     pub fps_num: u32,
@@ -87,7 +89,7 @@ pub struct ExportParams {
 }
 
 pub struct NativeExport {
-    enc: Mp4Encoder,
+    enc: MediaEncoder,
 }
 
 // SAFETY: libav contexts have no thread affinity (no thread-local state; the software paths used here touch only the context's own memory),
@@ -97,8 +99,9 @@ unsafe impl Send for NativeMedia {}
 
 impl NativeExport {
     pub fn begin(p: ExportParams) -> Result<Self, String> {
-        let enc = Mp4Encoder::create(EncoderConfig {
+        let enc = MediaEncoder::create(EncoderConfig {
             path: p.path,
+            container: p.container,
             width: p.width,
             height: p.height,
             fps_num: p.fps_num,
@@ -110,7 +113,11 @@ impl NativeExport {
                 channels: p.audio_channels,
                 bitrate: p.audio_bitrate,
             }),
-            video_encoders: p.prefer_software.then(|| vec!["libopenh264".to_string()]),
+            video_encoders: Some(crate::video_encoder_names(
+                p.container,
+                p.prefer_software,
+                None,
+            )),
             creation_time: p.creation_time,
         })?;
         Ok(NativeExport { enc })

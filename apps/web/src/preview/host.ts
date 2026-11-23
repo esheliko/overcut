@@ -8,6 +8,8 @@ import { createWebAudio } from "./audio";
 import type { AudioOut } from "./player";
 import { epochNow, type FromPreview, type PreviewConfig, type PreviewRpc, type ToPreview } from "./protocol";
 import { TICKS_PER_SECOND } from "./timing";
+import { getNativeMedia } from "../media/sources";
+import { NativeMediaBridge, type NativeOp } from "./nativeMedia";
 import { onThumb } from "../media/thumbBus";
 import { UPLOAD_STORE } from "./uploadPath";
 
@@ -110,6 +112,7 @@ export class PreviewHost {
     this.stopClock();
     this.audio?.stop();
     this.worker.terminate();
+    void this.native?.dispose();
   }
 
   private sampleClock(): void {
@@ -140,13 +143,21 @@ export class PreviewHost {
       case "audio": this.audio?.schedule(m.left, m.right, m.when); return;
       case "audio-stop": this.audio?.stop(); return;
       case "request":
-        if (m.name === "upload-get") this.send({ type: "reply", id: m.id, value: readUpload(m.key) });
+        if (m.name === "native") void this.answerNative(m.id, m.op);
+        else if (m.name === "upload-get") this.send({ type: "reply", id: m.id, value: readUpload(m.key) });
         else void this.answerAudio(m.id);
         return;
       case "upload-set": writeUpload(m.key, m.value); return;
       case "reply": this.waiting.get(m.id)?.(m.value); this.waiting.delete(m.id); return;
     }
   }
+
+  private async answerNative(id: number, op: NativeOp): Promise<void> {
+    const bridge = (this.native ??= (() => { const media = getNativeMedia(); return media ? new NativeMediaBridge(media) : undefined; })());
+    const { value, transfer } = bridge ? await bridge.answer(op) : { value: { error: { kind: "unsupported" as const, message: "no native decoder in this build" } }, transfer: [] };
+    this.send({ type: "reply", id, value }, transfer);
+  }
+  private native: NativeMediaBridge | undefined;
 
   private async answerAudio(id: number): Promise<void> {
     this.audio ??= createWebAudio(48_000);

@@ -1,5 +1,5 @@
 /** The export dialog itself (settings, progress, done, failed). Loaded on first use so it stays out of the first-load JavaScript. */
-import { probeExportFormats, type DesktopCodecs, type ExportFormats } from "@app/engine-client";
+import { h264Percent, parseH264Failure, probeExportFormats, type DesktopCodecs, type ExportFormats, type H264FailureCode, type H264Progress } from "@app/engine-client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
@@ -220,31 +220,47 @@ function Progress({ state, onCancel, onTuck }: { state: Extract<ExportState, { p
   );
 }
 
-/** Desktop, no H.264 encoder: say so, and offer the opt-in download. Nothing is fetched until the button is pressed. */
+/**
+ * Desktop, no H.264 encoder: say so, and offer the opt-in download (issue #57). Nothing is fetched until the button is pressed; while it runs there is a
+ * progress bar and a Cancel button; every failure says what happened and that WebM still works.
+ */
 function H264Notice({ codecs, onEnabled }: { codecs: DesktopCodecs; onEnabled(): void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [progress, setProgress] = useState<H264Progress | null>(null);
+  const [failure, setFailure] = useState<H264FailureCode | null>(null);
   if (codecs.h264 !== "none") return null;
   const enable = async () => {
     setBusy(true);
-    setFailed(false);
+    setFailure(null);
+    setProgress(null);
     try {
-      await getDesktop()?.enableH264();
+      await getDesktop()?.enableH264(setProgress);
       onEnabled();
-    } catch {
-      setFailed(true);
+    } catch (e) {
+      setFailure(parseH264Failure(e).code);
     } finally {
       setBusy(false);
     }
   };
+  const percent = progress ? h264Percent(progress) : null;
   return (
     <div className="export-note" data-testid="export-h264-notice">
       <p>{t("export.desktop.noH264")}</p>
       {canOfferH264Download(codecs) && (
-        <button className="export-secondary" onClick={() => void enable()} disabled={busy} data-testid="export-enable-h264">{t(busy ? "export.desktop.enabling" : "export.desktop.enable")}</button>
+        <>
+          {!busy && <button className="export-secondary" onClick={() => void enable()} data-testid="export-enable-h264">{t("export.desktop.enable")}</button>}
+          {busy && (
+            <div className="diag-progress" data-testid="export-h264-progress">
+              <progress max={100} value={percent ?? undefined} aria-label={t("export.desktop.enabling")} />
+              <span>{percent === null ? t("export.desktop.enabling") : t("export.desktop.progress", { percent })}</span>
+              <button className="export-secondary export-danger" onClick={() => void getDesktop()?.cancelH264()} data-testid="export-h264-cancel">{t("export.desktop.cancelDownload")}</button>
+            </div>
+          )}
+          <p className="export-fine" data-testid="export-h264-licence">{t("export.desktop.licence")}</p>
+        </>
       )}
-      {failed && <p className="export-error" role="alert" data-testid="export-enable-failed">{t("export.desktop.enableFailed")}</p>}
+      {failure && <p className="export-error" role="alert" data-testid="export-enable-failed">{t(`export.desktop.failed.${failure}`)}</p>}
     </div>
   );
 }

@@ -1,7 +1,8 @@
-//! H.264 + AAC in MP4 through libav, hardware encoders first (ADR 0004, S4 results).
+//! H.264 + AAC in MP4, or VP9 + Opus in WebM, through libav (ADR 0004, S4 results; issue #58).
 //!
-//! Only LGPL-licensed encoders are ever named: the OS / GPU encoders in [`H264_PREFERENCE`], Cisco's `libopenh264` as the software fallback
-//! and libav's own native `aac`. Never `libx264`, `libx265` or `libfdk_aac` (GPL / non-free).
+//! MP4: hardware encoders first. Only LGPL-licensed encoders are ever named: the OS / GPU encoders in [`H264_PREFERENCE`], Cisco's `libopenh264` as
+//! the software fallback and libav's own native `aac`. Never `libx264`, `libx265` or `libfdk_aac` (GPL / non-free).
+//! WebM: `libvpx-vp9` + `libopus`, both royalty-free (ADR 0004: "AV1/VP9/Opus encode in software are royalty-free and allowed"), no network, no hardware.
 use ff::codec::{self, Id};
 use ff::format::{self, Pixel, Sample};
 use ff::software::scaling;
@@ -21,6 +22,88 @@ pub const H264_PREFERENCE: &[&str] = &[
     "libopenh264",
 ];
 
+/// WebM video encoder (BSD libvpx) and audio encoder (BSD libopus).
+pub const VP9_ENCODER: &str = "libvpx-vp9";
+pub const OPUS_ENCODER: &str = "libopus";
+
+/// What the file is. MP4 = H.264 + AAC, WebM = VP9 + Opus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Container {
+    Mp4,
+    WebM,
+}
+
+impl Container {
+    /// The libav muxer name.
+    pub fn muxer(self) -> &'static str {
+        match self {
+            Container::Mp4 => "mp4",
+            Container::WebM => "webm",
+        }
+    }
+    /// The file extension the exports folder uses for this container.
+    pub fn extension(self) -> &'static str {
+        match self {
+            Container::Mp4 => "mp4",
+            Container::WebM => "webm",
+        }
+    }
+    /// `.mp4` / `.webm` (case-insensitive) of an export file name; `None` for anything else.
+    pub fn of_file_name(name: &str) -> Option<Container> {
+        let ext = name.rsplit_once('.')?.1.to_ascii_lowercase();
+        match ext.as_str() {
+            "mp4" => Some(Container::Mp4),
+            "webm" => Some(Container::WebM),
+            _ => None,
+        }
+    }
+}
+
+/// The video encoders to try, in order, for a container. `explicit` (tests) wins; MP4 with `prefer_software` is only Cisco's encoder; WebM is
+/// always libvpx (there is no hardware VP9 path here, so "prefer software" changes nothing).
+pub fn video_encoder_names(
+    container: Container,
+    prefer_software: bool,
+    explicit: Option<&[String]>,
+) -> Vec<String> {
+    if let Some(e) = explicit {
+        return e.to_vec();
+    }
+    match container {
+        Container::WebM => vec![VP9_ENCODER.to_string()],
+        Container::Mp4 if prefer_software => vec!["libopenh264".to_string()],
+        Container::Mp4 => H264_PREFERENCE.iter().map(|s| s.to_string()).collect(),
+    }
+}
+
+/// True when this libav can write WebM: it has libvpx VP9 and libopus.
+pub fn webm_available() -> bool {
+    encoder_available(VP9_ENCODER) && encoder_available(OPUS_ENCODER)
+}
+
+/// True when the named encoder not only exists but opens on this machine (a tiny 64x64 probe). Used to report software H.264 honestly: the
+/// `libopenh264` encoder is compiled into libav, but without Cisco's library it cannot open.
+pub fn encoder_opens(name: &str) -> bool {
+    let _ = crate::init();
+    let Some(codec) = ff::encoder::find_by_name(name) else {
+        return false;
+    };
+    let Ok(ctx) = codec::context::Context::new_with_codec(codec)
+        .encoder()
+        .video()
+    else {
+        return false;
+    };
+    let mut v = ctx;
+    v.set_width(64);
+    v.set_height(64);
+    v.set_format(pixel_format_for(name));
+    v.set_time_base(Rational::new(1, 30));
+    v.set_frame_rate(Some(Rational::new(30, 1)));
+    v.set_bit_rate(200_000);
+    v.open_as(codec).is_ok()
+}
+
 /// The pixel format an encoder takes from system memory: the Intel / Media Foundation / AMD hardware paths want NV12, the rest planar 4:2:0.
 fn pixel_format_for(encoder: &str) -> Pixel {
     match encoder {
@@ -38,6 +121,7 @@ pub fn encoder_available(name: &str) -> bool {
 #[derive(Clone, Debug)]
 pub struct EncoderConfig {
     pub path: PathBuf,
+    pub container: Container,
     pub width: u32,
     pub height: u32,
     pub fps_num: u32,
@@ -47,7 +131,7 @@ pub struct EncoderConfig {
     pub keyframe_seconds: f64,
     /// `None`: no audio track.
     pub audio: Option<AudioConfig>,
-    /// Encoder names to try instead of [`H264_PREFERENCE`] (tests, `prefer-software` = `["libopenh264"]`).
+    /// Encoder names to try instead of the container's default list (tests). See [`video_encoder_names`].
     pub video_encoders: Option<Vec<String>>,
     /// Unix seconds written as the MP4 creation time (`None`: libav's default).
     pub creation_time: Option<i64>,
@@ -69,7 +153,8 @@ pub struct ExportStats {
     pub encode_ms: u64,
 }
 
-pub struct Mp4Encoder {
+/// Writes MP4 (H.264 + AAC) or WebM (VP9 + Opus); the name is historical.
+pub struct MediaEncoder {
     cfg: EncoderConfig,
     out: format::context::Output,
     video: ff::encoder::Video,
@@ -88,6 +173,8 @@ struct AudioState {
     stream: usize,
     tb: Rational,
     cfg: AudioConfig,
+    /// Interleaved samples in one plane (libopus) instead of one plane per channel (native AAC).
+    packed: bool,
     frame_size: usize,
     /// Interleaved samples waiting for a full encoder frame.
     pending: Vec<f32>,
@@ -99,7 +186,9 @@ fn e<E: std::fmt::Display>(x: E) -> String {
     x.to_string()
 }
 
-impl Mp4Encoder {
+pub type Mp4Encoder = MediaEncoder;
+
+impl MediaEncoder {
     pub fn create(cfg: EncoderConfig) -> Result<Self, String> {
         crate::init()?;
         if cfg.width == 0
@@ -111,17 +200,17 @@ impl Mp4Encoder {
         {
             return Err("width and height must be even and non-zero, frame rate positive".into());
         }
-        let mut out = format::output_as(&cfg.path, "mp4").map_err(e)?;
+        let mut out = format::output_as(&cfg.path, cfg.container.muxer()).map_err(e)?;
         let global = out.format().flags().contains(format::Flags::GLOBAL_HEADER);
         let v_tb = Rational::new(cfg.fps_den as i32, cfg.fps_num as i32);
 
-        let names: Vec<String> = cfg
-            .video_encoders
-            .clone()
-            .unwrap_or_else(|| H264_PREFERENCE.iter().map(|s| s.to_string()).collect());
-        let mut last_err = String::from(
-            "no H.264 encoder is available (libav was built without hardware encoders or openh264)",
-        );
+        let names = video_encoder_names(cfg.container, false, cfg.video_encoders.as_deref());
+        let mut last_err = match cfg.container {
+            Container::Mp4 => String::from(
+                "no H.264 encoder is available (libav was built without hardware encoders or openh264)",
+            ),
+            Container::WebM => String::from("libav was built without the VP9 (libvpx) encoder"),
+        };
         let mut opened = None;
         for name in &names {
             let Some(codec) = ff::encoder::find_by_name(name) else {
@@ -146,6 +235,15 @@ impl Mp4Encoder {
                 v.set_flags(codec::Flags::GLOBAL_HEADER);
             }
             let mut opts = Dictionary::new();
+            if name == VP9_ENCODER {
+                // Good quality / speed balance, tiles and rows in parallel; ABR at the requested bitrate.
+                opts.set("deadline", "good");
+                opts.set("cpu-used", "4");
+                opts.set("row-mt", "1");
+                opts.set("tile-columns", "2");
+                opts.set("lag-in-frames", "0"); // no look-ahead: output order == input order, bounded memory
+                opts.set("auto-alt-ref", "0");
+            }
             if name == "h264_videotoolbox" {
                 opts.set("realtime", "0");
                 opts.set("allow_sw", "0"); // never silently fall to Apple's software path: the next entry is ours
@@ -160,7 +258,13 @@ impl Mp4Encoder {
         }
         let (video, video_name) = opened.ok_or(last_err)?;
         let mut vs = out
-            .add_stream(ff::encoder::find(Id::H264).ok_or("no H.264 codec id")?)
+            .add_stream(
+                ff::encoder::find(match cfg.container {
+                    Container::Mp4 => Id::H264,
+                    Container::WebM => Id::VP9,
+                })
+                .ok_or("no video codec id")?,
+            )
             .map_err(e)?;
         vs.set_parameters(&video);
         vs.set_time_base(v_tb);
@@ -168,7 +272,25 @@ impl Mp4Encoder {
 
         let mut audio = None;
         if let Some(a) = cfg.audio {
-            let codec = ff::encoder::find(Id::AAC).ok_or("libav has no native AAC encoder")?;
+            let (codec, packed) = match cfg.container {
+                Container::Mp4 => (
+                    ff::encoder::find(Id::AAC).ok_or("libav has no native AAC encoder")?,
+                    false,
+                ),
+                Container::WebM => {
+                    if ![8_000, 12_000, 16_000, 24_000, 48_000].contains(&a.sample_rate) {
+                        return Err(format!(
+                            "WebM audio (Opus) needs 8, 12, 16, 24 or 48 kHz, not {} Hz",
+                            a.sample_rate
+                        ));
+                    }
+                    (
+                        ff::encoder::find_by_name(OPUS_ENCODER)
+                            .ok_or("libav was built without the Opus (libopus) encoder")?,
+                        true,
+                    )
+                }
+            };
             let mut enc = codec::context::Context::new_with_codec(codec)
                 .encoder()
                 .audio()
@@ -176,7 +298,11 @@ impl Mp4Encoder {
             let layout = ff::ChannelLayout::default(a.channels as i32);
             enc.set_rate(a.sample_rate as i32);
             enc.set_channel_layout(layout);
-            enc.set_format(Sample::F32(format::sample::Type::Planar));
+            enc.set_format(Sample::F32(if packed {
+                format::sample::Type::Packed
+            } else {
+                format::sample::Type::Planar
+            }));
             enc.set_bit_rate(a.bitrate as usize);
             enc.set_time_base(Rational::new(1, a.sample_rate as i32));
             if global {
@@ -192,6 +318,7 @@ impl Mp4Encoder {
                 stream: s.index(),
                 tb: Rational::new(1, a.sample_rate as i32),
                 cfg: a,
+                packed,
                 frame_size,
                 pending: Vec::new(),
                 next_pts: 0,
@@ -204,7 +331,9 @@ impl Mp4Encoder {
             out.set_metadata(md);
         }
         let mut opts = Dictionary::new();
-        opts.set("movflags", "+faststart");
+        if cfg.container == Container::Mp4 {
+            opts.set("movflags", "+faststart");
+        }
         out.write_header_with(opts).map_err(e)?;
         // Stream time bases are only final after the header is written.
         let v_tb_out = out.stream(v_stream).ok_or("stream")?.time_base();
@@ -221,7 +350,7 @@ impl Mp4Encoder {
             scaling::Flags::BICUBIC,
         )
         .map_err(e)?;
-        Ok(Mp4Encoder {
+        Ok(MediaEncoder {
             cfg,
             out,
             video,
@@ -306,15 +435,25 @@ impl Mp4Encoder {
         let ch = a.cfg.channels as usize;
         let n = interleaved.len() / ch;
         let mut f = ff::frame::Audio::new(
-            Sample::F32(format::sample::Type::Planar),
+            Sample::F32(if a.packed {
+                format::sample::Type::Packed
+            } else {
+                format::sample::Type::Planar
+            }),
             n,
             ff::ChannelLayout::default(ch as i32),
         );
         f.set_rate(a.cfg.sample_rate);
-        for c in 0..ch {
-            let plane = f.plane_mut::<f32>(c);
-            for i in 0..n {
-                plane[i] = interleaved[i * ch + c];
+        if a.packed {
+            for (dst, v) in f.data_mut(0).chunks_exact_mut(4).zip(interleaved) {
+                dst.copy_from_slice(&v.to_ne_bytes());
+            }
+        } else {
+            for c in 0..ch {
+                let plane = f.plane_mut::<f32>(c);
+                for i in 0..n {
+                    plane[i] = interleaved[i * ch + c];
+                }
             }
         }
         f.set_pts(Some(a.next_pts));
