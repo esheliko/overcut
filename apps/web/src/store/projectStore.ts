@@ -11,6 +11,8 @@ export interface ProjectState {
   readonly selection: ReadonlySet<string>;
   /** Playhead, in frames of the sequence. */
   readonly playhead: number;
+  /** True while an export runs: the project is frozen (edits are refused) but playback, selection and scrubbing still work. */
+  readonly readOnly: boolean;
 }
 
 type Listener = () => void;
@@ -23,7 +25,7 @@ const NO_SELECTION: ReadonlySet<string> = new Set();
  * the bin, timeline, preview and transport cannot disagree.
  */
 export class ProjectStore {
-  private state: ProjectState = { project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, playhead: 0 };
+  private state: ProjectState = { project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, playhead: 0, readOnly: false };
   private listeners = new Set<Listener>();
   private chain: Promise<unknown> = Promise.resolve();
   private editing: Editing | null = null;
@@ -68,7 +70,7 @@ export class ProjectStore {
 
   private run(call: (e: Editing) => Promise<EditOutcome>): Promise<EditOutcome | null> {
     const ed = this.editing;
-    if (!ed) return Promise.resolve(null);
+    if (!ed || this.state.readOnly) return Promise.resolve(null);
     const mine = this.token;
     return this.enqueue(async () => {
       const out = await call(ed);
@@ -86,6 +88,11 @@ export class ProjectStore {
 
   readonly setSelection = (selection: ReadonlySet<string>): void => {
     if (selection !== this.state.selection) this.set({ selection: selection.size === 0 ? NO_SELECTION : selection });
+  };
+
+  /** Freeze or thaw the project (an export snapshots it, so edits made meanwhile would not be in the file). Edits already queued still finish. */
+  readonly setReadOnly = (readOnly: boolean): void => {
+    if (readOnly !== this.state.readOnly) this.set({ readOnly });
   };
 
   readonly setPlayhead = (playhead: number): void => {

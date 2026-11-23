@@ -9,6 +9,7 @@ import { PreviewPanel, sequenceView } from "./PreviewPanel";
 import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
 import { Timeline } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
+import { ExportControl } from "./export/ExportDialog";
 import { MediaBin } from "./media/MediaBin";
 import { TICKS, clipCount } from "./media/plan";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, pickOne, type Source } from "./media/sources";
@@ -249,9 +250,7 @@ function Editor({ store }: { store: ProjectStore }) {
               {engine.status === "error" && <span role="alert" data-testid="engine-error">{t("engine.failed", { message: engine.message })}</span>}
             </span>
           </span>
-          <button className="primary" onClick={() => soon(t("export.soon"))}>
-            <Icon name="export" size={18} /><span>{t("export.label")}</span>
-          </button>
+          <ExportControl engine={core} fileOf={media.fileOf} />
         </div>
       </header>
 
