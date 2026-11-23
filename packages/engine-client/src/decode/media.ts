@@ -1,7 +1,10 @@
-import { blobSource } from "./blob-source";
+import { blobSource, type ByteSource } from "./blob-source";
 import { MediaDecodeError, toMediaError } from "./errors";
 import { WebCodecsHost, type HostStats } from "./host";
-import type { DecodedFrame, MediaApi, MediaFileInfo, MediaHandle, OpenMediaOptions, TrackInfo } from "../types";
+import { buildFrameTable, frameIndexAt, type FrameTable } from "./frames";
+import { openFrameStream, type StreamTrack } from "./stream";
+import type { PacketJson } from "./blob-source";
+import type { DecodedFrame, FrameStream, MediaApi, MediaFileInfo, MediaHandle, OpenMediaOptions, TrackInfo } from "../types";
 
 /** The slice of the wasm `MediaFile` class this layer uses (see crates/wasm/src/media.rs; types in wasm-module.d.ts). */
 export interface WasmMediaFile {
@@ -75,7 +78,9 @@ export function createWebMedia(Media: WasmMediaClass): MediaApi {
         mf.attach(host, audioRate);
         const frameKind = video && host.hasGpu() && opts.gpu !== false ? "gpu" : "cpu";
         if (video) mf.setGpu(frameKind === "gpu");
-        return new Handle(mf, host, info, frameKind, audioRate);
+        const table = video ? buildFrameTable(JSON.parse(mf.videoPacketsJson()) as PacketJson[]) : undefined;
+        const streamTrack = video && { codec: video.codec, width: video.width, height: video.height, description: mf.videoDescription() };
+        return new Handle(mf, host, info, frameKind, audioRate, src, table, streamTrack);
       } catch (e) {
         host?.dispose();
         mf.free();
@@ -96,7 +101,27 @@ class Handle implements MediaHandle {
     readonly info: MediaFileInfo,
     readonly frameKind: "gpu" | "cpu",
     readonly audioRate: number,
+    private readonly src: ByteSource,
+    private readonly table: FrameTable | undefined,
+    private readonly streamTrack: StreamTrack | undefined,
   ) {}
+
+  private readonly streams = new Set<FrameStream>();
+  private readonly streamStats = { received: 0, closed: 0 };
+
+  frameIndexAt(ticks: number): number {
+    return this.table ? frameIndexAt(this.table, ticks) : 0;
+  }
+
+  stream(startIndex: number, maxBuffered = 8): FrameStream {
+    if (this.closed) throw new MediaDecodeError("invalid", "media is closed");
+    if (!this.table || !this.streamTrack) throw new MediaDecodeError("invalid", "no video track");
+    const s = openFrameStream(this.src, this.streamTrack, this.table, startIndex, Math.max(1, maxBuffered), this.streamStats);
+    this.streams.add(s);
+    const close = s.close.bind(s);
+    s.close = () => { this.streams.delete(s); close(); };
+    return s;
+  }
 
   /** The wasm object is borrowed for the whole of an async call, so calls run strictly one after another. */
   private serial<T>(fn: () => Promise<T>): Promise<T> {
@@ -153,11 +178,15 @@ class Handle implements MediaHandle {
   }
 
   stats(): HostStats {
-    return this.host.stats();
+    const h = this.host.stats();
+    const received = h.received + this.streamStats.received;
+    const closed = h.closed + this.streamStats.closed;
+    return { received, closed, open: received - closed };
   }
 
   async close(): Promise<void> {
     this.closed = true;
+    for (const s of [...this.streams]) s.close();
     this.host.cancel();
     await this.tail;
     this.host.dispose();
