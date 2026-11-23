@@ -39,7 +39,7 @@ test("the copied report is one compact JSON line that survives with no capabilit
 });
 
 test("every test has a title, an explanation and a result sentence in the catalog", () => {
-  for (const id of ["decode", "seek", "gpuUpload", "fillRate"]) {
+  for (const id of ["decode", "seek", "gpuUpload", "fillRate", "playback", "exportSpeed"]) {
     assert.ok((en as Record<string, string>)[`diag.t.${id}.title`] && (en as Record<string, string>)[`diag.t.${id}.what`], id);
     assert.ok((en as Record<string, string>)[`diag.s.${id}`], id);
   }

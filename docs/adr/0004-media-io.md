@@ -34,6 +34,8 @@ Spike: `spikes/s1-webcodecs/` (page, clip generator, runner; README there). Ques
 4. **The < 50 ms bar is not met in this environment and cannot be judged here:** it is dominated by decoding N frames from the keyframe at ~4 ms each in software. With hardware decode the per-frame cost should fall by an order of magnitude, but that is untested. The real lever is frames decoded per seek: p50 is about half the GOP. A seek on a long-GOP source (GOP 150, typical for phones and screen recordings) costs 88 frames at p50.
 5. Seek behaviour to design for regardless of hardware: after `flush()` the decoder needs a keyframe, so every random seek restarts at a keyframe; only sequential playback and small forward scrubs can reuse decoder state.
 
+**Real devices (owner, 2026-11-23, `/diagnostics`).** Intel UHD 630 laptop, Chrome 157: hardware decode 720 fps, seek GOP 30 p50 37.6 / p95 60.7 ms, GOP 150 130 / 202 ms; upload `importExternalTexture` p50 22.8 / p95 40 ms vs `copyExternalImageToTexture` 5.9 / 7.9 ms vs CPU 27 ms; 11 layers at 60 fps. Galaxy S24 (Xclipse 940), Chrome 157, no WebGPU (WebGL2): decode 234 fps, seek GOP 30 58.5 / 88.4 ms, GOP 150 239 / 376 ms. Consequence: "zero-copy is fastest" is false on real hardware, so the preview measures the upload path per device (`docs/features/preview.md`); the < 50 ms warm seek bar holds for GOP 30 on the laptop only, which is why scrubbing shows stand-ins first.
+
 **Capability matrix** (M = measured here; U = not measured, expected from public browser docs, must be confirmed on the device).
 
 | | Chrome/Edge desktop | Safari macOS/iOS | Firefox desktop | Android Chrome |

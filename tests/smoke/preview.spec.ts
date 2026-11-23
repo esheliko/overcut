@@ -152,3 +152,25 @@ test("the compositor reports its backend and allocates nothing while scrubbing",
   });
   expect((await hook()).alloc, "no GPU object is created per frame").toEqual(before);
 });
+
+test("the upload path is chosen by a micro-benchmark, and a frame step after a scrub is served from the decode-ahead cache", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "scrub timing does not depend on the viewport");
+  test.setTimeout(90_000);
+  await openClip(page, "flash_click.mp4");
+  type Hook = { player: { seek(f: number): void }; stats(): Promise<{ scrubMs: number[]; firstUpdateMs: number[]; cacheHits: number; cached: number }>; gpu(): Promise<{ info: { backend: string }; upload?: { path: string; source: string; ms: Record<string, number> } }> };
+  const stats = () => page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.stats());
+  await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.seek(20));
+  await expect.poll(async () => (await stats()).scrubMs.length, { timeout: 20_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => (await stats()).cached, { timeout: 20_000 }).toBeGreaterThanOrEqual(3); // decode-ahead around frame 20
+  await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.seek(21));
+  await expect.poll(async () => (await stats()).cacheHits, { timeout: 10_000 }).toBeGreaterThan(0);
+  const s = await stats();
+  expect(s.firstUpdateMs.length).toBe(s.scrubMs.length); // every scrub has both numbers
+  const g = await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.gpu());
+  expect(["frame", "cpu"]).toContain(g.upload?.path);
+  if (g.upload?.source === "measured") {
+    const stored = await page.evaluate(() => localStorage.getItem("overcut.uploadPath"));
+    expect(stored).toContain(g.upload.path);
+  }
+  console.log(`[upload] ${g.info.backend}: ${JSON.stringify(g.upload)}; scrub first update ${s.firstUpdateMs.map((x) => x.toFixed(1)).join("/")} ms, exact ${s.scrubMs.map((x) => x.toFixed(1)).join("/")} ms`);
+});
