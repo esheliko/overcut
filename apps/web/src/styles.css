@@ -297,3 +297,25 @@ h2, p { margin: 0; }
 }
 
 .export-loading { position: fixed; inset-block-end: calc(env(safe-area-inset-bottom) + 84px); inset-inline: 0; margin-inline: auto; width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 12px; background: var(--surface-3); color: var(--fg); z-index: 40; } /* until the export dialog chunk arrives */
+
+/* Second toolbar row (TL-02/06): duplicate, copy, cut, paste, timing, history. Six 44 px buttons fit at 320 px. */
+.tl-bar2 { justify-content: flex-start; min-height: 48px; }
+.edit-sheet { inline-size: min(380px, calc(100vw - 16px)); max-block-size: min(70dvh, 520px); margin: auto 12px 12px auto; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow); overflow: auto; }
+.edit-sheet::backdrop { background: transparent; }
+.edit-sheet header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 0 16px; position: sticky; top: 0; background: var(--surface); }
+.edit-sheet h2 { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.sheet-hint { margin: 0; padding: 4px 16px 8px; font-size: 12px; color: var(--muted); }
+.sheet-error { margin: 0; padding: 0 16px 12px; min-height: 1.4em; font-size: 13px; color: var(--danger); }
+.history-list { list-style: none; margin: 0; padding: 0 8px 8px; }
+.history-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: var(--target); padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--fg); text-align: start; font-size: 14px; }
+.history-row:hover:not(:disabled) { background: var(--surface-3); }
+.history-row[data-state="undone"] { color: var(--muted); }
+.history-row[data-state="now"] { background: var(--accent-soft); font-weight: 600; }
+.history-label { overflow-wrap: anywhere; }
+.history-tag { flex: none; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.timing-fields { display: grid; gap: 8px; padding: 0 16px 8px; }
+.timing-row { display: grid; grid-template-columns: 4.5em 1fr auto; align-items: center; gap: 8px; }
+.timing-row input { min-height: var(--target); min-width: 0; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); color: var(--fg); font: inherit; font-variant-numeric: tabular-nums; }
+.timing-row input[aria-invalid="true"] { border-color: var(--danger); }
+.timing-set { min-height: var(--target); min-width: var(--target); padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); color: var(--fg); }
+@media (max-width: 640px) { .edit-sheet { inline-size: 100vw; max-inline-size: none; margin: auto 0 0 0; border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding-bottom: env(safe-area-inset-bottom); } }

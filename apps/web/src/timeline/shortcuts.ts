@@ -1,6 +1,6 @@
 /** Keyboard shortcuts for timeline editing, as pure data: key event in, command out. */
 export type Command =
-  | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" }
+  | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" }
   | { c: "go"; dir: "left" | "right" | "up" | "down" }
   /** Move the selection by whole frames. */
   | { c: "nudge"; frames: number }
@@ -20,6 +20,11 @@ export function globalCommand(e: KeyLike): Command | null {
   if (mod && !e.altKey) {
     if (k === "z") return e.shiftKey ? { c: "redo" } : { c: "undo" };
     if (k === "y") return { c: "redo" };
+    if (e.shiftKey) return null;
+    if (k === "c") return { c: "copy" };
+    if (k === "x") return { c: "cut" };
+    if (k === "v") return { c: "paste" };
+    if (k === "d") return { c: "duplicate" };
     return null;
   }
   if (mod || e.altKey) return null;

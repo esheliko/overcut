@@ -16,10 +16,17 @@ export interface ProjectState {
   /** What the next Undo / Redo would do, in the user's words ("import of clip.mp4"); null when unknown (an unlabelled edit, a recovered history). */
   readonly undoLabel: string | null;
   readonly redoLabel: string | null;
+  /** The session's undo steps, oldest first, in the user's words (null = an edit with no name); the last one is what Undo does next. History from before the session (a recovery) is not listed: see `earlierEdits`. */
+  readonly undoSteps: readonly (string | null)[];
+  /** Undone steps, next Redo first. */
+  readonly redoSteps: readonly (string | null)[];
+  /** True when the engine can undo more than the listed steps (a recovered session): the history panel shows one "earlier edits" row. */
+  readonly earlierEdits: boolean;
 }
 
 type Listener = () => void;
 const NO_SELECTION: ReadonlySet<string> = new Set();
+const NO_STEPS: readonly (string | null)[] = [];
 
 /**
  * The ONE copy of the open project in the UI (M1-024). Fed only by `Engine.editing` outcomes (through the autosaving project session
@@ -28,7 +35,7 @@ const NO_SELECTION: ReadonlySet<string> = new Set();
  * the bin, timeline, preview and transport cannot disagree.
  */
 export class ProjectStore {
-  private state: ProjectState = { project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, playhead: 0, readOnly: false, undoLabel: null, redoLabel: null };
+  private state: ProjectState = { project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, playhead: 0, readOnly: false, undoLabel: null, redoLabel: null, undoSteps: NO_STEPS, redoSteps: NO_STEPS, earlierEdits: false };
   private listeners = new Set<Listener>();
   private chain: Promise<unknown> = Promise.resolve();
   private editing: Editing | null = null;
@@ -37,6 +44,7 @@ export class ProjectStore {
   private undoStack: (string | null)[] = [];
   private redoStack: (string | null)[] = [];
   private lastCoalesce: number | undefined;
+  private recovered = false; // the engine held history before this session's first edit
 
   readonly getState = (): ProjectState => this.state;
 
@@ -60,13 +68,14 @@ export class ProjectStore {
     this.undoStack = [];
     this.redoStack = [];
     this.lastCoalesce = undefined;
+    this.recovered = history.canUndo ?? false;
     if (!editing) {
-      this.set({ project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, undoLabel: null, redoLabel: null });
+      this.set({ project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, undoLabel: null, redoLabel: null, undoSteps: NO_STEPS, redoSteps: NO_STEPS, earlierEdits: false });
       return Promise.resolve();
     }
     return this.enqueue(async () => {
       const project = await editing.project().catch(() => null); // no project open yet: stay empty until the opener calls reload()
-      if (project && this.token === mine) this.set({ project, canUndo: history.canUndo ?? false, canRedo: history.canRedo ?? false, selection: this.pruned(project), undoLabel: null, redoLabel: null });
+      if (project && this.token === mine) this.set({ project, canUndo: history.canUndo ?? false, canRedo: history.canRedo ?? false, selection: this.pruned(project), undoLabel: null, redoLabel: null, undoSteps: NO_STEPS, redoSteps: NO_STEPS, earlierEdits: history.canUndo ?? false });
     });
   }
 
@@ -91,12 +100,48 @@ export class ProjectStore {
       const project = out.changed ? await ed.project() : null;
       if (this.token !== mine) return out;
       history?.(out.changed);
-      const top = (st: (string | null)[]) => st[st.length - 1] ?? null;
-      this.set({ project: project ?? this.state.project, canUndo: out.can_undo, canRedo: out.can_redo, ...(project ? { selection: this.pruned(project) } : null),
-        undoLabel: out.can_undo ? top(this.undoStack) : null, redoLabel: out.can_redo ? top(this.redoStack) : null });
+      this.publish(project, out);
       return out;
     });
   }
+
+  /** Show an engine outcome: the new project (when it changed), undo/redo state and the step lists. */
+  private publish(project: Project | null, out: EditOutcome): void {
+    const top = (st: (string | null)[]) => st[st.length - 1] ?? null;
+    this.set({ project: project ?? this.state.project, canUndo: out.can_undo, canRedo: out.can_redo, ...(project ? { selection: this.pruned(project) } : null),
+      undoLabel: out.can_undo ? top(this.undoStack) : null, redoLabel: out.can_redo ? top(this.redoStack) : null,
+      undoSteps: [...this.undoStack], redoSteps: [...this.redoStack].reverse(), earlierEdits: this.recovered && out.can_undo });
+  }
+
+  /**
+   * Jump in the history: `position` is how many of the session's steps stay applied (0 = before the first listed step, `undoSteps.length` = now,
+   * `undoSteps.length + redoSteps.length` = everything redone). Undoes or redoes the difference in ONE queued job, so edits made meanwhile cannot interleave.
+   */
+  readonly jumpTo = (position: number): Promise<EditOutcome | null> => {
+    const ed = this.editing;
+    if (!ed || this.state.readOnly) return Promise.resolve(null);
+    const mine = this.token;
+    const target = Math.max(0, Math.min(position, this.undoStack.length + this.redoStack.length));
+    return this.enqueue(async () => {
+      let out: EditOutcome | null = null;
+      let moved = false;
+      while (this.token === mine) {
+        const pos = this.undoStack.length;
+        if (pos === target) break;
+        const back = pos > target;
+        const o = back ? await ed.undo() : await ed.redo();
+        out = o;
+        if (!o.changed) break;
+        moved = true;
+        if (back) this.redoStack.push(this.undoStack.pop() ?? null);
+        else this.undoStack.push(this.redoStack.pop() ?? null);
+      }
+      this.lastCoalesce = undefined;
+      if (this.token !== mine || !out || !moved) return out;
+      this.publish(await ed.project(), out);
+      return out;
+    });
+  };
 
   /** `label` names the step for the Undo / Redo controls ("import of clip.mp4"); omit it for edits that need no name. */
   readonly apply = (ops: Op | Op[], coalesce?: number, label?: string) => this.run((e) => e.apply(ops, coalesce), (changed) => {
