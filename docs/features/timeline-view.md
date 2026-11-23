@@ -10,7 +10,7 @@ Canvas-rendered timeline in the editor's timeline panel: time ruler with adaptiv
 - **Accessibility**: the canvas is a focusable `role="slider"` "Playhead position" (arrows = 1 frame, Shift = 1 s, Home/End) with an `aria-describedby` summary (tracks, clips, length, key help). Edits are announced in a polite live region (`tl-live`). A per-clip list alternative is still open.
 
 ## Editing (M1-034)
-All edits are `Op`s sent to `Engine.editing`; after each one the UI re-reads `project()` and rebuilds the scene (timeline-ops.md). Calls are serialised (`useProject.ts`). Snapping and ripple are M2: not built.
+All edits are `Op`s sent to `Engine.editing`; after each one the shared project store (`store/projectStore.ts`, M1-024) re-reads `project()` and the scene is rebuilt (timeline-ops.md). Calls are serialised in the store, which also holds the selection (ids of clips an edit or undo removed are dropped) and the playhead; the bin and the preview read the same project. Snapping and ripple are M2: not built.
 - **Select**: click/tap; Shift or Ctrl/Cmd toggles; mouse drag on empty track space = marquee (Shift/Ctrl adds); tap or click on empty space seeks and deselects. Ctrl/Cmd+A all, Esc clears.
 - **Move**: drag a clip (touch: tap to select first, then drag; dragging an unselected clip pans). Live preview is a ghost drawn from the gesture (the original is hidden), zero engine calls while dragging; it stops at neighbours and at 0, moves in whole frames, and a single clip can change to another free track of the same kind. Release sends ONE batch (`move` ops) = one undo step. Multi-selection moves in time only. (Engine-side coalescing exists for continuous streams; a drag does not need it, and it avoids a 200-op undo.)
 - **Trim**: handles appear on selected clips. Grab zone is 44 px wide for touch (16 mouse), straddling the edge and never taking more than a third of a narrow clip, so it stays 44 px however narrow the clip is. Limits: neighbours, source length (media duration, speed), one frame minimum. Release sends one `trim_in`/`trim_out`.
@@ -22,7 +22,7 @@ All edits are `Op`s sent to `Engine.editing`; after each one the UI re-reads `pr
 ## Structure (`apps/web/src/timeline/`)
 - `scene.ts`: `Project` -> flat typed arrays (seconds as floats for drawing only; the model keeps integer ticks, ADR 0010), clips sorted per track, binary search.
 - `view.ts`: viewport math (zoom-at-anchor, clamping, slider mapping, tick step, fling decay). `hit.ts`: pure hit-testing (ruler, gutter, clip body/edge, gap, empty) reused by M1-034. Both unit-tested in `tests/unit/timeline.test.ts`.
-- `edit.ts`: pure limits, frame snapping and op builders. `interact.ts`: pure pointer state machine (events -> gesture + effects). `shortcuts.ts`: key -> command. `hit.ts` also has `handleAt`. `useProject.ts` (app level): engine-backed project state.
+- `edit.ts`: pure limits, frame snapping and op builders. `interact.ts`: pure pointer state machine (events -> gesture + effects). `shortcuts.ts`: key -> command. `hit.ts` also has `handleAt`. `store/projectStore.ts` (app level): the one engine-backed project, selection and playhead.
 - `draw.ts`: painter; `TimelineCanvas.tsx`: sizing at real devicePixelRatio, input, rAF-on-dirty.
 
 ## Waveforms and filmstrips (M1-013, `timeline/media-layer.ts`)

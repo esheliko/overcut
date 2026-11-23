@@ -19,7 +19,7 @@ type Props = {
 const KIND_ICON: Record<MediaKind, "video" | "audio" | "media"> = { video: "video", audio: "audio", image: "media" };
 
 /** The picker control: Chromium desktop gets persistent handles, everything else the plain input (which opens the camera roll on a phone). */
-function useImportPicker(onImport: (s: Source[]) => void) {
+export function useImportPicker(onImport: (s: Source[]) => void, testId = "media-input") {
   const input = useRef<HTMLInputElement>(null);
   const open = () => {
     if (hasHandlePicker()) void pickWithHandles().then(onImport).catch(() => input.current?.click());
@@ -32,7 +32,7 @@ function useImportPicker(onImport: (s: Source[]) => void) {
       multiple
       accept={ACCEPT}
       hidden
-      data-testid="media-input"
+      data-testid={testId}
       onChange={(e) => {
         onImport(fromFileList(e.target.files));
         e.target.value = ""; // the same file can be picked again
