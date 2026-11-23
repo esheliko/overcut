@@ -224,7 +224,9 @@ impl<H: PacketDecoder> HostDecoder<H> {
             rate: self.audio_rate,
             packets: slice.iter().map(packet_ref).collect(),
             preroll_packets: first - begin,
-            from_start: begin == 0,
+            // "At the stream start" means the request itself lies in the first few packets. A longer Opus pre-roll can reach packet 0 for a request at 0.5 s;
+            // that is still a mid-stream request as far as the decoder's pre-skip handling goes (measured: the web decoder needs the shift there).
+            from_start: first <= PREROLL,
             first_ts_us: slice.first().map_or(0, |p| ticks_to_us(p.pts)),
         })
     }
