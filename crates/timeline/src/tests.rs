@@ -554,6 +554,127 @@ fn a_failing_batch_rolls_back_every_step() {
     assert_eq!(p, before);
 }
 
+/// What the editor's duplicate / paste / cut send (TL-02): copies are plain `InsertClip`s with fresh ids, one batch = one undo step.
+#[test]
+fn duplicate_paste_and_cut_are_single_undo_steps_of_existing_ops() {
+    let (mut p, mut ids) = base();
+    let tr = p.sequences[0].tracks[0].id;
+    let m = p.media[0].id;
+    let (ca0, cb0) = (clip(&mut ids, m, 0, 0, 10), clip(&mut ids, m, 20, 10, 10));
+    let (a, b) = (ca0.id, cb0.id);
+    p.sequences[0].tracks[0].clips = vec![ca0, cb0];
+    let start = p.clone();
+    let (ca, cb) = (
+        p.sequences[0].tracks[0].clips[0].clone(),
+        p.sequences[0].tracks[0].clips[1].clone(),
+    );
+    let mut h = History::new();
+    // paste both as a group at 40: offsets kept
+    let (na, nb) = (ClipId::new(&mut ids), ClipId::new(&mut ids));
+    let paste = vec![
+        Op::InsertClip {
+            track: tr,
+            clip: Clip {
+                id: na,
+                start: t(40),
+                ..ca.clone()
+            },
+        },
+        Op::InsertClip {
+            track: tr,
+            clip: Clip {
+                id: nb,
+                start: t(60),
+                ..cb.clone()
+            },
+        },
+    ];
+    h.apply_batch(&mut p, paste, None).unwrap();
+    assert_eq!(p.sequences[0].tracks[0].clips.len(), 4);
+    p.validate().unwrap();
+    // an overlapping paste is refused whole and changes nothing
+    let before = p.clone();
+    let bad = vec![
+        Op::InsertClip {
+            track: tr,
+            clip: Clip {
+                id: ClipId::new(&mut ids),
+                start: t(100),
+                ..ca.clone()
+            },
+        },
+        Op::InsertClip {
+            track: tr,
+            clip: Clip {
+                id: ClipId::new(&mut ids),
+                start: t(45),
+                ..cb.clone()
+            },
+        },
+    ];
+    assert!(h.apply_batch(&mut p, bad, None).is_err());
+    assert_eq!(p, before);
+    // cut = delete the originals, one step
+    h.apply_batch(
+        &mut p,
+        vec![Op::Delete { clip: a }, Op::Delete { clip: b }],
+        None,
+    )
+    .unwrap();
+    assert_eq!(p.sequences[0].tracks[0].clips.len(), 2);
+    assert!(h.undo(&mut p).unwrap()); // the cut
+    assert_eq!(p, before);
+    assert!(h.undo(&mut p).unwrap()); // the whole paste at once
+    assert_eq!(p, start);
+    assert!(!h.undo(&mut p).unwrap());
+    assert!(h.redo(&mut p).unwrap());
+    assert_eq!(p.sequences[0].tracks[0].clips.len(), 4);
+}
+
+/// Numeric timing (TL-02) is `TrimIn` / `TrimOut` to the typed boundary; the edit is exact in ticks and undoes in one step.
+#[test]
+fn numeric_trim_sets_exact_boundaries_and_undoes() {
+    let (mut p, _, _, b) = two_clips(); // b: start 20, source_in 10, dur 10
+    let start = p.clone();
+    let mut h = History::new();
+    h.apply(
+        &mut p,
+        Op::TrimOut {
+            clip: b,
+            end: t(26),
+        },
+        None,
+    )
+    .unwrap();
+    h.apply(
+        &mut p,
+        Op::TrimIn {
+            clip: b,
+            start: t(22),
+        },
+        None,
+    )
+    .unwrap();
+    let c = &p.sequences[0].tracks[0].clips[1];
+    assert_eq!((c.start, c.source_in, c.duration), (t(22), t(12), t(4)));
+    // a boundary at or beyond the other edge is refused and leaves the project alone
+    let before = p.clone();
+    assert!(h
+        .apply(
+            &mut p,
+            Op::TrimOut {
+                clip: b,
+                end: t(22)
+            },
+            None
+        )
+        .is_err());
+    assert_eq!(p, before);
+    assert!(h.undo(&mut p).unwrap());
+    assert!(h.undo(&mut p).unwrap());
+    assert_eq!(p, start);
+}
+
 #[test]
 fn a_drag_is_one_undo_step() {
     let (mut p, tr, a, _) = two_clips();

@@ -24,7 +24,7 @@
 | ID | Feature | Pri | M | CC | Notes |
 |---|---|---|---|---|---|
 | TL-01 | Multi-track timeline: video, overlay, audio, text/caption, effect tracks; unlimited tracks | P0 | M2 | = | M1 ships one video + one audio track |
-| TL-02 | Split, trim (drag, numeric), delete, ripple delete, duplicate, copy/paste | P0 | M1 | = | |
+| TL-02 | Split, trim (drag, numeric), delete, duplicate, copy/paste; ripple delete is M2 (with TL-04) | P0 | M1 | = | Ripple needs the M2 ripple op; lift-delete covers M1 |
 | TL-03 | Snapping (playhead, clip edges, markers, beats), magnetic mode toggle | P0 | M2 | = | |
 | TL-04 | Ripple, roll, slip, slide edits | P1 | M2 | + | Pro tools without a mode switch |
 | TL-05 | Multi-select, marquee select, group/ungroup, link audio+video | P0 | M2 | = | |

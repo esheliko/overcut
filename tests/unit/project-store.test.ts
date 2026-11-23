@@ -146,3 +146,40 @@ test("a drag (same coalesce key) is one undo step, so it adds one label, not one
   assert.equal(s.getState().undoLabel, "drag");
   assert.equal((s as unknown as { undoStack: unknown[] }).undoStack.length, 2);
 });
+
+test("the history lists labelled steps and jumpTo undoes or redoes to any of them in one job", async () => {
+  const s = new ProjectStore();
+  await s.attach(engine(["a"]));
+  await s.apply(set(["a", "b"]), undefined, "split 1 clip");
+  await s.apply(set(["a", "b", "c"]), undefined, "paste of 1 clip");
+  await s.apply(set(["a"]), undefined, "delete of 2 clips");
+  assert.deepEqual(s.getState().undoSteps, ["split 1 clip", "paste of 1 clip", "delete of 2 clips"]);
+  assert.deepEqual(s.getState().redoSteps, []);
+  await s.jumpTo(1); // keep the first step only
+  assert.deepEqual(clipIds(s), ["a", "b"]);
+  assert.deepEqual(s.getState().undoSteps, ["split 1 clip"]);
+  assert.deepEqual(s.getState().redoSteps, ["paste of 1 clip", "delete of 2 clips"], "next redo first");
+  assert.equal(s.getState().undoLabel, "split 1 clip");
+  assert.equal(s.getState().redoLabel, "paste of 1 clip");
+  await s.jumpTo(3); // forward again, past the paste
+  assert.deepEqual(clipIds(s), ["a"]);
+  assert.equal(s.getState().canRedo, false);
+  await s.jumpTo(0);
+  assert.deepEqual(clipIds(s), ["a"]);
+  assert.equal(s.getState().canUndo, false);
+  assert.equal(s.getState().redoSteps.length, 3);
+  await s.jumpTo(99); // clamps to everything redone
+  assert.equal(s.getState().undoSteps.length, 3);
+  await s.apply(set(["z"]), undefined, "new edit");
+  await s.jumpTo(0);
+  await s.apply(set(["y"]), undefined, "replaces the future");
+  assert.deepEqual(s.getState().redoSteps, [], "a new edit clears the undone steps");
+});
+
+test("a recovered history shows one 'earlier edits' row; read-only projects refuse to jump", async () => {
+  const s = new ProjectStore();
+  await s.attach(engine(["a"]), { canUndo: true });
+  assert.equal(s.getState().earlierEdits, true);
+  s.setReadOnly(true);
+  assert.equal(await s.jumpTo(0), null);
+});

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Engine, Op, Project } from "@app/engine-client";
 import { importedMediaHost } from "./media/engine-host";
 import { FakeMediaHost, routeMedia } from "./media/host";
@@ -7,6 +7,7 @@ import { announce } from "./a11y/announcer";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { FPS, timecode } from "./timecode";
+import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
 import { clampN, deleteOps, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, trimOp } from "./timeline/edit";
 import { sampleProject } from "./timeline/fixture";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
@@ -39,10 +40,17 @@ type Props = {
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
 const NO_SELECTION: ReadonlySet<string> = new Set();
-const KEYS = { undo: "Ctrl+Z", redo: "Ctrl+Shift+Z", split: "S", del: "Del" };
+const KEYS = { undo: "Ctrl+Z", redo: "Ctrl+Shift+Z", split: "S", del: "Del", dup: "Ctrl+D", copy: "Ctrl+C", cut: "Ctrl+X", paste: "Ctrl+V" };
+/** The history step name (lower case, "Undo <name>") for an edit, from the message that announces it. */
+const LABELS: Record<string, string> = { "timeline.say.split": "timeline.label.split", "timeline.say.deleted": "timeline.label.deleted", "timeline.say.moved": "timeline.label.moved",
+  "timeline.say.nudged": "timeline.label.nudged", "timeline.say.trimmed": "timeline.label.trimmed", "timeline.say.duplicated": "timeline.label.duplicated",
+  "timeline.say.cut": "timeline.label.cut", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed" };
 const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
+
+const HistoryDialog = lazy(() => import("./timeline/EditDialogs").then((m) => ({ default: m.HistoryDialog })));
+const TimingDialog = lazy(() => import("./timeline/EditDialogs").then((m) => ({ default: m.TimingDialog })));
 
 export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf, readyIds = "" }: Props) {
   const { t } = useI18n();
@@ -90,6 +98,12 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   undoLabelRef.current = undoLabel;
   redoLabelRef.current = redoLabel;
   const canvasHandle = useRef<CanvasHandle | null>(null);
+  // The in-app clipboard (copies of clips, ADR 0006: pasting inserts new clips through the engine); the dialogs of the second toolbar row.
+  const [held, setHeld] = useState<readonly Held[]>([]);
+  const heldRef = useRef(held);
+  heldRef.current = held;
+  const [dialog, setDialog] = useState<"history" | "timing" | null>(null);
+  const closeDialog = useCallback(() => setDialog(null), []); // the native dialog hands focus back to the button that opened it
   const lengthSec = Math.max(endFrame / fps, scene.endSec);
   const lengthRef = useRef(lengthSec);
   lengthRef.current = lengthSec;
@@ -104,10 +118,11 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
     hadClips.current = hasClips;
   }, [project, hasClips, fit]);
 
-  const commit = useCallback((ops: Op[], s: Say) => {
+  const commit = useCallback((ops: Op[], s: Say, after?: (out: { changed: boolean }) => void) => {
     const p = live.current.proj;
     if (!p.ready) { onNotice(t("timeline.notReady")); return; }
-    p.apply(ops).then((out) => { if (out?.changed) speak(s); }).catch((e: unknown) => {
+    const labelKey = LABELS[s.key];
+    p.apply(ops, undefined, labelKey ? t(labelKey, s.values) : undefined).then((out) => { if (out?.changed) after?.(out); return out; }).then((out) => { if (out?.changed) speak(s); }).catch((e: unknown) => {
       const m = t("timeline.notPossible", { message: e instanceof Error ? e.message : String(e) });
       onNotice(m);
       announce(m);
@@ -169,9 +184,34 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         commit([trimOp(sc, i, cmd.edge, value)], say("timeline.say.trimmed", { edge: cmd.edge, name: sc.name[i]! }));
         break;
       }
+      case "copy": case "cut": case "duplicate": {
+        const proj0 = live.current.proj.project;
+        const picked0 = proj0 ? copyClips(proj0, new Set(cmd.c === "cut" ? mine.map((i) => sc.id[i]!) : picked.map((i) => sc.id[i]!))) : [];
+        if (!proj0 || picked0.length === 0) { speak(locked && cmd.c === "cut" ? locked : say("timeline.say.nothingToCopy")); break; }
+        if (cmd.c === "duplicate") {
+          const plan = planPlacement(proj0, picked0, duplicateAt(picked0), null, newClipId);
+          if (plan.ops.length === 0) { speak(say("timeline.say.pasteSkipped", { count: plan.skipped })); break; }
+          commit(plan.ops, say("timeline.say.duplicated", { count: plan.placed }), () => setSelected(new Set(plan.ops.map((o) => (o.op === "insert_clip" ? o.clip.id : "")))));
+          break;
+        }
+        setHeld(picked0);
+        if (cmd.c === "copy") { speak(say("timeline.say.copied", { count: picked0.length })); break; }
+        commit(picked0.map((h) => ({ op: "delete" as const, clip: h.clip.id })), say("timeline.say.cut", { count: picked0.length }), () => setSelected(NO_SELECTION));
+        break;
+      }
+      case "paste": {
+        const proj0 = live.current.proj.project;
+        const h = heldRef.current;
+        if (!proj0 || h.length === 0) { speak(say("timeline.say.nothingToPaste")); onNotice(t("timeline.say.nothingToPaste")); break; }
+        const plan = planPlacement(proj0, h, tick, selectedTrack(proj0, sel), newClipId);
+        if (plan.ops.length === 0) { const m = say("timeline.say.pasteSkipped", { count: plan.skipped }); speak(m); onNotice(t(m.key, m.values)); break; }
+        commit(plan.ops, say("timeline.say.pasted", { count: plan.placed, time: timecode(Math.round((plan.start * FPS) / TICKS_PER_SECOND)) }), () => setSelected(new Set(plan.ops.map((o) => (o.op === "insert_clip" ? o.clip.id : "")))));
+        if (plan.skipped > 0) onNotice(t("timeline.say.pasteSkipped", { count: plan.skipped }));
+        break;
+      }
       default: break;
     }
-  }, [speak, commit, undoRedo, onNotice, t]);
+  }, [speak, commit, undoRedo, onNotice, t, setSelected]);
 
   // Shortcuts that work anywhere except while typing in a field.
   useEffect(() => {
@@ -191,6 +231,9 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const undoText = undoLabel && proj.canUndo ? t("timeline.undo.what", { what: undoLabel }) : t("timeline.undo");
   const redoText = redoLabel && proj.canRedo ? t("timeline.redo.what", { what: redoLabel }) : t("timeline.redo");
   const none = selected.size === 0;
+  const oneIdx = indicesOf(scene, selected);
+  const oneClip = oneIdx.length === 1 && !scene.trackLocked[scene.clipTrack[oneIdx[0]!]!] ? oneIdx : null;
+  useEffect(() => { if (dialog === "timing" && !oneClip) setDialog(null); }, [dialog, oneClip]);
   return (
     <section className="timeline" aria-label={t("timeline.label")} data-testid="panel-timeline">
       <div className="tl-bar">
@@ -209,6 +252,20 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
           <button type="button" className="icon-btn tl-fit" aria-label={t("timeline.fit")} title={tip(t("timeline.fit"), "0")} data-testid="tl-fit" onClick={fit}><Icon name="fit" size={18} /></button>
         </label>
       </div>
+      <div className="tl-bar tl-bar2" data-testid="tl-clip-tools">
+        <div className="tl-group" role="toolbar" aria-label={t("timeline.clipTools")}>
+          <button className="icon-btn" aria-label={t("timeline.duplicate")} title={tip(t("timeline.duplicate"), KEYS.dup)} data-testid="tl-duplicate" disabled={off || none} onClick={() => run({ c: "duplicate" })}><Icon name="duplicate" /></button>
+          <button className="icon-btn" aria-label={t("timeline.copy")} title={tip(t("timeline.copy"), KEYS.copy)} data-testid="tl-copy" disabled={off || none} onClick={() => run({ c: "copy" })}><Icon name="copy" /></button>
+          <button className="icon-btn" aria-label={t("timeline.cut")} title={tip(t("timeline.cut"), KEYS.cut)} data-testid="tl-cut" disabled={off || none} onClick={() => run({ c: "cut" })}><Icon name="cut" /></button>
+          <button className="icon-btn" aria-label={t("timeline.paste")} title={tip(t("timeline.paste"), KEYS.paste)} data-testid="tl-paste" disabled={off || held.length === 0} onClick={() => run({ c: "paste" })}><Icon name="paste" /></button>
+          <span className="sep" aria-hidden="true" />
+          <button className="icon-btn" aria-label={t("timeline.timing")} title={t("timeline.timing")} data-testid="tl-timing" aria-haspopup="dialog" disabled={off || !oneClip} onClick={() => setDialog("timing")}><Icon name="timing" /></button>
+          <button className="icon-btn" aria-label={t("timeline.history")} title={t("timeline.history")} data-testid="tl-history" aria-haspopup="dialog" disabled={off} onClick={() => setDialog("history")}><Icon name="history" /></button>
+        </div>
+      </div>
+      {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
+      {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
+        onApply={(ops, field, name) => commit(ops, say("timeline.say.timed", { field, name }))} /></Suspense>}
       <div className="tl-stage">
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
           selected={selected} onSelect={setSelected} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} />
