@@ -13,9 +13,12 @@ applyLocale(initialLocale());
 // `/#timeline-bench` opens the S8 benchmark page (lazy chunk, not linked from the UI).
 const bench = location.hash === "#timeline-bench" ? lazy(() => import("./TimelineBench").then((m) => ({ default: m.TimelineBench }))) : null;
 
+// `/#export-harness` drives the export pipeline on a synthetic project (M1-022; the real dialog is M1-035).
+const harness = location.hash === "#export-harness" ? lazy(() => import("./ExportHarness").then((m) => ({ default: m.ExportHarness }))) : null;
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {bench ? <Suspense fallback={null}>{createElement(bench)}</Suspense> : <I18nProvider><App /></I18nProvider>}
+    {bench ? <Suspense fallback={null}>{createElement(bench)}</Suspense> : harness ? <Suspense fallback={null}>{createElement(harness)}</Suspense> : <I18nProvider><App /></I18nProvider>}
   </StrictMode>,
 );
 
