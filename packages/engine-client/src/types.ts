@@ -74,6 +74,15 @@ export type DecodedFrame = { index: number; ptsTicks: number; width: number; hei
   | { kind: "cpu"; /** RGBA8, row-major, no padding. */ rgba: Uint8Array }
 );
 
+/** A running sequential decode (see `MediaHandle.stream`). */
+export interface FrameStream {
+  /** The next frame in presentation order, or `null` at the end of the media. Rejects `MediaDecodeError` on a decoder fault. Release every frame. */
+  next(): Promise<DecodedFrame | null>;
+  /** Decoded frames waiting for `next()`. */
+  buffered(): number;
+  close(): void;
+}
+
 /** An open media file. */
 export interface MediaHandle {
   readonly info: MediaFileInfo;
@@ -85,6 +94,17 @@ export interface MediaHandle {
    * makes the older reject with `MediaDecodeError` kind `cancelled` (scrubbing). Rejects `unsupported` naming the codec.
    */
   videoFrame(index: number): Promise<DecodedFrame>;
+  /**
+   * The frame to show at source time `ticks` (integer ticks): the last frame whose timestamp is not after it, so a variable-frame-rate
+   * clip plays at its real speed. Use this, not `ticks * fps`, to pick the `index` for `videoFrame` / `stream`.
+   */
+  frameIndexAt(ticks: number): number;
+  /**
+   * Sequential decode for playback: frames `startIndex, startIndex+1, ...` in order, each decoded once from one decoder run (a
+   * `videoFrame` call per frame would restart at the keyframe every time). At most `maxBuffered` frames are held ahead of `next()`.
+   * Independent of `videoFrame`: scrubbing never disturbs a running stream. Call `close()` to free the decoder and held frames.
+   */
+  stream(startIndex: number, maxBuffered?: number): FrameStream;
   /** Interleaved f32 PCM at `audioRate`, `count` frames from `startSample` (silence past the end of the stream). */
   audio(startSample: number, count: number): Promise<Float32Array>;
   /** Decoder frame accounting (`open` must be 0 once every result is released: the no-leak check). */

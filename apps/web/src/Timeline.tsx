@@ -21,9 +21,12 @@ type Props = {
   onSoon: (what: string) => void;
   /** Project to draw; the sample project stands in until media is imported. */
   project?: Project;
+  /** Frames per second and length of the previewed sequence (defaults: the sample timeline). */
+  fps?: number;
+  endFrame?: number;
 };
 
-export function Timeline({ frame, playing, zoom, onFrame, onZoom, onSoon, project }: Props) {
+export function Timeline({ frame, playing, zoom, onFrame, onZoom, onSoon, project, fps = FPS, endFrame = END_FRAME }: Props) {
   const { t } = useI18n();
   const source = useMemo(() => project ?? sampleProject(), [project]);
   const scene = useMemo(() => buildScene(source), [source]);
@@ -45,7 +48,7 @@ export function Timeline({ frame, playing, zoom, onFrame, onZoom, onSoon, projec
         </label>
       </div>
       <div className="tl-stage">
-        <TimelineCanvas scene={scene} fps={FPS} frame={frame} endFrame={END_FRAME} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary} />
+        <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary} />
       </div>
     </section>
   );
