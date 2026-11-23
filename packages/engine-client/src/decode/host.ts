@@ -1,6 +1,7 @@
 import { codecName, MediaDecodeError, unsupported } from "./errors";
 import { readPackets, type ByteSource, type PacketJson } from "./blob-source";
 import { assemble, type AudioBlock } from "./resample";
+import { avcLengthSize, packetsToDecode, readBatches } from "./seek-plan";
 
 /** Everything the host needs to open the two decoders; filled from the probe (`MediaFile.info()`, `videoDescription()`). */
 export interface HostTracks {
@@ -87,7 +88,8 @@ export class WebCodecsHost {
   /** Supersede whatever video decode is running: it rejects with `cancelled` and its frames are closed. */
   cancel(): void {
     this.gen++;
-    if (this.vdec && this.vdec.state === "configured") this.vdec.reset();
+    // Only a decode in flight needs the reset: an idle (flushed) decoder stays configured, so the next seek skips reset + configure.
+    if (this.sink && this.vdec && this.vdec.state === "configured") this.vdec.reset();
     if (this.sink?.found) this.close(this.sink.found);
     if (this.sink) this.sink.found = undefined;
   }
@@ -108,21 +110,39 @@ export class WebCodecsHost {
     const gen = ++this.gen;
     const stale = () => gen !== this.gen;
     const dec = this.videoDecoder(track);
-    dec.reset();
-    dec.configure(videoConfig(track));
+    if (dec.state !== "configured") dec.configure(videoConfig(track)); // reuse the configured decoder (hardware decoders are slow to re-create)
     const sink: NonNullable<WebCodecsHost["sink"]> = { gen, target: req.target, found: undefined };
     this.sink = sink;
+    let pending: Promise<Uint8Array[]> | undefined;
     try {
-      const bytes = await readPackets(this.src, req.packets, stale);
-      for (let i = 0; i < req.packets.length; i++) {
-        if (stale()) throw cancelled();
-        // Back-pressure: never more than MAX_QUEUE packets waiting in the decoder.
-        while (dec.decodeQueueSize > MAX_QUEUE) {
-          await new Promise<void>((res) => dec.addEventListener("dequeue", () => res(), { once: true }));
+      // Read the run in growing batches: the keyframe's batch is small, so the decoder starts while the rest is still being read.
+      const lenSize = avcLengthSize(track.codec, track.description);
+      const batches = readBatches(req.packets.length);
+      let from = 0;
+      const read = (b: number) => {
+        const slice = req.packets.slice(from, from + batches[b]!);
+        from += batches[b]!;
+        return readPackets(this.src, slice, stale);
+      };
+      pending = read(0);
+      let at = 0;
+      for (let b = 0; b < batches.length; b++) {
+        const bytes = await pending!;
+        const batch = req.packets.slice(at, at + batches[b]!);
+        pending = b + 1 < batches.length ? read(b + 1) : undefined;
+        at += batches[b]!;
+        // The last packet of the run is the target (kept); non-reference pictures before it are never decoded.
+        const keep = packetsToDecode(batch, bytes, lenSize, at === req.packets.length);
+        for (const i of keep) {
           if (stale()) throw cancelled();
+          // Back-pressure: never more than MAX_QUEUE packets waiting in the decoder.
+          while (dec.decodeQueueSize > MAX_QUEUE) {
+            await new Promise<void>((res) => dec.addEventListener("dequeue", () => res(), { once: true }));
+            if (stale()) throw cancelled();
+          }
+          const p = batch[i]!;
+          dec.decode(new EncodedVideoChunk({ type: p.key ? "key" : "delta", timestamp: p.ts, duration: p.dur, data: bytes[i]! }));
         }
-        const p = req.packets[i]!;
-        dec.decode(new EncodedVideoChunk({ type: p.key ? "key" : "delta", timestamp: p.ts, duration: p.dur, data: bytes[i]! }));
       }
       await dec.flush();
       if (stale()) throw cancelled();
@@ -144,6 +164,7 @@ export class WebCodecsHost {
         this.close(frame);
       }
     } catch (e) {
+      pending?.catch(() => undefined); // a read still running for a cancelled seek: its rejection is not news
       if (sink.found) this.close(sink.found);
       sink.found = undefined;
       if (e instanceof MediaDecodeError) throw e;
