@@ -29,6 +29,8 @@ export interface MediaRef {
   id: MediaId;
   kind: MediaKind;
   name: string;
+  /** Free-form labels the user put on the item in the media bin (`docs/features/media-bin.md`), trimmed, unique, at most `MAX_TAGS`. */
+  tags?: string[];
   /** Host-resolved locator: a path relative to the project, a file handle key (web) or similar. Opaque to the model. */
   uri: string;
 }

@@ -124,6 +124,13 @@
         "name": {
           "type": "string"
         },
+        "tags": {
+          "description": "Free-form labels the user put on the item in the media bin (`docs/features/media-bin.md`), trimmed, unique, at most `MAX_TAGS`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "uri": {
           "description": "Host-resolved locator: a path relative to the project, a file handle key (web) or similar. Opaque to the model.",
           "type": "string"

@@ -228,6 +228,7 @@ export type Op =
   | { op: "delete"; clip: ClipId }
   | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
   | { op: "set_media"; media: MediaId; uri: string; hash: string | null }
+  | { op: "set_media_tags"; media: MediaId; tags: string[] }
   | { op: "add_media"; media: MediaRef }
   | { op: "remove_media"; media: MediaId }
   | { op: "set_sequence_format"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution }

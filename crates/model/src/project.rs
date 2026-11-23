@@ -116,6 +116,9 @@ pub struct MediaRef {
     /// Source length; `None` for stills and until probed.
     #[serde(default)]
     pub duration: Option<Time>,
+    /// Free-form labels the user put on the item in the media bin (`docs/features/media-bin.md`), trimmed, unique, at most `MAX_TAGS`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -292,6 +295,7 @@ mod tests {
             uri: "media/a.mp4".into(),
             hash: None,
             duration: Time::from_seconds(10),
+            tags: vec![],
         };
         let clip = |ids: &mut SeqIds, start: i64| Clip {
             id: ClipId::new(ids),
