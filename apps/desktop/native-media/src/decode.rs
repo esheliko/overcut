@@ -3,10 +3,10 @@ use app_media::{
     Track, VideoOut, VideoRequest,
 };
 use app_media::{FrameData, RgbaFrame};
-use ffmpeg_next as ff;
 use ff::codec::{self, Id};
 use ff::format::Pixel;
 use ff::software::{resampling, scaling};
+use ffmpeg_next as ff;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -55,7 +55,10 @@ impl FileSource {
     pub fn open(path: &Path) -> Result<Self, MediaError> {
         let file = File::open(path).map_err(io)?;
         let len = file.metadata().map_err(io)?.len();
-        Ok(FileSource { file: std::sync::Mutex::new(file), len })
+        Ok(FileSource {
+            file: std::sync::Mutex::new(file),
+            len,
+        })
     }
 }
 impl Source for FileSource {
@@ -63,7 +66,10 @@ impl Source for FileSource {
         self.len
     }
     async fn read_at(&self, offset: u64, buf: &mut [u8]) -> Result<usize, MediaError> {
-        let mut f = self.file.lock().map_err(|_| MediaError::Io("poisoned".into()))?;
+        let mut f = self
+            .file
+            .lock()
+            .map_err(|_| MediaError::Io("poisoned".into()))?;
         f.seek(SeekFrom::Start(offset)).map_err(io)?;
         f.read(buf).map_err(io)
     }
@@ -74,26 +80,38 @@ pub struct LibavHost {
     file: File,
     video: Option<Track>,
     audio: Option<Track>,
-    audio_rate: u32,
 }
 
 /// Opens `path`, probes it with the engine's own demuxer and returns the standard `HostDecoder` over a libav host.
 pub fn open_file(path: &Path, audio_rate: u32) -> Result<HostDecoder<LibavHost>, MediaError> {
+    open_probed(path, audio_rate).map(|(d, _)| d)
+}
+
+/// Like [`open_file`] and also returns the probe (track tables), which `NativeMedia` reports to the UI.
+pub fn open_probed(
+    path: &Path,
+    audio_rate: u32,
+) -> Result<(HostDecoder<LibavHost>, app_media::Probe), MediaError> {
     crate::init().map_err(MediaError::Io)?;
     let src = FileSource::open(path)?;
     let p = block_on(probe(&src))?;
     let video = p.video().cloned();
     let audio = p.audio().cloned();
     for t in video.iter().chain(audio.iter()) {
-        if codec_id(&t.codec).is_none() || ff::decoder::find(codec_id(&t.codec).unwrap()).is_none() {
+        if codec_id(&t.codec).is_none() || ff::decoder::find(codec_id(&t.codec).unwrap()).is_none()
+        {
             return Err(unsupported(t));
         }
     }
-    let host = LibavHost { file: File::open(path).map_err(io)?, video: video.clone(), audio: audio.clone(), audio_rate };
-    HostDecoder::new(host, video, audio, audio_rate)
+    let host = LibavHost {
+        file: File::open(path).map_err(io)?,
+        video: video.clone(),
+        audio: audio.clone(),
+    };
+    Ok((HostDecoder::new(host, video, audio, audio_rate)?, p))
 }
 
-fn block_on<F: std::future::Future>(f: F) -> F::Output {
+pub fn block_on<F: std::future::Future>(f: F) -> F::Output {
     use std::task::{Context, Poll, Waker};
     let mut f = std::pin::pin!(f);
     let mut cx = Context::from_waker(Waker::noop());
@@ -138,7 +156,13 @@ fn new_context(track: &Track) -> Result<codec::Context, MediaError> {
 }
 
 /// Bytes `[offset, offset+size)` of the file as a libav packet carrying `pts` (microseconds).
-fn read_packet(file: &mut File, offset: u64, size: u32, ts_us: i64, key: bool) -> Result<codec::packet::Packet, MediaError> {
+fn read_packet(
+    file: &mut File,
+    offset: u64,
+    size: u32,
+    ts_us: i64,
+    key: bool,
+) -> Result<codec::packet::Packet, MediaError> {
     let mut buf = vec![0u8; size as usize];
     file.seek(SeekFrom::Start(offset)).map_err(io)?;
     file.read_exact(&mut buf).map_err(io)?;
@@ -163,21 +187,40 @@ impl PacketDecoder for LibavHost {
         FrameKinds::CPU
     }
 
-    async fn decode_video(&mut self, req: &VideoRequest, kind: FrameKind) -> Result<VideoOut, MediaError> {
+    async fn decode_video(
+        &mut self,
+        req: &VideoRequest,
+        kind: FrameKind,
+    ) -> Result<VideoOut, MediaError> {
         if kind != FrameKind::Cpu {
-            return Err(MediaError::Unsupported("native decoder returns CPU frames only".into()));
+            return Err(MediaError::Unsupported(
+                "native decoder returns CPU frames only".into(),
+            ));
         }
         let track = self.video_track()?.clone();
         let mut dec = new_context(&track)?.decoder().video().map_err(io)?;
         let mut frame = ff::frame::Video::empty();
         let mut found: Option<RgbaFrame> = None;
         let mut scaler: Option<scaling::Context> = None;
-        let mut take = |dec: &mut ff::decoder::Video, found: &mut Option<RgbaFrame>| -> Result<(), MediaError> {
+        let mut take = |dec: &mut ff::decoder::Video,
+                        found: &mut Option<RgbaFrame>|
+         -> Result<(), MediaError> {
             while dec.receive_frame(&mut frame).is_ok() {
                 if found.is_none() && frame.pts() == Some(req.target_ts_us) {
                     let (w, h) = (frame.width(), frame.height());
                     if scaler.is_none() {
-                        scaler = Some(scaling::Context::get(frame.format(), w, h, Pixel::RGBA, w, h, scaling::Flags::BICUBIC).map_err(io)?);
+                        scaler = Some(
+                            scaling::Context::get(
+                                frame.format(),
+                                w,
+                                h,
+                                Pixel::RGBA,
+                                w,
+                                h,
+                                scaling::Flags::BICUBIC,
+                            )
+                            .map_err(io)?,
+                        );
                     }
                     let mut out = ff::frame::Video::empty();
                     scaler.as_mut().unwrap().run(&frame, &mut out).map_err(io)?;
@@ -187,7 +230,11 @@ impl PacketDecoder for LibavHost {
                     for row in 0..h as usize {
                         data.extend_from_slice(&src[row * stride..row * stride + w as usize * 4]);
                     }
-                    *found = Some(RgbaFrame { width: w, height: h, data: Arc::from(data) });
+                    *found = Some(RgbaFrame {
+                        width: w,
+                        height: h,
+                        data: Arc::from(data),
+                    });
                 }
             }
             Ok(())
@@ -199,8 +246,13 @@ impl PacketDecoder for LibavHost {
         }
         dec.send_eof().map_err(io)?;
         take(&mut dec, &mut found)?;
-        let f = found.ok_or_else(|| MediaError::Io(format!("frame {} not produced", req.frame_index)))?;
-        Ok(VideoOut { width: f.width, height: f.height, data: FrameData::Cpu(f) })
+        let f = found
+            .ok_or_else(|| MediaError::Io(format!("frame {} not produced", req.frame_index)))?;
+        Ok(VideoOut {
+            width: f.width,
+            height: f.height,
+            data: FrameData::Cpu(f),
+        })
     }
 
     async fn decode_audio(&mut self, req: &AudioRequest) -> Result<Vec<f32>, MediaError> {
@@ -212,26 +264,33 @@ impl PacketDecoder for LibavHost {
             return Ok(out);
         }
         let mut dec = new_context(&track)?.decoder().audio().map_err(io)?;
-        // Opus drops its pre-skip from the first output of every fresh decoder: the first frame starts that many samples after its packet's timestamp.
-        let skipped_48k = if track.codec == "opus" && track.codec_description.len() >= 12 {
-            i64::from(u16::from_le_bytes([track.codec_description[10], track.codec_description[11]]))
-        } else {
-            0
-        };
         let mut swr: Option<resampling::Context> = None;
         let mut samples: Vec<f32> = Vec::new();
         let mut anchor: Option<i64> = None; // output-rate sample index of samples[0]
         let mut frame = ff::frame::Audio::empty();
-        let mut drain = |dec: &mut ff::decoder::Audio, swr: &mut Option<resampling::Context>, samples: &mut Vec<f32>, anchor: &mut Option<i64>, eof: bool| -> Result<(), MediaError> {
+        let mut drain = |dec: &mut ff::decoder::Audio,
+                         swr: &mut Option<resampling::Context>,
+                         samples: &mut Vec<f32>,
+                         anchor: &mut Option<i64>,
+                         eof: bool|
+         -> Result<(), MediaError> {
             while dec.receive_frame(&mut frame).is_ok() {
                 if anchor.is_none() {
-                    let pts_us = frame.pts().unwrap_or(req.first_ts_us);
-                    let shift = skipped_48k * rate / 48_000;
-                    *anchor = Some((pts_us as i128 * rate as i128 / 1_000_000) as i64 + shift);
+                    // libav drops Opus's pre-skip itself (measured: lag 0 at stream start), so the first output sample sits at the first packet's timestamp.
+                    // Matroska timestamps are whole milliseconds, so mid-stream Opus can land up to 1 ms (48 samples) off: ADR 0004 S4 results.
+                    *anchor = Some((req.first_ts_us as i128 * rate as i128 / 1_000_000) as i64);
                 }
                 if swr.is_none() {
                     *swr = Some(
-                        resampling::Context::get2(frame.format(), frame.ch_layout(), frame.rate(), ff::format::Sample::F32(ff::format::sample::Type::Packed), frame.ch_layout(), req.rate).map_err(io)?,
+                        resampling::Context::get(
+                            frame.format(),
+                            frame.channel_layout(),
+                            frame.rate(),
+                            ff::format::Sample::F32(ff::format::sample::Type::Packed),
+                            frame.channel_layout(),
+                            req.rate,
+                        )
+                        .map_err(io)?,
                     );
                 }
                 let mut conv = ff::frame::Audio::empty();
@@ -262,7 +321,8 @@ impl PacketDecoder for LibavHost {
         for i in 0..req.count {
             let pos = req.start_sample + i as i64 - a;
             if pos >= 0 && (pos as usize + 1) * ch <= samples.len() {
-                out[i * ch..(i + 1) * ch].copy_from_slice(&samples[pos as usize * ch..(pos as usize + 1) * ch]);
+                out[i * ch..(i + 1) * ch]
+                    .copy_from_slice(&samples[pos as usize * ch..(pos as usize + 1) * ch]);
             }
         }
         Ok(out)
@@ -272,5 +332,9 @@ impl PacketDecoder for LibavHost {
 fn push_f32(frame: &ff::frame::Audio, ch: usize, into: &mut Vec<f32>) {
     let n = frame.samples() * ch;
     let bytes = &frame.data(0)[..n * 4];
-    into.extend(bytes.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])));
+    into.extend(
+        bytes
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+    );
 }

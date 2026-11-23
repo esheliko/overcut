@@ -9,7 +9,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 publish = false
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 app-media = { path = "../../../crates/media" }
@@ -17,3 +17,4 @@ app-model = { path = "../../../crates/model" }
 # Dynamic link only (no `build` / `static` feature): the app links the LGPL libav it ships or finds, never a GPL build of its own.
 ffmpeg-next = { version = "7.1", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
 ffmpeg-sys-next = { version = "7.1", default-features = false }
+serde_json = "1"
