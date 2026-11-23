@@ -11,6 +11,7 @@ import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
 import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
 import { Timeline } from "./Timeline";
+import { AccentPicker, InstallItem } from "./AppearanceInstall";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { ExportControl } from "./export/ExportDialog";
 import { MediaBin } from "./media/MediaBin";
@@ -137,11 +138,13 @@ function AppMenu({ compact, theme, status, project }: { compact: boolean; theme:
               <div className="menu-row menu-status" role="presentation">{status}</div>
             </>
           )}
+          <AccentPicker />
           <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={() => { setOpen(false); project.onNew(); }}>{t("menu.new")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={() => { setOpen(false); project.onOpen(); }}>{t("menu.openProject")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={() => { setOpen(false); project.onSave(); }}>{t("menu.saveProject")}</button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
           <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={() => { setOpen(false); project.onPrivacy(); }}>{t("menu.privacy")}</button>
+          <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
         </div>
       )}

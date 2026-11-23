@@ -63,7 +63,18 @@ const PAIRS: [string, string, number, string][] = [
   ["danger", "surface-2", 3, "status dot"],
 ];
 
+/** Every accent (UX-05) on top of every theme: the overrides in tokens.css, merged over the theme's tokens. Teal is the base set. */
+const ACCENT_NAMES = ["teal", "blue", "violet", "pink", "orange", "green", "yellow"];
+const SELECTOR = { dark: ':root[data-theme="dark"]', light: ':root[data-theme="light"]', "high-contrast": ':root[data-theme="high-contrast"]' } as const;
+const COMBOS: [string, Record<string, string>][] = [];
 for (const [theme, tokens] of Object.entries(THEMES)) {
+  for (const accent of ACCENT_NAMES) {
+    const over = accent === "teal" ? {} : block(`${SELECTOR[theme as keyof typeof SELECTOR]}[data-accent="${accent}"]`);
+    COMBOS.push([`${theme} + ${accent}`, { ...tokens, ...over }]);
+  }
+}
+
+for (const [theme, tokens] of COMBOS) {
   test(`theme ${theme}: every text/background pair meets WCAG 2.2 AA`, () => {
     const get = (name: string): RGBA => {
       let v = tokens[name]!;
@@ -84,6 +95,18 @@ for (const [theme, tokens] of Object.entries(THEMES)) {
     assert.deepEqual(fails, []);
   });
 }
+
+test("every accent overrides all four accent roles in every theme (no half-set accent)", () => {
+  for (const th of Object.values(SELECTOR)) for (const a of ACCENT_NAMES.slice(1)) {
+    const o = block(`${th}[data-accent="${a}"]`);
+    for (const r of ["accent", "accent-ink", "accent-soft", "clip"]) assert.ok(o[r], `${th} ${a} lacks --${r}`);
+  }
+});
+
+test("accent names in tokens.css match the picker's list", async () => {
+  const { ACCENTS } = await import("../../apps/web/src/theme/theme");
+  assert.deepEqual([...ACCENTS], ACCENT_NAMES);
+});
 
 test("high-contrast borders are visible (3:1)", () => {
   const t = THEMES["high-contrast"];

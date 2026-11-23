@@ -6,7 +6,7 @@ import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
-import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, presetChoice, presetHint, resolutionSteps, saveName, saveRemembered, usableCustom, type Choice, type PresetId, type QualityId, type Source } from "./model";
+import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
 
 const probes = new Map<string, Promise<ExportFormats>>();
@@ -113,10 +113,10 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
 
   const fmts = formatsOf(choice);
   const format = fmts ? pickFormat(choice, fmts.options, fmts.auto) : null;
-  const edit = (patch: Partial<Choice>) => { setCustom({ ...choice, ...patch }); setPreset("custom"); };
+  const edit = (patch: Partial<Choice>) => { setCustom({ ...withoutCap(choice), ...patch }); setPreset("custom"); }; // any manual change drops a platform's size cap
   const pickPreset = (id: PresetId) => { setPreset(id); setCustom(presetChoice(id, src)); };
   const shape = (c: Choice) => `${c.width}×${c.height}`;
-  const letterbox = preset === "vertical" && src.width > src.height * 0.57;
+  const letterbox = preset !== "custom" && needsBars(preset, src);
 
   const go = () => {
     if (!format) return;
@@ -137,7 +137,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
       <fieldset className="export-presets">
         <legend>{t("export.presets")}</legend>
         {offered.map((id) => {
-          const hint = presetHint(id, src);
+          const hint = presetHint(id, src, locale);
           return (
             <label key={id} className="export-chip-choice" data-checked={preset === id}>
               <input type="radio" name="export-preset" value={id} checked={preset === id} onChange={() => pickPreset(id)} data-testid={`export-preset-${id}`} />
@@ -184,6 +184,8 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
           {t("export.estimate", { size: formatBytes(estimateBytes(choice, src, format), locale), format: fmtName(format.id) })}
         </p>
       )}
+      {format && choice.capBytes !== undefined && <p className="export-note" data-testid="export-cap-note">{t("export.cap.aims", { cap: formatBytes(choice.capBytes, locale) })}</p>}
+      {format && presetWarnings(preset, choice, src, format, locale).map((w) => <p key={w.key} className="export-note" role="status" data-testid={w.key === "export.warn.cap" ? "export-cap-warning" : "export-duration-warning"}>{t(w.key, w.values)}</p>)}
       {format?.warnings.map((w) => <p key={w} className="export-note" data-testid="export-warning">{t("export.warn.limited")}</p>)}
       <button className="primary export-go" onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
     </>

@@ -27,3 +27,54 @@ test("stored values are validated; the toggle cycles through every preference", 
   assert.equal(seen.size, THEME_PREFS.length);
   assert.equal(p, THEME_PREFS[0]);
 });
+
+import { ACCENTS, ACCENT_SWATCH, applyAccent, loadAccent, parseAccent, saveAccent } from "../../apps/web/src/theme/theme";
+import { installKind, isIos } from "../../apps/web/src/install";
+
+test("accent: unknown values fall back to teal, 7 choices, every one has a swatch", () => {
+  assert.equal(parseAccent("violet"), "violet");
+  assert.equal(parseAccent("hotpink"), "teal");
+  assert.equal(parseAccent(null), "teal");
+  assert.equal(ACCENTS.length, 7);
+  for (const a of ACCENTS) assert.match(ACCENT_SWATCH[a], /^#[0-9a-f]{6}$/i);
+});
+
+test("accent: persisted locally, teal clears the key, storage failure is swallowed", () => {
+  const mem = new Map<string, string>();
+  const g = globalThis as { localStorage?: unknown };
+  const prev = g.localStorage;
+  g.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
+  try {
+    saveAccent("pink");
+    assert.equal(mem.get("overcut.accent"), "pink");
+    assert.equal(loadAccent(), "pink");
+    saveAccent("teal");
+    assert.equal(mem.has("overcut.accent"), false);
+    assert.equal(loadAccent(), "teal");
+    g.localStorage = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); }, removeItem: () => { throw new Error("blocked"); } };
+    assert.equal(loadAccent(), "teal");
+    assert.doesNotThrow(() => saveAccent("blue"));
+  } finally { g.localStorage = prev; }
+});
+
+test("accent: applyAccent sets data-accent and announces a theme event", () => {
+  const events: unknown[] = [];
+  const root = { dataset: {} as Record<string, string>, dispatchEvent: (e: Event) => { events.push(e); return true; } } as unknown as HTMLElement;
+  applyAccent("orange", root);
+  assert.equal(root.dataset.accent, "orange");
+  assert.equal(events.length, 1);
+});
+
+test("install: prompt where the browser gives one, how-to on iOS, nothing when installed or in the desktop app", () => {
+  const base = { hasPrompt: false, standalone: false, ios: false, desktopApp: false };
+  assert.equal(installKind(base), null);
+  assert.equal(installKind({ ...base, hasPrompt: true }), "prompt");
+  assert.equal(installKind({ ...base, ios: true }), "ios");
+  assert.equal(installKind({ ...base, ios: true, hasPrompt: true }), "prompt");
+  assert.equal(installKind({ ...base, hasPrompt: true, standalone: true }), null);
+  assert.equal(installKind({ ...base, ios: true, desktopApp: true }), null);
+  assert.equal(isIos("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)", "iPhone", 5), true);
+  assert.equal(isIos("Mozilla/5.0 (Macintosh)", "MacIntel", 5), true); // iPadOS posing as a Mac
+  assert.equal(isIos("Mozilla/5.0 (Macintosh)", "MacIntel", 0), false);
+  assert.equal(isIos("Mozilla/5.0 (X11; Linux x86_64)", "Linux x86_64", 0), false);
+});
