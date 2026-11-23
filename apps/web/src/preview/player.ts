@@ -5,9 +5,10 @@
  * the layers to the compositor. A frame that cannot be ready in time is skipped, never waited for.
  * Everything platform-specific (clock, audio output, renderer, media) is injected, so the logic runs under fake clocks in unit tests.
  */
-import { layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type MediaHandle } from "@app/engine-client";
+import { layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle } from "@app/engine-client";
 import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "./audioMix";
 import type { RenderLayer, Renderer } from "./renderer";
+import { FrameCache, type Thumb } from "./scrubCache";
 import { frameAtTicks, frameStartTicks, positionAt, prefetchFrames, shuttle, TICKS_PER_SECOND, type Anchor, type Rate } from "./timing";
 
 export interface Clock { now(): number }
@@ -43,8 +44,12 @@ export interface PlayerDeps {
   onError?(message: string): void;
   /** Schedule the next presentation tick (requestAnimationFrame). Returns a cancel function. */
   raf(cb: () => void): () => void;
-  /** Bytes of decoded frames each clip may hold ahead of the playhead. */
+  /** Bytes of decoded frames each clip may hold ahead of the playhead (also the budget of the paused-playhead frame cache). */
   prefetchBytes?: number;
+  /** How a decoded frame becomes compositor pixels (the device's chosen upload path, `uploadPath.ts`). `slot` = layer number, for reusable buffers. Default: the frame itself / its RGBA bytes. */
+  upload?(frame: DecodedFrame, slot: number): LayerSource | Promise<LayerSource>;
+  /** The timeline's filmstrip thumbnail nearest to `seconds` of media `media` (upright), used as a stand-in when nothing decoded is near. */
+  standIn?(media: string, seconds: number): Thumb<ImageBitmap> | undefined;
 }
 
 export interface PlayerStats {
@@ -66,6 +71,13 @@ export interface PlayerStats {
   audioTrimmed: number;
   /** `[frame, audio-clock position in ticks]` when each presented frame's draw completed (A/V alignment checks). */
   marks: [number, number][];
+  /** Scrub / step: ms from the request to the first visible update (a stand-in, or the exact frame when it was cached). Target < 16. `scrubMs` is the time to the exact frame. */
+  firstUpdateMs: number[];
+  /** Scrub draws that showed a stand-in first (nearest cached frame or thumbnail), and how many of those were thumbnails. */
+  standIns: number;
+  thumbStandIns: number;
+  /** Scrub draws whose exact frame was already in the cache (frame step, small scrub, after decode-ahead). */
+  cacheHits: number;
 }
 
 const CHUNK_SECONDS = 0.2;
@@ -86,7 +98,10 @@ interface Feed {
 }
 
 export class Player {
-  readonly stats: PlayerStats = { presented: 0, dropped: 0, stalls: 0, maxLateMs: 0, late: [], scrubMs: [], times: [], audioTrimmed: 0, marks: [] };
+  readonly stats: PlayerStats = { presented: 0, dropped: 0, stalls: 0, maxLateMs: 0, late: [], scrubMs: [], times: [], audioTrimmed: 0, marks: [], firstUpdateMs: [], standIns: 0, thumbStandIns: 0, cacheHits: 0 };
+  private cache: FrameCache<DecodedFrame>;
+  private warmToken = 0;
+  private warmStreams = new Set<FrameStream>();
   private frameNo = 0;
   private playing = false;
   private rate = 0;
@@ -107,7 +122,14 @@ export class Player {
 
   constructor(private d: PlayerDeps) {
     this.clock = d.fallbackClock;
+    this.cache = new FrameCache<DecodedFrame>(d.prefetchBytes ?? 192 * 1024 * 1024, 12, (f) => (f.kind === "cpu" ? f.rgba.byteLength : f.width * f.height * 4));
   }
+
+  /** A media item left the project: its cached frames go. */
+  dropMedia(id: string): void { this.cache.dropMedia(id); }
+
+  /** Cached paused-playhead frames (test and measurement). */
+  get cached(): number { return this.cache.size; }
 
   get frame(): number { return this.frameNo; }
   get isPlaying(): boolean { return this.playing; }
@@ -135,6 +157,7 @@ export class Player {
     const f = Math.min(this.endFrame, Math.max(0, Math.floor(frame)));
     if (this.playing) this.pause();
     this.frameNo = f;
+    this.cancelWarm();
     this.scrubTarget = { frame: f, t0 };
     if (!this.scrubbing) void this.scrubLoop();
   }
@@ -159,6 +182,7 @@ export class Player {
     if (this.frameNo >= this.endFrame && rate > 0) this.frameNo = 0;
     if (this.frameNo <= 0 && rate < 0) this.frameNo = this.endFrame;
     const wasPlaying = this.playing;
+    this.cancelWarm();
     const gen = ++this.audioToken;
     this.rate = rate;
     this.playing = true;
@@ -215,7 +239,9 @@ export class Player {
   dispose(): void {
     this.disposed = true;
     this.pause();
+    this.cancelWarm();
     this.closeFeeds();
+    this.cache.clear();
     this.d.renderer.dispose();
   }
 
@@ -298,7 +324,7 @@ export class Player {
           frame = this.take(feed, idx);
         }
         if (!frame) continue;
-        layers.push(this.layer(l, frame, media));
+        layers.push(await this.layer(l, frame, media, layers.length));
       }
       this.d.renderer.render(layers, this.d.size);
     } finally {
@@ -306,8 +332,20 @@ export class Player {
     }
   }
 
-  private layer(l: FrameDescription["layers"][number], frame: DecodedFrame, media: MediaHandle): RenderLayer {
-    return layerOf(l, { source: frame.kind === "gpu" ? frame.frame : { rgba: frame.rgba }, width: frame.width, height: frame.height, rotation: media.info.video?.rotation ?? 0 });
+  private async layer(l: FrameDescription["layers"][number], frame: DecodedFrame, media: MediaHandle, slot: number): Promise<RenderLayer> {
+    const source = this.d.upload ? await this.d.upload(frame, slot) : frame.kind === "gpu" ? frame.frame : { rgba: frame.rgba };
+    return layerOf(l, { source, width: frame.width, height: frame.height, rotation: media.info.video?.rotation ?? 0 });
+  }
+
+  /** A filmstrip thumbnail as a layer: it is upright already (rotation 0) and small, so the layer's scale grows by display size / thumbnail size. */
+  private thumbLayer(l: FrameDescription["layers"][number], t: Thumb<ImageBitmap>, media: MediaHandle): RenderLayer {
+    const v = media.info.video!;
+    const turned = v.rotation === 90 || v.rotation === 270;
+    const dw = turned ? v.height : v.width;
+    const dh = turned ? v.width : v.height;
+    const sx = l.transform.scale[0] * (dw / t.width);
+    const sy = l.transform.scale[1] * (dh / t.height);
+    return layerOf({ ...l, transform: { ...l.transform, scale: [sx, sy] } }, { source: t.bitmap, width: t.width, height: t.height, rotation: 0 });
   }
 
   // --- paused: scrub and step -------------------------------------------------------------------------------------
@@ -320,8 +358,7 @@ export class Player {
         this.scrubTarget = undefined;
         this.d.onFrame(frame);
         try {
-          await this.drawOne(frame);
-          this.stats.scrubMs.push(performance.now() - t0);
+          await this.drawOne(frame, t0);
         } catch (e) {
           if ((e as { kind?: string }).kind !== "cancelled") this.fail(e);
         }
@@ -331,26 +368,110 @@ export class Player {
     }
   }
 
-  /** One-shot draw: random access decode per layer (the handle cancels older requests: latest wins). */
-  private async drawOne(f: number): Promise<void> {
+  /**
+   * One-shot draw (paused). Per layer: the exact frame from the cache if it is there; else a stand-in is drawn at once (the nearest cached frame of
+   * that media, else the nearest filmstrip thumbnail) while the exact frame decodes (the handle cancels older requests: latest wins), then the exact
+   * frame replaces it. `firstUpdateMs` = request to the first visible update, `scrubMs` = request to the exact frame. Export never sees stand-ins.
+   */
+  private async drawOne(f: number, t0: number): Promise<void> {
     const ticks = frameStartTicks(f, this.d.rate);
     const desc = await this.d.evaluate(ticks, 0);
     if (this.scrubTarget) return; // a newer target arrived while evaluating
-    const held: DecodedFrame[] = [];
+    const pinned: DecodedFrame[] = [];
+    const wants: { l: FrameDescription["layers"][number]; media: MediaHandle; idx: number; exact?: DecodedFrame }[] = [];
     try {
-      const layers: RenderLayer[] = [];
-      const got = await Promise.all(desc.layers.map(async (l) => {
+      for (const l of desc.layers) {
         const media = this.d.media(l.media);
-        if (!media?.info.video) return undefined;
-        const frame = await media.videoFrame(media.frameIndexAt(l.source_time));
-        held.push(frame);
-        return this.layer(l, frame, media);
+        if (!media?.info.video) continue;
+        const idx = media.frameIndexAt(l.source_time);
+        const exact = this.cache.get(l.media, idx);
+        if (exact) pinned.push(exact);
+        wants.push({ l, media, idx, exact });
+      }
+      const draw = async (allowStandIns: boolean): Promise<boolean> => {
+        const layers: RenderLayer[] = [];
+        let shown = false;
+        for (const w of wants) {
+          let frame = w.exact;
+          if (!frame && !allowStandIns) continue;
+          if (frame) layers.push(await this.layer(w.l, frame, w.media, layers.length));
+          else {
+            frame = this.cache.nearest(w.l.media, w.idx);
+            if (frame) { pinned.push(frame); layers.push(await this.layer(w.l, frame, w.media, layers.length)); this.stats.standIns++; shown = true; continue; }
+            const t = this.d.standIn?.(w.l.media, w.l.source_time / TICKS_PER_SECOND);
+            if (t) { layers.push(this.thumbLayer(w.l, t, w.media)); this.stats.standIns++; this.stats.thumbStandIns++; shown = true; }
+          }
+        }
+        if (this.scrubTarget || this.playing || this.disposed) return false; // stale: drop it
+        if (shown || !allowStandIns) this.d.renderer.render(layers, this.d.size);
+        return shown;
+      };
+      const missing = wants.filter((w) => !w.exact);
+      if (missing.length === 0) {
+        // Everything is cached (frame step, small scrub, decode-ahead did its job): one draw is both the first update and the exact frame.
+        this.stats.cacheHits++;
+        await draw(false);
+        const ms = performance.now() - t0;
+        this.stats.firstUpdateMs.push(ms);
+        this.stats.scrubMs.push(ms);
+        void this.warmAround(wants);
+        return;
+      }
+      // Stand-in first (only when something better than the held picture exists), then the exact frames.
+      const standIn = await draw(true);
+      if (standIn) this.stats.firstUpdateMs.push(performance.now() - t0);
+      if (this.scrubTarget || this.playing) return;
+      await Promise.all(missing.map(async (w) => {
+        const frame = await w.media.videoFrame(w.idx);
+        w.exact = this.cache.put(w.l.media, frame);
+        pinned.push(w.exact);
       }));
-      for (const g of got) if (g) layers.push(g);
-      if (this.scrubTarget || this.playing) return; // stale: drop it
-      this.d.renderer.render(layers, this.d.size);
+      if (this.scrubTarget || this.playing) return;
+      await draw(false);
+      const ms = performance.now() - t0;
+      if (!standIn) this.stats.firstUpdateMs.push(ms); // nothing was shown before: the first update is the exact frame
+      this.stats.scrubMs.push(ms);
+      void this.warmAround(wants);
     } finally {
-      for (const h of held) h.release();
+      for (const p of pinned) this.cache.unpin(p);
+    }
+  }
+
+  // --- decode-ahead around a paused playhead ------------------------------------------------------------------------
+
+  private cancelWarm(): void {
+    this.warmToken++;
+    for (const s of this.warmStreams) s.close();
+    this.warmStreams.clear();
+  }
+
+  /**
+   * Decode a few frames each side of the paused playhead in one sequential run (from `idx - K`), so frame steps and small scrubs hit the cache. The cache
+   * budget bounds it; any seek, play or reconfigure cancels it at once (closing the stream).
+   */
+  private async warmAround(wants: { media: MediaHandle; l: { media: string }; idx: number }[]): Promise<void> {
+    this.cancelWarm();
+    const token = this.warmToken;
+    const list = wants.slice(0, 2);
+    const k = Math.max(1, Math.min(3, Math.floor((12 / Math.max(1, list.length) - 1) / 2)));
+    for (const w of list) {
+      if (token !== this.warmToken || this.disposed) return;
+      let stream: FrameStream | undefined;
+      try {
+        stream = w.media.stream(Math.max(0, w.idx - k), 2);
+        this.warmStreams.add(stream);
+        for (;;) {
+          const fr = await stream.next();
+          if (!fr) break;
+          if (token !== this.warmToken || fr.index > w.idx + k) { fr.release(); break; }
+          if (this.cache.has(w.l.media, fr.index)) fr.release();
+          else this.cache.unpin(this.cache.put(w.l.media, fr));
+        }
+      } catch {
+        /* decode-ahead is only an aid: a failing stream just means a cache miss later */
+      } finally {
+        if (stream) { this.warmStreams.delete(stream); stream.close(); }
+      }
     }
   }
 
