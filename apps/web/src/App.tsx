@@ -1,5 +1,5 @@
-import { createEngine, newProject, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createEngine, newProject, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
@@ -14,6 +14,8 @@ import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem } from "./AppearanceInstall";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { ExportControl } from "./export/ExportDialog";
+import { VersionsDialog, useAutoSnapshots } from "./Versions";
+import { binMeta, type BinMeta } from "./media/binView";
 import { MediaBin } from "./media/MediaBin";
 import { TICKS } from "./media/plan";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickMany, pickOne, setDesktop, setNativeMedia, type Source } from "./media/sources";
@@ -56,6 +58,8 @@ type BinProps = {
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
+  meta: BinMeta;
+  onTags: (id: string, tags: readonly string[]) => void;
 };
 
 function Library({ tool, bin }: { tool: Tool; bin: BinProps }) {
@@ -106,7 +110,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void } }) {
+function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -143,6 +147,7 @@ function AppMenu({ compact, theme, status, project }: { compact: boolean; theme:
           <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={() => { setOpen(false); project.onOpen(); }}>{t("menu.openProject")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={() => { setOpen(false); project.onSave(); }}>{t("menu.saveProject")}</button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
+          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={() => { setOpen(false); project.onVersions(); }}>{t("menu.versions")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={() => { setOpen(false); project.onPrivacy(); }}>{t("menu.privacy")}</button>
           <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
@@ -167,7 +172,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
-  const [dialog, setDialog] = useState<null | "canvas" | "privacy" | { title: string; body: string; confirm: string; run(): Promise<void> }>(null);
+  const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | { title: string; body: string; confirm: string; run(): Promise<void> }>(null);
   const [locating, setLocating] = useState(false); // after opening a file: offer to reconnect media that is not on this device
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
@@ -268,8 +273,14 @@ function Editor({ store }: { store: ProjectStore }) {
     void desktopApi.onDrop((files) => void importFiles(fromFileList(files)), setDragging).then((un) => (alive ? (off = un) : un())).catch(() => undefined);
     return () => { alive = false; off?.(); };
   }, [desktopApi, importFiles]);
+  const meta = useMemo(() => binMeta(project), [project]);
   const binProps: BinProps = {
     items: media.items,
+    meta,
+    onTags: (id, tags) => {
+      const name = media.items.find((i) => i.id === id)?.name ?? "";
+      void store.apply({ op: "set_media_tags", media: id, tags: [...tags] }, undefined, t("media.tags.undoLabel", { name }));
+    },
     onImport: (s) => void importFiles(s),
     onAdd: (id) => void media.addToTimeline(id).then((ok) => ok && announce(t("media.added"))),
     onRemove: media.remove,
@@ -289,8 +300,10 @@ function Editor({ store }: { store: ProjectStore }) {
   const markClean = () => { const p = store.getState().project; clean.current = p ? JSON.stringify(p) : null; };
   const fail = (key: string, e: unknown) => setToast(t(key, { why: e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e) }));
   /** Swap the open project for `bytes` (a `.overcut` file): the autosaving session when there is one, else the bare engine. */
-  const replaceWith = async (bytes: Uint8Array): Promise<Project> => {
+  const replaceWith = async (bytes: Uint8Array, before?: SnapshotKind): Promise<Project> => {
     let next: Project;
+    // The project that is about to go is kept as a version first (PM-06); a snapshot that cannot be written must not block the user.
+    if (before && persistence.session) { const s = persistence.session; await s.exportBytes().then((b) => s.snapshots.add(before, "", b)).catch(() => undefined); }
     if (persistence.session) next = await persistence.session.replaceProject(bytes);
     else {
       const opened = await core!.openProject(bytes);
@@ -311,7 +324,7 @@ function Editor({ store }: { store: ProjectStore }) {
     if (!core) return;
     confirmThen("new", "", async () => {
       try {
-        await replaceWith(await core.saveProject(newProject(t("app.untitled"))));
+        await replaceWith(await core.saveProject(newProject(t("app.untitled"))), "before-new");
         setName(null);
         setLocating(false);
         announce(t("project.new.done"));
@@ -330,7 +343,7 @@ function Editor({ store }: { store: ProjectStore }) {
       const label = nameOfFile(file.name) || opened.project.name;
       confirmThen("open", label, async () => {
         try {
-          await replaceWith(file.bytes);
+          await replaceWith(file.bytes, "before-open");
           setName(label);
           setLocating(true);
           announce(t("project.open.done", { name: label }));
@@ -350,6 +363,18 @@ function Editor({ store }: { store: ProjectStore }) {
       setToast(t("project.save.done", { name: saved }));
     } catch (e) { fail("project.save.failed", e); }
   };
+  const restoreVersion = async (id: string, label: string) => {
+    const session = persistence.session;
+    if (!session) return;
+    const bytes = await session.snapshots.read(id);
+    if (!bytes) throw new Error(t("versions.restoreFailed", { why: label }));
+    try {
+      await replaceWith(bytes, "before-restore");
+      announce(t("versions.restored", { name: label }));
+      setToast(t("versions.restored", { name: label }));
+    } catch (e) { fail("versions.restoreFailed", e); }
+  };
+  useAutoSnapshots(persistence.session);
   const applyCanvas = (op: Op) => {
     setDialog(null);
     void store.apply(op, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
@@ -389,7 +414,7 @@ function Editor({ store }: { store: ProjectStore }) {
             </span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} project={{ onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
+          <AppMenu compact={compact} project={{ onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
         </div>
       </header>
 
@@ -430,9 +455,10 @@ function Editor({ store }: { store: ProjectStore }) {
           <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setLocating(false)}>×</button>
         </div>
       ) : null} />
+      {dialog === "versions" && persistence.session && <VersionsDialog session={persistence.session} onRestore={restoreVersion} onClose={() => setDialog(null)} />}
       {dialog === "privacy" && <PrivacyDialog onClose={() => setDialog(null)} />}
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
-      {dialog && dialog !== "canvas" && dialog !== "privacy" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
+      {dialog && dialog !== "canvas" && dialog !== "privacy" && dialog !== "versions" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       <div className="toast" role="status">{toast}</div>
     </div>

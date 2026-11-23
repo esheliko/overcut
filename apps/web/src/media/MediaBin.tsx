@@ -1,7 +1,9 @@
 import type { MediaKind } from "@app/engine-client";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
+import { Modal } from "../ProjectDialogs";
+import { DEFAULT_FILTER, allTags, viewBin, windowRange, withTag, withoutTag, type BinFilter, type BinMeta, type BinSort } from "./binView";
 import { formatBytes, formatDuration } from "./plan";
 import { ACCEPT, BIN_DRAG_TYPE, fromFileList, hasHandlePicker, pickWithHandles, type Source } from "./sources";
 import type { BinItem } from "./useMediaBin";
@@ -10,6 +12,9 @@ type Props = {
   items: BinItem[];
   /** Case-insensitive name filter from the search box. */
   query: string;
+  /** Tags and order per media id (from the project). */
+  meta: BinMeta;
+  onTags: (id: string, tags: readonly string[]) => void;
   onImport: (s: Source[]) => void;
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
@@ -42,7 +47,7 @@ export function useImportPicker(onImport: (s: Source[]) => void, testId = "media
   return { open, field };
 }
 
-function Card({ item, onAdd, onRemove, onRelink }: { item: BinItem } & Pick<Props, "onAdd" | "onRemove" | "onRelink">) {
+function Card({ item, tags, onAdd, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onRemove" | "onRelink">) {
   const { t } = useI18n();
   const ready = item.status === "ready";
   const meta = [
@@ -66,9 +71,11 @@ function Card({ item, onAdd, onRemove, onRelink }: { item: BinItem } & Pick<Prop
         <strong title={item.name}>{item.name}</strong>
         {item.status === "probing" && <span role="status">{t("media.reading")}</span>}
         {ready && <span>{meta}</span>}
+        {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
         {item.status === "offline" && <span role="alert">{t("media.offline")}</span>}
         {item.status === "unsupported" && <span role="alert" className="bin-error">{item.message}</span>}
       </span>
+      {onEditTags && <button className="icon-btn bin-act" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /></button>}
       {ready && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
       {item.status === "offline" && <button className="bin-link" onClick={() => onRelink(item.id)}>{t("media.relink")}</button>}
       {item.status === "unsupported" && <button className="icon-btn bin-act" aria-label={t("media.dismiss", { name: item.name })} onClick={() => onRemove(item.id)}><Icon name="close" size={18} /></button>}
@@ -76,12 +83,79 @@ function Card({ item, onAdd, onRemove, onRelink }: { item: BinItem } & Pick<Prop
   );
 }
 
+const ROW = 72; // card (64) + gap (8): fixed in the windowed list
+const WINDOW_FROM = 100; // longer lists render only the rows in view
+
+/** Long lists (a 10k-item bin): only the rows near the viewport exist in the DOM; the panel body scrolls. */
+function Windowed({ items, render }: { items: BinItem[]; render: (i: BinItem) => React.ReactNode }) {
+  const { t } = useI18n();
+  const box = useRef<HTMLDivElement>(null);
+  const [range, setRange] = useState<[number, number]>([0, 30]);
+  useEffect(() => {
+    const el = box.current;
+    const scroller = el?.closest<HTMLElement>(".panel-body");
+    if (!el || !scroller) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const top = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      setRange((old) => { const r = windowRange(scroller.scrollTop, scroller.clientHeight, top, ROW, items.length); return r[0] === old[0] && r[1] === old[1] ? old : r; });
+    };
+    const queue = () => { if (!raf) raf = requestAnimationFrame(update); };
+    update();
+    scroller.addEventListener("scroll", queue, { passive: true });
+    const ro = new ResizeObserver(queue);
+    ro.observe(scroller);
+    return () => { scroller.removeEventListener("scroll", queue); ro.disconnect(); if (raf) cancelAnimationFrame(raf); };
+  }, [items.length]);
+  return (
+    <div ref={box} className="bin-virtual" style={{ blockSize: items.length * ROW }}>
+      <ul className="bin-list bin-fixed" aria-label={t("media.list")} style={{ transform: `translateY(${range[0] * ROW}px)` }}>
+        {items.slice(range[0], range[1]).map(render)}
+      </ul>
+    </div>
+  );
+}
+
+const SORTS: BinSort[] = ["added", "name", "duration"];
+const KINDS: BinFilter["kind"][] = ["all", "video", "audio", "image"];
+
+/** Tags of one media item: chips with a remove button, and a field to add one (Enter). Each change is one undoable edit. */
+function TagsDialog({ item, tags, onTags, onClose }: { item: BinItem; tags: readonly string[]; onTags: Props["onTags"]; onClose(): void }) {
+  const { t } = useI18n();
+  const [text, setText] = useState("");
+  const add = () => { const next = withTag(tags, text); if (next !== tags) onTags(item.id, next); setText(""); };
+  return (
+    <Modal title={t("media.tags.title", { name: item.name })} titleId="tags-title" testId="tags-dialog" onClose={onClose}>
+      <ul className="tag-chips" aria-label={t("media.tags.list")}>
+        {tags.length === 0 && <li className="export-note">{t("media.tags.none")}</li>}
+        {tags.map((x) => (
+          <li key={x}><span>{x}</span><button className="icon-btn" aria-label={t("media.tags.remove", { tag: x })} onClick={() => onTags(item.id, withoutTag(tags, x))} data-testid="tag-remove"><Icon name="close" size={16} /></button></li>
+        ))}
+      </ul>
+      <form className="versions-save" onSubmit={(e) => { e.preventDefault(); add(); }}>
+        <label>{t("media.tags.add")}
+          <input value={text} maxLength={40} onChange={(e) => setText(e.target.value)} data-testid="tag-input" />
+        </label>
+        <button type="submit" className="export-go" disabled={!text.trim()} data-testid="tag-add">{t("media.tags.addButton")}</button>
+      </form>
+    </Modal>
+  );
+}
+
 /** Media tool panel body: the big empty-state target, then the list of imported media with "+" to add each to the timeline. */
-export function MediaBin({ items, query, onImport, onAdd, onRemove, onRelink }: Props) {
+export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove, onRelink }: Props) {
   const { t } = useI18n();
   const { open, field } = useImportPicker(onImport);
-  const q = query.trim().toLowerCase();
-  const shown = q ? items.filter((i) => i.name.toLowerCase().includes(q)) : items;
+  const [filter, setFilter] = useState<BinFilter>(DEFAULT_FILTER);
+  const [editing, setEditing] = useState<string | null>(null);
+  const tagList = allTags(meta);
+  const activeTag = tagList.some((x) => x.toLowerCase() === filter.tag.toLowerCase()) ? filter.tag : ""; // a tag nobody uses any more stops filtering
+  const shown = viewBin(items, meta, { ...filter, tag: activeTag, query });
+  const editItem = editing ? items.find((i) => i.id === editing) : undefined;
+  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onAdd={onAdd} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
+  const pending = shown.filter((i) => !meta.has(i.id));
+  const settled = shown.filter((i) => meta.has(i.id));
   if (items.length === 0) {
     return (
       <>
@@ -98,11 +172,36 @@ export function MediaBin({ items, query, onImport, onAdd, onRemove, onRelink }: 
     <div className="bin">
       {field}
       <button className="primary bin-import" onClick={open} data-testid="import-more"><Icon name="plus" size={18} /><span>{t("media.import")}</span></button>
-      {shown.length === 0 ? <p className="bin-none">{t("media.noMatch", { query })}</p> : (
-        <ul className="bin-list" aria-label={t("media.list")}>
-          {shown.map((i) => <Card key={i.id} item={i} onAdd={onAdd} onRemove={onRemove} onRelink={onRelink} />)}
-        </ul>
+      <div className="bin-filters" role="group" aria-label={t("media.filter")}>
+        <div className="bin-kinds">
+          {KINDS.map((k) => <button key={k} className="bin-chip" aria-pressed={filter.kind === k} onClick={() => setFilter({ ...filter, kind: k })} data-testid={`bin-kind-${k}`}>{t(`media.kind.${k}`)}</button>)}
+        </div>
+        <div className="bin-selects">
+        <label className="bin-select">{t("media.sort")}
+          <select value={filter.sort} onChange={(e) => setFilter({ ...filter, sort: e.target.value as BinSort })} data-testid="bin-sort">
+            {SORTS.map((s) => <option key={s} value={s}>{t(`media.sort.${s}`)}</option>)}
+          </select>
+        </label>
+        {tagList.length > 0 && (
+          <label className="bin-select">{t("media.tags.filter")}
+            <select value={activeTag} onChange={(e) => setFilter({ ...filter, tag: e.target.value })} data-testid="bin-tag-filter">
+              <option value="">{t("media.tags.all")}</option>
+              {tagList.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </label>
+        )}
+        </div>
+      </div>
+      <p className="bin-count" role="status" data-testid="bin-count">{t("media.count", { shown: settled.length, total: meta.size })}</p>
+      {shown.length === 0 ? <p className="bin-none">{query ? t("media.noMatch", { query }) : t("media.noFilterMatch")}</p> : (
+        <>
+          {pending.length > 0 && <ul className="bin-list" aria-label={t("media.list")}>{pending.map(card)}</ul>}
+          {settled.length > WINDOW_FROM
+            ? <Windowed items={settled} render={card} />
+            : settled.length > 0 && <ul className="bin-list" aria-label={t("media.list")}>{settled.map(card)}</ul>}
+        </>
       )}
+      {editItem && meta.has(editItem.id) && <TagsDialog item={editItem} tags={meta.get(editItem.id)!.tags} onTags={onTags} onClose={() => setEditing(null)} />}
     </div>
   );
 }

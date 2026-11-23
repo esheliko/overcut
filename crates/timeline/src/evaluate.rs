@@ -217,6 +217,7 @@ mod tests {
             uri: "m".into(),
             hash: None,
             duration: None,
+            tags: vec![],
         });
         p.sequences[0].tracks[0].clips = clips.to_vec();
         // Ids are unique per document, so the audio track gets its own ids (video clip n pairs with audio clip n + 100000).

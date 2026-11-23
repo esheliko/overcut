@@ -46,6 +46,7 @@ fn main() {
         uri: "m".into(),
         hash: None,
         duration: None,
+        tags: vec![],
     }];
     let mut tracks = vec![];
     for i in 0..TRACKS {
