@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{Manager, State};
+use tauri::State;
 
 type Shared<T> = Arc<Mutex<T>>;
 
@@ -46,11 +46,6 @@ fn header_u32(request: &Request<'_>, name: &str) -> Result<u32, String> {
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
-}
-
-fn work_dir(app: &tauri::AppHandle, sub: &str) -> PathBuf {
-    let base = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("overcut"));
-    base.join(sub)
 }
 
 /// Licence and capability report: what libav is linked, which H.264 encoders it has (the UI shows "hardware" only when one opens).
@@ -168,7 +163,7 @@ pub async fn native_export_begin(args: BeginArgs, app: tauri::AppHandle, state: 
     if args.file_name.contains(['/', '\\']) || !args.file_name.ends_with(".mp4") {
         return Err("invalid export file name".into());
     }
-    let dir = work_dir(&app, "exports");
+    let dir = crate::desktop::exports_dir(&app);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(&args.file_name);
     let p = ExportParams {
@@ -240,7 +235,7 @@ pub fn native_export_read(file_name: String, offset: u64, len: u32, app: tauri::
     if file_name.contains(['/', '\\']) {
         return Err("invalid export file name".into());
     }
-    let mut f = std::fs::File::open(work_dir(&app, "exports").join(file_name)).map_err(|e| e.to_string())?;
+    let mut f = std::fs::File::open(crate::desktop::exports_dir(&app).join(file_name)).map_err(|e| e.to_string())?;
     f.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
     let mut buf = vec![0u8; len as usize];
     let n = f.read(&mut buf).map_err(|e| e.to_string())?;
@@ -253,6 +248,6 @@ pub fn native_export_remove(file_name: String, app: tauri::AppHandle) -> Result<
     if file_name.contains(['/', '\\']) {
         return Err("invalid export file name".into());
     }
-    let _ = std::fs::remove_file(work_dir(&app, "exports").join(file_name));
+    let _ = std::fs::remove_file(crate::desktop::exports_dir(&app).join(file_name));
     Ok(())
 }

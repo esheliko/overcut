@@ -1,5 +1,6 @@
 //! Native shell. Commands here mirror `packages/engine-client/src/tauri.ts`; keep them thin and forward to `app-core` / `app-timeline`.
 
+mod desktop;
 #[cfg(feature = "native-media")]
 mod native;
 
@@ -115,24 +116,9 @@ fn media_fingerprint(size: f64, first: Vec<u8>, last: Vec<u8>) -> Result<String,
     app_model::fingerprint(size as u64, &first, &last).map_err(|e| e.to_json())
 }
 
-/// Project folders live under the app data directory: `<app data>/projects/<project>/`. `project` is a flat name, checked like file names.
+/// Project folders live under the projects root: the folder the person chose, else `<app data>/projects` (`app_store::desktop`).
 fn project_dir(app: &tauri::AppHandle, project: &str) -> Result<app_store::ProjectDir, String> {
-    use tauri::Manager;
-    let ok = !project.is_empty()
-        && project.len() <= 64
-        && project
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-    if !ok {
-        return Err("invalid project name".into());
-    }
-    let root = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("projects")
-        .join(project);
-    app_store::ProjectDir::open(root).map_err(|e| e.to_string())
+    app_store::desktop::project_dir(&desktop::app_data(app)?, project).map_err(|e| e.to_string())
 }
 
 // Storage errors cross as `{"code","message"}` JSON so the UI can say what happened (disk full, no permission) instead of failing silently.
@@ -364,13 +350,24 @@ macro_rules! handlers {
             peaks_job_drop,
             peaks_view_open,
             peaks_view_columns,
-            peaks_view_close $(, $extra)*]
+            peaks_view_close,
+            desktop::desktop_pick_media,
+            desktop::desktop_file_size,
+            desktop::desktop_read_range,
+            desktop::desktop_projects_folder,
+            desktop::desktop_choose_projects_folder,
+            desktop::desktop_save_export,
+            desktop::desktop_reveal,
+            desktop::desktop_codecs,
+            desktop::desktop_enable_h264 $(, $extra)*]
     };
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .on_window_event(desktop::on_window_event)
         .manage(EditorState::default())
         .manage(Mutex::new(PeaksState::default()));
     #[cfg(feature = "native-media")]

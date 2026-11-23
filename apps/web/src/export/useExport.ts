@@ -42,7 +42,8 @@ export function useExport(engine: Engine | null, sources: (sequence: string) => 
       j.onProgress((progress) => alive.current && setState({ phase: "running", progress }));
       const result = await j.result;
       kept.current = result;
-      const file = await result.file();
+      // The desktop's file stays on disk until the person saves it (native Save dialog copies it): do not read gigabytes into the webview.
+      const file = engine.desktop ? new File([], result.fileName, { type: result.mime }) : await result.file();
       set({ phase: "done", result, file });
     } catch (e) {
       // A cancel puts the dialog back on the settings, nothing to report.

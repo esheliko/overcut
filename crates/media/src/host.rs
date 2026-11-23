@@ -197,15 +197,25 @@ impl<H: PacketDecoder> HostDecoder<H> {
             Time::from_sample_index(start_sample, self.audio_rate).ok_or(MediaError::OutOfRange)?;
         let to = Time::from_sample_index(start_sample + count as i64, self.audio_rate)
             .ok_or(MediaError::OutOfRange)?;
-        // Packets overlapping [from, to), plus a few before them to prime the codec (2 for AAC/MP3 overlap, 4 for Opus's pre-skip).
+        // Packets overlapping [from, to), plus some before them to prime the codec: 4 packets cover AAC/MP3 overlap, but an Opus decoder has not
+        // converged after 4 packets (peak -20 % at 0.19 s, converged by 0.6 s: ADR 0004 S4 results), so Opus gets a time-based pre-roll.
         const PREROLL: usize = 4;
+        let opus_preroll =
+            Time::from_sample_index(self.audio_rate as i64 * 6 / 10, self.audio_rate)
+                .ok_or(MediaError::OutOfRange)?;
         let ps = &a.packets;
         let first = ps
             .iter()
             .position(|p| p.pts.checked_add(p.duration).is_some_and(|e| e > from))
             .unwrap_or(ps.len());
         let end = ps.iter().position(|p| p.pts >= to).unwrap_or(ps.len());
-        let begin = first.saturating_sub(PREROLL);
+        let mut begin = first.saturating_sub(PREROLL);
+        if a.codec.starts_with("opus") {
+            let wanted = from.checked_sub(opus_preroll).unwrap_or(from);
+            while begin > 0 && ps[begin].pts > wanted {
+                begin -= 1;
+            }
+        }
         let end = end.max(first);
         let slice = &ps[begin..end];
         Ok(AudioRequest {
