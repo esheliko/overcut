@@ -4,7 +4,6 @@ import { buildFrameTable, frameIndexAt, isVariable, startPacket } from "../../pa
 import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "../../apps/web/src/preview/audioMix";
 import { canvasBackingSize, displaySize, mapToCoded, normalizeRotation, placeLayer } from "../../apps/web/src/preview/layout";
 import { frameAtTicks, frameStartTicks, nominalFps, positionAt, prefetchFrames, rateLabel, shuttle, TICKS_PER_SECOND, timecodeHMS } from "../../apps/web/src/preview/timing";
-import { quickProject, sequenceRate } from "../../apps/web/src/preview/quickProject";
 
 const r30 = { num: 30, den: 1 };
 const pk = (ts: number, key = false) => ({ offset: 0, size: 1, key, ts, dur: 1 });
@@ -121,15 +120,4 @@ test("audio mixing: gain, offsets, mono to stereo, speed, trimming and limiting"
   limit(b);
   assert.equal(b[0], 0.5);
   assert.ok(b[1]! < 1 && b[1]! > 0.9 && b[2]! > -1);
-});
-
-test("quick project: sequence takes the clip's display size and nearest standard rate; audio gets a track", () => {
-  assert.deepEqual(sequenceRate({ num: 2997, den: 100 }), { num: 30000, den: 1001 });
-  assert.deepEqual(sequenceRate(undefined), { num: 30, den: 1 });
-  const v = { codec: "avc1", width: 1920, height: 1080, rotation: 90, sampleRate: 0, channels: 0, durationTicks: 5, packets: 1, fps: { num: 30, den: 1 }, vfr: false };
-  const a = { ...v, sampleRate: 48000, channels: 2 };
-  const p = quickProject("c.mp4", { container: "mp4", durationTicks: 5, video: v, audio: a }, "c.mp4");
-  assert.deepEqual(p.sequences[0]!.resolution, { width: 1080, height: 1920 });
-  assert.deepEqual(p.sequences[0]!.tracks.map((t) => t.kind), ["video", "audio"]);
-  assert.match(p.sequences[0]!.tracks[0]!.clips[0]!.id, /^[0-9a-f]{32}$/);
 });

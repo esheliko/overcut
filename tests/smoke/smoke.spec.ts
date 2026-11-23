@@ -43,7 +43,7 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
   expect(info.project.name).toMatch(/desktop|phone/);
 });
 
-test("transport and timeline: play advances the playhead, the aspect ratio changes the preview", async ({ page }) => {
+test("transport and timeline: play advances the playhead, the canvas timeline paints", async ({ page }) => {
   await page.goto("/?sample");
   const playhead = page.getByRole("slider", { name: "Playhead position" });
   await expect(playhead).toHaveAttribute("aria-valuenow", "0");
@@ -66,6 +66,10 @@ test("transport and timeline: play advances the playhead, the aspect ratio chang
   await page.keyboard.press("+");
   await page.keyboard.press("PageDown");
   await expect.poll(painted).toBeGreaterThan(4);
+});
+
+test("aspect ratio: an empty project's preview takes the chosen shape (a project with clips follows its first clip)", async ({ page }) => {
+  await page.goto("/");
   const canvas = page.locator(".canvas");
   const wide = (await canvas.boundingBox())!;
   await page.getByLabel("Aspect ratio").selectOption("9:16");

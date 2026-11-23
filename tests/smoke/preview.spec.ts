@@ -13,9 +13,11 @@ const TICKS = 705_600_000;
 async function openClip(page: Page, name: string) {
   await page.goto("/");
   await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
-  await expect(page.getByTestId("preview-open")).toBeEnabled({ timeout: 20_000 }); // startup project is open
-  await page.getByTestId("preview-file").setInputFiles(`${FIX}/${name}`);
+  await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 }); // empty project: the preview offers the same import as the bin
+  await page.getByTestId("preview-input").setInputFiles(`${FIX}/${name}`);
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true", { timeout: 20_000 });
+  // The decoder for the imported file is open (the player plays the shared project, there is no separate "open a clip").
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __overcutPreview?: { media(): unknown[] } }).__overcutPreview?.media().length ?? 0), { timeout: 20_000 }).toBeGreaterThan(0);
 }
 
 test("a portrait phone clip shows upright (display rotation applied) and the preview takes its aspect", async ({ page }) => {

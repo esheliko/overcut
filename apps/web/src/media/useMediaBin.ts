@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { probeFile } from "./probe";
 import { STILL_SECONDS, TICKS, classify, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
 import { loadHandle, saveHandle, type Source } from "./sources";
+import { useProjectStore, useStore } from "../store/projectStore";
 
 export type BinStatus = "probing" | "ready" | "unsupported" | "offline";
 
@@ -32,22 +33,23 @@ export interface BinText {
   failed: (name: string) => string;
   imported: (count: number) => string;
   announce: (message: string) => void;
-  /** The bin changed the project (import, add to timeline): views that keep their own copy (the timeline) must re-read it. */
-  edited: () => void;
 }
 
 interface Live { file: File; probed: Probed }
 
 /**
- * The project's media list and the import flow. The engine owns the project: every change is an edit op through `editing` (the autosaving
- * project session, or the bare engine when storage is unavailable), so undo, redo and crash recovery cover imports. This hook owns the files,
- * posters and bin state. Changes are queued so concurrent drops cannot interleave.
+ * The project's media list and the import flow. The engine owns the project and the shared store (`store/projectStore.ts`) mirrors it: every
+ * change is an edit op through the store, so undo, redo and crash recovery cover imports and every panel follows. This hook owns the files,
+ * posters and bin state, and re-derives the bin's cards whenever the shared project changes (so undo of an import removes its card).
+ * Changes are queued so concurrent drops cannot interleave.
  */
-export function useMediaBin(engine: Engine | null, editing: Editing | null, fallback: boolean, name: string, text: BinText) {
+export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: boolean, name: string, text: BinText) {
   const [items, setItems] = useState<BinItem[]>([]);
-  const [project, setProject] = useState<Project | null>(null);
+  const store = useStore();
+  const project = useProjectStore((s) => s.project);
   const live = useRef(new Map<string, Live>());
-  const doc = useRef<Project | null>(null);
+  /** Cards of media that left the project (undo of an import) kept so redo brings them back whole, poster included. */
+  const cards = useRef(new Map<string, BinItem>());
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const posters = useRef(new Set<string>());
   /** Files dropped before the project is open (the editing session starts asynchronously): imported as soon as it is. */
@@ -57,8 +59,6 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
   textRef.current = text;
   const nameRef = useRef(name);
   nameRef.current = name;
-  // Without durable storage the bare engine edits an in-memory project (the editor still works, saving says why it does not).
-  const ed = editing ?? (fallback && engine ? engine.editing : null);
 
   const enqueue = useCallback(<T,>(job: () => Promise<T>): Promise<T> => {
     const next = queue.current.then(job, job);
@@ -67,13 +67,12 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
   }, []);
 
   const adopt = useCallback(async (p: Project) => {
-    doc.current = p;
-    setProject(p);
     const known = new Set(p.media.map((m) => m.id));
     setItems((all) => {
+      for (const i of all) if (i.status === "ready" && !known.has(i.id)) cards.current.set(i.id, i);
       const kept = all.filter((i) => i.status === "probing" || i.status === "unsupported" || known.has(i.id));
       const have = new Set(kept.map((i) => i.id));
-      const fresh = p.media.filter((m) => !have.has(m.id)).map<BinItem>((m) => ({
+      const fresh = p.media.filter((m) => !have.has(m.id)).map<BinItem>((m) => cards.current.get(m.id) ?? ({
         id: m.id, name: m.name, kind: m.kind, size: fingerprintSize(m.hash ?? "") ?? 0, status: "offline", durationTicks: m.duration, uri: m.uri,
       }));
       return [...fresh, ...kept];
@@ -86,27 +85,26 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
     }
   }, []);
 
-  // The open project (new, restored or recovered) as soon as the editing session is there: no "new project" dialog.
+  // Without a persistence session (storage unavailable) the bare engine needs a project to edit: open an empty one, then read it into the store.
   useEffect(() => {
-    if (!ed) return;
+    if (!ed || opened) return;
     let alive = true;
-    void enqueue(async () => {
-      if (!editing) await ed.open(newProject(nameRef.current));
-      const p = await ed.project();
-      if (alive) await adopt(p);
-    }).then(() => { const early = pending.current.splice(0); if (alive && early.length > 0) void importRef.current(early); }).catch(() => undefined);
+    void enqueue(async () => { if (alive) { await ed.open(newProject(nameRef.current)); await store.reload(); } }).catch(() => undefined);
     return () => { alive = false; };
-  }, [ed, editing, enqueue, adopt]);
+  }, [ed, opened, store, enqueue]);
+
+  // The shared project changed (import, undo, redo, recovery): the cards follow it. Files dropped before the project was there come in now.
+  useEffect(() => {
+    if (!project) return;
+    let alive = true;
+    void adopt(project).then(() => { const early = pending.current.splice(0); if (alive && early.length > 0) void importRef.current(early); });
+    return () => { alive = false; };
+  }, [project, adopt]);
 
   useEffect(() => { const urls = posters.current; return () => urls.forEach((u) => URL.revokeObjectURL(u)); }, []);
 
   const patch = useCallback((id: string, change: Partial<BinItem>) => setItems((all) => all.map((i) => (i.id === id ? { ...i, ...change } : i))), []);
 
-  /** Re-reads the project after an edit (also what undo/redo should call so the bin follows). */
-  const sync = useCallback(async () => {
-    if (ed) await adopt(await ed.project());
-  }, [ed, adopt]);
-  const synced = useCallback(async () => { await sync(); textRef.current.edited(); }, [sync]);
 
   /** The file behind a media entry: the live one, else (reopened project) the stored handle, probed on first use. */
   const fileFor = useCallback(async (id: string, uri: string, kind: MediaKind): Promise<Live | null> => {
@@ -148,7 +146,7 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
         try {
           const res = await probeFile(engine, s.file, kind);
           if (res.poster) posters.current.add(res.poster);
-          const cur = doc.current ?? (await ed.project());
+          const cur = store.getState().project ?? (await ed.project());
           const uri = s.handle ? `fs:${id}` : `file:${s.file.name}:${s.file.size}`;
           if (s.handle) await saveHandle(uri, s.handle);
           const hash = await fingerprintFile(engine, s.file).catch(() => null); // 128 KiB read at most, however big the file
@@ -162,9 +160,8 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
             const place = insertOps(withRef, ref, res.probed, timelineEnd(cur));
             if (place) { ops.push(...place); added++; }
           }
-          await ed.apply(ops);
           patch(id, { status: "ready", durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
-          await synced();
+          await store.apply(ops);
         } catch (e) {
           const ext = extOf(s.file.name).toUpperCase();
           const message = e instanceof MediaDecodeError && e.kind === "unsupported" ? t.unsupported(s.file.name, ext, e.message) : t.failed(s.file.name);
@@ -175,20 +172,19 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
     }
     const ok = rows.filter((r) => r.kind).length;
     if (ok > 0) t.announce(t.imported(ok));
-  }, [engine, ed, enqueue, patch, synced]);
+  }, [engine, ed, store, enqueue, patch]);
 
   importRef.current = importSources;
 
   const addToTimeline = useCallback((id: string, start: number | "end" = "end"): Promise<boolean> => {
     if (!ed) return Promise.resolve(false);
     return enqueue(async () => {
-      const ops = await timelineOps(doc.current ?? (await ed.project()), id, start);
+      const ops = await timelineOps(store.getState().project ?? (await ed.project()), id, start);
       if (!ops) return false;
-      await ed.apply(ops);
-      await synced();
+      await store.apply(ops);
       return true;
     });
-  }, [ed, enqueue, timelineOps, sync]);
+  }, [ed, store, enqueue, timelineOps]);
 
   const remove = useCallback((id: string) => {
     setItems((all) => {
@@ -203,7 +199,7 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
    * `source` the user picked. It must be the same file (fingerprint, else size). A moved file's new location is recorded with `set_media`.
    */
   const relink = useCallback(async (id: string, source?: Source): Promise<boolean> => {
-    const ref = doc.current?.media.find((m) => m.id === id);
+    const ref = store.getState().project?.media.find((m) => m.id === id);
     if (!ref || !engine || !ed) return false;
     const file = source?.file ?? (await loadHandle(ref.uri, true));
     if (!file) return false;
@@ -214,12 +210,17 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
     if (source?.handle) {
       const uri = `fs:${id}`;
       await saveHandle(uri, source.handle);
-      if (uri !== ref.uri) await enqueue(() => ed.apply({ op: "set_media", media: id, uri, hash: ref.hash ?? null }));
+      if (uri !== ref.uri) await enqueue(() => store.apply({ op: "set_media", media: id, uri, hash: ref.hash ?? null }));
     }
     patch(id, { status: "ready", size: file.size });
-    await sync();
     return true;
-  }, [engine, ed, enqueue, patch, sync]);
+  }, [engine, ed, store, enqueue, patch]);
 
-  return { items, project, editing: ed, importSources, addToTimeline, remove, relink, sync };
+  /** The file behind a media item (for the preview's decoders), or null while it is offline. */
+  const fileOf = useCallback(async (id: string): Promise<File | null> => {
+    const ref = store.getState().project?.media.find((m) => m.id === id);
+    return ref ? (await fileFor(id, ref.uri, ref.kind))?.file ?? null : null;
+  }, [store, fileFor]);
+
+  return { items, importSources, addToTimeline, remove, relink, fileOf };
 }

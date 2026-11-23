@@ -5,10 +5,10 @@ import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
-import { PreviewPanel, type Sequenced } from "./PreviewPanel";
-import { Timeline, TIMELINE_SECONDS } from "./Timeline";
+import { PreviewPanel, sequenceView } from "./PreviewPanel";
+import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
+import { Timeline } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
-import { FPS } from "./timecode";
 import { MediaBin } from "./media/MediaBin";
 import { TICKS, clipCount } from "./media/plan";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, pickOne, type Source } from "./media/sources";
@@ -113,19 +113,22 @@ function Details() {
   );
 }
 
+/** The app owns one project store; every panel below reads it. */
 export function App() {
+  const [store] = useState(() => new ProjectStore());
+  return <ProjectStoreProvider store={store}><Editor store={store} /></ProjectStoreProvider>;
+}
+
+function Editor({ store }: { store: ProjectStore }) {
   const { t } = useI18n();
   const [themePref, setThemePref] = useState<ThemePref>(loadPref);
   const [engine, setEngine] = useState<EngineState>({ status: "loading" });
   const [core, setCore] = useState<Engine | null>(null);
   const persistence = usePersistence(core);
-  const [opened, setOpened] = useState(0); // bumped when the preview opens a clip: the timeline re-reads the engine's project
-  const [seq, setSeq] = useState<Sequenced>({ project: null, rate: { num: FPS, den: 1 }, endFrame: TIMELINE_SECONDS * FPS });
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
   const [ratio, setRatio] = useState<(typeof RATIOS)[number]["id"]>("16:9");
-  const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
@@ -157,19 +160,22 @@ export function App() {
 
   const soon = useCallback((m: string) => setToast(m), []);
 
+  // ---- the shared project: fed by the persistence session's editing surface (autosaving), or the bare engine when storage is unavailable ----
+  const editing = persistence.session?.editing ?? (persistence.problem && core ? core.editing : null);
+  useEffect(() => { void store.attach(editing); }, [store, editing, persistence.epoch]); // epoch: undo recovery replaced the project
+  const project = useProjectStore((s) => s.project);
+
   // ---- media import (M1-032) ----
-  const media = useMediaBin(core, persistence.session?.editing ?? null, !!persistence.problem && !persistence.session, t("app.untitled"), {
+  const media = useMediaBin(core, editing, !!persistence.session, t("app.untitled"), {
     notMedia: (n) => t("media.err.notMedia", { name: n }),
     unsupported: (n, ext, detail) => t("media.err.unsupported", { name: n, ext: ext || "?", detail }),
     failed: (n) => t("media.err.failed", { name: n }),
     imported: (count) => t("media.imported", { count }),
     announce,
-    edited: () => setBinEpoch((n) => n + 1),
   });
   const importFiles = media.importSources;
   const [dragging, setDragging] = useState(false);
   const [tlOver, setTlOver] = useState(false);
-  const [binEpoch, setBinEpoch] = useState(0);
   useEffect(() => {
     let depth = 0;
     const over = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer)) e.preventDefault(); };
@@ -211,7 +217,7 @@ export function App() {
       if (!picked || !(await media.relink(id, picked))) setToast(t("media.relinkFailed"));
     }),
   };
-  const project = media.project;
+  const seq = sequenceView(project);
   const hasClips = project ? clipCount(project) > 0 : false;
   // The first picture sets the sequence size: show it in the preview shape closest to it.
   const res = project?.sequences[0]?.resolution;
@@ -264,7 +270,7 @@ export function App() {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
         </section>
 
-        <PreviewPanel engine={core} ready={persistence.ready} frame={frame} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onFrame={setFrame} onPlaying={setPlaying} onSequence={setSeq} onOpened={() => setOpened((n) => n + 1)} />
+        <PreviewPanel engine={core} fileOf={media.fileOf} onImport={binProps.onImport} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onPlaying={setPlaying} />
 
         {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
@@ -273,9 +279,9 @@ export function App() {
           setTlOver(false);
           if (!id) return;
           e.preventDefault();
-          void media.addToTimeline(id, Math.round((frame * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
+          void media.addToTimeline(id, Math.round((store.getState().playhead * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
         }}>
-          <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={setFrame} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} editing={media.editing ?? undefined} epoch={persistence.epoch + opened + binEpoch} engine={core} />
+          <Timeline playing={playing} zoom={zoom} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} engine={core} />
         </div>
       </main>
 

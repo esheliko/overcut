@@ -89,6 +89,8 @@ export class Player {
   private playing = false;
   private rate = 0;
   private anchor: Anchor = { ticks: 0, at: 0, rate: 0 };
+  /** False between `play()` starting and its clock anchor being set: `position()` is the frame the run starts from until then. */
+  private anchored = false;
   private clock: Clock;
   private cancelRaf: (() => void) | undefined;
   private feeds = new Map<string, Feed>();
@@ -101,7 +103,7 @@ export class Player {
   private scrubbing = false;
   private disposed = false;
 
-  constructor(private readonly d: PlayerDeps) {
+  constructor(private d: PlayerDeps) {
     this.clock = d.fallbackClock;
   }
 
@@ -109,6 +111,22 @@ export class Player {
   get isPlaying(): boolean { return this.playing; }
   get speed(): number { return this.rate; }
   get endFrame(): number { return Math.ceil((this.d.endTicks * this.d.rate.num) / (TICKS_PER_SECOND * this.d.rate.den)); }
+
+  /**
+   * The project changed under the player (edit, undo, import, a media file became readable): take the new rate, size, length or sequence,
+   * drop every decode feed (clips may have moved or been trimmed) and redraw the frame the playhead is on, clamped to the new end.
+   * Playback that was running carries on from the same frame (re-anchored on the new timeline). No restart, no new player.
+   */
+  reconfigure(patch: Partial<Pick<PlayerDeps, "rate" | "size" | "endTicks" | "sequence">>): void {
+    if (this.disposed) return;
+    const resume = this.playing ? this.rate : 0;
+    if (this.playing) this.pause();
+    const at = this.frameNo;
+    this.d = { ...this.d, ...patch };
+    this.closeFeeds();
+    this.seek(at);
+    if (resume !== 0 && this.frameNo < this.endFrame) void this.play(resume);
+  }
 
   /** Jump to `frame` and draw it (paused). Latest call wins: scrubbing never queues stale work. */
   seek(frame: number, t0 = performance.now()): void {
@@ -156,6 +174,7 @@ export class Player {
     const lead = rate === 1 && this.d.audio ? START_LEAD : 0;
     const ticks = wasPlaying ? this.position() : startTicks;
     this.anchor = { ticks, at: this.clock.now() + lead, rate };
+    this.anchored = true;
     this.presentedFrame = frameAtTicks(ticks, this.d.rate);
     this.d.audio?.stop();
     if (rate === 1 && this.d.audio) {
@@ -172,6 +191,7 @@ export class Player {
     const end = this.position();
     this.playing = false;
     this.rate = 0;
+    this.anchored = false;
     this.audioToken++;
     this.d.audio?.stop();
     this.cancelRaf?.();
@@ -187,7 +207,7 @@ export class Player {
 
   /** Timeline position now, in ticks. */
   position(): number {
-    return this.playing ? positionAt(this.anchor, this.clock.now(), this.d.endTicks) : frameStartTicks(this.frameNo, this.d.rate);
+    return this.playing && this.anchored ? positionAt(this.anchor, this.clock.now(), this.d.endTicks) : frameStartTicks(this.frameNo, this.d.rate);
   }
 
   dispose(): void {

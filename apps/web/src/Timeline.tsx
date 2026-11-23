@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Editing, Engine, Op, Project } from "@app/engine-client";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { Engine, Op, Project } from "@app/engine-client";
 import { FakeMediaHost, onlyFixtures } from "./media/host";
 import { MediaLayer } from "./timeline/media-layer";
 import { announce } from "./a11y/announcer";
@@ -12,23 +12,17 @@ import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
 import { clampPps, ppsToSlider, sliderToPps } from "./timeline/view";
 import { TimelineCanvas, type CanvasHandle } from "./timeline/TimelineCanvas";
-import { useProject } from "./useProject";
+import { useProjectStore, useStore } from "./store/projectStore";
 
 export const TIMELINE_SECONDS = 60;
 export const END_FRAME = TIMELINE_SECONDS * FPS;
 
 type Props = {
-  frame: number;
   playing: boolean;
   zoom: number;
-  onFrame: (f: number) => void;
   onZoom: (z: number) => void;
   /** Short visible message (toast). */
   onNotice: (what: string) => void;
-  /** The engine's edit surface; without it the timeline shows the sample project read-only. */
-  editing?: Editing;
-  /** Changes when the open project was replaced outside the timeline (undo recovery): re-read it. */
-  epoch?: number;
   /** Benchmark/dev hook. */
   onReady?: (h: CanvasHandle) => void;
   /** Frames per second and length (frames) of the previewed sequence; defaults are the sample timeline's. */
@@ -45,26 +39,24 @@ const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 
-export function Timeline({ frame, playing, zoom, onFrame, onZoom, onNotice, editing, epoch, onReady, fps = FPS, endFrame = END_FRAME, engine }: Props) {
+export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine }: Props) {
   const { t } = useI18n();
   // Synthetic media serves the sample project only; imported files keep placeholders until they are wired to a real MediaHost (media/engine-host.ts, follow-up).
   const media = useMemo(() => (engine ? new MediaLayer(engine, onlyFixtures(new FakeMediaHost({ seconds: 30 }))) : undefined), [engine]);
-  const proj = useProject(editing, epoch);
+  // The one shared project (M1-024): read here, changed only through the store's engine ops. Without a project the sample is shown read-only.
+  const store = useStore();
+  const project = useProjectStore((s) => s.project);
+  const canUndo = useProjectStore((s) => s.canUndo);
+  const canRedo = useProjectStore((s) => s.canRedo);
+  const selected = useProjectStore((s) => s.selection);
+  const frame = useProjectStore((s) => s.playhead);
+  const proj = useMemo(() => ({ ready: project !== null, project, canUndo, canRedo, apply: store.apply, undo: store.undo, redo: store.redo }), [store, project, canUndo, canRedo]);
   const fallback = useMemo(() => sampleProject(), []);
-  const source: Project = proj.project ?? fallback;
+  const source: Project = project ?? fallback;
   const scene = useMemo(() => buildScene(source), [source]);
-  const [selected, setSelected] = useState<ReadonlySet<string>>(NO_SELECTION);
+  const setSelected = store.setSelection;
+  const onFrame = store.setPlayhead;
   const speak = useCallback((s: Say) => announce(t(s.key, s.values)), [t]);
-
-  // After an edit or undo, forget selected clips that no longer exist.
-  useEffect(() => {
-    setSelected((prev) => {
-      if (prev.size === 0) return prev;
-      const alive = new Set(scene.id);
-      const kept = [...prev].filter((id) => alive.has(id));
-      return kept.length === prev.size ? prev : new Set(kept);
-    });
-  }, [scene]);
 
   const live = useRef({ scene, selected, frame, proj });
   live.current = { scene, selected, frame, proj };
