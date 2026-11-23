@@ -72,6 +72,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     if (!c || !ctx) return;
     const l = live.current;
     clampScroll(view.current, lengthSec(), l.scene.trackCount);
+    c.dataset.pps = view.current.pps.toFixed(1); // test hook: the current zoom
     // Test/diagnostic hook: how much real media has landed (smoke asserts imported clips leave the placeholder state).
     if (media) { c.dataset.waveTiles = String(media.waveforms.stats.tilesRendered); c.dataset.thumbs = String(media.thumbs.stats.generated + media.thumbs.stats.fromCache); }
     drawTimeline(ctx, l.scene, view.current, l.frame / l.fps, dpr.current, palette.current, stats.current, ui.current, media);

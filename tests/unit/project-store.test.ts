@@ -113,3 +113,36 @@ test("attach reports the history the engine already has (a recovered session can
   await s.attach(engine(["a"])); // a fresh history (undo recovery, a new project)
   assert.equal(s.getState().canUndo, false);
 });
+
+test("undo and redo know the label of the step they would undo or redo; unlabelled and coalesced steps stay honest", async () => {
+  const s = new ProjectStore();
+  await s.attach(engine());
+  assert.equal(s.getState().undoLabel, null);
+  await s.apply(set(["a"]), undefined, "import of a.mp4");
+  assert.equal(s.getState().undoLabel, "import of a.mp4");
+  await s.apply(set(["a", "b"])); // no label: the control falls back to plain "Undo"
+  assert.equal(s.getState().undoLabel, null);
+  await s.undo();
+  assert.equal(s.getState().undoLabel, "import of a.mp4");
+  assert.equal(s.getState().redoLabel, null);
+  await s.undo();
+  assert.equal(s.getState().undoLabel, null); // nothing left to undo
+  assert.equal(s.getState().redoLabel, "import of a.mp4");
+  await s.redo();
+  assert.equal(s.getState().undoLabel, "import of a.mp4");
+  await s.apply(set(["x"]), undefined, "second"); // a new edit clears redo
+  assert.equal(s.getState().redoLabel, null);
+});
+
+test("a drag (same coalesce key) is one undo step, so it adds one label, not one per move", async () => {
+  const s = new ProjectStore();
+  await s.attach(engine());
+  await s.apply(set(["a"]), undefined, "first");
+  const ed = (s as unknown as { editing: { apply: (o: Op | Op[], c?: number) => Promise<EditOutcome> } }).editing;
+  const merging = { ...ed, apply: async () => ({ changed: true, can_undo: true, can_redo: false }) as EditOutcome };
+  (s as unknown as { editing: unknown }).editing = merging; // the real engine merges steps sharing a key: outcome unchanged in depth
+  await s.apply(set(["a"]), 7, "drag");
+  await s.apply(set(["a"]), 7, "drag");
+  assert.equal(s.getState().undoLabel, "drag");
+  assert.equal((s as unknown as { undoStack: unknown[] }).undoStack.length, 2);
+});

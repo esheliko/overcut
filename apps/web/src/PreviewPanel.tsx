@@ -193,8 +193,8 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, rati
         </div>
         <label className="ratio">
           <span className="sr-only">{t("ratio.label")}</span>
-          <select value={ratio} disabled={view.has} title={view.has ? t("ratio.fixed") : undefined} onChange={(e) => onRatio(e.target.value)}>
-            {ratios.map((r) => <option key={r.id} value={r.id}>{r.id === ratio ? r.id : t(`ratio.${r.id}`)}</option>)}
+          <select value={ratio} disabled={view.has} title={view.has ? t("ratio.fixed") : t("ratio.hint")} onChange={(e) => onRatio(e.target.value)}>
+            {ratios.map((r) => <option key={r.id} value={r.id}>{r.id === ratio ? t("ratio.shown", { id: r.id }) : t(`ratio.${r.id}`)}</option>)}
           </select>
         </label>
       </div>

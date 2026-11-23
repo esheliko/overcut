@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+const UNDO = /^Undo( (?!recovery).+)?$/, REDO = /^Redo( .+)?$/; // the label names the step ("Undo import of clip.mp4")
 import { resolve } from "node:path";
 
 /**
@@ -27,12 +28,16 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   await expect(total).toContainText("/ 00:00:03:00");
   await expect.poll(async () => (await hook(page)).media, { timeout: 20_000 }).toBeGreaterThan(0);
   expect((await hook(page)).end).toBe(90);
-  if (phone) await page.getByRole("button", { name: "Close panel" }).click();
+  // The undo control now says what it undoes, and on a phone the Media sheet closed by itself so Split / Undo are reachable.
+  await expect(page.getByRole("button", { name: "Undo import of flash_click.mp4" })).toBeVisible();
+  if (phone) await expect(page.getByTestId("panel-tool")).toBeHidden();
 
   // Trim both clips to 1 s: playhead at 1 s (ruler), trim the end to the playhead.
   const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
   const tap = (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + x, box.y + y) : page.mouse.click(box.x + x, box.y + y));
-  await tap(88, 10); // 48 px gutter + 40 px/s = 1.000 s
+  // The import zoomed the timeline to fit its 3 s: width - gutter (48) - end padding (96), over 3 s.
+  const pps = (box.width - 48 - 96) / 3;
+  await tap(48 + pps, 10); // 1.000 s
   await expect(page.getByRole("slider", { name: "Playhead position" })).toHaveAttribute("aria-valuenow", "30");
   await tap(68, 30 + 26); // the picture clip (a trim needs exactly one clip selected)
   await page.keyboard.press("BracketRight");
@@ -50,8 +55,8 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible(); // reached the end and stopped
 
   // Undo both trims from the timeline: the bin still has its one card, the timeline and the player are 3 s again.
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await page.getByRole("button", { name: UNDO }).click();
+  await page.getByRole("button", { name: UNDO }).click();
   await expect(total).toContainText("/ 00:00:03:00");
   await expect.poll(async () => (await hook(page)).end).toBe(90);
   await expect(summary).toContainText("2 tracks, 2 clips");
@@ -60,7 +65,7 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
   // Undo the import itself: the bin card, the clips and the preview all go (empty project shows the import target again).
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await page.getByRole("button", { name: UNDO }).click();
   await expect(summary).toContainText("0 clips");
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "false");
   await expect(page.getByTestId("preview-import")).toBeVisible();
@@ -69,7 +74,7 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   await expect(page.getByTestId("bin-item")).toHaveCount(0);
   if (phone) await page.getByRole("button", { name: "Close panel" }).click();
   // ...and redo brings the card back whole.
-  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await page.getByRole("button", { name: REDO }).click();
   await expect(summary).toContainText("2 clips");
   await openBin();
   await expect(page.getByTestId("bin-item")).toHaveCount(1);

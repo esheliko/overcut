@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+const UNDO = /^Undo( (?!recovery).+)?$/, REDO = /^Redo( .+)?$/; // the label names the step ("Undo import of clip.mp4")
 
 test("the app loads and the WebAssembly engine answers", async ({ page }) => {
   const errors: string[] = [];
@@ -37,10 +38,11 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
     await expect(page.getByTestId("panel-tool")).toBeHidden();
   } else {
     await expect(page.getByTestId("panel-tool")).toBeVisible();
-    await tools.getByRole("button", { name: "Effects" }).click();
-    await expect(page.getByTestId("panel-tool").getByRole("heading", { name: "Effects" })).toBeVisible();
+    await expect(page.getByTestId("panel-tool").getByRole("heading", { name: "Media" })).toBeVisible();
   }
   expect(info.project.name).toMatch(/desktop|phone/);
+  // M1 shows only tools that work: no Audio, Text, Captions, Effects... promises.
+  await expect(tools.getByRole("button")).toHaveCount(1);
 });
 
 test("transport and timeline: play advances the playhead, the canvas timeline paints", async ({ page }) => {
@@ -72,7 +74,7 @@ test("aspect ratio: an empty project's preview takes the chosen shape (a project
   await page.goto("/");
   const canvas = page.locator(".canvas");
   const wide = (await canvas.boundingBox())!;
-  await page.getByLabel("Aspect ratio").selectOption("9:16");
+  await page.getByLabel("Preview shape").selectOption("9:16");
   await expect.poll(async () => (await canvas.boundingBox())!.height > (await canvas.boundingBox())!.width).toBe(true);
   expect(wide.width).toBeGreaterThan(wide.height);
 });
@@ -155,8 +157,8 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
   const summary = page.locator("#tl-summary");
   const live = page.locator('[data-announcer="polite"]');
   const canvas = page.getByTestId("timeline-canvas");
-  const undo = page.getByRole("button", { name: "Undo", exact: true });
-  const redo = page.getByRole("button", { name: "Redo", exact: true });
+  const undo = page.getByRole("button", { name: UNDO });
+  const redo = page.getByRole("button", { name: REDO });
   await expect(summary).toContainText("2 tracks, 14 clips");
   await expect(undo).toBeDisabled();
   await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
@@ -267,8 +269,8 @@ const PROFILES = [
   { name: "phone-landscape", w: 844, h: 390, inspector: false, docked: false },
   { name: "tablet", w: 820, h: 1180, inspector: false, docked: true },
   { name: "tablet", w: 1024, h: 768, inspector: false, docked: true },
-  { name: "desktop", w: 1280, h: 800, inspector: true, docked: true },
-  { name: "ultrawide", w: 3440, h: 1440, inspector: true, docked: true },
+  { name: "desktop", w: 1280, h: 800, inspector: false, docked: true },
+  { name: "ultrawide", w: 3440, h: 1440, inspector: false, docked: true },
 ] as const;
 for (const p of PROFILES) {
   test(`layout profile ${p.name} at ${p.w}x${p.h}: panels arranged, no overlap, no horizontal scroll, 44 px touch targets`, async ({ page }, info) => {
