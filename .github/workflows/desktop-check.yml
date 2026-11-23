@@ -27,7 +27,8 @@ jobs:
       - run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
   # Native media (libav) crate: not part of verify. Needs the distro libav dev files.
   desktop-native:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest now ships FFmpeg 8 headers (no avfft.h), which the ffmpeg-sys-next 7.1 bindings cannot parse.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     continue-on-error: true
     steps:
