@@ -26,6 +26,8 @@ export interface ExportSettings {
    * settings and a deterministic encoder (software VP9), two exports are byte-identical.
    */
   creationTime?: number;
+  /** How the composited frame reaches the encoder: from a GPU readback (default) or straight from the canvas. For measuring and tests; both give the same pixels. */
+  capture?: "readback" | "canvas";
   /**
    * The files behind the project's media, by media id (`File`s the user picked; cloned to the worker without copying their bytes).
    * Media without an entry here is looked up in the registered resolvers, then fails with `media_unavailable`.

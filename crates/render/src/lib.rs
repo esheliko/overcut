@@ -19,10 +19,8 @@ pub use colour::{
 
 use std::future::Future;
 use std::num::NonZeroU64;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
 
 /// Output format: sRGB-encoded 8-bit, written by the shader (not by the hardware) so all backends agree.
 pub const OUTPUT_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -72,6 +70,9 @@ pub enum Pixels<'a> {
         range: YuvRange,
         matrix: YuvMatrix,
     },
+    /// The slot already holds this layer's RGBA pixels: they were written with [`Compositor::set_layer_rgba`] or copied in from the platform
+    /// (`copy_external_image_to_texture` on [`Compositor::layer_texture`], e.g. a WebCodecs `VideoFrame`). Nothing is uploaded at render time.
+    Resident,
 }
 
 /// One layer: pixels plus a 2D transform and opacity.
@@ -88,6 +89,24 @@ pub struct Layer<'a> {
     pub rotation: f32,
     /// 0..=1.
     pub opacity: f32,
+    /// Display rotation of the media in degrees clockwise (0, 90, 180, 270; other values round to the nearest right angle). At 90/270 the layer's
+    /// displayed width and height swap, so `scale` applies to the upright picture and the layer is upright without a `rotation` of its own.
+    pub display_rotation: u16,
+}
+
+/// Rotation as the row-major matrix `[a, b, c, d]` taking a point of the displayed unit square (centred, y down) to the coded image (centred).
+/// Exact for right angles. A phone clip whose probe says 90 is stored sideways; showing it rotated clockwise by 90 makes it upright.
+pub fn texture_matrix(display_rotation: u16) -> [f32; 4] {
+    match (((display_rotation as u32 + 45) / 90) % 4) as u8 {
+        1 => [0.0, 1.0, -1.0, 0.0],
+        2 => [-1.0, 0.0, 0.0, -1.0],
+        3 => [0.0, -1.0, 1.0, 0.0],
+        _ => [1.0, 0.0, 0.0, 1.0],
+    }
+}
+
+fn swaps_axes(display_rotation: u16) -> bool {
+    matches!(((display_rotation as u32 + 45) / 90) % 4, 1 | 3)
 }
 
 /// Counts of GPU objects created by a [`Compositor`]. A steady-state frame must not change any of them.
@@ -106,6 +125,8 @@ struct LayerUniform {
     out_size: [f32; 4],
     yuv_a: [f32; 4],
     yuv_b: [f32; 4],
+    /// Row-major 2x2 `texture_matrix` (display unit square -> coded image).
+    uv: [f32; 4],
 }
 const UNIFORM_SIZE: u64 = std::mem::size_of::<LayerUniform>() as u64;
 
@@ -134,36 +155,6 @@ struct Slot {
     views: Vec<wgpu::TextureView>,
     group: Option<wgpu::BindGroup>,
     group_gen: u64,
-}
-
-struct MapState {
-    done: AtomicBool,
-    ok: AtomicBool,
-    waker: Mutex<Option<Waker>>,
-}
-
-struct MapFuture {
-    device: wgpu::Device,
-    state: Arc<MapState>,
-}
-
-impl Future for MapFuture {
-    type Output = bool;
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<bool> {
-        // Native: drive the device so the callback fires (the future completes in one poll). Web: the browser event loop fires it and wakes us.
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = self.device.poll(wgpu::PollType::Wait);
-        #[cfg(target_arch = "wasm32")]
-        let _ = self.device.poll(wgpu::PollType::Poll);
-        if self.state.done.load(Ordering::Acquire) {
-            return Poll::Ready(self.state.ok.load(Ordering::Acquire));
-        }
-        *self.state.waker.lock().unwrap() = Some(cx.waker().clone());
-        if self.state.done.load(Ordering::Acquire) {
-            return Poll::Ready(self.state.ok.load(Ordering::Acquire));
-        }
-        Poll::Pending
-    }
 }
 
 /// Layers in (bottom first), frame out.
@@ -444,7 +435,7 @@ impl Compositor {
     /// Make slot `i` match layer `l` (re-creating textures only when kind or size changed), upload its pixels, and (re)build its bind group if stale.
     fn prepare_slot(&mut self, i: usize, l: &Layer) {
         let kind = match l.pixels {
-            Pixels::Rgba8Srgb(_) => Kind::Rgba,
+            Pixels::Rgba8Srgb(_) | Pixels::Resident => Kind::Rgba,
             Pixels::Yuv420 { .. } => Kind::Yuv,
         };
         if self.slots.len() <= i {
@@ -486,7 +477,10 @@ impl Compositor {
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    // RENDER_ATTACHMENT: `copy_external_image_to_texture` (VideoFrame import) needs it on the destination.
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::COPY_DST
+                        | wgpu::TextureUsages::RENDER_ATTACHMENT,
                     view_formats: &[],
                 });
                 slot.views.push(t.create_view(&Default::default()));
@@ -521,6 +515,7 @@ impl Compositor {
         };
         match l.pixels {
             Pixels::Rgba8Srgb(d) => up(&slot.textures[0], d, l.width, l.height, 4),
+            Pixels::Resident => {}
             Pixels::Yuv420 { y, u, v, .. } => {
                 let (cw, ch) = (l.width.div_ceil(2), l.height.div_ceil(2));
                 up(&slot.textures[0], y, l.width, l.height, 1);
@@ -571,6 +566,79 @@ impl Compositor {
     /// Composite `layers` (bottom first) over opaque black into the persistent `OUTPUT_FORMAT` texture of `width` x `height`.
     /// The returned texture is overwritten by the next call.
     pub fn render(&mut self, width: u32, height: u32, layers: &[Layer]) -> &wgpu::Texture {
+        self.render_inner(width, height, layers, None);
+        &self.target.as_ref().expect("target").out
+    }
+
+    /// Like [`Compositor::render`], but the final sRGB-encoded pass writes straight into `view` (a canvas surface texture) instead of the internal
+    /// output texture. `view` must be `width` x `height` and [`OUTPUT_FORMAT`]. It is the same shader pass over the same accumulation, so the
+    /// pixels equal what `render` + readback produce (the preview/export parity guarantee, tested).
+    pub fn render_to_view(
+        &mut self,
+        width: u32,
+        height: u32,
+        layers: &[Layer],
+        view: &wgpu::TextureView,
+    ) {
+        self.render_inner(width, height, layers, Some(view));
+    }
+
+    /// Make slot `i` an RGBA slot of `width` x `height` and return its texture, for the platform to copy pixels into
+    /// (`Queue::copy_external_image_to_texture`). Pair with [`Pixels::Resident`]. Allocates only when the slot is new or its size changed.
+    pub fn layer_texture(&mut self, i: usize, width: u32, height: u32) -> &wgpu::Texture {
+        self.ensure_rgba_slot(i, width, height);
+        &self.slots[i].textures[0]
+    }
+
+    /// Upload RGBA pixels (sRGB, straight alpha, `width * height * 4` bytes) into slot `i` now. Pair with [`Pixels::Resident`].
+    pub fn set_layer_rgba(&mut self, i: usize, width: u32, height: u32, data: &[u8]) {
+        assert_eq!(
+            data.len(),
+            (width * height * 4) as usize,
+            "wrong RGBA length"
+        );
+        self.ensure_rgba_slot(i, width, height);
+        self.queue.write_texture(
+            self.slots[i].textures[0].as_image_copy(),
+            data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
+
+    fn ensure_rgba_slot(&mut self, i: usize, width: u32, height: u32) {
+        let l = Layer {
+            width,
+            height,
+            pixels: Pixels::Resident,
+            center: [0.0; 2],
+            scale: [1.0; 2],
+            rotation: 0.0,
+            opacity: 1.0,
+            display_rotation: 0,
+        };
+        self.prepare_slot(i, &l);
+    }
+
+    fn render_inner(
+        &mut self,
+        width: u32,
+        height: u32,
+        layers: &[Layer],
+        view: Option<&wgpu::TextureView>,
+    ) {
         self.ensure_target(width, height);
         self.ensure_uniforms(layers.len());
         self.scratch.clear();
@@ -579,23 +647,29 @@ impl Compositor {
             self.prepare_slot(i, l);
             let (s, c) = l.rotation.sin_cos();
             let (mode, a, b) = match l.pixels {
-                Pixels::Rgba8Srgb(_) => (0.0, [0.0; 4], [0.0; 4]),
+                Pixels::Rgba8Srgb(_) | Pixels::Resident => (0.0, [0.0; 4], [0.0; 4]),
                 Pixels::Yuv420 { range, matrix, .. } => {
                     let (a, b) = yuv_params(range, matrix);
                     (1.0, a, b)
                 }
             };
+            let (dw, dh) = if swaps_axes(l.display_rotation) {
+                (l.height, l.width)
+            } else {
+                (l.width, l.height)
+            };
             let u = LayerUniform {
                 rect: [
                     l.center[0],
                     l.center[1],
-                    l.width as f32 * l.scale[0] * 0.5,
-                    l.height as f32 * l.scale[1] * 0.5,
+                    dw as f32 * l.scale[0] * 0.5,
+                    dh as f32 * l.scale[1] * 0.5,
                 ],
                 rot: [c, s, l.opacity.clamp(0.0, 1.0), mode],
                 out_size: [width as f32, height as f32, 0.0, 0.0],
                 yuv_a: a,
                 yuv_b: b,
+                uv: texture_matrix(l.display_rotation),
             };
             self.scratch[i * self.stride..i * self.stride + UNIFORM_SIZE as usize]
                 .copy_from_slice(bytemuck::bytes_of(&u));
@@ -634,7 +708,7 @@ impl Compositor {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("present"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &t.out_view,
+                    view: view.unwrap_or(&t.out_view),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -649,7 +723,6 @@ impl Compositor {
             pass.draw(0..3, 0..1);
         }
         self.queue.submit([enc.finish()]);
-        &self.target.as_ref().expect("target").out
     }
 
     /// Render and read the frame back as tightly packed sRGB RGBA8 into `out` (`width * height * 4` bytes; `out` is cleared and reused, so a
@@ -662,6 +735,20 @@ impl Compositor {
         height: u32,
         layers: &[Layer<'_>],
         out: &mut Vec<u8>,
+    ) -> Result<(), wgpu::BufferAsyncError> {
+        self.read_rgba8_into_with(width, height, layers, out, || std::future::ready(()))
+            .await
+    }
+
+    /// [`Compositor::read_rgba8_into`] with a hook that gives the host event loop a turn while the map is pending (`yield_to_host`: in the browser a
+    /// `MessageChannel` round trip; WebGL2 only completes the map when the device is polled again). Required on the web, where the plain version would spin.
+    pub async fn read_rgba8_into_with<Y: Future<Output = ()>>(
+        &mut self,
+        width: u32,
+        height: u32,
+        layers: &[Layer<'_>],
+        out: &mut Vec<u8>,
+        mut yield_to_host: impl FnMut() -> Y,
     ) -> Result<(), wgpu::BufferAsyncError> {
         self.render(width, height, layers);
         let bpr = (width * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
@@ -698,26 +785,23 @@ impl Compositor {
             },
         );
         self.queue.submit([enc.finish()]);
-        let state = Arc::new(MapState {
-            done: AtomicBool::new(false),
-            ok: AtomicBool::new(false),
-            waker: Mutex::new(None),
-        });
-        let cb = state.clone();
+        let done = Arc::new(AtomicU8::new(0)); // 0 pending, 1 mapped, 2 failed
+        let cb = done.clone();
         buf.slice(..need).map_async(wgpu::MapMode::Read, move |r| {
-            cb.ok.store(r.is_ok(), Ordering::Release);
-            cb.done.store(true, Ordering::Release);
-            if let Some(w) = cb.waker.lock().unwrap().take() {
-                w.wake();
-            }
+            cb.store(if r.is_ok() { 1 } else { 2 }, Ordering::Release);
         });
-        let ok = MapFuture {
-            device: self.device.clone(),
-            state,
-        }
-        .await;
-        if !ok {
-            return Err(wgpu::BufferAsyncError);
+        // Native: block on the device. Web: the WebGPU backend fires the callback from a promise, the WebGL2 backend only when the device is polled,
+        // so poll and give the host a turn of its event loop between polls.
+        loop {
+            #[cfg(not(target_arch = "wasm32"))]
+            let _ = self.device.poll(wgpu::PollType::Wait);
+            #[cfg(target_arch = "wasm32")]
+            let _ = self.device.poll(wgpu::PollType::Poll);
+            match done.load(Ordering::Acquire) {
+                1 => break,
+                2 => return Err(wgpu::BufferAsyncError),
+                _ => yield_to_host().await,
+            }
         }
         {
             let data = buf.slice(..need).get_mapped_range();

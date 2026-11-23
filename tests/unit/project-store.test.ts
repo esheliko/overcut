@@ -92,7 +92,7 @@ test("the player takes a new length and rate without being rebuilt", () => {
     rate: { num: 30, den: 1 }, size: { width: 16, height: 16 }, endTicks: 2 * T, sequence: "s",
     evaluate: async (ticks, n) => ({ time: ticks, frame: 0, video_time: ticks, sample: 0, audio_samples: n, layers: [], audio: [] }),
     media: () => undefined,
-    renderer: { render: () => undefined, resize: () => undefined, probe: () => [0, 0, 0], dispose: () => undefined },
+    renderer: { render: () => undefined, dispose: () => undefined },
     fallbackClock: { now: () => 0 },
     onFrame: () => undefined,
     raf: () => () => undefined,

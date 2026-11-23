@@ -50,6 +50,7 @@ impl Img {
             scale,
             rotation,
             opacity,
+            display_rotation: 0,
         }
     }
 }
@@ -363,6 +364,7 @@ fn yuv_bars_decode_to_the_original_colours_for_range_and_matrix() {
                 scale: [1.0, 1.0],
                 rotation: 0.0,
                 opacity: 1.0,
+                display_rotation: 0,
             };
             let f = c.render_to_rgba8(w, h, &[l]);
             for (i, b) in BARS.iter().enumerate() {
@@ -400,6 +402,7 @@ fn yuv_range_flag_matters() {
             scale: [1.0, 1.0],
             rotation: 0.0,
             opacity: 1.0,
+            display_rotation: 0,
         };
         c.render_to_rgba8(4, 4, &[l])[0]
     };
@@ -439,6 +442,7 @@ fn steady_state_frames_create_no_gpu_objects() {
             scale: [0.5, 0.5],
             rotation: 0.2,
             opacity: 0.8,
+            display_rotation: 0,
         };
         let layers = [
             a.layer([960.0, 540.0], [1.0, 1.0], 0.0, 1.0),
@@ -506,4 +510,150 @@ fn changing_layer_count_or_size_only_rebuilds_what_changed() {
     assert_eq!(s3.bind_groups, s2.bind_groups + 1);
     let f = c.render_to_rgba8(16, 16, &[l(&bigger)]);
     assert_eq!(&f[..4], &[0, 255, 0, 255]);
+}
+
+// ---- M1-023: display rotation, resident pixels, render into a caller's view (the preview surface path) -------------------------------------
+
+/// 4x2 image: left half red, right half blue; top row has a green marker at x = 0.
+fn rot_img() -> Img {
+    Img::from_fn(4, 2, |x, y| {
+        if x == 0 && y == 0 {
+            [0, 255, 0, 255]
+        } else if x < 2 {
+            [255, 0, 0, 255]
+        } else {
+            [0, 0, 255, 255]
+        }
+    })
+}
+
+#[test]
+fn display_rotation_makes_the_layer_upright_and_swaps_its_size() {
+    let _gpu = gpu();
+    let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
+        eprintln!("SKIPPED: no wgpu adapter");
+        return;
+    };
+    let img = rot_img();
+    let mut l = img.layer([2.0, 2.0], [1.0, 1.0], 0.0, 1.0);
+    // Output 4x4: the 4x2 picture displayed at 90 is 2 wide x 4 tall, centred: columns 1..3 are covered, columns 0 and 3 stay black.
+    l.display_rotation = 90;
+    let f = c.render_to_rgba8(4, 4, &[l]);
+    assert_eq!(px(&f, 4, 0, 1), [0, 0, 0]);
+    assert_eq!(px(&f, 4, 3, 1), [0, 0, 0]);
+    // Rotated clockwise by 90: the coded left half (red) ends up on top, the right half (blue) on the bottom; the coded top-left marker lands top-right.
+    assert_eq!(
+        px(&f, 4, 1, 0),
+        [255, 0, 0].map(|v| v),
+        "top-left of the upright picture"
+    );
+    assert_eq!(px(&f, 4, 2, 0), [0, 255, 0], "marker moved top-right");
+    assert_eq!(px(&f, 4, 1, 3), [0, 0, 255]);
+    // 180 and 270 and four quarter turns (360) behave: 360 equals 0.
+    let mut a = img.layer([2.0, 1.0], [1.0, 1.0], 0.0, 1.0);
+    let base = c.render_to_rgba8(4, 2, &[a]);
+    a.display_rotation = 360;
+    assert_eq!(c.render_to_rgba8(4, 2, &[a]), base);
+    a.display_rotation = 180;
+    let r = c.render_to_rgba8(4, 2, &[a]);
+    assert_eq!(
+        px(&r, 4, 3, 1),
+        [0, 255, 0],
+        "marker at bottom-right after 180"
+    );
+    assert_eq!(px(&r, 4, 0, 0), [0, 0, 255]);
+}
+
+#[test]
+fn resident_layers_and_rendering_into_a_view_match_the_uploaded_readback_exactly() {
+    let _gpu = gpu();
+    for (name, backend) in BACKENDS {
+        let Some((mut c, _)) = headless_compositor(backend) else {
+            eprintln!("SKIPPED {name}: no adapter");
+            continue;
+        };
+        let (w, h) = (96u32, 54u32);
+        let g = gradient(64, 36);
+        let k = checker(32, 32);
+        let mk = |g: &Img, k: &Img| -> [Layer<'static>; 2] {
+            let base = |i: &Img, center, scale, rotation, opacity| Layer {
+                width: i.w,
+                height: i.h,
+                pixels: Pixels::Resident,
+                center,
+                scale,
+                rotation,
+                opacity,
+                display_rotation: 0,
+            };
+            [
+                base(g, [48.0, 27.0], [1.5, 1.5], 0.0, 1.0),
+                base(k, [60.0, 30.0], [1.0, 1.0], 0.4, 0.7),
+            ]
+        };
+        // Reference: pixels uploaded by `render` (the export readback path).
+        let reference = c.render_to_rgba8(
+            w,
+            h,
+            &[
+                g.layer([48.0, 27.0], [1.5, 1.5], 0.0, 1.0),
+                k.layer([60.0, 30.0], [1.0, 1.0], 0.4, 0.7),
+            ],
+        );
+        // Resident slots + render into a caller texture (stands in for the canvas surface of the preview).
+        c.set_layer_rgba(0, g.w, g.h, &g.rgba);
+        c.set_layer_rgba(1, k.w, k.h, &k.rgba);
+        let target = c.device().create_texture(&wgpu::TextureDescriptor {
+            label: Some("fake surface"),
+            size: wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: app_render::OUTPUT_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = target.create_view(&Default::default());
+        c.render_to_view(w, h, &mk(&g, &k), &view);
+        let bpr = (w * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buf = c.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("rb"),
+            size: (bpr * h) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut enc = c.device().create_command_encoder(&Default::default());
+        enc.copy_texture_to_buffer(
+            target.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buf,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bpr),
+                    rows_per_image: Some(h),
+                },
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
+        c.queue().submit([enc.finish()]);
+        buf.slice(..).map_async(wgpu::MapMode::Read, |r| r.unwrap());
+        c.device().poll(wgpu::PollType::Wait).unwrap();
+        let data = buf.slice(..).get_mapped_range();
+        let mut got = Vec::new();
+        for row in data.chunks(bpr as usize).take(h as usize) {
+            got.extend_from_slice(&row[..(w * 4) as usize]);
+        }
+        assert_eq!(
+            got, reference,
+            "{name}: view path and readback path must be identical"
+        );
+    }
 }

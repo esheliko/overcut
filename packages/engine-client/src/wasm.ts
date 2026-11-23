@@ -2,6 +2,8 @@ import { createEditing } from "./editing";
 import { createExportApi, type WorkerLike } from "./export/job";
 import { opfsStorage } from "./export/storage";
 import { createWebMedia, type WasmMediaClass } from "./decode/media";
+import type { GpuRenderer as GpuRendererClass } from "@app/wasm-pkg";
+import { wrapRenderer, type GpuRenderer } from "./render";
 import { parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine, type FrameDescription, type MediaApi } from "./types";
 
 /** Browser backend: loads the WebAssembly build once. Run the engine inside a Web Worker when it starts doing real work (see docs). */
@@ -99,7 +101,13 @@ export async function createWasmEngine(opts: { spawnExportWorker: () => WorkerLi
  * For the export Worker (`export/worker-entry.ts`): loads the engine inside the worker and opens the project snapshot. Lives here because this file is the
  * only one allowed to import the wasm package (`npm run check:boundaries`). Must not reference the worker URL (that would make the worker bundle itself).
  */
-export async function openWasmEvaluator(projectJson: string): Promise<{ evaluate(sequence: string, ticks: number, samples: number): FrameDescription; media: MediaApi; free(): void }> {
+export interface Evaluator {
+  evaluate(sequence: string, ticks: number, samples: number): FrameDescription;
+  media: MediaApi;
+  free(): void;
+}
+
+export async function openWasmEvaluator(projectJson: string): Promise<Evaluator> {
   const wasm = await import("@app/wasm-pkg");
   await wasm.default();
   const editor = new wasm.Editor(projectJson);
@@ -108,4 +116,51 @@ export async function openWasmEvaluator(projectJson: string): Promise<{ evaluate
     media: createWebMedia(wasm.MediaFile as unknown as WasmMediaClass),
     free: () => editor.free(),
   };
+}
+
+/**
+ * WebGPU is only trusted after it has done the two things the app depends on on a scratch canvas: import a WebCodecs `VideoFrame` into a layer and
+ * read the composited frame back (browsers differ here, and a preview that silently shows black is worse than WebGL2). Costs a few ms once.
+ */
+async function webgpuWorks(wasm: { GpuRenderer: typeof GpuRendererClass }): Promise<boolean> {
+  if (typeof VideoFrame === "undefined") return false;
+  let r: GpuRenderer | undefined;
+  let frame: VideoFrame | undefined;
+  try {
+    const probe = new OffscreenCanvas(8, 8);
+    r = wrapRenderer(await wasm.GpuRenderer.create(probe, "webgpu"), probe);
+    r.resize(8, 8);
+    const src = new OffscreenCanvas(2, 2);
+    const g = src.getContext("2d");
+    if (!g) return false;
+    g.fillStyle = "#ff0000";
+    g.fillRect(0, 0, 2, 2);
+    frame = new VideoFrame(src, { timestamp: 0 });
+    const px = await r.readback([{ source: frame, width: 2, height: 2, rotation: 0, center: [4, 4], scale: [4, 4], angle: 0, opacity: 1 }], { width: 8, height: 8 }, { width: 8, height: 8 });
+    const i = (4 * 8 + 4) * 4;
+    return px[i]! > 200 && px[i + 1]! < 40 && px[i + 2]! < 40;
+  } catch {
+    return false;
+  } finally {
+    frame?.close();
+    r?.dispose();
+  }
+}
+
+/**
+ * The GPU compositor on `canvas` (an `OffscreenCanvas` in a Worker): `prefer` "auto" (WebGPU when its self-test passes, else WebGL2), "webgpu" or
+ * "webgl2" (both forced, no test). Rejects with a plain message when no GPU backend can be set up.
+ */
+export async function openWasmRenderer(canvas: OffscreenCanvas, prefer: "auto" | "webgpu" | "webgl2" = "auto"): Promise<GpuRenderer> {
+  const wasm = await import("@app/wasm-pkg");
+  await wasm.default();
+  const backend = prefer === "auto" ? ((await webgpuWorks(wasm)) ? "webgpu" : "webgl2") : prefer;
+  return wrapRenderer(await wasm.GpuRenderer.create(canvas, backend), canvas);
+}
+
+/** The production decoder (`Engine.media`) on its own, for a Worker that decodes but does not own a project. */
+export async function openWasmMedia(): Promise<MediaApi> {
+  const wasm = await import("@app/wasm-pkg");
+  await wasm.default();
+  return createWebMedia(wasm.MediaFile as unknown as WasmMediaClass);
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildFrameTable, frameIndexAt, isVariable, startPacket } from "../../packages/engine-client/src/decode/frames";
 import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "../../apps/web/src/preview/audioMix";
-import { canvasBackingSize, displaySize, mapToCoded, normalizeRotation, placeLayer } from "../../apps/web/src/preview/layout";
+import { canvasBackingSize, displaySize, normalizeRotation } from "../../apps/web/src/preview/layout";
 import { frameAtTicks, frameStartTicks, nominalFps, positionAt, prefetchFrames, rateLabel, shuttle, TICKS_PER_SECOND, timecodeHMS } from "../../apps/web/src/preview/timing";
 
 const r30 = { num: 30, den: 1 };
@@ -56,28 +56,15 @@ test("prefetch depth follows the byte budget", () => {
   assert.equal(prefetchFrames(1, 3840, 2160), 2);
 });
 
-test("rotation: display size swaps for 90/270, texture mapping turns the coded image clockwise", () => {
+test("rotation: display size swaps for 90/270", () => {
   assert.deepEqual(displaySize(1920, 1080, 90), { width: 1080, height: 1920 });
   assert.deepEqual(displaySize(1920, 1080, 180), { width: 1920, height: 1080 });
   assert.equal(normalizeRotation(-90), 270);
   assert.equal(normalizeRotation(450), 90);
-  // rotation 90 shows the coded image rotated clockwise: the display's right-middle shows the coded top-middle.
-  assert.deepEqual(mapToCoded(90, 0.5, 0).map((v) => v + 0), [0, -0.5]);
-  assert.deepEqual(mapToCoded(90, 0, 0.5).map((v) => v + 0), [0.5, 0]); // display bottom-middle <- coded right-middle
-  assert.deepEqual(mapToCoded(180, 0.5, 0.25).map((v) => v + 0), [-0.5, -0.25]);
-  assert.deepEqual(mapToCoded(270, 0.5, 0).map((v) => v + 0), [0, 0.5]);
-  assert.deepEqual(mapToCoded(0, 0.3, 0.1), [0.3, 0.1]);
-  // four 90-degree turns are the identity
-  for (const [x, y] of [[0.5, 0.2], [-0.4, 0.5]] as const) {
-    let p: [number, number] = [x, y];
-    for (let i = 0; i < 4; i++) p = mapToCoded(90, ...p);
-    assert.ok(Math.abs(p[0] - x) < 1e-12 && Math.abs(p[1] - y) < 1e-12);
-  }
+  // The texture mapping itself lives in the Rust compositor (`app_render::texture_matrix`, tested in crates/render/tests/golden.rs).
 });
 
-test("layer placement and canvas size", () => {
-  assert.deepEqual(placeLayer({ width: 1080, height: 1920 }, [540, 960], [1, 1]), { cx: 540, cy: 960, hw: 540, hh: 960 });
-  assert.equal(placeLayer({ width: 100, height: 50 }, [0, 0], [2, 0.5]).hw, 100);
+test("canvas size", () => {
   const s = canvasBackingSize(640, 360, 2, { width: 1920, height: 1080 });
   assert.deepEqual(s, { width: 1280, height: 720 });
   assert.deepEqual(canvasBackingSize(2000, 1000, 2, { width: 1920, height: 1080 }), { width: 1920, height: 960 });
