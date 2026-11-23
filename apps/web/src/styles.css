@@ -98,12 +98,14 @@ h2, p { margin: 0; }
 .timeline { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-top: 1px solid var(--line); }
 .tl-bar { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 6px; min-height: 48px; border-bottom: 1px solid var(--line); }
 .tl-group, .zoom { display: flex; align-items: center; gap: 0; }
-.zoom { min-width: 0; }
+.zoom { min-width: 0; flex: 0 0 auto; }
+@media (max-width: 480px) { .zoom input { display: none; } .tl-bar { padding: 0 2px; } .tl-sel { display: none; } } /* phone: the −/+ buttons stay, the slider goes so the bar fits at 320 px */
 .sep { width: 1px; height: 20px; margin: 0 4px; background: var(--line-strong); }
 .zoom input { width: clamp(56px, 18vw, 140px); min-width: 20px; flex: 0 1 auto; accent-color: var(--accent); } /* shrinks before the bar overflows (a selected clip adds a label) */
 .tl-stage { direction: ltr; flex: 1; min-height: 0; position: relative; }
 .tl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; cursor: default; background: var(--surface); }
-.tl-canvas:focus-visible { outline-offset: -2px; }
+.tl-canvas:focus-visible { outline: none; }
+.tl-stage:has(.tl-canvas:focus-visible:not([data-pointer]))::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 var(--focus-ring-width) color-mix(in srgb, var(--focus-ring) 70%, transparent); } /* keyboard focus only: a slimmer, softened inset frame in the focus token (an inset shadow is not drawn on a canvas itself) */
 
 .toast { position: fixed; z-index: 40; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translate(-50%, 8px); max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 12px; background: var(--fg); color: var(--bg); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity var(--dur-base), transform var(--dur-base); }
 .toast:not(:empty) { opacity: 1; transform: translate(-50%, 0); }
@@ -218,3 +220,5 @@ h2, p { margin: 0; }
   .export-head { padding-block-start: calc(var(--space-4) + env(safe-area-inset-top)); }
   .export-fields { grid-template-columns: minmax(0, 1fr); }
 }
+
+.export-loading { position: fixed; inset-block-end: calc(env(safe-area-inset-bottom) + 84px); inset-inline: 0; margin-inline: auto; width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 12px; background: var(--surface-3); color: var(--fg); z-index: 40; } /* until the export dialog chunk arrives */

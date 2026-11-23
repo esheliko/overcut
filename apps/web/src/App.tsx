@@ -1,5 +1,5 @@
 import { createEngine, type Engine, type EngineBackend, type EngineInfo } from "@app/engine-client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
@@ -163,7 +163,10 @@ function Editor({ store }: { store: ProjectStore }) {
 
   // ---- the shared project: fed by the persistence session's editing surface (autosaving), or the bare engine when storage is unavailable ----
   const editing = persistence.session?.editing ?? (persistence.problem && core ? core.editing : null);
-  useEffect(() => { void store.attach(editing); }, [store, editing, persistence.epoch]); // epoch: undo recovery replaced the project
+  // A recovered session already has undo history (the replayed edits); "undo recovery" (epoch > 0) starts a fresh one.
+  const replayed = useRef(0);
+  replayed.current = persistence.recovered?.replayed ?? 0;
+  useEffect(() => { void store.attach(editing, { canUndo: persistence.epoch === 0 && replayed.current > 0 }); }, [store, editing, persistence.epoch]); // epoch: undo recovery replaced the project
   const project = useProjectStore((s) => s.project);
 
   // ---- media import (M1-032) ----

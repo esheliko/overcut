@@ -120,6 +120,7 @@
   "media.err.failed": "{name} could not be read. The file may be damaged or still downloading. Try choosing it again.",
   "export.needClip": "Add a clip to the timeline to export",
   "export.title": "Export video",
+  "export.loading": "Loading export…",
   "export.summary": "Your project: {size} · {fps} fps · {length}",
   "export.checking": "Checking what this device can export…",
   "export.presets": "Where is it going?",

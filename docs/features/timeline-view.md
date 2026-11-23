@@ -50,3 +50,9 @@ Unit (`tests/unit/timeline-edit.test.ts`): snapping, move room, op order, track 
 
 ![selected clip, desktop mid-drag](img/timeline-editing-desktop-drag.png)
 ![selected clip, phone](img/timeline-editing-phone-selected.png)
+
+## Polish (toolbar, focus, startup)
+- **Narrow toolbar**: at <= 480 px the zoom slider and the selection label are hidden; the 44 px zoom -/+ buttons stay (smoke: "+" visible and inside the viewport at 320 and 390 px).
+- **Focus frame**: the canvas shows a softened inset frame (focus token) only for keyboard focus; focus given by a pointer press shows none (`data-pointer`). Screenshots: `img/timeline-focus-before-pointer.png`, `img/timeline-focus-after-pointer.png`, `img/timeline-focus-after-keyboard.png`.
+- **Undo/redo state after recovery**: the toolbar reads it from the store, which `App` seeds from the recovered session (`replayed > 0` means there is history to undo); "Undo recovery" starts a fresh history.
+- **Startup**: the export dialog (`export/ExportDialogView.tsx`) is a lazy chunk, warmed on hover/focus of the Export button; first-load JS 126 -> 121 KB gzip (the i18n catalogue is now its own chunk). All JS incl. the engine worker is ~275 KB gzip and is dominated by the worker (130 KB), not the UI.
