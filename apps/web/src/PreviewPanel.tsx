@@ -29,6 +29,8 @@ interface Props {
   engine: Engine | null;
   /** The file behind a media item (the bin owns them), so the preview can open decoders for what the project uses. */
   fileOf(id: string): Promise<File | null>;
+  /** Ids (comma separated) of the media readable right now; a change makes the preview ask for files that were offline before. */
+  readyIds?: string;
   /** Import files (the same flow as the bin; the empty preview offers it too). */
   onImport(s: Source[]): void;
   playing: boolean;
@@ -44,7 +46,7 @@ interface Props {
  * The player, the GPU compositor and the decoders live in the preview Worker (`preview/worker.ts`); this component sends it the project, the files and
  * the transport commands, and shows the playhead it reports.
  */
-export function PreviewPanel({ engine, fileOf, onImport, playing, ratios, ratio, onRatio, onPlaying }: Props) {
+export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, ratios, ratio, onRatio, onPlaying }: Props) {
   const { t } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
@@ -96,7 +98,7 @@ export function PreviewPanel({ engine, fileOf, onImport, playing, ratios, ratio,
   }, [emit]);
 
   // The decoders the player reads: the Worker opens its own, from the bin's files.
-  useWorkerMedia(hostRef.current, project, fileOf, hostVersion);
+  useWorkerMedia(hostRef.current, project, fileOf, hostVersion, readyIds);
 
   // The shared project (or the sequence settings) changed: the Worker re-reads it and the same player takes the new length, rate and clips.
   useEffect(() => {

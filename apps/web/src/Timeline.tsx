@@ -33,6 +33,8 @@ type Props = {
   engine?: Engine | null;
   /** The file behind an imported media id (the bin's), for real waveforms and filmstrips; without it imported clips show placeholders. */
   fileOf?: (id: string) => Promise<File | null>;
+  /** Ids (comma separated) of the media whose file is readable right now: media that turns up here after being offline is requested again. */
+  readyIds?: string;
 };
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
@@ -42,7 +44,7 @@ const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 
-export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf }: Props) {
+export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf, readyIds = "" }: Props) {
   const { t } = useI18n();
   // The sample project uses synthetic media; imported files are decoded by the engine from the bin's files (placeholders while extracting or offline).
   const fileOfRef = useRef(fileOf);
@@ -59,6 +61,18 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const canRedo = useProjectStore((s) => s.canRedo);
   const selected = useProjectStore((s) => s.selection);
   const frame = useProjectStore((s) => s.playhead);
+  // Media that became readable (relink, permission restored) is asked for again; media that left the project closes its decoder handle.
+  const known = useRef(new Set<string>());
+  const readyBefore = useRef(new Set<string>());
+  useEffect(() => {
+    if (!media) return;
+    const inProject = new Set((project?.media ?? []).map((m) => m.id));
+    for (const id of [...known.current]) if (!inProject.has(id)) { known.current.delete(id); readyBefore.current.delete(id); void media.release(id); }
+    for (const id of inProject) known.current.add(id);
+    const ready = new Set(readyIds ? readyIds.split(",") : []);
+    for (const id of ready) if (!readyBefore.current.has(id)) { readyBefore.current.add(id); void media.refresh(id); }
+    for (const id of [...readyBefore.current]) if (!ready.has(id)) readyBefore.current.delete(id);
+  }, [media, project, readyIds]);
   const proj = useMemo(() => ({ ready: project !== null, project, canUndo, canRedo, apply: store.apply, undo: store.undo, redo: store.redo }), [store, project, canUndo, canRedo]);
   const fallback = useMemo(() => sampleProject(), []);
   const source: Project = project ?? fallback;
