@@ -18,7 +18,7 @@ test("empty project shows one big import target; the first import lands on the t
   const target = page.getByTestId("import-empty");
   await expect(target).toBeVisible();
   expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(160);
-  await expect(summary(page)).toContainText("Sample clips shown");
+  await expect(summary(page)).toContainText("0 clips");
   await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4"));
   const card = page.getByTestId("bin-item").first();
   await expect(card).toContainText("h264_aac.mp4");
@@ -27,7 +27,6 @@ test("empty project shows one big import target; the first import lands on the t
   await expect(card.locator("img")).toHaveCount(1); // poster from the first frame
   // picture + sound = two clips on two tracks, and the sample clips are gone
   await expect(summary(page)).toContainText("2 tracks, 2 clips");
-  await expect(summary(page)).not.toContainText("Sample clips");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
@@ -59,7 +58,7 @@ test("a file that cannot be imported says why, in plain words, and nothing is si
   await expect(page.getByText("notes.txt is not a video, audio or image file")).toBeVisible();
   await expect(page.getByText(/broken\.mp4 could not be imported \(MP4\)/)).toBeVisible();
   await expect(page.getByText(/MP4 or MOV with H\.264/).first()).toBeVisible();
-  await expect(summary(page)).toContainText("Sample clips shown"); // nothing was added
+  await expect(summary(page)).toContainText("0 clips"); // nothing was added
   await page.getByRole("button", { name: "Dismiss notes.txt" }).click();
   await expect(items).toHaveCount(1);
 });

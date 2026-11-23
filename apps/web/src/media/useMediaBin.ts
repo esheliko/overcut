@@ -32,6 +32,8 @@ export interface BinText {
   failed: (name: string) => string;
   imported: (count: number) => string;
   announce: (message: string) => void;
+  /** The bin changed the project (import, add to timeline): views that keep their own copy (the timeline) must re-read it. */
+  edited: () => void;
 }
 
 interface Live { file: File; probed: Probed }
@@ -104,6 +106,7 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
   const sync = useCallback(async () => {
     if (ed) await adopt(await ed.project());
   }, [ed, adopt]);
+  const synced = useCallback(async () => { await sync(); textRef.current.edited(); }, [sync]);
 
   /** The file behind a media entry: the live one, else (reopened project) the stored handle, probed on first use. */
   const fileFor = useCallback(async (id: string, uri: string, kind: MediaKind): Promise<Live | null> => {
@@ -161,7 +164,7 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
           }
           await ed.apply(ops);
           patch(id, { status: "ready", durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
-          await sync();
+          await synced();
         } catch (e) {
           const ext = extOf(s.file.name).toUpperCase();
           const message = e instanceof MediaDecodeError && e.kind === "unsupported" ? t.unsupported(s.file.name, ext, e.message) : t.failed(s.file.name);
@@ -172,7 +175,7 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
     }
     const ok = rows.filter((r) => r.kind).length;
     if (ok > 0) t.announce(t.imported(ok));
-  }, [engine, ed, enqueue, patch, sync]);
+  }, [engine, ed, enqueue, patch, synced]);
 
   importRef.current = importSources;
 
@@ -182,7 +185,7 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
       const ops = await timelineOps(doc.current ?? (await ed.project()), id, start);
       if (!ops) return false;
       await ed.apply(ops);
-      await sync();
+      await synced();
       return true;
     });
   }, [ed, enqueue, timelineOps, sync]);
@@ -218,5 +221,5 @@ export function useMediaBin(engine: Engine | null, editing: Editing | null, fall
     return true;
   }, [engine, ed, enqueue, patch, sync]);
 
-  return { items, project, importSources, addToTimeline, remove, relink, sync };
+  return { items, project, editing: ed, importSources, addToTimeline, remove, relink, sync };
 }

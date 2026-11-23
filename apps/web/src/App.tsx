@@ -202,10 +202,12 @@ export function App() {
     failed: (n) => t("media.err.failed", { name: n }),
     imported: (count) => t("media.imported", { count }),
     announce,
+    edited: () => setBinEpoch((n) => n + 1),
   });
   const importFiles = media.importSources;
   const [dragging, setDragging] = useState(false);
   const [tlOver, setTlOver] = useState(false);
+  const [binEpoch, setBinEpoch] = useState(0);
   useEffect(() => {
     let depth = 0;
     const over = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer)) e.preventDefault(); };
@@ -332,7 +334,7 @@ export function App() {
           e.preventDefault();
           void media.addToTimeline(id, Math.round((frame * TICKS) / FPS)).then((ok) => ok && announce(t("media.added")));
         }}>
-          <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onSoon={soon} project={hasClips ? project ?? undefined : undefined} />
+          <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onNotice={soon} editing={media.editing ?? undefined} epoch={persistence.epoch + binEpoch} />
         </div>
       </main>
 
