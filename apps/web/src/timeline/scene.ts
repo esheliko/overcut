@@ -1,6 +1,6 @@
 /** Flat, typed-array view of a Project's timeline for the canvas (ADR 0007, S8). Built once per project change, read every frame without allocating.
  *  Times here are SECONDS as floats, for drawing and hit-testing only; the model keeps integer ticks (ADR 0010). */
-import type { Project } from "@app/engine-client";
+import type { MediaRef, Project } from "@app/engine-client";
 
 export const TICKS_PER_SECOND = 705_600_000;
 
@@ -19,6 +19,24 @@ export interface Scene {
   end: Float64Array;
   name: string[];
   id: string[];
+  /** Exact integer ticks for building ops (a Float64 holds them exactly): start, duration, source_in, speed as a ratio, media length (0 = unknown). */
+  tStart: Float64Array;
+  tDur: Float64Array;
+  tSrcIn: Float64Array;
+  speedNum: Float64Array;
+  speedDen: Float64Array;
+  mediaDur: Float64Array;
+  /** Per track: locked (1) or not (0), and the track id. */
+  trackLocked: Uint8Array;
+  trackId: string[];
+  /** Track index of each clip. */
+  clipTrack: Uint16Array;
+  /** Ticks per frame of the sequence (integer for every common rate). */
+  frameTicks: number;
+  /** Media id per clip, where in the media the clip starts (seconds), and the project's media by id (waveforms, thumbnails). */
+  media: string[];
+  srcIn: Float64Array;
+  mediaById: Map<string, MediaRef>;
 }
 
 export const EMPTY_SCENE: Scene = buildScene(null);
@@ -26,7 +44,10 @@ export const EMPTY_SCENE: Scene = buildScene(null);
 export function buildScene(project: Project | null, sequence = 0): Scene {
   const tracks = project?.sequences[sequence]?.tracks ?? [];
   const media = new Map<string, string>();
-  for (const m of project?.media ?? []) media.set(m.id, m.name);
+  const mediaLen = new Map<string, number>();
+  const mediaById = new Map<string, MediaRef>();
+  for (const m of project?.media ?? []) { media.set(m.id, m.name); mediaById.set(m.id, m); if (m.duration) mediaLen.set(m.id, m.duration); }
+  const rate = project?.sequences[sequence]?.frame_rate;
   let total = 0;
   for (const t of tracks) total += t.clips.length;
   const scene: Scene = {
@@ -40,11 +61,26 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     end: new Float64Array(total),
     name: new Array<string>(total),
     id: new Array<string>(total),
+    tStart: new Float64Array(total),
+    tDur: new Float64Array(total),
+    tSrcIn: new Float64Array(total),
+    speedNum: new Float64Array(total),
+    speedDen: new Float64Array(total),
+    mediaDur: new Float64Array(total),
+    trackLocked: new Uint8Array(tracks.length),
+    trackId: [],
+    clipTrack: new Uint16Array(total),
+    frameTicks: rate && rate.num > 0 ? Math.round((TICKS_PER_SECOND * rate.den) / rate.num) : TICKS_PER_SECOND / 30,
+    media: new Array<string>(total),
+    srcIn: new Float64Array(total),
+    mediaById,
   };
   let i = 0;
   tracks.forEach((t, ti) => {
     scene.trackKind[ti] = t.kind === "audio" ? 1 : 0;
     scene.trackName.push(t.name);
+    scene.trackId.push(t.id);
+    scene.trackLocked[ti] = t.locked ? 1 : 0;
     scene.trackFirst[ti] = i;
     // The model guarantees sorted, non-overlapping clips; sort anyway so a bad document cannot break the binary search.
     const clips = isSorted(t.clips) ? t.clips : [...t.clips].sort((a, b) => a.start - b.start);
@@ -53,6 +89,15 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
       scene.end[i] = (c.start + c.duration) / TICKS_PER_SECOND;
       scene.name[i] = media.get(c.media) ?? c.media;
       scene.id[i] = c.id;
+      scene.clipTrack[i] = ti;
+      scene.tStart[i] = c.start;
+      scene.tDur[i] = c.duration;
+      scene.tSrcIn[i] = c.source_in;
+      scene.speedNum[i] = c.speed?.num ?? 1;
+      scene.speedDen[i] = c.speed?.den ?? 1;
+      scene.mediaDur[i] = mediaLen.get(c.media) ?? 0;
+      scene.media[i] = c.media;
+      scene.srcIn[i] = c.source_in / TICKS_PER_SECOND;
       if (scene.end[i]! > scene.endSec) scene.endSec = scene.end[i]!;
       i++;
     }

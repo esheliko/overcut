@@ -1,4 +1,5 @@
-import type { Clip, ClipId, MediaId, Project, Time, TrackId } from "./model.generated";
+import type { ExportApi } from "./export/types";
+import type { Clip, ClipId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
 
 export * from "./capabilities";
@@ -25,6 +26,8 @@ export interface Engine {
   capabilities(): Promise<Capabilities>;
   /** Edit the open project: apply ops, undo, redo (M1-003). The UI wiring comes with the timeline (M1-034). */
   readonly editing: Editing;
+  /** Renders a sequence of the open project to a video file (M1-022). Web: a Worker streaming to OPFS. Tauri: rejects `not_yet` until native encode (M1-015). */
+  readonly export: ExportApi;
   /** Reads a `.overcut` file (M1-005). Rejects with `ProjectFileError` (corrupt, too new to display, ...). */
   openProject(bytes: Uint8Array): Promise<OpenedProject>;
   /**
@@ -39,6 +42,8 @@ export interface Engine {
   fingerprintMedia(size: number, first: Uint8Array, last: Uint8Array): Promise<string>;
   /** Opens video/audio files for decoding (M1-016). */
   readonly media: MediaApi;
+  /** Waveform peaks (M1-013): extract from PCM, then read min/max columns for drawing. */
+  readonly peaks: PeaksApi;
 }
 
 export { MediaDecodeError, type MediaErrorKind } from "./decode/errors";
@@ -79,6 +84,15 @@ export type DecodedFrame = { index: number; ptsTicks: number; width: number; hei
   | { kind: "cpu"; /** RGBA8, row-major, no padding. */ rgba: Uint8Array }
 );
 
+/** A running sequential decode (see `MediaHandle.stream`). */
+export interface FrameStream {
+  /** The next frame in presentation order, or `null` at the end of the media. Rejects `MediaDecodeError` on a decoder fault. Release every frame. */
+  next(): Promise<DecodedFrame | null>;
+  /** Decoded frames waiting for `next()`. */
+  buffered(): number;
+  close(): void;
+}
+
 /** An open media file. */
 export interface MediaHandle {
   readonly info: MediaFileInfo;
@@ -90,6 +104,17 @@ export interface MediaHandle {
    * makes the older reject with `MediaDecodeError` kind `cancelled` (scrubbing). Rejects `unsupported` naming the codec.
    */
   videoFrame(index: number): Promise<DecodedFrame>;
+  /**
+   * The frame to show at source time `ticks` (integer ticks): the last frame whose timestamp is not after it, so a variable-frame-rate
+   * clip plays at its real speed. Use this, not `ticks * fps`, to pick the `index` for `videoFrame` / `stream`.
+   */
+  frameIndexAt(ticks: number): number;
+  /**
+   * Sequential decode for playback: frames `startIndex, startIndex+1, ...` in order, each decoded once from one decoder run (a
+   * `videoFrame` call per frame would restart at the keyframe every time). At most `maxBuffered` frames are held ahead of `next()`.
+   * Independent of `videoFrame`: scrubbing never disturbs a running stream. Call `close()` to free the decoder and held frames.
+   */
+  stream(startIndex: number, maxBuffered?: number): FrameStream;
   /** Interleaved f32 PCM at `audioRate`, `count` frames from `startSample` (silence past the end of the stream). */
   audio(startSample: number, count: number): Promise<Float32Array>;
   /** Decoder frame accounting (`open` must be 0 once every result is released: the no-leak check). */
@@ -100,6 +125,37 @@ export interface MediaHandle {
 export interface MediaApi {
   /** Opens a `File`/`Blob`; bytes are read on demand with range reads, never loaded whole. Rejects `MediaDecodeError`. */
   open(file: Blob, opts?: OpenMediaOptions): Promise<MediaHandle>;
+}
+
+/** A running waveform extraction. Dispose it (or `finish`) to free the engine-side state. */
+export interface PeaksJob {
+  /** First frame the next `push` must start at (0 unless the job resumed a cached partial file). */
+  readonly nextFrame: number;
+  /** Adds interleaved i16 PCM, in order, any chunk size. */
+  push(pcm: Int16Array): Promise<void>;
+  /** The peaks file so far (flagged incomplete); the job keeps running. */
+  snapshot(): Promise<Uint8Array>;
+  /** The final peaks file (flagged complete) and frees the job. */
+  finish(): Promise<Uint8Array>;
+  /** Frees the job without a result (cancelled). Safe after `finish`. */
+  dispose(): Promise<void>;
+}
+
+/** A parsed peaks file held by the engine for drawing. Close it when the media leaves the timeline. */
+export interface PeaksView {
+  readonly sampleRate: number;
+  /** Frames extracted so far. */
+  readonly frames: number;
+  readonly complete: boolean;
+  /** `count` columns, column i = frames [start + i*fpp, start + (i+1)*fpp), as interleaved `[min, max]` i16; min > max = no data yet. */
+  columns(startFrame: number, framesPerPx: number, count: number): Promise<Int16Array>;
+  close(): Promise<void>;
+}
+
+export interface PeaksApi {
+  /** `resume`: a cached partial file to continue from (see `PeaksJob.nextFrame`). */
+  begin(sampleRate: number, channels: number, resume?: Uint8Array): Promise<PeaksJob>;
+  open(file: Uint8Array): Promise<PeaksView>;
 }
 
 /** Result of `Engine.openProject`. Mirrors `app_model::open_json`. */
@@ -168,7 +224,10 @@ export type Op =
   | { op: "move"; clip: ClipId; track: TrackId; start: Time }
   | { op: "delete"; clip: ClipId }
   | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
-  | { op: "set_media"; media: MediaId; uri: string; hash: string | null };
+  | { op: "set_media"; media: MediaId; uri: string; hash: string | null }
+  | { op: "add_media"; media: MediaRef }
+  | { op: "remove_media"; media: MediaId }
+  | { op: "set_sequence_format"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution };
 
 /** What the engine reports after every edit. Re-read `project()` when `revision` moved. */
 export interface EditOutcome {

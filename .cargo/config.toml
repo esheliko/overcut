@@ -1,0 +1,3 @@
+# web-sys gates the WebCodecs `VideoFrame` binding (which wgpu uses to import a decoded frame straight into a GPU texture) behind this cfg.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg=web_sys_unstable_apis"]

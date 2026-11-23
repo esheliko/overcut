@@ -1,0 +1,51 @@
+# Feature: export (M1-022)
+
+Code: `packages/engine-client/src/export/`. API: `Engine.export.start(settings) -> ExportJob`. UI (dialog, presets list, estimate): M1-035, not here. Codec policy: ADR 0004 (decision "Muxer", "Recommended default export presets").
+
+## Behaviour
+- `engine.export.start({ sequence, ...optional })` snapshots the open project, spawns one module Worker, and returns a job: `onProgress(cb)`, `cancel()`, `result` (a promise). Invalid settings, an empty sequence or a sequence that does not exist reject **on the calling thread** (`ExportError`, no worker is started).
+- The Worker loads its own copy of the engine, opens the snapshot and loops, per output frame: `evaluate(t)` (the engine's frame description, ADR 0010 integer ticks) -> decode each layer (`MediaVideo.frame(source_time)`) -> composite (the Rust GPU compositor, `GpuRenderer` from `@app/engine-client`, on the Worker's own `OffscreenCanvas`; transform, opacity and display rotation from the description) -> `VideoFrame` (`renderExportFrame`) -> `VideoEncoder`. Audio is mixed from `evaluate`'s segments in blocks of 2048 samples (`AudioMixer`: gain, speed by nearest sample, clamp), fed to `AudioEncoder` just far enough to cover each video frame, so the two tracks interleave in the file.
+- Encoded chunks go to the muxer (Mediabunny, behind the `Muxer` interface in `mux.ts`) and the muxer streams to an OPFS file through a `FileSystemSyncAccessHandle` (`storage.ts`) in 4 MiB writes. **The file is never held in memory.** The MP4 index is reserved at the start of the file (`fastStart: "reserve"`, so it plays before it is fully loaded; the unused reserve is a `free` box, about 2 MB for a 5 min file); WebM streams as clusters.
+- Back-pressure: after each frame the loop waits until the video encoder's queue is <= 4 and the muxer's pending writes are <= 16. Peak queue is reported in `stats.peakEncodeQueue` (5 in every measured run).
+- Progress: at least every 200 ms and once at the last frame (`phase: "finalizing"`): `framesDone`, `fraction`, `elapsedMs`, `etaMs` (`null` for the first second, then from the encode rate over the last 3 s), `fps`.
+- Result: `{ mime, fileName, fileBytes, stats, warnings, file(), remove() }`. `file()` reads the OPFS file as a `File` (hand it to a download link, `navigator.share`, `File.stream()`); `remove()` frees the storage. Call `cleanupStaleExports()` at app start to delete files a crashed session left behind.
+- Cancel: the Worker closes both encoders without flushing, cancels the muxer, deletes the partial file and answers `ExportError("cancelled")`. A Worker that does not answer within 3 s is terminated and its file deleted from the host (measured: cancel to rejection < 100 ms at 720p).
+- Errors (`ExportError.code`): `cancelled`, `invalid_settings`, `empty_sequence`, `unsupported` (the browser cannot encode what was asked), `media_unavailable` (a clip's source cannot be read yet), `encode_failed`, `storage_failed`, `not_yet`.
+- Tauri backend: `export.start` rejects with `not_yet` until native encoding exists (M1-015). The pipeline, loop and progress contract above are what the native side will implement.
+
+## Presets (`presets.ts`)
+`auto` follows ADR 0004 and offers only what `isConfigSupported` accepts: MP4 H.264 + AAC; else WebM VP9 + Opus; else MP4 H.264 + Opus (with a "limited player support" warning); then VP9/AV1 variants. A user choice (`container`, `videoCodec`, `audioCodec`) narrows that list; if nothing passes: `unsupported` with a plain message. Bitrates scale with pixels x fps (H.264 0.1, VP9 0.075, AV1 0.06 bits per pixel, 1 to 80 Mbps) unless set. Codec level strings follow the size (H.264 3.1 / 4.0 / 5.1).
+
+## Time and sync rules
+- Frame `i` is at `floor(i * 705_600_000 * den / num)` ticks (BigInt, exact) for `evaluate` and `round(i * 10^6 * den / num)` microseconds for the encoder; durations are the difference of consecutive frames, so they tile with no gap. Audio sample `s` is at `round(s * 10^6 / rate)` microseconds. Both start at 0 (no edit list).
+- Audio total is `round(frames * rate * den / num)` samples; the loop feeds exactly that many, contiguous, once each.
+- The muxer is told the frame rate, so timestamps snap to the frame grid.
+
+## Media
+`MediaResolver` (`media.ts`) turns a project `MediaRef` into `{ video?: MediaVideo, audio?: MediaAudio }`. Every clip's media is opened **before** the file is created, so an unreadable source fails at 0%, not at 90% (`media_unavailable`).
+- **Real files**: `ExportSettings.sources` maps media id to the `File` (cloned to the Worker, bytes not copied). `blob-media.ts` adapts the production decoder (`Engine.media`, M1-016) running in the export Worker: source ticks -> the media's own frame `floor(ticks * fps)` (clamped to the last), the frame already held is reused (slow motion decodes each picture once), the previous one is released at once, container rotation is applied when drawing, audio is deinterleaved from f32 at the sequence rate (mono to both channels, more than two channels keep front L/R). **Variable frame rate media is refused** (`media_unavailable`) until the pts table is used. Verified in Chromium with the VP9 + Opus fixture (`tests/smoke/export.spec.ts`: tone audible, picture not black).
+- `registerMediaResolver()` remains the seam for other sources (the file store of M1-032 will resolve `MediaRef.uri` to a file). The built-in `test:pattern?w=&h=` media is a deterministic synthetic scene (moving gradient, bar, frame counter, an all-white flash frame and a 2 kHz click on every source second; the S3 fixture).
+
+## Compositor (M1-023)
+The same Rust compositor as the preview (`crates/render`, bound in `crates/wasm/src/render.rs`; `docs/features/render.md`), opened in the export Worker on a fresh `OffscreenCanvas(plan.width, plan.height)` **before the file exists** (no GPU: `unsupported` at 0%). Both layer mapping (`layerOf`) and frame hand-off (`renderExportFrame`) are shared with the preview, so the two cannot drift. Two ways to get the frame to the encoder, both implemented (`ExportSettings.capture`):
+- `readback` (default): composite offscreen, `map_async` the target into a reused RGBA buffer, `new VideoFrame(rgba, { format: "RGBA", colorSpace: sRGB full range })`. Independent of the canvas, byte-deterministic (the determinism test below runs on it).
+- `canvas`: present, then `new VideoFrame(canvas)` straight away (the snapshot must be taken before anything else draws).
+Measured with 3 full-size RGBA layers including their upload, handing each frame to a `VideoFrame` (headless Chromium, software GL, **not a device number**): 1280x720 readback p50 128 ms / p95 158 ms, canvas 121 / 138 ms; 1920x1080 readback 272 / 306 ms, canvas 260 / 309 ms. The canvas mode is about 5% faster here, inside the noise at 1080p and dominated by the software rasteriser and the uploads, so readback stays the default for its determinism; re-measure on the reference devices (a ring of 2 to 3 readback buffers is the next step if the single `map_async` shows on a GPU). Decoded `VideoFrame`s are imported on the GPU (no CPU copy); CPU frames go in as RGBA bytes; the synthetic `test:pattern` reads its canvas with `getImageData` (WebGL2 cannot copy from a canvas).
+
+## Determinism (what is guaranteed)
+With `creationTime` pinned in the settings (it defaults to now), the same project and settings give **byte-identical files with software VP9 + Opus in WebM** (tested in `tests/smoke/export.spec.ts`: two exports, equal SHA-256; the unpinned files differ in 5 bytes, the creation date, and decode to identical frames and samples). **H.264 in Chromium's bundled software encoder (OpenH264) is not deterministic** between runs even when decoded (frame count, timestamps and audio are identical; sizes differ by about 0.2%), and hardware encoders will not be either. The platform-independent determinism guarantee is therefore on the *encoder input*: the unit test (`tests/unit/export.test.ts`) hashes every frame description, timestamp, keyframe flag and audio sample the encoders receive and asserts two runs match, including 29.97 fps.
+
+## Tests
+- Unit (`tests/unit/export.test.ts`, Node, fake platform): plan maths, preset selection with a fake probe, mixer, the loop (order, audio tiling, progress and ETA, cancel at frame 10, error path, range), determinism of the encoder input, sync of flash and click at 30, 29.97 and 25 fps, host job protocol (progress, result, cancel, killed worker, crash), Tauri `not_yet`.
+- Browser (`tests/smoke/export.spec.ts`, `/#export-harness`, real Chromium): export, determinism, default preset, cancel leaves no file, unsupported format error, and the S3 flash/click verifier (ffmpeg) on the decoded file.
+
+## Measured (Chromium 153, headless, Linux, 4 shared vCPU, software encode only, no GPU: not representative of any reference device)
+1080p30 (test pattern, VP9 + Opus WebM): 15 s: 2.10x realtime, 60 s: 2.18x, browser RSS peak 1184 vs 1232 MB (4x the file size, +48 MB); 5 min: 2.23x realtime (134 s), 132 MB file, RSS peak 1298 MB (the flat part: encoder lookahead and the 4 MiB write buffer, not the file). 720p30: 4.5 to 4.8x. Sync: 0.31 ms max offset (the click detector's own bias, as in S3), 0.01 frame, no drift, 180 of 180 frames. AAC and hardware H.264 are unavailable in this sandbox: the MP4/AAC path is covered by the preset logic and unit tests, not by a real encode here (see Known gaps).
+
+## Known gaps / follow-ups
+- Resolving `MediaRef.uri` to a `File` (file store, M1-032): today the caller passes `sources`. VFR media. Real-footage speed is unmeasured (only the test pattern and a 1 s fixture).
+- Readback ring (2-3 buffers) and a reference-device measurement of readback vs canvas capture; WebGPU readback on real hardware (the WebGL2 path is the verified one: `render.md`).
+- AAC priming / edit list and B-frame sync: unmeasured (no AAC encoder here); ADR 0004 "Must be confirmed on reference hardware" still applies.
+- Hardware-encode speed, thermal and background-tab behaviour on phones; resume after a suspended worker (EX-03, M2).
+- `speed != 1` audio uses the nearest sample (no resampling filter); video speed is the decoder's job.
+- Reference devices: the >= 1x bar for 1080p30 on a reference phone is still unconfirmed.

@@ -5,11 +5,16 @@ import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
-import { END_FRAME, Timeline } from "./Timeline";
+import { PreviewPanel, sequenceView } from "./PreviewPanel";
+import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
+import { Timeline } from "./Timeline";
 import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
-import { FPS, timecode } from "./timecode";
+import { MediaBin } from "./media/MediaBin";
+import { TICKS, clipCount } from "./media/plan";
+import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, pickOne, type Source } from "./media/sources";
+import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
-type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend } | { status: "error"; message: string };
+type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; engine: Engine } | { status: "error"; message: string };
 
 type Tool = { id: string; icon: IconName; soon?: string };
 /** CapCut-style tool strip: the left rail on desktop and tablet, the bottom bar on a phone. */
@@ -54,8 +59,17 @@ function EmptyState({ icon, title, text }: { icon: IconName; title: string; text
   );
 }
 
-function Library({ tool, onSoon }: { tool: Tool; onSoon: (m: string) => void }) {
+type BinProps = {
+  items: BinItem[];
+  onImport: (s: Source[]) => void;
+  onAdd: (id: string) => void;
+  onRemove: (id: string) => void;
+  onRelink: (id: string) => void;
+};
+
+function Library({ tool, bin }: { tool: Tool; bin: BinProps }) {
   const { t } = useI18n();
+  const [query, setQuery] = useState("");
   const label = t(`tool.${tool.id}.label`);
   const search = t("panel.search", { tool: label.toLowerCase() });
   return (
@@ -66,15 +80,11 @@ function Library({ tool, onSoon }: { tool: Tool; onSoon: (m: string) => void }) 
       </header>
       <label className="search">
         <Icon name="search" size={18} />
-        <input type="search" placeholder={search} aria-label={search} disabled={!!tool.soon} />
+        <input type="search" placeholder={search} aria-label={search} disabled={!!tool.soon} value={tool.id === "media" ? query : ""} onChange={(e) => setQuery(e.target.value)} />
       </label>
       <div className="panel-body">
         {tool.id === "media" ? (
-          <button className="dropzone" onClick={() => onSoon(t("media.importSoon"))}>
-            <span className="drop-icon"><Icon name="upload" size={26} /></span>
-            <strong>{t("media.import")}</strong>
-            <span>{t("media.importHint")}</span>
-          </button>
+          <MediaBin {...bin} query={query} />
         ) : (
           <EmptyState icon={tool.icon} title={label} text={t(`tool.${tool.id}.blurb`)} />
         )}
@@ -124,7 +134,13 @@ function AppMenu() {
   );
 }
 
+/** The app owns one project store; every panel below reads it. */
 export function App() {
+  const [store] = useState(() => new ProjectStore());
+  return <ProjectStoreProvider store={store}><Editor store={store} /></ProjectStoreProvider>;
+}
+
+function Editor({ store }: { store: ProjectStore }) {
   const { t } = useI18n();
   const [themePref, setThemePref] = useState<ThemePref>(loadPref);
   const [engine, setEngine] = useState<EngineState>({ status: "loading" });
@@ -134,7 +150,6 @@ export function App() {
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
   const [ratio, setRatio] = useState<(typeof RATIOS)[number]["id"]>("16:9");
-  const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
@@ -148,14 +163,12 @@ export function App() {
   useEffect(() => watchSystem(() => loadPref(), () => undefined), []);
   const wide = useMedia("(min-width: 1100px)");
   const roomy = useMedia("(min-width: 720px)"); // tablet and up: the tool panel is always open
-  const frameRef = useRef(0);
-  frameRef.current = frame;
 
   useEffect(() => {
     let alive = true;
     createEngine()
-      .then(async (e) => ({ info: await e.info(), backend: e.backend, e }))
-      .then(({ e, ...r }) => alive && (setEngine({ status: "ready", ...r }), setCore(e)))
+      .then(async (e) => ({ info: await e.info(), backend: e.backend, engine: e }))
+      .then(({ engine: e, ...r }) => alive && (setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
       .catch((e: unknown) => alive && setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }));
     return () => { alive = false; };
   }, []);
@@ -166,51 +179,78 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // Transport: advance by whole frames from the real clock.
-  useEffect(() => {
-    if (!playing) return;
-    let raf = 0;
-    let last = performance.now();
-    let acc = 0;
-    const tick = (now: number) => {
-      acc += ((now - last) * FPS) / 1000;
-      last = now;
-      const whole = Math.floor(acc);
-      if (whole > 0) {
-        acc -= whole;
-        const next = Math.min(END_FRAME, frameRef.current + whole);
-        frameRef.current = next;
-        setFrame(next);
-        if (next >= END_FRAME) { setPlaying(false); return; }
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing]);
-
-  const togglePlay = useCallback(() => {
-    if (!playing && frameRef.current >= END_FRAME) { frameRef.current = 0; setFrame(0); }
-    setPlaying((p) => !p);
-  }, [playing]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement;
-      if (e.code !== "Space" || e.repeat || t.closest("input, select, textarea, button, [role=slider]")) return;
-      e.preventDefault();
-      togglePlay();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [togglePlay]);
-
   const soon = useCallback((m: string) => setToast(m), []);
+
+  // ---- the shared project: fed by the persistence session's editing surface (autosaving), or the bare engine when storage is unavailable ----
+  const editing = persistence.session?.editing ?? (persistence.problem && core ? core.editing : null);
+  useEffect(() => { void store.attach(editing); }, [store, editing, persistence.epoch]); // epoch: undo recovery replaced the project
+  const project = useProjectStore((s) => s.project);
+
+  // ---- media import (M1-032) ----
+  const media = useMediaBin(core, editing, !!persistence.session, t("app.untitled"), {
+    notMedia: (n) => t("media.err.notMedia", { name: n }),
+    unsupported: (n, ext, detail) => t("media.err.unsupported", { name: n, ext: ext || "?", detail }),
+    failed: (n) => t("media.err.failed", { name: n }),
+    imported: (count) => t("media.imported", { count }),
+    announce,
+  });
+  const importFiles = media.importSources;
+  const [dragging, setDragging] = useState(false);
+  const [tlOver, setTlOver] = useState(false);
+  useEffect(() => {
+    let depth = 0;
+    const over = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer)) e.preventDefault(); };
+    const enter = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer)) { depth++; setDragging(true); } };
+    const leave = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer) && --depth <= 0) { depth = 0; setDragging(false); } };
+    const drop = (e: DragEvent) => {
+      depth = 0;
+      setDragging(false);
+      if (!e.dataTransfer || !dragHasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      void fromDataTransfer(e.dataTransfer).then(importFiles);
+    };
+    const paste = (e: ClipboardEvent) => {
+      if (e.target instanceof Element && e.target.closest("input, textarea, [contenteditable]")) return;
+      const files = fromFileList(e.clipboardData?.files);
+      if (files.length > 0) { e.preventDefault(); void importFiles(files); }
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragleave", leave);
+    window.addEventListener("drop", drop);
+    window.addEventListener("paste", paste);
+    return () => {
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("dragenter", enter);
+      window.removeEventListener("dragleave", leave);
+      window.removeEventListener("drop", drop);
+      window.removeEventListener("paste", paste);
+    };
+  }, [importFiles]);
+  const binProps: BinProps = {
+    items: media.items,
+    onImport: (s) => void importFiles(s),
+    onAdd: (id) => void media.addToTimeline(id).then((ok) => ok && announce(t("media.added"))),
+    onRemove: media.remove,
+    onRelink: (id) => void media.relink(id).then(async (ok) => {
+      if (ok) return;
+      const picked = await pickOne(); // no stored permission: choose the file again
+      if (!picked || !(await media.relink(id, picked))) setToast(t("media.relinkFailed"));
+    }),
+  };
+  const seq = sequenceView(project);
+  const hasClips = project ? clipCount(project) > 0 : false;
+  // The first picture sets the sequence size: show it in the preview shape closest to it.
+  const res = project?.sequences[0]?.resolution;
+  useEffect(() => {
+    if (!res || !hasClips) return;
+    const a = res.width / res.height;
+    setRatio(RATIOS.reduce((best, r) => (Math.abs(Math.log(r.value / a)) < Math.abs(Math.log(best.value / a)) ? r : best)).id);
+  }, [res?.width, res?.height, hasClips]);
   const pick = (id: string) => { setSheet(id === tool ? !sheet : true); setTool(id); };
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId) ?? TOOLS[0]!;
   const activeLabel = t(`tool.${active.id}.label`);
-  const ar = RATIOS.find((r) => r.id === ratio)!.value;
   const rail = wide ? TOOLS.filter((x) => x.id !== "edit") : TOOLS;
   const themeName = t(`theme.${themePref}`);
 
@@ -249,37 +289,26 @@ export function App() {
 
         <section className="library" data-open={sheet} aria-label={activeLabel} data-testid="panel-tool">
           <button className="sheet-close icon-btn" aria-label={t("panel.close")} onClick={() => setSheet(false)}><Icon name="close" size={18} /></button>
-          {active.id === "edit" ? <Details /> : <Library tool={active} onSoon={soon} />}
+          {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
         </section>
 
-        <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview">
-          <div className="stage-view">
-            <div className="canvas" style={{ ["--ar" as string]: ar, aspectRatio: String(ar) }}>
-              <div className="canvas-hint"><Icon name="film" size={30} /><span>{t("preview.hint")}</span></div>
-            </div>
-          </div>
-          <div className="player-bar">
-            <div className="tc" aria-label={t("player.time")}><span>{timecode(frame)}</span><span className="tc-total"> / {timecode(END_FRAME)}</span></div>
-            <div className="transport" role="toolbar" aria-label={t("player.toolbar")}>
-              <button className="icon-btn" aria-label={t("player.start")} onClick={() => setFrame(0)}><Icon name="back" size={20} /></button>
-              <button className="play" aria-label={playing ? t("player.pause") : t("player.play")} onClick={togglePlay}><Icon name={playing ? "pause" : "play"} size={22} /></button>
-              <button className="icon-btn" aria-label={t("player.end")} onClick={() => setFrame(END_FRAME)}><Icon name="forward" size={20} /></button>
-            </div>
-            <label className="ratio">
-              <span className="sr-only">{t("ratio.label")}</span>
-              <select value={ratio} onChange={(e) => setRatio(e.target.value as typeof ratio)}>
-                {RATIOS.map((r) => <option key={r.id} value={r.id}>{r.id === ratio ? r.id : t(`ratio.${r.id}`)}</option>)}
-              </select>
-            </label>
-          </div>
-        </section>
+        <PreviewPanel engine={core} fileOf={media.fileOf} onImport={binProps.onImport} playing={playing} ratios={RATIOS} ratio={ratio} onRatio={(id) => setRatio(id as typeof ratio)} onPlaying={setPlaying} />
 
         {wide && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
-        <Timeline frame={frame} playing={playing} zoom={zoom} onFrame={(f) => { setPlaying(false); setFrame(f); }} onZoom={setZoom} onSoon={soon} />
+        <div className="tl-drop" data-over={tlOver} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
+          const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
+          setTlOver(false);
+          if (!id) return;
+          e.preventDefault();
+          void media.addToTimeline(id, Math.round((store.getState().playhead * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
+        }}>
+          <Timeline playing={playing} zoom={zoom} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} engine={core} />
+        </div>
       </main>
 
       <PersistenceNotes state={persistence} />
+      {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       <div className="toast" role="status">{toast}</div>
     </div>
   );

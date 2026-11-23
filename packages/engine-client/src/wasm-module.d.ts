@@ -31,6 +31,19 @@ declare module "@app/wasm-pkg" {
     audio(startSample: number, count: number): Promise<Float32Array>;
     free(): void;
   }
+  /** The GPU compositor on an OffscreenCanvas (WebGPU, else WebGL2). Mirrors `GpuRenderer` in crates/wasm/src/render.rs. */
+  export class GpuRenderer {
+    static create(canvas: OffscreenCanvas, prefer: string): Promise<GpuRenderer>;
+    info(): string;
+    alloc_stats(): string;
+    resize(w: number, h: number): void;
+    begin(): void;
+    add_rgba(rgba: Uint8Array, w: number, h: number, params: Float64Array): void;
+    add_external(source: unknown, w: number, h: number, params: Float64Array): void;
+    render(seqW: number, seqH: number, outW: number, outH: number, present: boolean): void;
+    read_rgba8(seqW: number, seqH: number, outW: number, outH: number, dest: Uint8Array): Promise<void>;
+    free(): void;
+  }
   export class Editor {
     constructor(projectJson: string);
     free(): void;
@@ -47,4 +60,22 @@ declare module "@app/wasm-pkg" {
     recovery(): string | undefined;
   }
   export function capabilities(probe_json: string): string;
+  /** A waveform extraction. Mirrors `PeaksJob` in crates/wasm/src/lib.rs. */
+  export class PeaksJob {
+    constructor(sampleRate: number, channels: number, resume: Uint8Array);
+    free(): void;
+    next_frame(): number;
+    push(pcm: Int16Array): void;
+    snapshot(): Uint8Array;
+    finish(): Uint8Array;
+  }
+  /** A parsed peaks file. Mirrors `PeaksView`. */
+  export class PeaksView {
+    constructor(bytes: Uint8Array);
+    free(): void;
+    sample_rate(): number;
+    frames(): number;
+    complete(): boolean;
+    columns(startFrame: number, framesPerPx: number, count: number): Int16Array;
+  }
 }

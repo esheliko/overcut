@@ -5,4 +5,6 @@
 //!
 //! **Rules**: the audio callback is allocation-free and lock-free; audio is the master clock for playback; DSP has golden-signal tests.
 //!
-//! Status: M0 skeleton, empty. First content arrives with M1 (waveform/playback clock) and M3 (mixer).
+//! Status: waveform peaks (`peaks`, M1-013). Playback clock arrives with M1, the mixer with M3.
+
+pub mod peaks;

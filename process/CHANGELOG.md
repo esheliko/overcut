@@ -36,3 +36,18 @@ Why: same development cycle and instructions as the other projects.
 Expected effect: none (housekeeping)
 Review by: 2026-11-22
 Status: n/a
+
+## 2026-11-23 · owner (direct edit) · Token diet after two usage limits
+What: orchestration rule tightened (max 3 workers counting resumed, no spawn/resume at allowed_warning, handoff at ~200k context or ~$2.50, no waking a session idle over 1 hour above ~150k). Branch+PR rule: workers spawned by an orchestrator stop after merging (no post-merge `ci-status --wait`, no branch-delete retries); owner-driven sessions keep the watch; orchestrator checks main once per batch. Reply-tag rule and CLAUDE.md Token cost and Screenshots sections shortened (CLAUDE.md 18.8 KB to ~16 KB; always-loaded rule budget 6500 to 5000 tokens).
+Why: 2026-11-22/23 review of the oversight session: ~270M cache-read tokens for ~0.9M written, 13 workers in 35 minutes, 6 died at the limit, 150-270k tokens re-written on every wake after a long idle. Auto-merge was considered and is NOT possible (private repo on the free plan: no branch protection, `allow_auto_merge` false).
+Expected effect: fewer simultaneous sessions, no marathon contexts, ~3k fewer tokens re-read per turn per session, no wasted post-merge turns. The 104k start-up cost is mostly account-level (skills, connectors), not repo files.
+Review by: 2026-12-07
+Status: pending
+
+## 2026-11-23 · owner (direct edit) · Rate gate keys on the 5-hour window; active orchestrators retire at ~600k
+What: orchestration rule: pause only when the 5-hour limit is not allowed, any status is `rejected`, or weekly use is about 80% or more; a weekly `allowed_warning` alone no longer blocks starts or resumes. Orchestrator retire threshold raised from ~250k to ~600k (while kept active); the 1-hour cache rule (hand off instead of waking a big session after a long idle) stays.
+Why: the manager read the weekly `allowed_warning` (owner: 34% used) as a reason to pause all work until the weekly reset and to retire itself at 270k. An active session keeps a warm cache, so early retirement saves little; the 5-hour window is the limit that was actually hit.
+Also (owner, same day): ALL work stops at 90% of the 5-hour limit; every running worker pushes WIP and stops until the window resets. Sessions only see a status (no percentage), so `five_hour` not `allowed` stands in for 90%.
+Expected effect: no needless pauses; fewer manager restarts; no workers dying unsaved at the 5-hour wall. Worker cap of 3 and worker handoff at ~200k unchanged.
+Review by: 2026-12-07
+Status: pending

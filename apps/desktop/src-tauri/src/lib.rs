@@ -1,5 +1,6 @@
 //! Native shell. Commands here mirror `packages/engine-client/src/tauri.ts`; keep them thin and forward to `app-core` / `app-timeline`.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
 
@@ -11,7 +12,10 @@ fn with_editor<T>(
     state: &State<'_, EditorState>,
     f: impl FnOnce(&mut app_timeline::Editor) -> Result<T, String>,
 ) -> Result<T, String> {
-    let mut guard = state.0.lock().map_err(|_| "editor state poisoned".to_string())?;
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| "editor state poisoned".to_string())?;
     f(guard.as_mut().ok_or("no project is open")?)
 }
 
@@ -23,7 +27,10 @@ fn engine_info() -> String {
 #[tauri::command]
 fn editor_open(state: State<'_, EditorState>, project_json: String) -> Result<(), String> {
     let editor = app_timeline::Editor::open(&project_json)?;
-    *state.0.lock().map_err(|_| "editor state poisoned".to_string())? = Some(editor);
+    *state
+        .0
+        .lock()
+        .map_err(|_| "editor state poisoned".to_string())? = Some(editor);
     Ok(())
 }
 
@@ -86,19 +93,21 @@ fn editor_recover(
     checkpoint_json: Option<String>,
     log: String,
 ) -> Result<String, String> {
-    let (editor, report) = app_timeline::Editor::recover_json(
-        base_json.as_deref(),
-        checkpoint_json.as_deref(),
-        &log,
-    )?;
-    *state.0.lock().map_err(|_| "editor state poisoned".to_string())? = Some(editor);
+    let (editor, report) =
+        app_timeline::Editor::recover_json(base_json.as_deref(), checkpoint_json.as_deref(), &log)?;
+    *state
+        .0
+        .lock()
+        .map_err(|_| "editor state poisoned".to_string())? = Some(editor);
     Ok(report)
 }
 
 #[tauri::command]
 fn media_fingerprint(size: f64, first: Vec<u8>, last: Vec<u8>) -> Result<String, String> {
     if !(size >= 0.0 && size.fract() == 0.0 && size < 9_007_199_254_740_992.0) {
-        return Err(r#"{"code":"invalid","message":"file size must be a whole number of bytes"}"#.into());
+        return Err(
+            r#"{"code":"invalid","message":"file size must be a whole number of bytes"}"#.into(),
+        );
     }
     app_model::fingerprint(size as u64, &first, &last).map_err(|e| e.to_json())
 }
@@ -135,23 +144,48 @@ fn io_err(e: std::io::Error) -> String {
 }
 
 #[tauri::command]
-fn store_read(app: tauri::AppHandle, project: String, name: String) -> Result<Option<Vec<u8>>, String> {
+fn store_read(
+    app: tauri::AppHandle,
+    project: String,
+    name: String,
+) -> Result<Option<Vec<u8>>, String> {
     project_dir(&app, &project)?.read(&name).map_err(io_err)
 }
 
 #[tauri::command]
-fn store_write_atomic(app: tauri::AppHandle, project: String, name: String, bytes: Vec<u8>) -> Result<(), String> {
-    project_dir(&app, &project)?.write_atomic(&name, &bytes).map_err(io_err)
+fn store_write_atomic(
+    app: tauri::AppHandle,
+    project: String,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    project_dir(&app, &project)?
+        .write_atomic(&name, &bytes)
+        .map_err(io_err)
 }
 
 #[tauri::command]
-fn store_append(app: tauri::AppHandle, project: String, name: String, bytes: Vec<u8>) -> Result<(), String> {
-    project_dir(&app, &project)?.append(&name, &bytes).map_err(io_err)
+fn store_append(
+    app: tauri::AppHandle,
+    project: String,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<(), String> {
+    project_dir(&app, &project)?
+        .append(&name, &bytes)
+        .map_err(io_err)
 }
 
 #[tauri::command]
-fn store_truncate(app: tauri::AppHandle, project: String, name: String, size: u64) -> Result<(), String> {
-    project_dir(&app, &project)?.truncate(&name, size).map_err(io_err)
+fn store_truncate(
+    app: tauri::AppHandle,
+    project: String,
+    name: String,
+    size: u64,
+) -> Result<(), String> {
+    project_dir(&app, &project)?
+        .truncate(&name, size)
+        .map_err(io_err)
 }
 
 #[tauri::command]
@@ -180,10 +214,128 @@ fn editor_evaluate(
     with_editor(&state, |e| e.evaluate_json(&sequence, ticks, audio_samples))
 }
 
+/// Waveform jobs and parsed peaks files, by id (mirrors `PeaksJob` / `PeaksView` in `crates/wasm`).
+#[derive(Default)]
+struct PeaksState {
+    next: u32,
+    jobs: HashMap<u32, app_audio::peaks::PeaksBuilder>,
+    views: HashMap<u32, app_audio::peaks::Peaks>,
+}
+
+fn with_peaks<T>(
+    state: &State<'_, Mutex<PeaksState>>,
+    f: impl FnOnce(&mut PeaksState) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut guard = state
+        .lock()
+        .map_err(|_| "peaks state poisoned".to_string())?;
+    f(&mut guard)
+}
+
+/// Starts an extraction; returns `{id, next_frame}` JSON. `resume` is a cached partial file (empty = fresh).
+#[tauri::command]
+fn peaks_job_begin(
+    state: State<'_, Mutex<PeaksState>>,
+    sample_rate: u32,
+    channels: u16,
+    resume: Vec<u8>,
+) -> Result<String, String> {
+    with_peaks(&state, |s| {
+        let b = if resume.is_empty() {
+            app_audio::peaks::PeaksBuilder::new(sample_rate, channels)
+        } else {
+            app_audio::peaks::PeaksBuilder::resume(&resume, channels).map_err(|e| e.to_string())?
+        };
+        s.next += 1;
+        let (id, next_frame) = (s.next, b.next_frame());
+        s.jobs.insert(id, b);
+        Ok(format!("{{\"id\":{id},\"next_frame\":{next_frame}}}"))
+    })
+}
+
+#[tauri::command]
+fn peaks_job_push(
+    state: State<'_, Mutex<PeaksState>>,
+    id: u32,
+    pcm: Vec<i16>,
+) -> Result<(), String> {
+    with_peaks(&state, |s| {
+        s.jobs.get_mut(&id).ok_or("no such job")?.push(&pcm);
+        Ok(())
+    })
+}
+
+#[tauri::command]
+fn peaks_job_snapshot(state: State<'_, Mutex<PeaksState>>, id: u32) -> Result<Vec<u8>, String> {
+    with_peaks(&state, |s| {
+        Ok(s.jobs.get(&id).ok_or("no such job")?.snapshot().to_bytes())
+    })
+}
+
+#[tauri::command]
+fn peaks_job_finish(state: State<'_, Mutex<PeaksState>>, id: u32) -> Result<Vec<u8>, String> {
+    with_peaks(&state, |s| {
+        Ok(s.jobs.remove(&id).ok_or("no such job")?.finish().to_bytes())
+    })
+}
+
+#[tauri::command]
+fn peaks_job_drop(state: State<'_, Mutex<PeaksState>>, id: u32) -> Result<(), String> {
+    with_peaks(&state, |s| {
+        s.jobs.remove(&id);
+        Ok(())
+    })
+}
+
+/// Parses a peaks file; returns `{id, sample_rate, frames, complete}` JSON.
+#[tauri::command]
+fn peaks_view_open(state: State<'_, Mutex<PeaksState>>, bytes: Vec<u8>) -> Result<String, String> {
+    with_peaks(&state, |s| {
+        let p = app_audio::peaks::Peaks::from_bytes(&bytes).map_err(|e| e.to_string())?;
+        s.next += 1;
+        let id = s.next;
+        let json = format!(
+            "{{\"id\":{id},\"sample_rate\":{},\"frames\":{},\"complete\":{}}}",
+            p.sample_rate, p.frames, p.complete
+        );
+        s.views.insert(id, p);
+        Ok(json)
+    })
+}
+
+#[tauri::command]
+fn peaks_view_columns(
+    state: State<'_, Mutex<PeaksState>>,
+    id: u32,
+    start_frame: f64,
+    frames_per_px: f64,
+    count: usize,
+) -> Result<Vec<i16>, String> {
+    with_peaks(&state, |s| {
+        let mut pairs = Vec::with_capacity(count);
+        s.views.get(&id).ok_or("no such peaks view")?.columns(
+            start_frame,
+            frames_per_px,
+            count,
+            &mut pairs,
+        );
+        Ok(pairs.into_iter().flatten().collect())
+    })
+}
+
+#[tauri::command]
+fn peaks_view_close(state: State<'_, Mutex<PeaksState>>, id: u32) -> Result<(), String> {
+    with_peaks(&state, |s| {
+        s.views.remove(&id);
+        Ok(())
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(EditorState::default())
+        .manage(Mutex::new(PeaksState::default()))
         .invoke_handler(tauri::generate_handler![
             engine_info,
             editor_open,
@@ -204,7 +356,15 @@ pub fn run() {
             store_remove,
             project_open,
             project_save,
-            editor_evaluate
+            editor_evaluate,
+            peaks_job_begin,
+            peaks_job_push,
+            peaks_job_snapshot,
+            peaks_job_finish,
+            peaks_job_drop,
+            peaks_view_open,
+            peaks_view_columns,
+            peaks_view_close
         ])
         .run(tauri::generate_context!())
         .expect("error while running the application");

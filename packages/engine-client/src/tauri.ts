@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { createEditing } from "./editing";
 import { probeHost } from "./probe";
+import { exportNotYet } from "./export/job";
 import { toStorageError, type ProjectStorage } from "./persist/storage";
 import { MediaDecodeError, parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine } from "./types";
 
@@ -34,6 +35,28 @@ export function createTauriEngine(): Engine {
       } catch (e) {
         throw toProjectFileError(e);
       }
+    },
+    export: exportNotYet,
+    peaks: {
+      // PCM crosses IPC as JSON number arrays for now; native hosts will decode and extract in Rust without crossing (follow-up).
+      begin: async (sampleRate, channels, resume) => {
+        const { id, next_frame } = JSON.parse(await invoke<string>("peaks_job_begin", { sampleRate, channels, resume: Array.from(resume ?? []) })) as { id: number; next_frame: number };
+        return {
+          nextFrame: next_frame,
+          push: (pcm) => invoke<void>("peaks_job_push", { id, pcm: Array.from(pcm) }),
+          snapshot: async () => Uint8Array.from(await invoke<number[]>("peaks_job_snapshot", { id })),
+          finish: async () => Uint8Array.from(await invoke<number[]>("peaks_job_finish", { id })),
+          dispose: () => invoke<void>("peaks_job_drop", { id }),
+        };
+      },
+      open: async (file) => {
+        const v = JSON.parse(await invoke<string>("peaks_view_open", { bytes: Array.from(file) })) as { id: number; sample_rate: number; frames: number; complete: boolean };
+        return {
+          sampleRate: v.sample_rate, frames: v.frames, complete: v.complete,
+          columns: async (startFrame, framesPerPx, count) => Int16Array.from(await invoke<number[]>("peaks_view_columns", { id: v.id, startFrame, framesPerPx, count })),
+          close: () => invoke<void>("peaks_view_close", { id: v.id }),
+        };
+      },
     },
     editing: createEditing({
       open: (projectJson) => invoke<void>("editor_open", { projectJson }),
