@@ -115,6 +115,8 @@ test("theme: follows the system, the toggle overrides it, the choice is remember
   const html = page.locator("html");
   await expect(html).toHaveAttribute("data-theme", "light");
   const toggle = page.getByTestId("theme-toggle");
+  // Below 480 px the toggle lives in the "..." menu (it stays open while the toggle is used).
+  if (!(await toggle.isVisible())) await page.getByRole("button", { name: "Menu" }).click();
   // system -> dark -> light -> high-contrast -> system
   await toggle.click();
   await expect(html).toHaveAttribute("data-theme", "dark");
@@ -235,5 +237,25 @@ test("the timeline toolbar fits at 320 and 390 px: zoom + stays visible, inside 
     if (info.project.name === "phone") { expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44); } // desktop pointers use a 36 px target
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
+  }
+});
+
+test("top bar on a small phone: project name truncates but stays editable, Export visible, targets >= 44 px, theme and status in the menu", async ({ page }, info) => {
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 700 });
+    await page.goto("/");
+    await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+    const name = page.getByLabel("Project name");
+    const exp = page.getByTestId("export-open");
+    await expect(exp).toBeVisible();
+    for (const box of [await name.boundingBox(), await exp.boundingBox(), await page.getByRole("button", { name: "Menu" }).boundingBox()]) expect(box!.height).toBeGreaterThanOrEqual(info.project.name === "phone" ? 43.5 : 35.5); // desktop pointers use a 36 px target
+    const [n, e] = [(await name.boundingBox())!, (await exp.boundingBox())!];
+    expect(n.x + n.width).toBeLessThanOrEqual(e.x + 0.5); // the name never runs under Export
+    expect(n.width).toBeGreaterThan(80);
+    await name.fill("A very long project name that cannot possibly fit in the bar");
+    await expect(name).toHaveValue("A very long project name that cannot possibly fit in the bar");
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(page.getByTestId("theme-toggle")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   }
 });

@@ -22,6 +22,9 @@
     "rules:check": "node scripts/build-rules.mjs --check",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "perf": "node tests/perf/run.mjs",
+    "perf:compare": "node tests/perf/compare.mjs",
+    "perf:device": "node tests/perf/device.mjs",
     "desktop:dev": "npm exec -w @app/desktop tauri dev",
     "desktop:build": "npm exec -w @app/desktop tauri build"
   },

@@ -12,3 +12,4 @@ test-results
 playwright-report
 visual-shots
 .DS_Store
+tests/perf/perf-results.json

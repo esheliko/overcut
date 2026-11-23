@@ -59,3 +59,15 @@ test("importedMediaHost: opens the bin's file through the engine; offline media 
   assert.equal(opened, file);
   await assert.rejects(host.audioFormat({ ...media, id: "gone" }));
 });
+
+test("engineMediaHost: release closes the handle once and the next request opens the file again", async () => {
+  let opens = 0, closed = 0;
+  const mk = () => { const h = fake(); (h as { close: () => Promise<void> }).close = async () => { closed++; }; return h; };
+  const host = engineMediaHost(async () => { opens++; return mk(); });
+  await host.audioFormat(media);
+  await host.release!(media.id);
+  await host.release!(media.id); // nothing left to close
+  assert.equal(closed, 1);
+  await host.audioFormat(media);
+  assert.equal(opens, 2);
+});

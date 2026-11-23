@@ -2,7 +2,9 @@
 // S8 benchmark: 1000 clips x 20 tracks, scripted pan/zoom, desktop and 4x CPU throttle (ADR 0007, docs/features/timeline-view.md).
 //   npm run build && node tests/perf/timeline-bench.mjs            (serves apps/web/dist with `vite preview` on :4198)
 //   BENCH_URL=http://host:port node tests/perf/timeline-bench.mjs   (an already-running site)
+//   BENCH_OUT=file.json writes the raw results there (used by `npm run perf`, tests/perf/run.mjs)
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -41,6 +43,7 @@ for (const [label, viewport, rate, dsf] of [['desktop 1280x800', { width: 1280, 
 }
 await browser.close();
 server?.kill();
+if (process.env.BENCH_OUT) writeFileSync(process.env.BENCH_OUT, JSON.stringify(results)); // read by tests/perf/run.mjs
 console.log(JSON.stringify(results, null, 1));
 let fail = false;
 for (const [label, r] of Object.entries(results)) for (const p of r.phases) {

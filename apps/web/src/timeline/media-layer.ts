@@ -19,9 +19,20 @@ export class MediaLayer {
   readonly waveforms: WaveformService;
   readonly thumbs: ThumbService;
   constructor(engine: Pick<Engine, "peaks">, host: MediaHost, cache: MediaCache = new MediaCache(defaultStore())) {
+    this.hosts = host;
     this.waveforms = new WaveformService(engine, host, cache);
     this.thumbs = new ThumbService(host, cache);
   }
+  private hosts: MediaHost;
+  /** Media became readable again (relink, permission restored) or its file changed: drop what was derived while it was offline, free the
+   *  old decoder handle and redraw, so waveforms and filmstrips are requested again. */
+  async refresh(mediaId: string) {
+    await this.hosts.release?.(mediaId);
+    this.waveforms.invalidate(mediaId);
+    this.waveforms.onChange();
+  }
+  /** A media file left the project: close its decoder handle and forget its derived state. */
+  release(mediaId: string) { return this.refresh(mediaId); }
   /** True while the view is moving AND frames are slow: filmstrips draw as plain tiles so panning and zooming stay fluid; they come back
    *  120 ms after the motion stops. Fast devices never enter this mode. */
   lean = false;

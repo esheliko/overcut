@@ -29,11 +29,67 @@
 | Battery | 10 min editing session | <= 8% drain on mid phone (indicative) | | | |
 | Size | native install (no models) | <= 80 MB mobile | | <= 150 MB desktop | |
 
+## M1 exit criteria and where each is measured
+| Exit criterion (ROADMAP M1) | Metric (`tests/perf/metrics.mjs`) | Budget | Measured today |
+|---|---|---|---|
+| 1080p preview 60 fps on the reference laptop | `device.decode_fps`, `device.fill_layers_at_60fps` (+ `preview.fps`) | decode >= 60 fps, >= 3 layers at 60 fps | **container only** (software decode, 320x180 clip): trend. Windows laptop: decode 720 fps, 11 layers at 60 fps (pass); `/diagnostics` has no end-to-end preview test, so 60 fps preview itself is still unproven on a device; Mac pending |
+| Export >= 1x realtime on the reference phone browser | `export.speed_x` | low phone >= 0.7x, mid >= 1.5x | **container only**: 1080p30 5 s synthetic project, H.264 via software WebCodecs, about 0.16x, which says nothing about a phone with a hardware encoder. Phone numbers need an in-app export on the S24 and iPhone 14 (not in `/diagnostics` yet) |
+| Activation test (import, trim, export) < 90 s | not automated | 90 s | **manual** (a person with a stopwatch on a first-time user); no harness number |
+| Startup | `startup.warm_ms`, `startup.cold_ms`, `size.*` | table above | **container** (headless Chromium, no throttle): trend; sizes are exact |
+| Budgets measured in CI | `npm run perf` + `perf:compare` | warn +10%, fail +25% | the CI job is requested separately (`process: perf job`), not wired yet |
+
+## Real-device results (from `/diagnostics`, 2026-11-23; files in `tests/perf/devices/`)
+| Metric | Budget (laptop / mid) | Windows laptop (UHD 630, Chrome 157; 12 cores, 32 GB: **not** the assumed i5 8 GB) | Galaxy S24 (Xclipse 940, Chrome 157) |
+|---|---|---|---|
+| 1080p H.264 decode | >= 60 fps | 720 fps (pass) | 234 fps (pass) |
+| Random seek p50, GOP 30 | <= 50 / 80 ms | 37.6 ms (pass) | 58.5 ms (pass) |
+| Random seek p95, GOP 150 | no budget | 201.7 ms | 376.2 ms |
+| Full-HD layers at 60 fps | >= 3 | 11 (pass) | not measured: no WebGPU in this Chrome |
+| VideoFrame to GPU, best path p50 | no budget | 5.9 ms (copy; direct import 22.8 ms is slower here) | not measured (no WebGPU) |
+
+Findings: seek on long-GOP media is the weak spot on both (200-380 ms p95 against a 50-80 ms scrub budget for GOP 30), so proxies or a keyframe cache matter for long-GOP sources. The S24's Chrome exposes no WebGPU, so the compositor needs its WebGL2 path there (WebGL2 is available). The Mac and the iPhone 14 are not measured yet.
+
+### Low-end Android (Galaxy A15-class), calibrated proxy
+
+**Calibrated proxy, not a measurement** (ADR 0013; file `tests/perf/devices/galaxy-a15-proxy.json`). Galaxy S24 report scaled with `npm run perf:device -- --tier low --name galaxy-a15-proxy --proxy-ratio 3.333`. Target: Galaxy A15 (MediaTek Helio G99, Mali-G57 MC2, 4 GB) vs Galaxy S24 (Exynos 2400, Xclipse 940). **Ratios are conservative estimates to verify** against published figures (not yet cited): CPU about 0.30 (Geekbench 6 multi-core class), GPU about 0.15. The tool takes one slowdown factor, so every metric below uses the CPU one (1 / 0.30 = 3.333: times x 3.333, rates / 3.333). The GPU ratio (0.15, slowdown 6.7) applies to the fill-rate and upload metrics, which have no S24 number (no WebGPU), so none is produced. Hardware decode speed does not really scale with CPU, so the decode figure is a pessimistic bound.
+
+| Metric | Budget (low) | Calibrated proxy |
+|---|---|---|
+| 1080p H.264 decode | >= 30 fps | 70 fps (pass) |
+| Random seek p50, GOP 30 | <= 120 ms | 195 ms (**fails**) |
+| Random seek p95, GOP 150 | no budget | 1254 ms |
+
+Finding: scrubbing long-GOP media on a low phone misses budget on the proxy, so automatic proxies / a keyframe cache are required for low-tier devices.
+
+## Measurement status per metric and tier
+`C` = measured in the container harness (trend number: shared Xeon CPU, software decode, no real GPU; compare only with a baseline from the same kind of machine). `D` = real-device number from `/diagnostics` (Windows laptop and Galaxy S24 so far, table above). `P` = calibrated proxy (S24 number scaled by the SoC benchmark ratio, ADR 0013; always labelled). `-` = not measured anywhere yet.
+
+| Metric | Low phone | Mid phone (iPhone 14) | Laptop (i5 / M1) | Desktop |
+|---|---|---|---|---|
+| Startup, cached load | `C` | `-` | `C` | `C` |
+| Shell JS gzip, engine WASM gzip | exact (build output) | | | |
+| Open 500-clip project | `-` | `-` | `-` | `-` |
+| Preview fps, dropped frames | `-` (decode: `P` from `D`) | `D` decode, fill rate | `D` decode, fill rate; `C` playback | `-` |
+| Scrub, first frame after seek | `C`, `P` | `D` (random seek) | `D`, `C` | `-` |
+| Timeline pan/zoom (1000 clips x 20 tracks) | `C` (4x throttle, dpr3 phone viewport) | `C` (4x throttle) | `C` (desktop) | `C` |
+| Editing op, 5k clips (Rust) | `C` x CPU ratio only | `C` | `C` | `C` |
+| Input, drag pointer-to-paint | `C` (throttled) | `C` (throttled) | `C` | `C` |
+| Export 1080p30 speed | `-` | `-` | `-` | `-` |
+| Memory, battery, native size | `-` | `-` | `-` | `-` |
+
+The 4x CPU throttle approximates a phone but is not one; a throttled-container number never replaces a device number.
+
 ## How we measure
-- **Microbenchmarks** (`criterion`) per crate for ops, evaluate, render graph build, DSP, cache; CI compares to the main-branch baseline (warn +10%, fail +25%).
-- **Scenario benchmarks** (`tests/perf`, Playwright + engine hooks): open project, scrub script, play 30 s, export 60 s clip; run on CI hardware for trends and on the device lab per release.
-- **Frame-time instrumentation** always compiled in, exposed in a debug overlay (p50/p95/p99 frame time, dropped frames, decode queue, GPU time, memory), and recorded in benchmark output.
-- **Bundle budget** check in CI (shell JS, WASM size, per-route chunks); lighthouse-style startup test on throttled CPU.
+- **One command: `npm run perf`** (`tests/perf/run.mjs`) builds once, then runs everything headless and writes `tests/perf/perf-results.json` with the environment (CPU, cores, Node, browser, commit). Metrics and their budgets live in `tests/perf/metrics.mjs` (keep it in step with the tables above). `--no-build` reuses the last build; `--out <file>` writes elsewhere. About 2 minutes. Needs the Rust toolchain, the `wasm-bindgen` CLI and Playwright's Chromium (`PLAYWRIGHT_CHROMIUM_PATH` if it is installed elsewhere).
+  - Timeline pan/zoom fps and drag input-to-paint at desktop, desktop 4x throttle, and phone 390x844 dpr3 4x throttle: `tests/perf/timeline-bench.mjs` (S8), reduced to the worst phase / worst drag p95.
+  - Preview: 2 s of playback of `crates/media/tests/fixtures/flash_click.mp4` (presented fps, dropped frames, lateness p95) and 40 random seeks (scrub p50/p95), same method as `tests/smoke/preview.spec.ts`.
+  - Export: 5 s 1080p30 synthetic project through the export harness (H.264 if the browser can encode it, else VP9); `export.speed_x` = video seconds per wall second.
+  - Startup: cold (empty cache) and cached load until the engine badge says `(wasm)`. Sizes: gzip of the built shell JS/CSS, engine glue JS and the largest `.wasm`.
+  - Rust: `cargo run --release -p app-timeline --example bench` (apply one op and evaluate one frame on 5000 clips, best of 5 rounds; no extra dependency).
+- **Compare** (`npm run perf:compare -- [new.json] [baseline.json]`, defaults `perf-results.json` vs the checked-in `tests/perf/baseline.json`): prints the table, exits 1 at +25% worse, warns at +10%; "worse" follows each metric's direction; changes below an absolute noise floor are ignored. The baseline was taken in a container (`environment` in the file): refresh it in a PR when a deliberate change moves a number, never to hide a regression. Not in CI yet.
+- **Devices** (`npm run perf:device -- --tier <low|mid|laptop|desktop> [--name <slug>] <pasted /diagnostics line or file>`): stores `tests/perf/devices/<slug>.json` and prints the numbers against that tier's budget. For the low tier pass the Galaxy S24 report with `--proxy-ratio <SoC ratio>`: the file is marked "calibrated proxy" with the ratio used. Device files are the record that a hardware bar was proven (plan section 4a).
+- **Frame-time instrumentation** is compiled in (preview stats: presented, dropped, late); a debug overlay is still to come.
+- **Microbenchmarks** for render graph, DSP and cache follow with those modules; add them to `tests/perf/run.mjs` and `metrics.mjs` in the PR that adds the module.
 
 ## Design rules that keep it fast
 1. Nothing heavy on the UI thread; engine in a Worker (web) / dedicated threads (native).

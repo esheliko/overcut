@@ -222,5 +222,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     return ref ? (await fileFor(id, ref.uri, ref.kind))?.file ?? null : null;
   }, [store, fileFor]);
 
-  return { items, importSources, addToTimeline, remove, relink, fileOf };
+  /** Ids of the media whose file is readable now (ready cards), as a stable string: consumers re-request derived data when it changes. */
+  const readyIds = items.filter((i) => i.status === "ready").map((i) => i.id).sort().join(",");
+  return { items, readyIds, importSources, addToTimeline, remove, relink, fileOf };
 }

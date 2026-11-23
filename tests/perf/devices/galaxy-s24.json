@@ -1,0 +1,62 @@
+{
+  "overcut_perf_device": 1,
+  "name": "galaxy-s24",
+  "tier": "mid",
+  "label": "measured on device",
+  "proxyRatio": null,
+  "at": "2026-11-23T12:12:00.000Z",
+  "app": "0.1.0 wasm",
+  "device": {
+    "platform": "Android",
+    "cores": 10,
+    "mem_gb": 8,
+    "gl2": "ANGLE Samsung Xclipse 940 on Vulkan",
+    "webgpu": false,
+    "webgl2": true,
+    "codecs": {
+      "h264": "dec:hw enc:hw",
+      "hevc": "dec:hw enc:hw",
+      "vp9": "dec:hw enc:hw",
+      "av1": "dec:hw enc:sw"
+    }
+  },
+  "metrics": {
+    "device.decode_fps": 234,
+    "device.seek_gop30_p50_ms": 58.5,
+    "device.seek_gop150_p95_ms": 376.2
+  },
+  "report": {
+    "overcut_device_report": 1,
+    "at": "2026-11-23T12:12:00.000Z",
+    "app": "0.1.0 wasm",
+    "ua": "Android Galaxy S24 Chrome 157 Mobile",
+    "device": {
+      "platform": "Android",
+      "cores": 10,
+      "mem_gb": 8,
+      "gl2": "ANGLE Samsung Xclipse 940 on Vulkan",
+      "webgpu": false,
+      "webgl2": true,
+      "codecs": {
+        "h264": "dec:hw enc:hw",
+        "hevc": "dec:hw enc:hw",
+        "vp9": "dec:hw enc:hw",
+        "av1": "dec:hw enc:sw"
+      }
+    },
+    "tests": {
+      "decode": {
+        "fps": 234,
+        "first_run_ms": 846
+      },
+      "seek": {
+        "gop30_p50_ms": 58.5,
+        "gop30_p95_ms": 88.4,
+        "gop150_p50_ms": 239.2,
+        "gop150_p95_ms": 376.2
+      },
+      "gpuUpload": "unsupported (no WebGPU)",
+      "fillRate": "unsupported (no WebGPU)"
+    }
+  }
+}

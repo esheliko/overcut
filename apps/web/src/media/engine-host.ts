@@ -25,6 +25,12 @@ export function engineMediaHost(open: (media: MediaRef) => Promise<MediaHandle>)
     return h;
   };
   return {
+    /** Closes the decoder handle for a media id (file left the project, or was relinked to another file). A later request opens it afresh. */
+    async release(id: string) {
+      const h = handles.get(id);
+      handles.delete(id);
+      if (h) await h.then((x) => x.close(), () => undefined).catch(() => undefined);
+    },
     async audioFormat(m): Promise<AudioFormat | null> {
       const a = (await handle(m)).info.audio;
       if (!a) return null;
