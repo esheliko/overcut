@@ -741,33 +741,69 @@ impl Compositor {
     }
 }
 
-/// Native helper: open a headless device on `backends`, choosing the accumulation format from the adapter (or `force_accum`).
+/// One process-wide GPU per backend set: the instance, adapter, device and queue are created on first use and never dropped.
+/// Why: tearing a wgpu instance/device down while other threads (parallel tests) create or use theirs races inside Mesa's llvmpipe/lavapipe and EGL
+/// (shared display, rasteriser thread pool) and crashed CI with SIGSEGV; one long-lived device has no such lifecycle.
+#[cfg(not(target_arch = "wasm32"))]
+struct SharedGpu {
+    _instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    info: wgpu::AdapterInfo,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn shared_gpu(backends: wgpu::Backends) -> Option<&'static SharedGpu> {
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+    type Cache = Mutex<HashMap<u32, Option<&'static SharedGpu>>>;
+    static GPUS: OnceLock<Cache> = OnceLock::new();
+    let mut map = GPUS.get_or_init(Default::default).lock().unwrap();
+    *map.entry(backends.bits()).or_insert_with(|| {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends,
+            ..Default::default()
+        });
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            force_fallback_adapter: false,
+            compatible_surface: None,
+        }))
+        .ok()?;
+        let info = adapter.get_info();
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("overcut headless"),
+            required_limits:
+                wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
+            ..Default::default()
+        }))
+        .ok()?;
+        // Leaked on purpose: lives (and is never torn down) for the whole process.
+        Some(&*Box::leak(Box::new(SharedGpu {
+            _instance: instance,
+            adapter,
+            device,
+            queue,
+            info,
+        })))
+    })
+}
+
+/// Native helper: a [`Compositor`] on the process-wide headless device for `backends`, choosing the accumulation format from the adapter
+/// (or `force_accum`). Compositors made here share one device (see [`SharedGpu`]); each owns its own textures and buffers.
 /// `None` when no adapter exists (CI containers without a GPU or software driver).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn headless_compositor_with(
     backends: wgpu::Backends,
     force_accum: Option<AccumFormat>,
 ) -> Option<(Compositor, wgpu::AdapterInfo)> {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends,
-        ..Default::default()
-    });
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::LowPower,
-        force_fallback_adapter: false,
-        compatible_surface: None,
-    }))
-    .ok()?;
-    let info = adapter.get_info();
-    let accum = force_accum.unwrap_or_else(|| AccumFormat::for_adapter(&adapter));
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("overcut headless"),
-        required_limits:
-            wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
-        ..Default::default()
-    }))
-    .ok()?;
-    Some((Compositor::new(device, queue, accum), info))
+    let g = shared_gpu(backends)?;
+    let accum = force_accum.unwrap_or_else(|| AccumFormat::for_adapter(&g.adapter));
+    Some((
+        Compositor::new(g.device.clone(), g.queue.clone(), accum),
+        g.info.clone(),
+    ))
 }
 
 /// [`headless_compositor_with`] with runtime format selection.

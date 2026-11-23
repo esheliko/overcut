@@ -14,6 +14,13 @@ const TOL: u8 = 3;
 /// The 8-bit sRGB accumulation fallback rounds every layer; allowed to be this far from the float path (documented in docs/features/render.md).
 const TOL_FALLBACK: u8 = 3;
 
+/// GPU tests run one at a time: they share one process-wide device per backend (see `headless_compositor_with`), and software rasterisers
+/// (llvmpipe/lavapipe) already use every core, so parallel tests add contention and crash risk, not speed.
+fn gpu() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 const BACKENDS: [(&str, wgpu::Backends); 2] = [
     ("vulkan", wgpu::Backends::VULKAN),
     ("gl", wgpu::Backends::GL),
@@ -207,6 +214,7 @@ fn check_golden(name: &str, w: u32, h: u32, layers: &[Layer]) {
 
 #[test]
 fn three_layers_match_golden_on_every_available_backend() {
+    let _gpu = gpu();
     let (g, c, d) = (gradient(64, 36), checker(64, 64), disc(64, 64));
     let scene = [
         g.layer([128.0, 72.0], [4.0, 4.0], 0.0, 1.0),
@@ -218,6 +226,7 @@ fn three_layers_match_golden_on_every_available_backend() {
 
 #[test]
 fn colour_chart_matches_golden() {
+    let _gpu = gpu();
     let (base, alpha, dsc) = (chart_base(), chart_alpha(), disc(48, 48));
     check_golden("colour_chart", CW, CH, &chart_scene(&base, &alpha, &dsc));
 }
@@ -229,6 +238,7 @@ fn px(frame: &[u8], w: u32, x: u32, y: u32) -> [u8; 3] {
 
 #[test]
 fn chart_values_are_colour_correct() {
+    let _gpu = gpu();
     let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
         eprintln!("SKIPPED: no wgpu adapter");
         return;
@@ -263,6 +273,7 @@ fn chart_values_are_colour_correct() {
 
 #[test]
 fn compositing_is_linear_not_gamma() {
+    let _gpu = gpu();
     let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
         eprintln!("SKIPPED: no wgpu adapter");
         return;
@@ -279,6 +290,7 @@ fn compositing_is_linear_not_gamma() {
 
 #[test]
 fn opacity_zero_layer_leaves_black_and_full_opacity_is_srgb_exact() {
+    let _gpu = gpu();
     let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
         eprintln!("SKIPPED: no wgpu adapter");
         return;
@@ -328,6 +340,7 @@ fn yuv_bars(w: u32, h: u32, range: YuvRange, matrix: YuvMatrix) -> (Vec<u8>, Vec
 
 #[test]
 fn yuv_bars_decode_to_the_original_colours_for_range_and_matrix() {
+    let _gpu = gpu();
     let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
         eprintln!("SKIPPED: no wgpu adapter");
         return;
@@ -365,6 +378,7 @@ fn yuv_bars_decode_to_the_original_colours_for_range_and_matrix() {
 
 #[test]
 fn yuv_range_flag_matters() {
+    let _gpu = gpu();
     let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
         eprintln!("SKIPPED: no wgpu adapter");
         return;
@@ -396,6 +410,7 @@ fn yuv_range_flag_matters() {
 // ---- Hot path ----------------------------------------------------------------------------------------------------------------------------------
 #[test]
 fn steady_state_frames_create_no_gpu_objects() {
+    let _gpu = gpu();
     for (bname, b) in BACKENDS {
         let Some((mut c, info)) = headless_compositor(b) else {
             eprintln!("[{bname}] SKIPPED: no adapter");
@@ -467,6 +482,7 @@ fn steady_state_frames_create_no_gpu_objects() {
 
 #[test]
 fn changing_layer_count_or_size_only_rebuilds_what_changed() {
+    let _gpu = gpu();
     let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
         eprintln!("SKIPPED: no wgpu adapter");
         return;
