@@ -53,7 +53,7 @@ Audit of 2026-11-23 against `origin/main` at `a8c7ba1`. Nothing was built for th
 | M1-041 Desktop shell: Tauri commands, dialogs, drag-drop, `release.yml` dry run | partial | PR #56; compile-checked only (no webview in CI); desktop preview of on-disk files, WebM, OpenH264 not built (issues #57, #58); release dry run not reported |
 | M1-042 Network allow-list + CSP | done | PR #54; header form: issue #55 / PR #61 |
 | M1-043 Perf harness, device definitions, budgets | partial | PR 8f989ef (`tests/perf`, `PERFORMANCE.md`, device files); no CI job (issue #51) |
-| M1-044 Activation script + test with 5 users | missing | No script and no test run; `PERFORMANCE.md` says "manual, no harness number" |
+| M1-044 Activation script + test with 5 users | partial | Script and pass bar: [ACTIVATION-TEST.md](ACTIVATION-TEST.md); the test with 5 users is not run yet (owner) |
 
 ## 3. Exit criteria (ROADMAP M1)
 | Criterion | Status | Evidence |
