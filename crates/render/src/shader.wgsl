@@ -7,6 +7,7 @@ struct Layer {
     out_size: vec4<f32>, // output w, h
     yuv_a: vec4<f32>,    // y_offset, y_scale, c_offset, c_scale
     yuv_b: vec4<f32>,    // r_cr, g_cb, g_cr, b_cb
+    uv: vec4<f32>,       // row-major 2x2: displayed unit square (centred, y down) -> coded image (display rotation)
 };
 @group(0) @binding(0) var<uniform> layer: Layer;
 @group(0) @binding(1) var tex: texture_2d<f32>;
@@ -27,7 +28,8 @@ fn vs_layer(@builtin(vertex_index) i: u32) -> VOut {
     let p = r + layer.rect.xy;
     var o: VOut;
     o.pos = vec4(p.x / layer.out_size.x * 2.0 - 1.0, 1.0 - p.y / layer.out_size.y * 2.0, 0.0, 1.0);
-    o.uv = q;
+    let qc = q - vec2(0.5);
+    o.uv = vec2(layer.uv.x * qc.x + layer.uv.y * qc.y, layer.uv.z * qc.x + layer.uv.w * qc.y) + vec2(0.5);
     return o;
 }
 

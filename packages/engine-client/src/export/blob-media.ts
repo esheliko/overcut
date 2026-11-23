@@ -1,3 +1,4 @@
+import type { LayerSource } from "../render";
 import type { DecodedFrame, MediaApi, MediaHandle } from "../types";
 import { MediaDecodeError } from "../types";
 import { TICKS_PER_SECOND } from "./plan";
@@ -27,7 +28,6 @@ export async function openBlobMedia(media: MediaApi, blob: Blob, sampleRate: num
     const { num, den } = v.fps;
     const last = Math.max(0, v.packets - 1);
     let held: { index: number; frame: DecodedFrame; drawable: DrawableFrame } | undefined;
-    let scratch: OffscreenCanvas | undefined;
     const release = (): void => {
       held?.frame.release();
       held = undefined;
@@ -38,15 +38,7 @@ export async function openBlobMedia(media: MediaApi, blob: Blob, sampleRate: num
         if (held?.index === index) return held.drawable;
         release();
         const frame = await handle.videoFrame(index);
-        let source: CanvasImageSource;
-        if (frame.kind === "gpu") source = frame.frame;
-        else {
-          scratch ??= new OffscreenCanvas(frame.width, frame.height);
-          scratch.width = frame.width;
-          scratch.height = frame.height;
-          scratch.getContext("2d")?.putImageData(new ImageData(new Uint8ClampedArray(frame.rgba.buffer as ArrayBuffer, frame.rgba.byteOffset, frame.rgba.byteLength), frame.width, frame.height), 0, 0);
-          source = scratch;
-        }
+        const source: LayerSource = frame.kind === "gpu" ? frame.frame : { rgba: frame.rgba };
         // `close` is a no-op: the frame stays alive until the next index is requested (or the media closes), so a repeated frame is drawn without a second decode.
         const drawable: DrawableFrame = { source, width: frame.width, height: frame.height, rotation: rotationOf(v.rotation), close: () => undefined };
         held = { index, frame, drawable };

@@ -5,9 +5,9 @@
  * the layers to the compositor. A frame that cannot be ready in time is skipped, never waited for.
  * Everything platform-specific (clock, audio output, renderer, media) is injected, so the logic runs under fake clocks in unit tests.
  */
-import type { AudioSegment, DecodedFrame, FrameDescription, FrameStream, MediaHandle } from "@app/engine-client";
+import { layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type MediaHandle } from "@app/engine-client";
 import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "./audioMix";
-import type { RenderLayer, Renderer } from "./compositor";
+import type { RenderLayer, Renderer } from "./renderer";
 import { frameAtTicks, frameStartTicks, positionAt, prefetchFrames, shuttle, TICKS_PER_SECOND, type Anchor, type Rate } from "./timing";
 
 export interface Clock { now(): number }
@@ -64,6 +64,8 @@ export interface PlayerStats {
   times: number[];
   /** Audio chunks that had to be trimmed because the clock had moved on. */
   audioTrimmed: number;
+  /** `[frame, audio-clock position in ticks]` when each presented frame's draw completed (A/V alignment checks). */
+  marks: [number, number][];
 }
 
 const CHUNK_SECONDS = 0.2;
@@ -84,7 +86,7 @@ interface Feed {
 }
 
 export class Player {
-  readonly stats: PlayerStats = { presented: 0, dropped: 0, stalls: 0, maxLateMs: 0, late: [], scrubMs: [], times: [], audioTrimmed: 0 };
+  readonly stats: PlayerStats = { presented: 0, dropped: 0, stalls: 0, maxLateMs: 0, late: [], scrubMs: [], times: [], audioTrimmed: 0, marks: [] };
   private frameNo = 0;
   private playing = false;
   private rate = 0;
@@ -248,6 +250,7 @@ export class Player {
       const lateMs = Math.max(0, ((this.anchor.rate >= 0 ? nowTicks - due : due - nowTicks) / TICKS_PER_SECOND) * 1000);
       this.stats.presented++;
       this.stats.late.push(lateMs);
+      this.stats.marks.push([want, nowTicks]);
       this.stats.maxLateMs = Math.max(this.stats.maxLateMs, lateMs);
       this.stats.times.push(this.d.fallbackClock.now());
       this.frameNo = want;
@@ -304,16 +307,7 @@ export class Player {
   }
 
   private layer(l: FrameDescription["layers"][number], frame: DecodedFrame, media: MediaHandle): RenderLayer {
-    return {
-      source: frame.kind === "gpu" ? frame.frame : { rgba: frame.rgba },
-      width: frame.width,
-      height: frame.height,
-      rotation: media.info.video?.rotation ?? 0,
-      center: l.transform.center,
-      scale: l.transform.scale,
-      angle: l.transform.rotation,
-      opacity: l.opacity,
-    };
+    return layerOf(l, { source: frame.kind === "gpu" ? frame.frame : { rgba: frame.rgba }, width: frame.width, height: frame.height, rotation: media.info.video?.rotation ?? 0 });
   }
 
   // --- paused: scrub and step -------------------------------------------------------------------------------------

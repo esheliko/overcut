@@ -1,11 +1,15 @@
-import type { Engine } from "./types";
+import type { Engine, MediaApi } from "./types";
 
 export * from "./types";
 export * from "./export/types";
 export { createExportApi, exportNotYet, type ExportHost, type WorkerLike } from "./export/job";
 import type { WorkerLike } from "./export/job";
+import type { GpuRenderer } from "./render";
+import type { Evaluator } from "./wasm";
 export { cleanupStaleExports, opfsStorage, type ExportStorage } from "./export/storage";
 export { registerMediaResolver, type MediaResolver, type OpenedMedia, type MediaVideo, type MediaAudio, type DrawableFrame } from "./export/media";
+export { layerOf, renderExportFrame, type GpuLayer, type GpuRenderer, type LayerSource, type RendererInfo } from "./render";
+export type { Evaluator };
 export { createEditing, parseEditOutcome, type RawEditing } from "./editing";
 
 /** True inside a Tauri shell (desktop or mobile app), false in a plain browser. */
@@ -17,6 +21,21 @@ export async function createEngine(): Promise<Engine> {
   // A fresh module Worker per export job: it loads its own copy of the engine, opens the project snapshot and streams the file to OPFS.
   const spawnExportWorker = (): WorkerLike => new Worker(new URL("./export/worker-entry.ts", import.meta.url), { type: "module" }) as unknown as WorkerLike;
   return (await import("./wasm")).createWasmEngine({ spawnExportWorker });
+}
+
+/** The GPU compositor for a canvas (a Worker's `OffscreenCanvas`): the same Rust compositor serves preview and export. Browser only. */
+export async function openRenderer(canvas: OffscreenCanvas, prefer: "auto" | "webgpu" | "webgl2" = "auto"): Promise<GpuRenderer> {
+  return (await import("./wasm")).openWasmRenderer(canvas, prefer);
+}
+
+/** The production decoder without a project (the preview Worker opens its own handles from the bin's files). Browser only. */
+export async function openMediaApi(): Promise<MediaApi> {
+  return (await import("./wasm")).openWasmMedia();
+}
+
+/** A project snapshot's `evaluate` plus a media decoder, for a Worker (the preview player runs there). Browser only. */
+export async function openEvaluator(projectJson: string): Promise<Evaluator> {
+  return (await import("./wasm")).openWasmEvaluator(projectJson);
 }
 export * from "./model.generated";
 export { codecName } from "./decode/errors";

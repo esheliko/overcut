@@ -6,8 +6,8 @@ import { resolve } from "node:path";
  * every panel is back in step, without a restart of the player. Needs a build with the engine.
  */
 const FLASH = resolve("crates/media/tests/fixtures/flash_click.mp4"); // 3 s, 30 fps, picture + sound
-type Hook = { player: { endFrame: number; frame: number; isPlaying: boolean }; media(): unknown[] };
-const hook = (page: Page) => page.evaluate(() => { const h = (window as unknown as { __overcutPreview: Hook }).__overcutPreview; return { end: h.player.endFrame, frame: h.player.frame, media: h.media().length }; });
+type Hook = { player: { endFrame: number; frame: number; isPlaying: boolean }; media(): Promise<unknown[]> };
+const hook = (page: Page) => page.evaluate(async () => { const h = (window as unknown as { __overcutPreview: Hook }).__overcutPreview; return { end: h.player.endFrame, frame: h.player.frame, media: (await h.media()).length }; });
 
 test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay consistent", async ({ page }, info) => {
   const phone = info.project.name === "phone";

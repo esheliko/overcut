@@ -2,6 +2,8 @@
 //! Build with `npm run build:wasm` (output: packages/engine-client/wasm-pkg, git-ignored).
 
 mod media;
+#[cfg(target_arch = "wasm32")]
+mod render;
 
 use wasm_bindgen::prelude::wasm_bindgen;
 

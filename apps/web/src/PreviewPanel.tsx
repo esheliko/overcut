@@ -5,12 +5,10 @@ import { Icon } from "./icons";
 import { clipCount, timelineEnd } from "./media/plan";
 import { useImportPicker } from "./media/MediaBin";
 import type { Source } from "./media/sources";
-import { createWebAudio, performanceClock } from "./preview/audio";
-import { createGlRenderer, type Renderer } from "./preview/compositor";
 import { canvasBackingSize } from "./preview/layout";
-import { Player } from "./preview/player";
+import { acquirePreviewHost, type PlayerProxy, type PreviewHost } from "./preview/host";
 import { rateLabel, TICKS_PER_SECOND, timecodeHMS, type Rate } from "./preview/timing";
-import { useMediaHandles } from "./preview/useMediaHandles";
+import { useWorkerMedia } from "./preview/useWorkerMedia";
 import { useProjectStore, useStore } from "./store/projectStore";
 
 const IDLE = { rate: { num: 30, den: 1 } as Rate, size: { width: 1920, height: 1080 }, endTicks: 60 * TICKS_PER_SECOND };
@@ -40,11 +38,11 @@ interface Props {
   onPlaying(p: boolean): void;
 }
 
-const noRenderer: Renderer = { render: () => undefined, resize: () => undefined, probe: () => [0, 0, 0], dispose: () => undefined };
-
 /**
  * The preview: canvas, transport, timecode, keyboard. It plays the shared project (`store/projectStore.ts`): it never opens a project of its
  * own, and when the project changes (edit, undo, import) the same `Player` is reconfigured, so the new length and clips show without a restart.
+ * The player, the GPU compositor and the decoders live in the preview Worker (`preview/worker.ts`); this component sends it the project, the files and
+ * the transport commands, and shows the playhead it reports.
  */
 export function PreviewPanel({ engine, fileOf, onImport, playing, ratios, ratio, onRatio, onPlaying }: Props) {
   const { t } = useI18n();
@@ -53,12 +51,14 @@ export function PreviewPanel({ engine, fileOf, onImport, playing, ratios, ratio,
   const frame = useProjectStore((s) => s.playhead);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<Renderer>(noRenderer);
-  const playerRef = useRef<Player | null>(null);
+  const hostRef = useRef<PreviewHost | null>(null);
+  const playerRef = useRef<PlayerProxy | null>(null);
+  const [hostVersion, setHostVersion] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [problem, setProblem] = useState<string | null>(null);
   const { open, field } = useImportPicker(onImport, "preview-input");
-  const { handles, version } = useMediaHandles(engine, project, fileOf);
+  const noGpu = useRef(t("preview.noGpu"));
+  noGpu.current = t("preview.noGpu");
   const cb = useRef({ onPlaying });
   cb.current = { onPlaying };
   // Frames the player itself published: the matching prop change is an echo, not a request to seek (state lags the player by a render).
@@ -70,55 +70,40 @@ export function PreviewPanel({ engine, fileOf, onImport, playing, ratios, ratio,
   const cfg = useRef(view);
   cfg.current = view;
 
-  // A renderer per canvas (WebGL2); without it the preview stays black and says so.
+  // One preview Worker per canvas (a canvas can be handed over once): the Rust GPU compositor (WebGPU, else WebGL2), the player loop and the decoders
+  // run there; this thread only sends commands and receives the playhead.
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
-    try {
-      rendererRef.current = createGlRenderer(c);
-    } catch {
-      rendererRef.current = noRenderer;
-      setProblem(t("preview.noGpu"));
-    }
-    return () => { rendererRef.current.dispose(); rendererRef.current = noRenderer; };
-  }, [t]);
-
-  // One player for the preview's lifetime (per engine); project changes reconfigure it below.
-  useEffect(() => {
-    const audio = createWebAudio(48_000);
-    const c = cfg.current;
-    const p = new Player({
-      rate: c.rate, size: c.size, endTicks: c.endTicks, sequence: c.sequence,
-      evaluate: async (ticks, n) => {
-        const id = cfg.current.sequence;
-        if (!id || !engine) return { time: ticks, frame: 0, video_time: ticks, sample: 0, audio_samples: n, layers: [], audio: [] };
-        return engine.editing.evaluate(id, ticks, n);
-      },
-      media: (id) => handles.current.get(id),
-      renderer: { render: (l, s) => rendererRef.current.render(l, s), resize: (w, h) => rendererRef.current.resize(w, h), probe: (x, y) => rendererRef.current.probe(x, y), dispose: () => undefined },
-      audio,
-      fallbackClock: performanceClock,
-      onFrame: emit,
-      onState: (pl, r) => { cb.current.onPlaying(pl); setSpeed(r || 1); },
-      onError: (m) => setProblem(m),
-      raf: (fn) => { const id = requestAnimationFrame(fn); return () => cancelAnimationFrame(id); },
-    });
-    playerRef.current = p;
-    p.seek(store.getState().playhead);
+    const { host, release } = acquirePreviewHost(c, { onFrame: emit, onState: (pl, r) => { cb.current.onPlaying(pl); setSpeed(r || 1); }, onError: (m) => setProblem(m) });
+    hostRef.current = host;
+    playerRef.current = host.player;
+    setHostVersion((v) => v + 1);
+    void host.ready.catch(() => setProblem(noGpu.current));
     const hook = window as unknown as { __overcutPreview?: unknown };
     hook.__overcutPreview = {
-      player: p,
-      stats: () => ({ ...p.stats }),
-      probe: (x: number, y: number) => rendererRef.current.probe(x, y),
-      media: () => [...handles.current.values()],
+      player: host.player,
+      stats: () => host.rpc({ name: "stats" }),
+      probe: (x: number, y: number) => host.rpc({ name: "probe", x, y }),
+      position: () => host.rpc({ name: "position" }),
+      media: () => host.rpc({ name: "frames" }),
+      gpu: () => host.rpc({ name: "gpu" }),
+      parity: (f: number) => host.rpc({ name: "parity", frame: f }),
+      bench: (width: number, height: number, frames: number) => host.rpc({ name: "bench", width, height, frames }),
+      rpc: (r: Parameters<typeof host.rpc>[0]) => host.rpc(r),
     };
-    return () => { p.dispose(); if (playerRef.current === p) playerRef.current = null; };
-  }, [engine, emit, store, handles]);
+    return () => { release(); if (hostRef.current === host) { hostRef.current = null; playerRef.current = null; } };
+  }, [emit]);
 
-  // The shared project (or a decoder handle) changed: the same player takes the new length, rate and clips and redraws the playhead's frame.
+  // The decoders the player reads: the Worker opens its own, from the bin's files.
+  useWorkerMedia(hostRef.current, project, fileOf, hostVersion);
+
+  // The shared project (or the sequence settings) changed: the Worker re-reads it and the same player takes the new length, rate and clips.
   useEffect(() => {
-    playerRef.current?.reconfigure({ rate, size, endTicks, sequence: view.sequence });
-  }, [project, version, rate.num, rate.den, size.width, size.height, endTicks, view.sequence]);
+    const host = hostRef.current;
+    if (!host) return;
+    host.configure({ project: view.has && project ? JSON.stringify(project) : "", sequence: view.sequence, rate, size, endTicks });
+  }, [project, hostVersion, rate.num, rate.den, size.width, size.height, endTicks, view.sequence, view.has]);
 
   // The timeline (or anything else) moved the playhead: show that frame.
   useEffect(() => {
@@ -137,15 +122,13 @@ export function PreviewPanel({ engine, fileOf, onImport, playing, ratios, ratio,
     const fit = () => {
       const r = box.getBoundingClientRect();
       const s = canvasBackingSize(r.width, r.height, window.devicePixelRatio || 1, size);
-      rendererRef.current.resize(s.width, s.height);
-      const p = playerRef.current;
-      if (p && !p.isPlaying) p.seek(p.frame);
+      hostRef.current?.resize(s.width, s.height);
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(box);
     return () => ro.disconnect();
-  }, [size.width, size.height, ratio, view.has]);
+  }, [size.width, size.height, ratio, view.has, hostVersion]);
 
   // Transport keys. Space and the shuttle keys also work with the timeline focused; arrows/Home/End leave a focused slider alone (it handles them itself).
   useEffect(() => {

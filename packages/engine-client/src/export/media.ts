@@ -1,9 +1,11 @@
+import type { LayerSource } from "../render";
 import type { MediaRef } from "../model.generated";
 import { TICKS_PER_SECOND } from "./plan";
 
 /** One decoded picture the compositor can draw. `close` releases decoder or GPU memory at once (`VideoFrame.close()`). */
 export interface DrawableFrame {
-  source: CanvasImageSource;
+  /** A decoded `VideoFrame` (imported on the GPU), a bitmap, or RGBA bytes (sRGB, straight alpha). */
+  source: LayerSource;
   width: number;
   height: number;
   /** Display rotation in degrees clockwise (from the container), applied when drawing. Default 0. */
@@ -50,7 +52,6 @@ export function createTestPatternMedia(uri: string, sampleRate: number): OpenedM
   const g = canvas.getContext("2d");
   if (!g) throw new Error("OffscreenCanvas 2D is not available");
   g.font = `bold ${Math.round(H / 8)}px monospace`;
-  const frame: DrawableFrame = { source: canvas, width: W, height: H, close: () => undefined };
   return {
     video: {
       async frame(ticks: number) {
@@ -70,7 +71,9 @@ export function createTestPatternMedia(uri: string, sampleRate: number): OpenedM
           g.fillStyle = "#cfd8dc";
           g.fillText(String(i).padStart(6, "0"), 40, H * 0.2);
         }
-        return frame;
+        // The compositor takes bytes (WebGL2 cannot copy from a canvas): the synthetic scene is small enough to read back every frame.
+        const px = g.getImageData(0, 0, W, H).data;
+        return { source: { rgba: new Uint8Array(px.buffer, px.byteOffset, px.byteLength) }, width: W, height: H, close: () => undefined };
       },
       close: () => undefined,
     },
