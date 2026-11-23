@@ -30,3 +30,7 @@ Every action is a real button (picker, `+`, dismiss, relink); cards are a labell
 
 ## Test plan
 Unit: classify, first-picture settings, op shapes, placement, labels. Smoke (desktop and phone): empty target, first import auto-add with poster/codec/resolution, `+` by keyboard, unsupported and non-media files, drop on the preview with overlay, paste, bin to timeline drag (desktop), no horizontal overflow.
+
+## Offline media that comes back (relink)
+- Media offline at first request used to stay a placeholder until reload. The bin now exposes `readyIds`; when an id turns ready (relink, restored handle permission) the timeline's `MediaLayer.refresh(id)` closes the stale decoder handle, drops the cached waveform error and redraws (waveforms and filmstrips are requested again), and the preview Worker is handed the file (`useWorkerMedia`, keyed on `readyIds`).
+- When a media item leaves the project, `MediaLayer.release(id)` closes its decoder handle (`MediaHost.release`, `engineMediaHost`). Tests: `tests/unit/engine-host.test.ts`, `tests/unit/offline-media.test.ts`.

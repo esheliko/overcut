@@ -23,3 +23,6 @@
 
 ## Not done (later)
 Real translations and the language picker UI (M9, UX-07); a runtime catalog loader per locale; the S8 canvas timeline adopting `readColors`; M1-006 diagnostics page migrating its strings.
+
+## Top bar below 480 px
+Logo | project name (flexible, ellipsis, tap to rename) | Export (always visible) | "..." menu. The theme toggle and the engine status (the status chip is visually hidden, still in the DOM and shown again if the engine fails) move into the menu. 44 px targets, no horizontal scroll at 320 px. Screenshots: `docs/features/img/topbar-phone-*.png`.
