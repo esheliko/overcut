@@ -529,6 +529,7 @@ fn rot_img() -> Img {
 
 #[test]
 fn display_rotation_makes_the_layer_upright_and_swaps_its_size() {
+    let _gpu = gpu();
     let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
         eprintln!("SKIPPED: no wgpu adapter");
         return;
@@ -565,6 +566,7 @@ fn display_rotation_makes_the_layer_upright_and_swaps_its_size() {
 
 #[test]
 fn resident_layers_and_rendering_into_a_view_match_the_uploaded_readback_exactly() {
+    let _gpu = gpu();
     for (name, backend) in BACKENDS {
         let Some((mut c, _)) = headless_compositor(backend) else {
             eprintln!("SKIPPED {name}: no adapter");

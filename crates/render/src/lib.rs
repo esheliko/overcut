@@ -20,7 +20,7 @@ pub use colour::{
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Output format: sRGB-encoded 8-bit, written by the shader (not by the hardware) so all backends agree.
 pub const OUTPUT_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
