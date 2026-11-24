@@ -104,15 +104,17 @@ export function insertOps(p: Project, media: MediaRef, probed: Probed, start: nu
   const at = tracks.find((t) => t.kind === "audio" && !t.locked);
   const duration = media.kind === "image" ? STILL_SECONDS * TICKS : media.duration ?? 0;
   if (duration <= 0) return null;
-  const clip = (): Clip => ({ id: ids(), media: media.id, start, source_in: 0, duration });
+  const link = ids(); // the picture and the sound of one video import are linked: they select, move, trim and cut together
+  const clip = (linked = false): Clip => ({ id: ids(), media: media.id, start, source_in: 0, duration, ...(linked ? { link } : {}) });
   const ops: Op[] = [];
   if (media.kind === "audio") {
     if (!at) return null;
     ops.push({ op: "insert_clip", track: at.id, clip: clip() });
   } else {
     if (!vt) return null;
-    ops.push({ op: "insert_clip", track: vt.id, clip: clip() });
-    if (media.kind === "video" && probed.hasAudio && at) ops.push({ op: "insert_clip", track: at.id, clip: clip() });
+    const withSound = media.kind === "video" && probed.hasAudio && at;
+    ops.push({ op: "insert_clip", track: vt.id, clip: clip(!!withSound) });
+    if (withSound) ops.push({ op: "insert_clip", track: at.id, clip: clip(true) });
   }
   return ops;
 }

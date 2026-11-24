@@ -37,6 +37,9 @@ export interface Scene {
   media: string[];
   srcIn: Float64Array;
   mediaById: Map<string, MediaRef>;
+  /** Link id per clip ("" = alone) and, per link id, the indices of its clips (TL-05: linked clips are selected and edited together). */
+  link: string[];
+  linkGroups: Map<string, number[]>;
 }
 
 export const EMPTY_SCENE: Scene = buildScene(null);
@@ -74,6 +77,8 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     media: new Array<string>(total),
     srcIn: new Float64Array(total),
     mediaById,
+    link: new Array<string>(total),
+    linkGroups: new Map(),
   };
   let i = 0;
   tracks.forEach((t, ti) => {
@@ -97,6 +102,8 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
       scene.speedDen[i] = c.speed?.den ?? 1;
       scene.mediaDur[i] = mediaLen.get(c.media) ?? 0;
       scene.media[i] = c.media;
+      scene.link[i] = c.link ?? "";
+      if (c.link) { const g = scene.linkGroups.get(c.link); if (g) g.push(i); else scene.linkGroups.set(c.link, [i]); }
       scene.srcIn[i] = c.source_in / TICKS_PER_SECOND;
       if (scene.end[i]! > scene.endSec) scene.endSec = scene.end[i]!;
       i++;

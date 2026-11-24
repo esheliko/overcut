@@ -20,7 +20,7 @@ pub use file::{
     fingerprint, fingerprint_size, open_json, save_bytes, FileError, ProjectFile,
     FINGERPRINT_WINDOW,
 };
-pub use ids::{ClipId, Id, IdSource, MediaId, ProjectId, SeqIds, SequenceId, TrackId};
+pub use ids::{ClipId, Id, IdSource, LinkId, MediaId, ProjectId, SeqIds, SequenceId, TrackId};
 pub use project::{
     Clip, MediaKind, MediaRef, ModelError, Project, Resolution, Sequence, Track, TrackKind,
     SCHEMA_VERSION,

@@ -13,7 +13,7 @@ const hook = (page: Page) => page.evaluate(async () => { const h = (window as un
 test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay consistent", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const summary = page.locator("#tl-summary");
   const total = page.getByTestId("timecode");
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 }); // empty project: the preview offers the bin's import too
@@ -39,9 +39,7 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   const pps = (box.width - 48 - 96) / 3;
   await tap(48 + pps, 10); // 1.000 s
   await expect(page.getByRole("slider", { name: "Playhead position" })).toHaveAttribute("aria-valuenow", "30");
-  await tap(68, 30 + 26); // the picture clip (a trim needs exactly one clip selected)
-  await page.keyboard.press("BracketRight");
-  await tap(68, 30 + 52 + 26); // the sound clip
+  await tap(68, 30 + 26); // the picture clip: its linked sound is selected with it, so one trim cuts both
   await page.keyboard.press("BracketRight");
   await expect(total).toContainText("/ 00:00:01:00"); // the player's length followed the edit
   await expect(summary).toContainText("1 second of media");
@@ -54,8 +52,7 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   await page.waitForTimeout(1100);
   await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible(); // reached the end and stopped
 
-  // Undo both trims from the timeline: the bin still has its one card, the timeline and the player are 3 s again.
-  await page.getByRole("button", { name: UNDO }).click();
+  // Undo the trim (picture and sound in one step) from the timeline: the bin still has its one card, the timeline and the player are 3 s again.
   await page.getByRole("button", { name: UNDO }).click();
   await expect(total).toContainText("/ 00:00:03:00");
   await expect.poll(async () => (await hook(page)).end).toBe(90);

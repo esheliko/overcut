@@ -37,11 +37,11 @@ The M1 exit criterion: a **first-time user imports a clip, trims it and exports 
 Paste the table into a new issue titled `Activation test <date>` (or send it to the work manager session), so the results and the issues land in one place and `docs/M1-STATUS.md` can be updated.
 
 ## Automated proxy (`tests/smoke/activation.spec.ts`)
-CI runs the same journey with a script at 1280x800 and at 390x844 touch, using only visible labelled controls (import, ruler click, Split, select + Delete on the picture and on the sound, Export, Export, Save), on the 3 s `flash_click.mp4` fixture. It asserts the file is saved, that it is 2 s long (so the cut start left no empty stretch), at most 12 clicks/taps, and under 60 s scripted. It does not replace the 5 real testers (a script never hesitates); it catches a journey that grew steps, dead ends or slowness.
+CI runs the same journey with a script at 1280x800 and at 390x844 touch, using only visible labelled controls (import, ruler click, Split, select the first part, Delete (picture and sound are linked, so one Delete), Export, Export, Save), on the 3 s `flash_click.mp4` fixture. It asserts the file is saved, that it is 2 s long (so the cut start left no empty stretch), at most 9 clicks/taps, and under 60 s scripted. It does not replace the 5 real testers (a script never hesitates); it catches a journey that grew steps, dead ends or slowness.
 
 | Date | Viewport | Clicks / taps | Scripted time |
 |---|---|---|---|
 | 2026-11-24 | desktop | 10 | 3.4 s |
 | 2026-11-24 | phone | 11 | 3.8 s |
 
-The 10 are: Import media, click the ruler, Split, select the first picture part, Delete, select the first sound part, Delete, Export (open), Export (go), Save (phone adds the Media tab). Fewer is better: linking audio and video (TL-05, M2) would remove 2 of them.
+The 8 are: Import media, click the ruler, Split, select the first part (the picture and its sound are linked, so this picks both), Delete (one Delete cuts both), Export (open), Export (go), Save (phone adds the Media tab: 9). Before linked audio/video (TL-05) it was 10: the first part had to be selected and deleted twice, once on the picture and once on the sound.

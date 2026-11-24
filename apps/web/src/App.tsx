@@ -522,14 +522,13 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
         <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
-          <span className="chip" data-testid="engine" data-state={engine.status} aria-live="polite">
-            <span className="dot" aria-hidden="true" />
-            <span className="chip-text">
-              {engine.status === "loading" && t("engine.starting")}
-              {engine.status === "ready" && t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })}
-              {engine.status === "error" && <span role="alert" data-testid="engine-error">{t("engine.failed", { message: engine.message })}</span>}
-            </span>
-          </span>
+          {engine.status === "error"
+            ? <span className="chip" data-testid="engine" data-state="error">
+                <span className="dot" aria-hidden="true" />
+                <span className="chip-text"><span role="alert" data-testid="engine-error">{t("engine.failed", { message: engine.message })}</span></span>
+              </span>
+            // Developer detail ("Engine overcut v0.1.0 (wasm)") is not for the top bar: it lives in the app menu and on the Diagnostics page. This hidden probe is what tests wait on.
+            : <span hidden data-testid="engine" data-state={engine.status} data-backend={engine.status === "ready" ? engine.backend : undefined} />}
           <ExportControl engine={core} fileOf={media.fileOf} />
           <AppMenu compact={compact} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
         </div>
