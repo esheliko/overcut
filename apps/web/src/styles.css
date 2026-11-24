@@ -357,6 +357,10 @@ h2, p { margin: 0; }
 .versions-text strong { color: var(--fg); overflow-wrap: anywhere; }
 .versions-act { min-block-size: 44px; min-inline-size: 44px; padding-inline: var(--space-3); font-size: var(--text-sm); }
 
+.bin-filter-toggle { display: flex; align-items: center; gap: var(--space-2); inline-size: 100%; min-block-size: 44px; padding-inline: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); font-weight: 600; text-align: start; }
+.bin-filter-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.bin-filter-toggle > span:nth-child(2) { flex: 1; min-inline-size: 0; }
+.bin-on { padding-inline: var(--space-2); border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: var(--text-sm); }
 .bin-filters { display: grid; gap: var(--space-2); margin-block: var(--space-2); }
 .bin-kinds { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .bin-chip { min-block-size: 44px; padding-inline: var(--space-3); flex: 1 1 auto; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); font-weight: 600; }

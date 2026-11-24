@@ -150,3 +150,24 @@ test("phone: the media itself is on screen as soon as the Media sheet opens (hea
   expect(first.y + first.height).toBeLessThanOrEqual(sheet.y + sheet.height); // a whole card, not cut off
   expect(first.y - sheet.y).toBeLessThan(300); // the header, search, import and filters take less than that above it
 });
+
+test("the kind, sort and tag controls sit behind one 44 px \"Filter and sort\" button; closed by default, marked On when a filter is set, nothing overflows at 320 px", async ({ page }) => {
+  await ready(page);
+  await page.getByTestId("media-input").setInputFiles([{ name: "h264_aac.mp4", mimeType: "video/mp4", buffer: readFileSync(file("h264_aac.mp4")) }, { name: "vp9_opus.webm", mimeType: "video/webm", buffer: readFileSync(file("vp9_opus.webm")) }]);
+  await expect(page.getByTestId("bin-item")).toHaveCount(2);
+  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  const toggle = page.getByTestId("bin-filter-toggle");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("bin-kind-audio")).toHaveCount(0);
+  expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await toggle.click();
+  await expect(page.getByTestId("bin-kind-audio")).toBeVisible();
+  await expect(page.getByTestId("bin-filter-on")).toHaveCount(0);
+  await page.getByTestId("bin-kind-audio").click();
+  await expect(page.getByTestId("bin-filter-on")).toHaveText("On");
+  await page.getByTestId("bin-kind-all").click();
+  await expect(page.getByTestId("bin-filter-on")).toHaveCount(0);
+  for (const id of ["bin-kind-video", "bin-kind-all", "bin-sort"]) expect((await page.getByTestId(id).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
