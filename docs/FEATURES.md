@@ -132,7 +132,7 @@ All models are open-weight, downloaded on request, cached, removable, run locall
 | ID | Feature | Pri | M | CC | Notes |
 |---|---|---|---|---|---|
 | EX-01 | Export MP4 (H.264/HEVC/AV1) and WebM (VP9/AV1) up to 4K 60 fps; 8K and 120 fps on capable hardware | P0 | M1 | = | M1: 1080p30 H.264 |
-| EX-02 | Presets per platform (YouTube, TikTok, Reels, Shorts, X, Facebook, WhatsApp, Discord size limits) and custom | P0 | M1 | = | Size-targeted bitrate for upload caps |
+| EX-02 | Presets per platform (YouTube, TikTok, Reels, Shorts, X, Facebook, WhatsApp, Discord size limits) and custom | P0 | M1 | = | Size-targeted bitrate for upload caps. M1 chips: YouTube, 9:16 (TikTok/Reels/Shorts), X, Facebook (feed + Reels), WhatsApp, Discord; limits and sources in `docs/features/export.md` (some unconfirmed). Done (PR #69). |
 | EX-03 | Export queue, background export, pause/resume, estimate, progress notifications | P0 | M2 | = | Survives tab/app restarts where the OS allows |
 | EX-04 | Hardware encoding where available; software fallback | P0 | M1 | = | |
 | EX-05 | GIF / animated WebP / APNG; still frame; image sequence | P1 | M2 | = | |
