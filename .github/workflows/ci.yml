@@ -67,6 +67,69 @@ jobs:
         uses: actions/upload-artifact@v4
         with: { name: playwright-report, path: playwright-report, if-no-files-found: ignore }
 
+  # Non-blocking (M1 exit criterion "budgets measured in CI", issue #51): not required by deploy-web. Numbers are runner numbers; refresh
+  # tests/perf/baseline.json from this job's `perf-results` artifact (docs/PERFORMANCE.md, "Refreshing the baseline").
+  perf:
+    name: perf
+    needs: verify
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: apps/web/dist }
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Measure
+        run: npm run perf -- --no-build --out perf-results.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: perf-results, path: perf-results.json, retention-days: 30, if-no-files-found: ignore }
+      - name: Compare with tests/perf/baseline.json (warn +10%, fail +25%; job summary)
+        run: |
+          set -o pipefail
+          { echo '### perf vs baseline'; echo '```'; node tests/perf/compare.mjs perf-results.json tests/perf/baseline.json; echo '```'; } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Non-blocking: short time-boxed cargo-fuzz run per target (nightly). A crash uploads its artifact; nothing requires the job.
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { crate: media, target: demux, seed: 'cp tests/fixtures/*.mp4 tests/fixtures/*.mov tests/fixtures/*.webm fuzz/corpus/demux/' }
+          - { crate: model, target: project_file, seed: 'true' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: 'crates/${{ matrix.crate }}/fuzz' }
+      - uses: actions/cache@v4
+        id: cf
+        with:
+          path: ~/.cargo/bin/cargo-fuzz
+          key: cargo-fuzz-${{ runner.os }}-0.12
+      - if: steps.cf.outputs.cache-hit != 'true'
+        run: cargo install cargo-fuzz --version '^0.12' --locked
+      - name: Fuzz ${{ matrix.target }} (60 s)
+        working-directory: crates/${{ matrix.crate }}
+        run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          ${{ matrix.seed }}
+          cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60 -rss_limit_mb=2048
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: 'fuzz-${{ matrix.target }}', path: 'crates/${{ matrix.crate }}/fuzz/artifacts', if-no-files-found: ignore }
+
   deploy-web:
     name: deploy-web
     needs: verify
