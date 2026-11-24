@@ -33,6 +33,8 @@ h2, p { margin: 0; }
 .chip[data-state="ready"] .dot { background: var(--ok); }
 .chip[data-state="error"] .dot { background: var(--danger); }
 .save-state[data-state="saved"] .dot { background: var(--ok); }
+.save-row .dot[data-state="saved"] { background: var(--ok); }
+.save-row .dot[data-state="error"] { background: var(--danger); }
 .primary { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: filter var(--dur-fast), transform var(--dur-instant); }
 .primary:hover { filter: brightness(1.08); }
 .primary:active { transform: scale(0.97); }

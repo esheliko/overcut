@@ -116,7 +116,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void } }) {
+function AppMenu({ compact, theme, status, save, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -146,6 +146,8 @@ function AppMenu({ compact, theme, status, project }: { compact: boolean; theme:
             <>
               <button className="menu-row" role="menuitem" onClick={theme.cycle} data-testid="theme-toggle"><Icon name="theme" size={20} /><span>{t("theme.change", { theme: theme.name })}</span></button>
               <div className="menu-row menu-status" role="presentation">{status}</div>
+              {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
+              <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
             </>
           )}
           <AccentPicker />
@@ -540,7 +542,7 @@ function Editor({ store }: { store: ProjectStore }) {
             <span className="chip-text">{t(`save.state.${saveState}`)}</span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
+          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
         </div>
       </header>
 
