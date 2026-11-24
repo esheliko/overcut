@@ -7,7 +7,7 @@ import { Icon } from "../icons";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
-import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
+import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
 
 const probes = new Map<string, Promise<ExportFormats>>();
@@ -169,7 +169,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
           </label>
           <label>{t("export.field.format")}
             <select value={format?.id ?? ""} onChange={(e) => edit({ format: e.target.value as Choice["format"] })} data-testid="export-format">
-              {fmts?.options.map((o) => <option key={o.id} value={o.id}>{fmtName(o.id) + (o.warnings.length > 0 ? ` – ${t("export.format.limited")}` : "")}</option>)}
+              {fmts?.options.map((o) => <option key={o.id} value={o.id}>{fmtName(o.id)}</option>)}
             </select>
           </label>
           <label>{t("export.field.quality")}
@@ -188,6 +188,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
       {format && choice.capBytes !== undefined && <p className="export-note" data-testid="export-cap-note">{t("export.cap.aims", { cap: formatBytes(choice.capBytes, locale) })}</p>}
       {format && presetWarnings(preset, choice, src, format, locale).map((w) => <p key={w.key} className="export-note" role="status" data-testid={w.key === "export.warn.cap" ? "export-cap-warning" : "export-duration-warning"}>{t(w.key, w.values)}</p>)}
       {format?.warnings.map((w) => <p key={w} className="export-note" data-testid="export-warning">{t("export.warn.limited")}</p>)}
+      {format && formatNote(format, fmts?.options ?? []) && <p className="export-note" data-testid="export-format-note">{t(formatNote(format, fmts?.options ?? [])!)}</p>}
       <button className="primary export-go" onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
     </>
   );
