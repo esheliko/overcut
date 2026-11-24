@@ -10,7 +10,7 @@ const rotationOf = (deg: number): 0 | 90 | 180 | 270 => (deg === 90 || deg === 1
  * Adapts the production decoder (`Engine.media`, M1-016: demux + WebCodecs in the Worker) to what the export loop needs.
  * - Video: sequence `source_time` (ticks) -> the media's own frame index (`floor(ticks * fps)`, ADR 0010: repeats or skips come from this rule), clamped to the last frame.
  *   Asking again for the frame already held reuses it (slow motion and low-fps media decode each picture once); every other frame is released as soon as the next one arrives.
- *   Variable frame rate media is refused for now (needs the pts table; follow-up) rather than exported with wrong timing.
+ *   Variable frame rate media looks the frame up in the clip's own timestamp table (`handle.frameIndexAt`, the rule the preview uses), so it exports at its real speed.
  * - Audio: the decoder gives interleaved f32 at the sequence rate; mono is copied to both channels, more than two channels keep front left and right.
  * - Display rotation from the container is applied by the compositor (`DrawableFrame.rotation`).
  */
@@ -21,11 +21,12 @@ export async function openBlobMedia(media: MediaApi, blob: Blob, sampleRate: num
   const close = (): void => void handle.close();
   const out: OpenedMedia = {};
   if (v) {
-    if (v.vfr || !v.fps || v.fps.num <= 0 || v.fps.den <= 0) {
+    const constant = !v.vfr && !!v.fps && v.fps.num > 0 && v.fps.den > 0;
+    if (!constant && v.packets > 0 && typeof handle.frameIndexAt !== "function") {
       close();
-      throw new MediaDecodeError("unsupported", `"${name}" has a variable frame rate, which export does not support yet.`);
+      throw new MediaDecodeError("unsupported", `"${name}" has a variable frame rate, which this device cannot export.`);
     }
-    const { num, den } = v.fps;
+    const { num, den } = constant ? v.fps! : { num: 1, den: 1 };
     const last = Math.max(0, v.packets - 1);
     let held: { index: number; frame: DecodedFrame; drawable: DrawableFrame } | undefined;
     const release = (): void => {
@@ -34,7 +35,8 @@ export async function openBlobMedia(media: MediaApi, blob: Blob, sampleRate: num
     };
     out.video = {
       async frame(ticks) {
-        const index = Math.min(last, Number((BigInt(Math.max(0, ticks)) * BigInt(num)) / (TICKS_PER_SECOND * BigInt(den))));
+        const at = Math.max(0, ticks);
+        const index = Math.min(last, constant ? Number((BigInt(at) * BigInt(num)) / (TICKS_PER_SECOND * BigInt(den))) : handle.frameIndexAt(at));
         if (held?.index === index) return held.drawable;
         release();
         const frame = await handle.videoFrame(index);

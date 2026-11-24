@@ -173,7 +173,9 @@ pub async fn probe<S: Source>(source: &S) -> Result<Probe, MediaError> {
         b"ftyp" | b"moov" | b"mdat" | b"wide" | b"free" | b"skip" | b"pnot" => {
             mp4::probe(&mut r).await
         }
-        _ => Err(MediaError::Unsupported("unknown container format".into())),
+        _ => Err(MediaError::Unsupported(
+            "This is not a video or audio format OverCut can read.".into(),
+        )),
     }
 }
 

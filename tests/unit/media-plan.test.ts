@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { STILL_SECONDS, TICKS, classify, clipCount, codecLabel, formatBytes, formatDuration, importOps, insertOps, mediaRef, placeAt, sequenceFrom, sequenceIsUnset, timelineEnd, type Probed } from "../../apps/web/src/media/plan";
+import { STILL_SECONDS, TICKS, classify, clipCount, codecLabel, formatBytes, formatDuration, importOps, insertOps, mediaRef, placeAt, sentence, sequenceFrom, sequenceIsUnset, timelineEnd, type Probed } from "../../apps/web/src/media/plan";
+import { probeFile } from "../../apps/web/src/media/probe";
+import type { Engine } from "../../packages/engine-client/src/index";
 import { newProject as emptyProject } from "../../packages/engine-client/src/project";
 
 const video: Probed = { kind: "video", durationTicks: 10 * TICKS, width: 1080, height: 1920, rotation: 0, fps: { num: 24000, den: 1001 }, hasAudio: true, hasVideo: true };
@@ -84,4 +86,21 @@ test("labels for cards", () => {
   assert.equal(codecLabel("avc1.64001f"), "H.264");
   assert.equal(codecLabel("hvc1.1.6.L93.B0"), "H.265");
   assert.equal(codecLabel("opus"), "OPUS");
+});
+
+test("an engine message becomes a sentence before it is shown inside a longer one", () => {
+  assert.equal(sentence("unknown container format"), "Unknown container format.");
+  assert.equal(sentence("This device cannot decode H.265 (HEVC) video."), "This device cannot decode H.265 (HEVC) video.");
+  assert.equal(sentence("  Really?  "), "Really?");
+  assert.equal(sentence(""), "");
+});
+
+test("probe: the tracks decide the kind, so an audio-only .webm named as video imports as audio; a file with no usable track is refused in words", async () => {
+  const track = { codec: "opus", width: 0, height: 0, rotation: 0, sampleRate: 48000, channels: 2, durationTicks: 5 * TICKS, packets: 250, vfr: false };
+  const engineWith = (info: unknown): Engine => ({ media: { open: async () => ({ info, close: async () => undefined }) } }) as unknown as Engine;
+  const ok = await probeFile(engineWith({ container: "webm", durationTicks: 5 * TICKS, audio: track }), new File(["x"], "voice.webm", { type: "video/webm" }), "video");
+  assert.equal(ok.probed.kind, "audio");
+  assert.equal(ok.probed.hasVideo, false);
+  assert.equal(ok.probed.hasAudio, true);
+  await assert.rejects(probeFile(engineWith({ container: "webm", durationTicks: 0 }), new File(["x"], "empty.webm"), "video"), /no picture or sound/);
 });
