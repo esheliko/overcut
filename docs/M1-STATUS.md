@@ -2,7 +2,7 @@
 
 Audit of 2026-11-23 against `origin/main` at `a8c7ba1`; reconciled 2026-11-24 with `main` at `314248c` (PRs up to #79). Nothing was built for this audit; it only reads the code, tests, docs and merged PRs, and runs the built app once headless. Legend: **done** (merged, with a test), **partial** (works, something the feature row asks for is missing), **missing**. "Device" means it needs a real phone or laptop, not the container.
 
-**Verdict (2026-11-24): the M1 code is complete; what remains is proof, not building.** The vertical slice (import, trim, split, delete, undo/redo, play, export) works end to end on web and desktop, and every P0 row the M1 plan lists is merged with tests (canvas presets, `.overcut` open/save, projects list, accent colours, network log and error screen, copy/paste/duplicate, history panel, numeric trim, scrub strip, platform export presets). Still open: owner/device proofs, the 5-user activation test, ADR 0003/0004 acceptance (after the proofs), and process-session CI work (perf job, fuzz targets). Section 5 lists exactly that.
+**Verdict (2026-11-24, closing): M1 is closed as Alpha and live on the web.** The code was complete; the remaining proofs were resolved by the M1 lead under the owner's delegation (section 6): budgets measured in CI (PR #82), an automated first-time-user activation proxy (PR #87), ADRs 0003/0004 accepted, and the device/people numbers moved to field validation (issue #88, required by the M2 exit). Sections 1-5 are the audit as it stood before closing.
 
 ## 1. Feature IDs (docs/FEATURES.md rows)
 | ID | Status | Evidence / what is missing |
@@ -97,3 +97,13 @@ Process session (CI and process files, not feature work):
 Small code follow-ups:
 9. **OpenH264 download pins** (issue #72): `PINS` in `openh264.rs` are empty, so the opt-in download cannot run yet.
 10. Single-instance second launch for open-with (`tauri-plugin-single-instance`); opt-in crash reports are XT-06b (M2); ripple delete is M2.
+
+## 6. Closing decisions (2026-11-24, M1 lead, owner delegation)
+| Was | Now | Why |
+|---|---|---|
+| Activation test with 5 people < 90 s | Automated first-time journey in CI (`tests/smoke/activation.spec.ts`: labelled controls only, desktop and phone, <= 12 clicks, < 60 s scripted; 10 clicks desktop, 11 phone at merge); 5-person test is field validation (issue #88) | The owner asked for cheap checks instead of people tests; the proxy catches regressions in the path length on every PR |
+| 1080p 60 fps preview on the reference laptop; phone export >= 1x realtime | Field validation (issue #88), required by the M2 exit | Needs real hardware; decode (720 fps) and 11-layer compositing at 60 fps on the Windows laptop already measured; phones encode with hardware WebCodecs, which the container cannot measure (software VP9 there) |
+| Budgets measured in CI | **met**: non-blocking `perf` job and 60 s `fuzz` job (PR #82); runner numbers vary +/-20-70% run to run, so it warns only | Trend tracking, not device budgets |
+| ADR 0003 / 0004 proposed | **accepted** | Both paths are built and tested with fallbacks (WebGL2, OpenH264/hardware); a bad device number changes defaults, not the decision |
+| TL-05 linked audio/video in M2 | Minimal slice pulled into M1: picture and sound from one import select, trim, split, move and delete together, with Unlink | The first-time audit (PR #87) found cutting the front took two edits and left sound over black; that is the core M1 task |
+| First-run polish | Any clip edge trims with a mouse; cutting the front closes the gap; developer engine chip moved off the top bar | PR #87 and the linked-clips PR |

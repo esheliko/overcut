@@ -6,8 +6,8 @@ Format: Context, Decision, Consequences, Status (`proposed` -> `accepted` -> may
 |---|---|---|
 | [0001](0001-rust-engine.md) | One Rust engine for web and native | proposed (accept at M0 exit) |
 | [0002](0002-shells.md) | PWA + Tauri 2 shells, one UI | proposed (accept at M0 exit) |
-| [0003](0003-gpu.md) | GPU: wgpu, WebGPU first, WebGL2 fallback, linear-light pipeline | proposed (validate with S2) |
-| [0004](0004-media-io.md) | Media I/O per platform; codec and patent policy | proposed (validate with S1, S3, S4) |
+| [0003](0003-gpu.md) | GPU: wgpu, WebGPU first, WebGL2 fallback, linear-light pipeline | **accepted** (2026-11-24; device frame times: M2 field validation) |
+| [0004](0004-media-io.md) | Media I/O per platform; codec and patent policy | **accepted** (2026-11-24; device encode speed/drift: M2 field validation) |
 | [0005](0005-local-first.md) | Local-first, no backend | proposed (accept at M0 exit) |
 | [0006](0006-edit-operations.md) | Edits are serializable operations with inverses | accepted (S7 passed) |
 | [0007](0007-ui-and-extensibility.md) | React UI, canvas timeline, effects as data | proposed |
