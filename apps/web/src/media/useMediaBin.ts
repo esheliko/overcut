@@ -1,7 +1,7 @@
 import { MediaDecodeError, fingerprintFile, fingerprintSize, newProject, type Editing, type Engine, type MediaKind, type Op, type Project } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { probeFile } from "./probe";
-import { STILL_SECONDS, TICKS, classify, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
+import { STILL_SECONDS, TICKS, classify, sentence, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
 import { loadHandle, pathOf, saveHandle, type Source } from "./sources";
 import { useProjectStore, useStore } from "../store/projectStore";
 
@@ -150,6 +150,8 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
       ...all,
     ]);
     let added = 0;
+    let imported = 0;
+    let refused = rows.filter((r) => !r.kind).length;
     for (const r of rows) {
       if (!r.kind) continue;
       const { s, id, kind } = r;
@@ -174,16 +176,18 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           }
           patch(id, { status: "ready", durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
           await store.apply(ops, undefined, t.importLabel(s.file.name));
+          imported++;
         } catch (e) {
           const ext = extOf(s.file.name).toUpperCase();
-          const message = e instanceof MediaDecodeError && e.kind === "unsupported" ? t.unsupported(s.file.name, ext, e.message) : t.failed(s.file.name);
+          const message = e instanceof MediaDecodeError && e.kind === "unsupported" ? t.unsupported(s.file.name, ext, sentence(e.message)) : t.failed(s.file.name);
           patch(id, { status: "unsupported", message });
+          refused++;
           t.announce(message);
         }
       });
     }
-    const ok = rows.filter((r) => r.kind).length;
-    if (ok > 0) t.announce(t.imported(ok));
+    // Only what really came in, and never over the top of a refusal: a refused file announced why, and a count would replace that for a screen reader.
+    if (imported > 0 && refused === 0) t.announce(t.imported(imported));
   }, [engine, ed, store, enqueue, patch]);
 
   importRef.current = importSources;

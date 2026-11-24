@@ -50,7 +50,8 @@ export async function probeFile(engine: Engine, file: File, kind: MediaKind): Pr
     const { info } = handle;
     const v = info.video;
     const a = info.audio;
-    if (kind === "video" && !v) throw new MediaDecodeError("unsupported", "This file has no picture.");
+    // The kind comes from the tracks, not the name: an audio recording saved as .webm or .mp4 is audio, not a broken video.
+    if (!v && !a) throw new MediaDecodeError("unsupported", "This file has no picture or sound OverCut can use.");
     const probed: Probed = {
       kind: v ? "video" : "audio",
       durationTicks: info.durationTicks,

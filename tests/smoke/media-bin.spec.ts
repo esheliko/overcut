@@ -62,11 +62,24 @@ test("a file that cannot be imported says why, in plain words, and nothing is si
   const items = page.getByTestId("bin-item");
   await expect(items).toHaveCount(2);
   await expect(page.getByText("notes.txt is not a video, audio or image file")).toBeVisible();
-  await expect(page.getByText(/broken\.mp4 could not be imported \(MP4\)/)).toBeVisible();
+  await expect(page.locator(".bin-error").getByText(/broken\.mp4 could not be imported \(MP4\)/)).toBeVisible();
+  await expect(page.locator("[data-announcer=polite]")).toContainText("could not be imported"); // the refusal is what a screen reader hears, not a count of files imported
   await expect(page.getByText(/MP4 or MOV with H\.264/).first()).toBeVisible();
   await expect(summary(page)).toContainText("0 clips"); // nothing was added
   await page.getByRole("button", { name: "Dismiss notes.txt" }).click();
   await expect(items).toHaveCount(1);
+});
+
+test("an audio-only .webm (a voice recording) imports as audio; a format nobody reads says so as a sentence, and the refusal is what is announced", async ({ page }) => {
+  await ready(page);
+  await page.getByTestId("media-input").setInputFiles([
+    { name: "voice.webm", mimeType: "video/webm", buffer: readFileSync(file("audio_only.webm")) }, // browsers type every .webm as video/webm
+    { name: "clip.wav", mimeType: "audio/wav", buffer: Buffer.from("RIFF\0\0\0\0WAVEfmt ") },
+  ]);
+  await expect(summary(page)).toContainText("1 clip", { timeout: 20_000 });
+  await expect(page.getByTestId("bin-item").filter({ hasText: "voice.webm" })).toContainText("OPUS");
+  await expect(page.locator("[data-announcer=polite]")).toContainText(/clip\.wav could not be imported \(WAV\)\. This is not a video or audio format OverCut can read\. /); // announced, as a sentence, not buried under "1 file imported"
+  await expect(page.locator("[data-announcer=polite]")).not.toContainText("file imported");
 });
 
 test("dropping files anywhere and pasting both import", async ({ page }) => {
