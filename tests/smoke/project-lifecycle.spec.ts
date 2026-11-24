@@ -73,6 +73,7 @@ test("canvas settings are a project edit (undo), survive an import, and new proj
   await page.getByRole("button", { name: /^Undo/ }).click();
   await menu(page, "New project…");
   await expect(page.getByTestId("confirm-dialog")).toBeVisible();
+  await expect(page.getByTestId("confirm-ok")).toHaveClass(/confirm-danger/); // F2: the destructive button looks destructive
   await page.getByTestId("confirm-cancel").click();
   await expect(page.locator("#tl-summary")).not.toContainText("2 clips"); // still the project with the undone import
   await menu(page, "New project…");

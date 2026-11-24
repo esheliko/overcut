@@ -452,7 +452,7 @@
   "menu.openProject": "Open project…",
   "menu.saveProject": "Save project as…",
   "project.new.title": "Start a new project?",
-  "project.new.body": "This closes the current project. Changes you have not saved to a file are lost; you can still save it first.",
+  "project.new.body": "This closes the current project and starts an empty one. A copy of the project as it is now is kept in Versions first, so you can restore it from there.",
   "project.new.confirm": "Start new project",
   "project.new.done": "New project started.",
   "project.open.title": "Open this project?",

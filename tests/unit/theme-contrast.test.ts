@@ -54,6 +54,7 @@ const PAIRS: [string, string, number, string][] = [
   ["accent-ink", "accent", 4.5, "primary button label"],
   ["danger", "surface-2", 4.5, "error text in the status chip"],
   ["bg", "fg", 4.5, "play button, toast"],
+  ["bg", "danger", 4.5, "text on the danger (destructive) confirm button"],
   ["stage-fg", "stage", 4.5, "preview hint text"],
   // non-text (3:1): focus ring, status dots
   ["focus-ring", "bg", 3, "focus ring"],
