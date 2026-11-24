@@ -80,7 +80,7 @@ export default function Diagnostics() {
   const { t } = useI18n();
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [capsError, setCapsError] = useState<string | null>(null);
-  const [app, setApp] = useState({ version: "?", backend: "?" });
+  const [app, setApp] = useState({ name: "?", version: "?", backend: "?" });
   const [phase, setPhase] = useState<Phase>("idle");
   const [current, setCurrent] = useState<TestId | null>(null);
   const [frac, setFrac] = useState(0);
@@ -94,7 +94,7 @@ export default function Diagnostics() {
     let alive = true;
     createEngine()
       .then(async (e) => { const [c, i] = await Promise.all([e.capabilities(), e.info()]); return { c, i, b: e.backend }; })
-      .then(({ c, i, b }) => { if (alive) { setCaps(c); setApp({ version: i.version, backend: b }); } })
+      .then(({ c, i, b }) => { if (alive) { setCaps(c); setApp({ name: i.name, version: i.version, backend: b }); } })
       .catch((e: unknown) => alive && setCapsError(e instanceof Error ? e.message : String(e)));
     return () => { alive = false; runner.current?.dispose(); };
   }, []);
@@ -128,6 +128,7 @@ export default function Diagnostics() {
         <a className="diag-back" href="/"><span aria-hidden="true">←</span> {t("diag.back")}</a>
         <h1>{t("diag.title")}</h1>
         <p>{t("diag.intro")}</p>
+        <p className="diag-muted" data-testid="diag-engine">{t("engine.ready", app)}</p>
       </header>
 
       <section aria-labelledby="diag-test" className="diag-card">

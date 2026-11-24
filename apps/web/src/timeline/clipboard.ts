@@ -55,7 +55,16 @@ export function planPlacement(p: Project, held: readonly Held[], at: number, tar
     if (bump === shift) break;
     shift = bump;
   }
-  const ops: Op[] = items.map((it) => ({ op: "insert_clip", track: it.track, clip: { ...it.clip, id: newId(), start: it.clip.start + shift } }));
+  // Copies of a linked pair are linked to each other (one new link per original link); a clip whose partner was not copied stands alone.
+  const uses = new Map<string, number>();
+  for (const it of items) if (it.clip.link) uses.set(it.clip.link, (uses.get(it.clip.link) ?? 0) + 1);
+  const links = new Map<string, string>();
+  const ops: Op[] = items.map((it) => {
+    const { link, ...rest } = it.clip;
+    const copy: Clip = { ...rest, id: newId(), start: it.clip.start + shift };
+    if (link && uses.get(link)! > 1) { if (!links.has(link)) links.set(link, newId()); copy.link = links.get(link)!; }
+    return { op: "insert_clip", track: it.track, clip: copy };
+  });
   return { ops, placed: items.length, skipped, start: anchor + shift };
 }
 

@@ -1,7 +1,9 @@
 //! `Op`: the only way a project changes (ADR 0006). Ops address things by id, never by index, and carry every
 //! id they create (the host supplies fresh ids), so applying the same op list to the same project is deterministic.
 
-use app_model::{Clip, ClipId, MediaId, MediaRef, Rational, Resolution, SequenceId, Time, TrackId};
+use app_model::{
+    Clip, ClipId, LinkId, MediaId, MediaRef, Rational, Resolution, SequenceId, Time, TrackId,
+};
 use serde::{Deserialize, Serialize};
 
 /// One edit. `#[non_exhaustive]` + the `op` tag leave room for M2 ripple / roll / slip / slide, which are new variants
@@ -17,6 +19,10 @@ pub enum Op {
         clip: ClipId,
         at: Time,
         new_id: ClipId,
+        /// The link of the right part, when the clip is linked: the caller gives both pieces of a linked pair the same new link,
+        /// so the pieces stay linked pairwise. Absent = the right part is alone. Ignored for a clip that is not linked.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        new_link: Option<LinkId>,
     },
     /// Move the clip's start edge to `start` (timeline time); the end edge stays. `source_in` follows.
     TrimIn { clip: ClipId, start: Time },
@@ -28,6 +34,8 @@ pub enum Op {
         track: TrackId,
         start: Time,
     },
+    /// Link the clip to others (same id) or, with `None`, let it edit alone (TL-05). Only the editing layer reads links; undoable.
+    SetLink { clip: ClipId, link: Option<LinkId> },
     /// Remove the clip.
     Delete { clip: ClipId },
     /// Set a clip's geometry exactly. Used by inverses (restore what a trim or split changed); also a valid edit.

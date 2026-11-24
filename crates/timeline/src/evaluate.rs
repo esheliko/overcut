@@ -196,6 +196,7 @@ mod tests {
             source_in: Time::from_ticks(source_in),
             duration: Time::from_ticks(dur),
             speed,
+            link: None,
         }
     }
 

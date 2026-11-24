@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 test("duplicate, copy and paste, numeric timing and the history panel go through the engine", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await page.goto("/?sample");
-  await expect(page.getByTestId("engine")).toContainText(/Engine .+ \(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const summary = page.locator("#tl-summary");
   const live = page.locator('[data-announcer="polite"]');
   const canvas = page.getByTestId("timeline-canvas");

@@ -7,7 +7,7 @@ const FLASH = resolve("crates/media/tests/fixtures/flash_click.mp4"); // 3 s, 30
 test("first import: rail shows only working tools, the zoom fits the clip, undo says what it undoes, split at the clip start explains itself, the phone sheet closes", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
 
   // No dead promises: only Media in the tool rail, and no empty Details panel.

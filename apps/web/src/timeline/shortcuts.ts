@@ -1,6 +1,6 @@
 /** Keyboard shortcuts for timeline editing, as pure data: key event in, command out. */
 export type Command =
-  | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" }
+  | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" } | { c: "unlink" }
   | { c: "go"; dir: "left" | "right" | "up" | "down" }
   /** Move the selection by whole frames. */
   | { c: "nudge"; frames: number }
