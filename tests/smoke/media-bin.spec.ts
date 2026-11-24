@@ -181,3 +181,24 @@ test("the kind, sort and tag controls sit behind one 44 px \"Filter and sort\" b
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("a clip already on the timeline has no \"+\" (no duplicate on a second click); the tag button says Tags; one Import control once media is in the bin", async ({ page }) => {
+  await ready(page);
+  await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4")); // the first import is added to the timeline
+  await expect(summary(page)).toContainText("2 clips");
+  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  const first = page.getByTestId("bin-item").filter({ hasText: "h264_aac.mp4" });
+  await expect(first.getByTestId("bin-on-timeline")).toHaveText("On the timeline");
+  await expect(first.getByRole("button", { name: /Add .* to the timeline/ })).toHaveCount(0);
+  await expect(first.getByTestId("bin-tag-edit")).toContainText("Tags");
+  await expect(page.getByTestId("preview-import")).toHaveCount(0); // the Media panel has the one Import
+  await page.getByTestId("media-input").setInputFiles(file("vp9_opus.webm"));
+  await expect(page.getByTestId("bin-item")).toHaveCount(2);
+  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  const second = page.getByTestId("bin-item").filter({ hasText: "vp9_opus.webm" });
+  await expect(second.getByRole("button", { name: "Add vp9_opus.webm to the timeline" })).toBeVisible();
+  await expect(second.getByTestId("bin-on-timeline")).toHaveCount(0);
+  await second.getByRole("button", { name: "Add vp9_opus.webm to the timeline" }).click();
+  await expect(summary(page)).toContainText("4 clips");
+  await expect(page.getByRole("button", { name: /Add vp9_opus\.webm/ })).toHaveCount(0);
+});
