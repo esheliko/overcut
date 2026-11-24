@@ -24,7 +24,7 @@ export function ThemeMenu({ pref, onPick }: { pref: ThemePref; onPick(p: ThemePr
   }, [open]);
 
   return (
-    <div className="menu theme-menu" ref={ref}>
+    <div className="theme-menu" ref={ref}>
       <button ref={button} className="icon-btn" aria-label={t("theme.change", { theme: name })} aria-haspopup="menu" aria-expanded={open} title={name} onClick={() => setOpen((o) => !o)} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>
       {open && (
         <div className="menu-pop theme-pop" role="menu" aria-label={t("theme.label")} data-testid="theme-menu">
