@@ -1,4 +1,5 @@
 import { MediaDecodeError, toMediaError } from "./decode/errors";
+import { decodeStill, sniffImage } from "./decode/still";
 import type { NativeExportBackend } from "./export/native";
 import type { DecodedFrame, FrameStream, MediaFileInfo, MediaHandle, MediaApi, OpenMediaOptions, TrackInfo } from "./types";
 
@@ -56,12 +57,28 @@ export function frameIndexAtTicks(pts: readonly number[], ticks: number): number
  * at the project rate, typed `MediaDecodeError`s. Frames are CPU RGBA (`kind: "cpu"`): GPU-resident native frames need the renderer to import
  * them (follow-up, ADR 0004 S4 results). `stream` decodes frame by frame (each call seeks to its keyframe): correct, not yet fast.
  */
+/** A picture is decoded by the webview (the native decoder is for video and sound). A file that stays on disk is read through the shell's range command. */
+async function openNativeStill(invoke: Invoke, file: Blob, path: string | undefined, opts: OpenMediaOptions): Promise<MediaHandle | null> {
+  // CPU frames: the preview Worker gets them over the bridge as bytes, like every native frame.
+  const cpu = { ...opts, gpu: false };
+  if (!path) return (await sniffImage(file.slice(0, 16).arrayBuffer())) ? decodeStill(file, cpu) : null;
+  const range = (offset: number, len: number): Promise<ArrayBuffer> => invoke<ArrayBuffer>("desktop_read_range", { path, offset, len });
+  if (!(await sniffImage(range(0, 16)))) return null;
+  const size = await invoke<number>("desktop_file_size", { path });
+  const parts: ArrayBuffer[] = [];
+  for (let off = 0; off < size; off += STILL_CHUNK) parts.push(await range(off, Math.min(STILL_CHUNK, size - off)));
+  return decodeStill(new Blob(parts), cpu);
+}
+const STILL_CHUNK = 8 * 1024 * 1024;
+
 export function createTauriMedia(invoke: Invoke): MediaApi {
   return {
     async open(file: Blob, opts: OpenMediaOptions = {}): Promise<MediaHandle> {
       const audioRate = opts.audioRate ?? 48_000;
       let staged: number | undefined;
       let path = (file as PathBlob).path;
+      const still = await openNativeStill(invoke, file, path, opts).catch((e) => { if (e instanceof MediaDecodeError) throw e; return null; });
+      if (still) return still;
       try {
         if (!path) {
           const s = await stash(invoke, file);

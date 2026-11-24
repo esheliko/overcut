@@ -5,8 +5,8 @@ import { pathOf } from "../media/sources";
 import type { PreviewHost } from "./host";
 
 /**
- * Hands the preview Worker the file behind every audio/video media item of the shared project (the bin owns the files, the Worker opens its own
- * decoders from them), and tells it when an item leaves the project (undo of an import). Stills are not decoded by the engine and are skipped.
+ * Hands the preview Worker the file behind every media item of the shared project (the bin owns the files, the Worker opens its own
+ * decoders from them), and tells it when an item leaves the project (undo of an import).
  * `hostVersion` bumps when a (new) Worker is attached, so everything is sent again.
  */
 export function useWorkerMedia(host: PreviewHost | null, project: Project | null, fileOf: (id: string) => Promise<File | null>, hostVersion: number, readyIds = ""): void {
@@ -19,7 +19,7 @@ export function useWorkerMedia(host: PreviewHost | null, project: Project | null
   useEffect(() => {
     if (!host || !project) return;
     if (last.current !== host) { last.current = host; sent.current.clear(); asking.current.clear(); }
-    const wanted = new Set(project.media.filter((m) => m.kind !== "image").map((m) => m.id));
+    const wanted = new Set(project.media.map((m) => m.id));
     for (const id of [...sent.current]) {
       if (wanted.has(id)) continue;
       sent.current.delete(id);

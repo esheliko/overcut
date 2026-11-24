@@ -1,6 +1,7 @@
 import { blobSource, type ByteSource } from "./blob-source";
 import { MediaDecodeError, toMediaError } from "./errors";
 import { WebCodecsHost, type HostStats } from "./host";
+import { openStill } from "./still";
 import { buildFrameTable, frameIndexAt, type FrameTable } from "./frames";
 import { openFrameStream, type StreamTrack } from "./stream";
 import type { PacketJson } from "./blob-source";
@@ -54,6 +55,8 @@ export function createWebMedia(Media: WasmMediaClass): MediaApi {
   return {
     async open(file: Blob, opts: OpenMediaOptions = {}): Promise<MediaHandle> {
       const audioRate = opts.audioRate ?? 48_000;
+      const still = await openStill(file, opts); // a picture is a one-frame clip
+      if (still) return still;
       const src = blobSource(file);
       let mf: WasmMediaFile;
       try {
