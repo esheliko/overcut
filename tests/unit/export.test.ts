@@ -71,7 +71,7 @@ test("presets: ADR 0004 order, never a combination the probe rejected", async ()
   const best = await resolvePreset(plan, settings, probe(["avc1", "vp09", "av01"], ["mp4a.40.2", "opus"]));
   assert.deepEqual([best.container, best.videoCodec, best.audioCodec, best.warnings.length], ["mp4", "avc", "aac", 0]);
   const noAac = await resolvePreset(plan, settings, probe(["avc1", "vp09"], ["opus"]));
-  assert.deepEqual([noAac.container, noAac.videoCodec, noAac.audioCodec], ["webm", "vp9", "opus"]);
+  assert.deepEqual([noAac.container, noAac.videoCodec, noAac.audioCodec], ["mp4", "avc", "opus"]); // H.264 is the default wherever it encodes
   const h264Opus = await resolvePreset(plan, settings, probe(["avc1"], ["opus"]));
   assert.deepEqual([h264Opus.container, h264Opus.videoCodec, h264Opus.audioCodec], ["mp4", "avc", "opus"]);
   assert.match(h264Opus.warnings[0] ?? "", /Opus/);

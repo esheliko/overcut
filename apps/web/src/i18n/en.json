@@ -267,7 +267,6 @@
   "export.savedTo": "Saved to {path}",
   "export.showFolder": "Show in folder",
   "export.format.webm-av1": "WebM (AV1), smallest, slower",
-  "export.format.whyWebm": "WebM is the default here: this device can't add AAC audio to an MP4.",
   "export.format.noMp4": "This device can't make MP4, so the file is WebM.",
   "export.quality.high": "High",
   "export.quality.medium": "Medium",

@@ -4,7 +4,7 @@ Code: `apps/web/src/export/` (`ExportDialog.tsx` UI, `model.ts` pure logic, `use
 
 ## Behaviour
 - **Top-bar "Export"** is disabled until the timeline has a clip. While an export runs it becomes a progress chip ("Exporting 42%"); the chip reopens the dialog.
-- **Settings view.** One big primary button, **Export**, with a sensible default already chosen: the project's own size and frame rate, the best format this device can encode (ADR 0004 order: MP4 H.264 + AAC where the encoder probe passes, else WebM VP9 + Opus), quality High. Below the summary line ("Your project: 1280×720 · 30 fps · 0:12") sit the **preset chips** (radio group, 76 px tall, 2 per row):
+- **Settings view.** One big primary button, **Export**, with a sensible default already chosen: the project's own size and frame rate, the best format this device can encode (ADR 0004 order: MP4 H.264 where the encoder probe passes (AAC preferred, Opus audio otherwise), else WebM VP9 + Opus), quality High. Below the summary line ("Your project: 1280×720 · 30 fps · 0:12") sit the **preset chips** (radio group, 76 px tall, 2 per row):
   - **Original**: the project's size and rate.
   - **YouTube 1080p**: short side 1080 (1920×1080), frame rate capped at 60.
   - **TikTok / Reels / Shorts**: 9:16, up to 1080×1920. A wider project is placed inside the tall frame with black bars (shown as a note); reframing comes with the aspect-ratio work, not here.
@@ -28,7 +28,7 @@ Native `<dialog>` opened with `showModal()` (focus trap, Esc, inert background f
 - Media files for the export are collected from the bin (`fileOf`) for every clip's media; one that is offline stops the export at 0% with the "reconnect it" message.
 
 ## Edge cases
-No AAC encoder (sandbox Chromium): WebM VP9 is the default, and the dialog says why ("WebM is the default here: this device can't add AAC audio to an MP4"; or "This device can't make MP4, so the file is WebM" when no MP4 is possible). MP4 is still offered, with its Opus note. A remembered preset that the device can no longer encode falls back to the first available one. Frame rate 29.97 stays "same as project" (no rounding to 30). Very small projects: presets never upscale, and the vertical preset is as wide as the project (e.g. 640×1138).
+No AAC encoder (sandbox Chromium): MP4 (H.264 + Opus) is still the default, flagged with the Opus note (ADR 0004; the default follows the leader's decision recorded in PR #108). WebM VP9 is the default only where H.264 cannot be encoded, and then the dialog says so: "This device can't make MP4, so the file is WebM." MP4 is still offered, with its Opus note. A remembered preset that the device can no longer encode falls back to the first available one. Frame rate 29.97 stays "same as project" (no rounding to 30). Very small projects: presets never upscale, and the vertical preset is as wide as the project (e.g. 640×1138).
 
 ## Test plan
 - Unit (`tests/unit/export-dialog.test.ts`): preset sizes and rates, advanced steps, estimate, settings, format offering with fake probes (Chrome, no-AAC sandbox, no encoder), plan at a lower frame rate, remembered choice, error keys, save (download, picker, dismissed, failed), share.

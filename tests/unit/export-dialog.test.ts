@@ -88,9 +88,11 @@ test("formats are offered only when the device's encoder accepts them (ADR 0004 
   assert.deepEqual(chrome.options.map((o) => o.id), ["mp4-h264", "webm-vp9", "webm-av1"]);
   assert.equal(chrome.auto, "mp4-h264");
   assert.equal(chrome.options[0]!.audioCodec, "aac");
-  // The sandbox case: no AAC. WebM/VP9 is the default; MP4 stays offered but flagged.
+  // The sandbox case: no AAC. MP4 (H.264 + Opus) is still the default, flagged; WebM only when H.264 cannot encode.
   const noAac = await probeExportFormats({ width: 1920, height: 1080, fps: 30 }, probeOf(["avc1", "vp09"], ["opus"]));
-  assert.equal(noAac.auto, "webm-vp9");
+  assert.equal(noAac.auto, "mp4-h264");
+  const noH264 = await probeExportFormats({ width: 1920, height: 1080, fps: 30 }, probeOf(["vp09"], ["opus"]));
+  assert.equal(noH264.auto, "webm-vp9");
   assert.equal(noAac.options.find((o) => o.id === "mp4-h264")!.warnings.length, 1);
   assert.ok(!noAac.options.some((o) => o.id === "webm-av1"));
   const none = await probeExportFormats({ width: 1920, height: 1080, fps: 30 }, probeOf([], []));
@@ -326,15 +328,14 @@ test("export format copy: MP4 never says 'plays everywhere' next to a limited ma
   assert.equal(en["export.format.webm-vp9"], "WebM (VP9), for the web");
   assert.ok(!/everywhere/i.test(en["export.format.mp4-h264"]));
   assert.ok(!("export.format.limited" in en), "the 'limited support' suffix is gone: the warning note says it instead");
-  assert.match(en["export.format.whyWebm"]!, /WebM is the default here/);
   assert.match(en["export.format.noMp4"]!, /can't make MP4, so the file is WebM/);
+  assert.ok(!("export.format.whyWebm" in en));
 });
 
-test("formatNote: a WebM default is explained; an MP4 or a chosen WebM is not", () => {
+test("formatNote: only a WebM default that is forced by a device with no MP4 gets a note", () => {
   const mp4: ExportFormatOption = { id: "mp4-h264", container: "mp4", videoCodec: "h264", audioCodec: "opus", warnings: ["x"] };
   const webm: ExportFormatOption = { id: "webm-vp9", container: "webm", videoCodec: "vp9", audioCodec: "opus", warnings: [] };
   assert.equal(formatNote(mp4, [mp4, webm]), null);
-  assert.equal(formatNote(webm, [mp4, webm]), "export.format.whyWebm"); // MP4 exists, but without AAC
   assert.equal(formatNote(webm, [webm]), "export.format.noMp4"); // this device cannot make MP4 at all
   assert.equal(formatNote(webm, []), null); // nothing encodable: no note, the dialog shows its own message
 });
