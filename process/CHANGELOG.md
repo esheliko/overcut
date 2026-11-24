@@ -2,6 +2,27 @@
 
 Every change to a rule, instruction, hook, CI or deploy mechanism gets an entry here (newest first) with an expected effect and a review-by date, so a change is judged by what happened, not by feel. Format and workflow: `.claude/skills/process/SKILL.md`. Checked by `tests/unit/process-changelog.test.ts`.
 
+## 2026-11-24 · #84 · main frozen to M1 work
+What: new standing rule `m1-freeze` (main takes only M1 work until the owner lifts the freeze; M2 PRs wait on their branches); step 5 of `branch-pr` says so.
+Why: owner said no M2 work merges into main until M1 is finished.
+Expected effect: no M2 PR merges until the owner lifts the freeze; the M2 landing branch stays the owner's decision (#89).
+Review by: 2026-12-08
+Status: pending
+
+## 2026-11-24 · #91 · Cut Actions minutes
+What: `ci.yml` runs `perf` and `fuzz` only on pushes to `main` (not on every PR); `android-emulator.yml` runs weekly (Monday) instead of nightly. `deploy-web` already runs only on pushes to `main` and is unchanged; `verify` and the deploy on main are unchanged.
+Why: a minute quota stopped every runner on 2026-11-24 and nothing could merge or deploy.
+Expected effect: fewer billed minutes per PR (no perf or fuzz run on PRs); `verify` and `deploy-web` behave as before.
+Review by: 2026-12-08
+Status: pending
+
+## 2026-11-24 · #52 · desktop-native job is not silenced
+What: `desktop-check.yml` `desktop-native` drops `continue-on-error`. It stays a separate job outside `verify`, so a red run does not block merges, but it is no longer silently green.
+Why: `continue-on-error` hid failures of the libav crate build; the lead ruled it out for CI jobs.
+Expected effect: a broken native-media build shows as a red `desktop-native` job on PRs that touch those paths; `verify` unchanged. Release bundling (part 2) is still open on the issue.
+Review by: 2026-12-08
+Status: pending
+
 ## 2026-11-24 · #93 · Remove the deploy board
 What: deleted the `deploy-board` workflow, its two scripts and unit test, the "deploy board" section of `DEPLOYING.md`, and the mentions in `CLAUDE.md`, `ci.yml` and `process-changelog.mjs`. The `deploy-web` step names are no longer load-bearing.
 Why: owner asked to remove the board and every trace of it.
