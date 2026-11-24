@@ -2,7 +2,7 @@
  *  The canvas owns pointers, panning and drawing; the owner of the engine applies `Effects.ops` (via `Engine.editing`) and the selection.
  *  Touch rules: a tap selects; a drag on an unselected clip pans; a drag on an already selected clip moves it; handles of a selected clip are 44 px targets. */
 import type { Op } from "@app/engine-client";
-import { clampN, describeClip, expandLinks, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
+import { clampN, describeClip, expandLinks, groupReps, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
 import { GUTTER, LANE, RULER, xToTime, type View } from "./view";
@@ -135,7 +135,8 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
       const row = (y: number) => Math.floor((clampN(y, RULER, 1e9) - RULER + view.scrollY) / LANE);
       const hit = inRect(scene, xToTime(view, Math.max(xa, GUTTER)), xToTime(view, xb), row(ya), row(yb));
       const ids = hit.map((i) => scene.id[i]!);
-      return { g: IDLE, fx: { select: { mode: e.shift || e.additive ? "add" : "set", ids }, say: { key: "timeline.say.selectedCount", values: { count: ids.length } } } };
+      const clips = groupReps(scene, hit).length; // a linked sound counts with its picture
+      return { g: IDLE, fx: { select: { mode: e.shift || e.additive ? "add" : "set", ids }, say: { key: "timeline.say.selectedCount", values: { count: clips } } } };
     }
     default:
       return { g: IDLE, fx: NONE };

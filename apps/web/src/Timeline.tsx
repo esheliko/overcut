@@ -242,6 +242,9 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const oneRep = groupReps(scene, oneIdx); // a linked picture and sound are one clip to the timing dialog (its edit is mirrored onto the partner)
   const oneClip = oneRep.length === 1 && !scene.trackLocked[scene.clipTrack[oneRep[0]!]!] ? oneRep : null;
   const anyLinked = oneIdx.some((i) => scene.link[i]);
+  // A linked sound is selected with its picture: one click is one clip, so the count is clips, and "+ linked audio" says what came along.
+  const clipCount = groupReps(scene, oneIdx).length;
+  const withLinked = oneIdx.length > clipCount;
   useEffect(() => { if (dialog === "timing" && !oneClip) setDialog(null); }, [dialog, oneClip]);
   return (
     <section className="timeline" aria-label={t("timeline.label")} data-testid="panel-timeline">
@@ -252,7 +255,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
           <span className="sep" aria-hidden="true" />
           <button className="icon-btn" aria-label={t("timeline.split")} title={tip(t("timeline.split"), KEYS.split)} disabled={off} onClick={() => run({ c: "split" })}><Icon name="split" /></button>
           <button className="icon-btn" aria-label={t("timeline.delete")} title={tip(t("timeline.delete"), KEYS.del)} disabled={off || none} onClick={() => run({ c: "delete" })}><Icon name="trash" /></button>
-          {!none && <span className="tl-sel" data-testid="tl-selected">{t("timeline.selected", { count: selected.size })}</span>}
+          {!none && <span className="tl-sel" data-testid="tl-selected">{withLinked ? t("timeline.selected.linked", { count: clipCount }) : t("timeline.selected", { count: clipCount })}</span>}
         </div>
         <label className="zoom">
           <button type="button" className="icon-btn" aria-label={t("timeline.zoomOut")} onClick={() => onZoom(clampPps(zoom / 1.25))}><Icon name="minus" size={18} /></button>
