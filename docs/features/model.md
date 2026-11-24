@@ -11,6 +11,8 @@ The M1 shape (one video + one audio track) is `Project::new`; tracks are a gener
 - `Clip { id, media, start (timeline), source_in (in media), duration (timeline), speed }`; source length consumed = `duration * speed`.
 - `MediaRef { id, kind, name, uri, hash?, duration? }`: `uri` is opaque, resolved by the host; clips never embed paths.
 
+- **Animatable values** (ADR 0015, `crates/model/src/anim.rs`, not yet in any document struct): `Animated { value: f64, keys: [Keyframe { t (clip-relative ticks), v, easing }] }`; easing is `hold`, `linear` or `bezier {x1,y1,x2,y2}`. Clip properties (M2-003) use it with `#[serde(default)]` so older files open unchanged.
+
 ## Invariants (`Project::validate`)
 Version supported; ids unique; every clip's media exists; `duration > 0`, `start >= 0`, `source_in >= 0`, `speed > 0`; clips in a track sorted by `start`, non-overlapping (touching is fine); video track takes video/image media, audio track takes audio/video media; sequence rate/size positive.
 
