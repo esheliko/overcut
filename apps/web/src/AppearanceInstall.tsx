@@ -1,5 +1,5 @@
 /** Menu pieces for the accent picker (UX-05) and the install affordance (PM-12). Kept out of App.tsx; both fail soft. */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { announce } from "./a11y/announcer";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
@@ -77,9 +77,14 @@ function IosHowTo({ onClose }: { onClose(): void }) {
 export function ScrubPrepItem() {
   const { t } = useI18n();
   const [on, setOn] = useState(loadScrubPrep);
+  const hintId = useId();
   return (
-    <button className="menu-row" role="menuitemcheckbox" aria-checked={on} data-testid="menu-scrub-prep" onClick={() => { const v = !on; setOn(v); saveScrubPrep(v); announce(t(v ? "scrub.on" : "scrub.off")); }}>
-      <Icon name="film" size={20} /><span>{t(on ? "scrub.menu.on" : "scrub.menu.off")}</span>
+    <button className="menu-row menu-switch" role="menuitemcheckbox" aria-checked={on} aria-describedby={hintId} data-testid="menu-scrub-prep" onClick={() => { const v = !on; setOn(v); saveScrubPrep(v); announce(t(v ? "scrub.on" : "scrub.off")); }}>
+      <Icon name="film" size={20} />
+      <span className="menu-text">
+        <span className="menu-line"><span>{t("scrub.menu.label")}</span><span className="menu-state">{t(on ? "scrub.menu.on" : "scrub.menu.off")}</span></span>
+        <span className="menu-hint" id={hintId}>{t("scrub.menu.hint")}</span>
+      </span>
     </button>
   );
 }
