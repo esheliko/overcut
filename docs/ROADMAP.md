@@ -18,7 +18,7 @@ M0 Foundations ──► M1 First cut ──► M2 Real editing ──► M3 Sou
 
 ## M1 First cut (~8-10 weeks) **Alpha**
 **Goal**: cut a clip and export it, on web and desktop, fast.
-- **Status (2026-11-23): not complete.** The import, trim, split, undo, play, export slice works on web (and a desktop path exists); open: device proofs, ADRs 0003/0004 acceptance, activation test, perf CI job, and several P0 rows (canvas presets, `.overcut` open/save UI, duplicate/copy/paste, history panel, XT-06 network log). Table and gap list: [M1-STATUS.md](M1-STATUS.md).
+- **Status (2026-11-24): code complete; the milestone is not closed.** The import, trim, split, undo, play, export slice and the P0 rows are built and merged on web and desktop. Open: device proofs (60 fps preview, export speed and A/V drift on the reference devices, S8 on the low-end proxy), the activation test (people with a stopwatch), owner acceptance of ADRs 0003/0004, and the perf CI job (issue #51). Table and gap list: [M1-STATUS.md](M1-STATUS.md).
 - Spikes S1-S4, S7 done and their ADRs accepted (see [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)). "Done" means code merged; hardware bars count only once proven on the reference devices (plan section 4a).
 - PM-01/02/03/06/07/12, TL-02/06, PV-01, EX-01/02/04, AU-01 (waveform), UX-01/05, XT-06 (no telemetry, visible network log, no third-party scripts; opt-in crash reports moved to M2 as XT-06b: they need a server endpoint, see FEATURES.md).
 - One video track + one audio track; import, trim, split, delete, undo/redo, play/scrub, export 1080p30 H.264 (WebCodecs on web, native on desktop).
@@ -28,6 +28,7 @@ M0 Foundations ──► M1 First cut ──► M2 Real editing ──► M3 Sou
 **Goal**: the timeline of a serious editor.
 - TL-01/03/04/05/07/08/09/10/12/13/14/19/20/22, PM-04/05/08/09, PV-02/06, EX-03/05, UX-02/03/04, AU-03.
 - Multi-track, snapping, ripple/roll/slip/slide, keyframes with easing, transform and PiP, speed (constant/reverse/freeze), proxies, VFR handling, export queue, shortcut sets, command palette.
+- **M2 backlog**: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) section 4b (items M2-001 to M2-053, lanes, spikes S9-S12, how each exit criterion is measured, "Not in M2" list).
 - **Exit**: 1000-clip, 20-track timeline pans and zooms at 60 fps; undo/redo property tests pass 10k random sequences; a 30 min 4K project edits smoothly with proxies on the reference laptop; A/V sync drift < 1 frame over 2 h.
 
 ## M3 Sound and words (~8 weeks) **Public beta**
