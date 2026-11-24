@@ -41,6 +41,15 @@ export type Gesture =
 export const IDLE: Gesture = { k: "idle" };
 type R = { g: Gesture; fx: Effects };
 
+/** Paints a gesture onto the selection flags the painter reads (1 = selected, 2 = being moved or trimmed: its body is hidden and a ghost drawn).
+ *  Every 2 is first settled back to 1, so a gesture that ends WITHOUT an edit (a move clamped back to 0:00, a trim that did not change)
+ *  leaves its clips visible. Mutates `f` in place (no allocation per pointer move). */
+export function markPreview(f: Uint8Array, g: Gesture): void {
+  for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
+  if (g.k === "move") for (const i of g.sel) f[i] = 2;
+  else if (g.k === "trim") f[g.clip] = 2;
+}
+
 export function pointerDown(c: Ctx, e: PEvent): R {
   const { scene, view } = c;
   const touch = e.kind === "touch";
