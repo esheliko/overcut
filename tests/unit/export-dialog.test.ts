@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ExportFormatOption } from "../../packages/engine-client/src/export/options";
 import { probeExportFormats } from "../../packages/engine-client/src/export/options";
 import { planExport } from "../../packages/engine-client/src/export/plan";
 import { ExportError } from "../../packages/engine-client/src/export/types";
@@ -7,10 +11,11 @@ import type { CodecProbe } from "../../packages/engine-client/src/export/presets
 import type { Project } from "../../packages/engine-client/src/model.generated";
 import { canShareFile, saveFile, shareFile } from "../../apps/web/src/export/deliver";
 import {
-  PLATFORMS, MIN_BPP, withoutCap, buildSettings, errorKey, needsBars, presetWarnings, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, pickFormat, presetChoice, presetHint, saveName, resolutionSteps, saveRemembered, scaledSize, usableCustom, videoBitrate,
+  PLATFORMS, MIN_BPP, formatNote, withoutCap, buildSettings, errorKey, needsBars, presetWarnings, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, pickFormat, presetChoice, presetHint, saveName, resolutionSteps, saveRemembered, scaledSize, usableCustom, videoBitrate,
   type Choice, type Source,
 } from "../../apps/web/src/export/model";
 
+const here = dirname(fileURLToPath(import.meta.url));
 const HD: Source = { width: 1920, height: 1080, fps: 30, seconds: 60 };
 const SMALL: Source = { width: 1280, height: 720, fps: 29.97, seconds: 10 };
 const PHONE: Source = { width: 1080, height: 1920, fps: 60, seconds: 20 };
@@ -83,9 +88,11 @@ test("formats are offered only when the device's encoder accepts them (ADR 0004 
   assert.deepEqual(chrome.options.map((o) => o.id), ["mp4-h264", "webm-vp9", "webm-av1"]);
   assert.equal(chrome.auto, "mp4-h264");
   assert.equal(chrome.options[0]!.audioCodec, "aac");
-  // The sandbox case: no AAC. WebM/VP9 is the default; MP4 stays offered but flagged.
+  // The sandbox case: no AAC. MP4 (H.264 + Opus) is still the default, flagged; WebM only when H.264 cannot encode.
   const noAac = await probeExportFormats({ width: 1920, height: 1080, fps: 30 }, probeOf(["avc1", "vp09"], ["opus"]));
-  assert.equal(noAac.auto, "webm-vp9");
+  assert.equal(noAac.auto, "mp4-h264");
+  const noH264 = await probeExportFormats({ width: 1920, height: 1080, fps: 30 }, probeOf(["vp09"], ["opus"]));
+  assert.equal(noH264.auto, "webm-vp9");
   assert.equal(noAac.options.find((o) => o.id === "mp4-h264")!.warnings.length, 1);
   assert.ok(!noAac.options.some((o) => o.id === "webm-av1"));
   const none = await probeExportFormats({ width: 1920, height: 1080, fps: 30 }, probeOf([], []));
@@ -312,4 +319,23 @@ test("a remembered capped preset is by name only; an old stored 'vertical' keeps
   assert.deepEqual(loadRemembered(store), { preset: "discord" });
   mem.set("overcut.export", JSON.stringify({ preset: "vertical" }));
   assert.deepEqual(loadRemembered(store), { preset: "vertical" });
+});
+
+// E1: MP4 is the format we name first; WebM is said plainly, and the copy never contradicts itself.
+test("export format copy: MP4 never says 'plays everywhere' next to a limited mark; WebM says what it is for", async () => {
+  const en = JSON.parse(readFileSync(resolve(here, "../../apps/web/src/i18n/en.json"), "utf8")) as Record<string, string>;
+  assert.equal(en["export.format.mp4-h264"], "MP4 (H.264), works in most apps and devices");
+  assert.equal(en["export.format.webm-vp9"], "WebM (VP9), for the web");
+  assert.ok(!/everywhere/i.test(en["export.format.mp4-h264"]));
+  assert.ok(!("export.format.limited" in en), "the 'limited support' suffix is gone: the warning note says it instead");
+  assert.match(en["export.format.noMp4"]!, /can't make MP4, so the file is WebM/);
+  assert.ok(!("export.format.whyWebm" in en));
+});
+
+test("formatNote: only a WebM default that is forced by a device with no MP4 gets a note", () => {
+  const mp4: ExportFormatOption = { id: "mp4-h264", container: "mp4", videoCodec: "h264", audioCodec: "opus", warnings: ["x"] };
+  const webm: ExportFormatOption = { id: "webm-vp9", container: "webm", videoCodec: "vp9", audioCodec: "opus", warnings: [] };
+  assert.equal(formatNote(mp4, [mp4, webm]), null);
+  assert.equal(formatNote(webm, [webm]), "export.format.noMp4"); // this device cannot make MP4 at all
+  assert.equal(formatNote(webm, []), null); // nothing encodable: no note, the dialog shows its own message
 });
