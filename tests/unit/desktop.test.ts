@@ -146,3 +146,18 @@ test("the one optional download host is listed as desktop-only, never as a web h
   // The web smoke test reads only `hosts`: a desktop-only host does not widen what the web build may contact.
   assert.doesNotMatch(readFileSync("tests/smoke/network.spec.ts", "utf8"), /desktopOnlyHosts/);
 });
+
+test("files the app was launched with come back once as path files; a later launch is announced by an event", async () => {
+  const sh = fakeShell({ "/d/film.overcut": new Uint8Array(4), "/d/a.mp4": new Uint8Array(9) });
+  const queue = ["/d/film.overcut", "/d/a.mp4", "/d/gone.mp4"];
+  const invoke = (async (cmd: string, args?: Record<string, unknown>) => (cmd === "desktop_launch_files" ? queue.splice(0) : (sh.invoke as (c: string, a?: Record<string, unknown>) => Promise<unknown>)(cmd, args))) as never;
+  const api = createDesktopApi(invoke, sh.listen);
+  assert.deepEqual((await api.launchFiles()).map((f) => f.name), ["film.overcut", "a.mp4"]);
+  assert.deepEqual(await api.launchFiles(), []);
+  let fired = 0;
+  const off = await api.onOpen(() => { fired++; });
+  sh.handlers.get("overcut://open")!({ payload: null });
+  off();
+  assert.equal(sh.handlers.has("overcut://open"), false);
+  assert.equal(fired, 1);
+});

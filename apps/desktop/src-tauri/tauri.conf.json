@@ -10,12 +10,81 @@
     "frontendDist": "../../web/dist"
   },
   "app": {
-    "windows": [{ "title": "OverCut", "width": 1280, "height": 800, "minWidth": 360, "minHeight": 480 }],
-    "security": { "csp": null }
+    "windows": [
+      {
+        "title": "OverCut",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 360,
+        "minHeight": 480
+      }
+    ],
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "overcut"
+        ],
+        "name": "OverCut project",
+        "description": "OverCut project",
+        "mimeType": "application/x-overcut",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "webm",
+          "avi",
+          "mpg",
+          "mpeg",
+          "ts",
+          "mts",
+          "m2ts",
+          "3gp",
+          "wmv",
+          "flv",
+          "ogv",
+          "mp3",
+          "m4a",
+          "aac",
+          "wav",
+          "flac",
+          "ogg",
+          "oga",
+          "opus",
+          "aif",
+          "aiff",
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "bmp",
+          "tif",
+          "tiff",
+          "heic",
+          "avif"
+        ],
+        "name": "Media file",
+        "description": "Video, audio or image",
+        "role": "Viewer"
+      }
+    ]
   }
 }

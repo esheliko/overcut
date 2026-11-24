@@ -366,3 +366,14 @@ h2, p { margin: 0; }
 .tag-chips li.export-note { background: none; padding: 0; }
 .bin-fixed .bin-text { overflow: hidden; }
 .bin-fixed .bin-text > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Error screen (errorScreen/ErrorScreen.tsx): calm, one column, buttons >= 44px. */
+.crash { min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; max-width: 520px; margin-inline: auto; padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+.crash h1 { margin: 0 0 12px; font-size: 24px; }
+.crash p { margin: 0 0 12px; overflow-wrap: anywhere; }
+.crash-work { padding: 12px; border-radius: 10px; background: var(--surface-2); border-inline-start: 4px solid var(--ok); }
+.crash-work.maybe-lost, .crash-work.lost { border-inline-start-color: var(--danger); }
+.crash-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 4px; }
+.crash-actions button { min-height: 44px; padding: 0 18px; border-radius: 10px; font-weight: 700; }
+.crash-muted { color: var(--muted); font-size: 13px; }
+.crash-report { width: 100%; min-height: 120px; box-sizing: border-box; font: 12px/1.4 ui-monospace, monospace; }
