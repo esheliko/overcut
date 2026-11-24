@@ -369,6 +369,25 @@ h2, p { margin: 0; }
 .tag-chips li.export-note { background: none; padding: 0; }
 .bin-fixed .bin-text { overflow: hidden; }
 .bin-fixed .bin-text > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Phone sheet (below the 720 px tablet breakpoint): the media starts near the top of the sheet. The header, search, filters and count are compacted; every control keeps a 44 px target. Tablet and desktop keep the rules above. */
+@container editor (max-width: 719px) {
+  .library .panel-head { padding: 0 16px; min-height: 0; }
+  .library .search { margin: 4px 16px 6px; height: 44px; }
+  .library .panel-body { padding: 0 16px calc(12px + env(safe-area-inset-bottom)); }
+  .bin { gap: 8px; }
+  .bin-filters { margin-block: 0; gap: 6px; }
+  .bin-kinds { gap: 6px; }
+  .bin-chip { padding-inline: 8px; }
+  .bin-selects { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 6px; }
+  .bin-select { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; font-size: 13px; }
+  .bin-count { margin: 0; font-size: 12px; }
+}
+/* Phone portrait with the Media sheet open: the notices (refusals, saved-work notes) sit just above the sheet, so they never cover the media they refer to. */
+@media (orientation: portrait) and (max-width: 719px) {
+  body:has(.library[data-open="true"]) { --sheet-h: min(52dvh, 440px); --above-sheet: calc(100dvh - 68px - var(--sheet-h) - env(safe-area-inset-bottom) - 16px); }
+  body:has(.library[data-open="true"]) :is(.refusal-note, .persist-notes) { bottom: calc(env(safe-area-inset-bottom) + 68px + var(--sheet-h) + 8px); max-block-size: var(--above-sheet); }
+  body:has(.library[data-open="true"]) .refusal-note ul { max-block-size: min(40vh, calc(var(--above-sheet) - 24px)); }
+}
 
 /* ---- projects list (PM-06) ---- */
 .editor.home-mode { grid-template-rows: minmax(0, 1fr); }

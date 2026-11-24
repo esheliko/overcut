@@ -100,6 +100,7 @@
   "timeline.clipList": "Clips on the timeline",
   "timeline.clipSelected": "(selected)",
   "timeline.selected": "{count} selected",
+  "timeline.selected.linked": "{count, plural, one {# clip + linked audio} other {# clips + linked audio}}",
   "timeline.notReady": "Editing starts once the engine is ready",
   "timeline.notPossible": "That edit was not possible: {message}",
   "timeline.locked": "That track is locked",
