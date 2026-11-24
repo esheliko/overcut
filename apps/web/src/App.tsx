@@ -515,6 +515,8 @@ function Editor({ store }: { store: ProjectStore }) {
     : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
     : t("engine.failed", { message: engine.message });
   // The menu says plain "Ready"; the engine's name, version and backend are on the About OverCut page.
+  // "Saved on this device" follows autosave (persistence.status); it does not claim a save before the project is open.
+  const saveState = persistence.status === "error" ? "error" : !persistence.ready ? "opening" : persistence.status;
   const engineMenuText = engine.status === "ready" ? t("engine.menu.ready") : engineText;
 
   return (
@@ -533,6 +535,10 @@ function Editor({ store }: { store: ProjectStore }) {
               </span>
             // Developer detail ("Engine overcut v0.1.0 (wasm)") is not for the top bar: it lives in the app menu and on the Diagnostics page. This hidden probe is what tests wait on.
             : <span hidden data-testid="engine" data-state={engine.status} data-backend={engine.status === "ready" ? engine.backend : undefined} />}
+          <span className="chip save-state" role="status" data-testid="save-state" data-state={saveState}>
+            <span className="dot" aria-hidden="true" />
+            <span className="chip-text">{t(`save.state.${saveState}`)}</span>
+          </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
           <AppMenu compact={compact} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
         </div>
