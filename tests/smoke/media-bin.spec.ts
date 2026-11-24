@@ -122,3 +122,20 @@ test("an imported clip's waveform is real, not a placeholder (M1-013)", async ({
   await expect(canvas).toHaveAttribute("data-wave-tiles", /^[1-9]\d*$/, { timeout: 30_000 }); // waveform tiles rendered from the engine's peaks
   await expect(canvas).toHaveAttribute("data-thumbs", /^[1-9]\d*$/, { timeout: 30_000 }); // filmstrip frames decoded
 });
+
+test("phone: a refusal in a batch that also imported stays visible after the Media sheet closes, until dismissed", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) >= 720, "the bin stays on screen beside the timeline on wider screens");
+  await ready(page);
+  await page.getByTestId("media-input").setInputFiles([
+    { name: "clip.mp4", mimeType: "video/mp4", buffer: readFileSync(file("h264_aac.mp4")) },
+    { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") },
+  ]);
+  await expect(summary(page)).toContainText("2 clips", { timeout: 30_000 });
+  const note = page.getByTestId("refusal-note");
+  await expect(note).toBeVisible();
+  await expect(note).toContainText("notes.txt is not a video, audio or image file");
+  const close = note.getByRole("button", { name: "Dismiss" });
+  expect((await close.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await close.click();
+  await expect(note).toHaveCount(0);
+});

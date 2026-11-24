@@ -1587,3 +1587,102 @@ fn a_link_whose_partner_is_gone_is_harmless() {
     )
     .unwrap();
 }
+
+// ---- Save then open: an edited project comes back identical (M1 round trip) ---------------------------------------------------------
+
+fn sequence_end(p: &Project) -> i64 {
+    p.sequences[0]
+        .tracks
+        .iter()
+        .flat_map(|t| &t.clips)
+        .map(|c| c.start.ticks() + c.duration.ticks())
+        .max()
+        .unwrap_or(0)
+}
+
+#[test]
+fn a_saved_and_reopened_project_has_the_same_timeline_and_length() {
+    let (mut p, mut ids) = base();
+    let (video, still) = (p.media[0].id, p.media[2].id);
+    let (v1, a1) = (p.sequences[0].tracks[0].id, p.sequences[0].tracks[2].id);
+    let mut h = History::new();
+    // A 30-unit clip, cut twice, its middle piece deleted (a gap), a still after it, and a linked picture + sound pair further on.
+    let long = clip(&mut ids, video, 0, 0, 30);
+    let long_id = long.id;
+    h.apply(
+        &mut p,
+        Op::InsertClip {
+            track: v1,
+            clip: long,
+        },
+        None,
+    )
+    .unwrap();
+    let (mid, last) = (ClipId::new(&mut ids), ClipId::new(&mut ids));
+    h.apply(
+        &mut p,
+        Op::Split {
+            clip: long_id,
+            at: t(20),
+            new_id: last,
+            new_link: None,
+        },
+        None,
+    )
+    .unwrap();
+    h.apply(
+        &mut p,
+        Op::Split {
+            clip: long_id,
+            at: t(10),
+            new_id: mid,
+            new_link: None,
+        },
+        None,
+    )
+    .unwrap();
+    h.apply(&mut p, Op::Delete { clip: mid }, None).unwrap();
+    let still_clip = clip(&mut ids, still, 40, 0, 5);
+    h.apply(
+        &mut p,
+        Op::InsertClip {
+            track: v1,
+            clip: still_clip,
+        },
+        None,
+    )
+    .unwrap();
+    let link = LinkId::new(&mut ids);
+    for track in [v1, a1] {
+        let mut c = clip(&mut ids, video, 50, 0, 8);
+        c.link = Some(link);
+        h.apply(&mut p, Op::InsertClip { track, clip: c }, None)
+            .unwrap();
+    }
+    let json = serde_json::to_string(&p).unwrap();
+    let bytes = app_model::file::save_bytes(&json, &[]).unwrap();
+    let reopened = app_model::file::ProjectFile::read(&bytes).unwrap();
+    let q = reopened.project();
+    assert_eq!(*q, p, "every clip, link, gap and still comes back as saved");
+    assert_eq!(sequence_end(q), sequence_end(&p));
+    assert_eq!(
+        sequence_end(q),
+        t(58).ticks(),
+        "the export length is the end of the last clip"
+    );
+    for at in [0, 5, 10, 15, 25, 42, 51, 57, 58] {
+        assert_eq!(
+            evaluate(&q.sequences[0], t(at), 0),
+            evaluate(&p.sequences[0], t(at), 0),
+            "frame description at {at} differs"
+        );
+    }
+    // Saving the reopened file again is stable.
+    let again = app_model::file::save_bytes(&serde_json::to_string(q).unwrap(), &bytes).unwrap();
+    assert_eq!(
+        app_model::file::ProjectFile::read(&again)
+            .unwrap()
+            .project(),
+        &p
+    );
+}

@@ -35,6 +35,8 @@ export interface BinText {
   /** What Undo / Redo call the import step of this file ("import of clip.mp4"). */
   importLabel: (name: string) => string;
   announce: (message: string) => void;
+  /** A file that was refused, shown where the person can see it (the Media sheet may have closed on a phone). */
+  refused?: (message: string) => void;
 }
 
 interface Live { file: File; probed: Probed }
@@ -143,6 +145,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     const t = textRef.current;
     // Show every card at once, probe them one after another so the first import is deterministic.
     const rows = sources.map((s) => ({ s, kind: classify(s.file.name, s.file.type), id: newId() }));
+    for (const r of rows) if (!r.kind) t.refused?.(t.notMedia(r.s.file.name));
     setItems((all) => [
       ...rows.map<BinItem>((r) => r.kind
         ? { id: r.id, name: r.s.file.name, kind: r.kind, size: r.s.file.size, status: "probing" }
@@ -183,6 +186,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           patch(id, { status: "unsupported", message });
           refused++;
           t.announce(message);
+          t.refused?.(message);
         }
       });
     }

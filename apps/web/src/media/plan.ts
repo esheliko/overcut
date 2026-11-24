@@ -153,3 +153,9 @@ export function codecLabel(codec: string | undefined): string {
   if (c.startsWith("mp4a")) return "AAC";
   return codec.toUpperCase();
 }
+
+/**
+ * Why a card is offline. `moved`: a path or handle was kept and the file is gone or needs permission. `reopen`: the file came from a plain
+ * file input, which no browser lets a page keep across a reload, so it has to be chosen again (one click, nothing was lost).
+ */
+export const offlineReason = (uri: string | undefined): "moved" | "reopen" => (uri?.startsWith("file:") ? "reopen" : "moved");

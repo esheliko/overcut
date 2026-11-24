@@ -189,6 +189,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
+  const [refusals, setRefusals] = useState<string[]>([]); // phone: files refused in an import, kept on screen until dismissed (the Media sheet closes after a successful one)
   const cycleTheme = () => {
     const next = nextPref(themePref);
     savePref(next);
@@ -235,6 +236,7 @@ function Editor({ store }: { store: ProjectStore }) {
     imported: (count) => t("media.imported", { count }),
     importLabel: (name) => t("media.importLabel", { name }),
     announce,
+    refused: (m) => setRefusals((all) => (all.includes(m) ? all : [...all, m])),
   });
   const importFiles = media.importSources;
   // Phone: the Media sheet covers the Split / Undo toolbar, so it closes once an import has succeeded (the bin is one tap away on the tool bar).
@@ -577,6 +579,12 @@ function Editor({ store }: { store: ProjectStore }) {
       {dialog && dialog !== "canvas" && dialog !== "privacy" && dialog !== "versions" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       </>}
+      {refusals.length > 0 && !roomy && (
+        <div className="refusal-note" data-testid="refusal-note">
+          <ul>{refusals.map((m) => <li key={m}>{m}</li>)}</ul>
+          <button className="icon-btn" aria-label={t("media.refusalDismiss")} onClick={() => setRefusals([])}>×</button>
+        </div>
+      )}
       <div className="toast" role="status">{toast}</div>
     </div>
   );
