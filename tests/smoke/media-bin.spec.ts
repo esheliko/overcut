@@ -27,6 +27,10 @@ test("empty project shows one big import target; the first import lands on the t
   await expect(card.locator("img")).toHaveCount(1); // poster from the first frame
   // picture + sound = two clips on two tracks, and the sample clips are gone
   await expect(summary(page)).toContainText("2 tracks, 2 clips");
+  // the canvas has a text alternative: one list item per clip, named with its track and times
+  const list = page.getByRole("list", { name: "Clips on the timeline" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list).toContainText("h264_aac.mp4");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });

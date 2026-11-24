@@ -97,6 +97,8 @@
   "install.ios.close": "Got it",
   "timeline.summary": "Timeline of {name}: {tracks, plural, one {# track} other {# tracks}}, {clips, plural, one {# clip} other {# clips}}, {seconds, plural, one {# second} other {# seconds}} of media. {sample, select, yes {Sample clips shown until you add media.} other {}}",
   "timeline.keys": "Arrow keys move the playhead; once a clip is selected (click, tap, or Enter to pick the clip at the playhead) they move the selection between clips and Alt with arrows steps the playhead. Shift with arrows steps a second. S splits at the playhead, Delete removes the selection, comma and period nudge it a frame, left and right brackets trim its start or end to the playhead, Alt with comma or period trims its end by a frame (add Shift for its start), Control or Command with Z undoes and with Shift redoes, Escape clears the selection, plus and minus zoom, 0 fits the project, Page Up and Page Down scroll, Up and Down arrows scroll tracks.",
+  "timeline.clipList": "Clips on the timeline",
+  "timeline.clipSelected": "(selected)",
   "timeline.selected": "{count} selected",
   "timeline.notReady": "Editing starts once the engine is ready",
   "timeline.notPossible": "That edit was not possible: {message}",
