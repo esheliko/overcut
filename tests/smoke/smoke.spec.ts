@@ -92,7 +92,7 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
 
   await page.goto("/");
   await page.getByRole("button", { name: "Menu" }).click();
-  await page.getByRole("menuitem", { name: "About / Diagnostics" }).click();
+  await page.getByRole("menuitem", { name: "About OverCut" }).click();
   await expect(page.getByTestId("diagnostics")).toBeVisible();
   await expect(page.getByRole("heading", { name: "What this device supports" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Video", exact: true })).toBeVisible({ timeout: 30_000 });
