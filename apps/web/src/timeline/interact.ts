@@ -50,6 +50,11 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     const r = trimRange(scene, hd.clip, hd.edge);
     return { g: { k: "trim", sx: e.x, clip: hd.clip, edge: hd.edge, orig: r.at, value: r.at }, fx: NONE };
   }
+  const eh = touch ? null : handleAt(scene, view, c.selFlags, e.x, e.y, false, true); // mouse: an edge of an unselected clip trims it (and selects it)
+  if (eh && !scene.trackLocked[scene.clipTrack[eh.clip]!]) {
+    const r = trimRange(scene, eh.clip, eh.edge);
+    return { g: { k: "trim", sx: e.x, clip: eh.clip, edge: eh.edge, orig: r.at, value: r.at }, fx: { select: { mode: "set", ids: [scene.id[eh.clip]!] } } };
+  }
   const h = hitTest(scene, view, e.x, e.y, 0);
   if (h.kind === "clip") {
     const id = scene.id[h.clip]!;

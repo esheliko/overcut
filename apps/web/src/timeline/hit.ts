@@ -44,8 +44,9 @@ export const HANDLE_MOUSE = 16;
 
 /** Trim handle under (x, y) among the clips flagged in `selected`, or null. The zone straddles the edge: up to half of it
  *  inside the clip (never more than a third of the clip, so a narrow clip keeps a body to grab) and the rest outside, so it is
- *  always `zone` px wide and stays usable however narrow the clip is. The nearest edge wins where two zones overlap. */
-export function handleAt(scene: Scene, v: View, selected: Uint8Array, x: number, y: number, touch: boolean): { clip: number; edge: "start" | "end" } | null {
+ *  always `zone` px wide and stays usable however narrow the clip is. The nearest edge wins where two zones overlap.
+ *  `any` (mouse only): every clip's edge counts, not just the selected ones, so a first-time user can drag an edge without selecting first. */
+export function handleAt(scene: Scene, v: View, selected: Uint8Array, x: number, y: number, touch: boolean, any = false): { clip: number; edge: "start" | "end" } | null {
   const track = trackAtY(scene, v, y);
   if (track < 0 || x < GUTTER) return null;
   const zone = touch ? HANDLE_TOUCH : HANDLE_MOUSE;
@@ -53,7 +54,7 @@ export function handleAt(scene: Scene, v: View, selected: Uint8Array, x: number,
   const t = xToTime(v, x), reach = zone / v.pps;
   let best: { clip: number; edge: "start" | "end" } | null = null, bestD = Infinity;
   for (let i = firstEndingAfter(scene, lo, hi, t - reach); i < hi && scene.start[i]! - reach <= t; i++) {
-    if (!selected[i]) continue;
+    if (!any && !selected[i]) continue;
     const w = (scene.end[i]! - scene.start[i]!) * v.pps;
     const inside = Math.min(zone / 2, w / 3), outside = zone - inside;
     const x0 = GUTTER + scene.start[i]! * v.pps - v.scrollX, x1 = x0 + w;

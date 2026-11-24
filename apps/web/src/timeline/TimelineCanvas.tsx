@@ -227,9 +227,9 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   };
   const onMove = (e: React.PointerEvent) => {
     if (!ptr.current.has(e.pointerId)) {
-      if (e.pointerType === "mouse" && live.current.selected.size > 0) { // hover: show the resize cursor over a trim handle
+      if (e.pointerType === "mouse") { // hover: show the resize cursor over any clip edge (a trim handle)
         const p = local(e);
-        canvas.current!.style.cursor = handleAt(live.current.scene, view.current, flags.current, p.x, p.y, false) ? "ew-resize" : "";
+        canvas.current!.style.cursor = handleAt(live.current.scene, view.current, flags.current, p.x, p.y, false, true) ? "ew-resize" : "";
       }
       return;
     }

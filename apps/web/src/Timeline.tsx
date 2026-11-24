@@ -8,7 +8,7 @@ import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
-import { clampN, deleteOps, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, trimOp } from "./timeline/edit";
+import { clampN, closeStartGap, deleteOps, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, trimOp } from "./timeline/edit";
 import { sampleProject } from "./timeline/fixture";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
@@ -122,7 +122,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
     const p = live.current.proj;
     if (!p.ready) { onNotice(t("timeline.notReady")); return; }
     const labelKey = LABELS[s.key];
-    p.apply(ops, undefined, labelKey ? t(labelKey, s.values) : undefined).then((out) => { if (out?.changed) after?.(out); return out; }).then((out) => { if (out?.changed) speak(s); }).catch((e: unknown) => {
+    p.apply(closeStartGap(live.current.scene, ops), undefined, labelKey ? t(labelKey, s.values) : undefined).then((out) => { if (out?.changed) after?.(out); return out; }).then((out) => { if (out?.changed) speak(s); }).catch((e: unknown) => {
       const m = t("timeline.notPossible", { message: e instanceof Error ? e.message : String(e) });
       onNotice(m);
       announce(m);
