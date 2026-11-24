@@ -11,7 +11,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 app-media = { path = ".." }
 
-# Not part of the engine workspace: cargo-fuzz needs nightly and is not run in CI.
+# Not part of the engine workspace: cargo-fuzz needs nightly; run for 60 s by the non-blocking `fuzz` CI job.
 [workspace]
 
 [[bin]]

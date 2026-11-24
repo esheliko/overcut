@@ -61,7 +61,7 @@ Expected values were cross-checked against `ffprobe` (packet pts/dts, offsets, s
 7-byte-at-a-time source, **every truncation of every fixture**, 7500 random byte corruptions (xorshift, deterministic), forged 4-billion-sample tables, unknown formats.
 Fragmented MP4 (`frag.mp4`, `frag_legacy.mp4`, ffmpeg `frag_keyframe+empty_moov`, with and without `default_base_moof`): same sizes, keyframes, steady durations and sample bytes as the plain file, every truncation never panics and never loses frames as more data arrives, a 70% cut keeps the complete fragments, 3000 random corruptions, a forged 4-billion-sample `trun`.
 ### Fuzzing
-`crates/media/fuzz` (cargo-fuzz layout, own workspace, not built or run in CI): `cd crates/media && cargo +nightly fuzz run demux` (seed the corpus with the fixtures, see the target's header).
+`crates/media/fuzz` (cargo-fuzz layout, own workspace, run 60 s in CI by the non-blocking `fuzz` job): `cd crates/media && cargo +nightly fuzz run demux` (seed the corpus with the fixtures, see the target's header).
 
 ## Web decoder (M1-016)
 `HostDecoder<H: PacketDecoder>` (`crates/media/src/host.rs`) is the `Decoder` for every host that decodes compressed packets itself. **Rust plans, the host decodes.**
