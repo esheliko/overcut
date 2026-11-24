@@ -61,7 +61,7 @@ test("a file that cannot be imported says why, in plain words, and nothing is si
   ]);
   const items = page.getByTestId("bin-item");
   await expect(items).toHaveCount(2);
-  await expect(page.getByText("notes.txt is not a video, audio or image file")).toBeVisible();
+  await expect(page.getByTestId("panel-tool").getByText("notes.txt is not a video, audio or image file")).toBeVisible();
   await expect(page.locator(".bin-error").getByText(/broken\.mp4 could not be imported \(MP4\)/)).toBeVisible();
   await expect(page.locator("[data-announcer=polite]")).toContainText("could not be imported"); // the refusal is what a screen reader hears, not a count of files imported
   await expect(page.getByText(/MP4 or MOV with H\.264/).first()).toBeVisible();
