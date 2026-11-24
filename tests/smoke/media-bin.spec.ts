@@ -139,3 +139,14 @@ test("phone: a refusal in a batch that also imported stays visible after the Med
   await close.click();
   await expect(note).toHaveCount(0);
 });
+
+test("phone: the media itself is on screen as soon as the Media sheet opens (header and filters stay short)", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) >= 720, "phone layout only");
+  await page.goto("/?sample");
+  await expect(page.locator("#tl-summary")).toContainText("2 tracks, 14 clips");
+  await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  const sheet = (await page.locator(".library[data-open='true']").boundingBox())!;
+  const first = (await page.getByTestId("bin-item").first().boundingBox())!;
+  expect(first.y + first.height).toBeLessThanOrEqual(sheet.y + sheet.height); // a whole card, not cut off
+  expect(first.y - sheet.y).toBeLessThan(300); // the header, search, import and filters take less than that above it
+});
