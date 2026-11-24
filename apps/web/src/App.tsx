@@ -117,7 +117,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; status: ReactNode; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void } }) {
+function AppMenu({ compact, theme, status, save, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; status: ReactNode; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -150,6 +150,8 @@ function AppMenu({ compact, theme, status, project }: { compact: boolean; theme:
                 <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref ? "✓" : ""}</span><span>{t(`theme.${p}`)}</span></button>
               ))}
               <div className="menu-row menu-status" role="presentation">{status}</div>
+              {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
+              <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
             </>
           )}
           <AccentPicker />
@@ -519,6 +521,8 @@ function Editor({ store }: { store: ProjectStore }) {
     : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
     : t("engine.failed", { message: engine.message });
   // The menu says plain "Ready"; the engine's name, version and backend are on the About OverCut page.
+  // "Saved on this device" follows autosave (persistence.status); it does not claim a save before the project is open.
+  const saveState = persistence.status === "error" ? "error" : !persistence.ready ? "opening" : persistence.status;
   const engineMenuText = engine.status === "ready" ? t("engine.menu.ready") : engineText;
 
   return (
@@ -537,8 +541,12 @@ function Editor({ store }: { store: ProjectStore }) {
               </span>
             // Developer detail ("Engine overcut v0.1.0 (wasm)") is not for the top bar: it lives in the app menu and on the Diagnostics page. This hidden probe is what tests wait on.
             : <span hidden data-testid="engine" data-state={engine.status} data-backend={engine.status === "ready" ? engine.backend : undefined} />}
+          <span className="chip save-state" role="status" data-testid="save-state" data-state={saveState}>
+            <span className="dot" aria-hidden="true" />
+            <span className="chip-text">{t(`save.state.${saveState}`)}</span>
+          </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
+          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
         </div>
       </header>
 
