@@ -46,7 +46,7 @@ test("a full session (load, import, edit, play, export, offline reload) talks on
 
   // load; the policy is really in the page
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   expect(await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute("content")).toContain("default-src 'self'");
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller), { timeout: 15_000 }).toBe(true);
@@ -95,7 +95,7 @@ test("a full session (load, import, edit, play, export, offline reload) talks on
   const online = seen.length;
   await context.setOffline(true);
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "h264_aac.mp4"));
   await expect(page.locator("#tl-summary")).toContainText(/\d+ clips/, { timeout: 30_000 });
   await edit(page);

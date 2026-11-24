@@ -8,7 +8,7 @@ const file = (n: string) => resolve(FIX, n);
 
 async function ready(page: Page) {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
 }
 const summary = (page: Page) => page.locator("#tl-summary");

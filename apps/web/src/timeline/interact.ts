@@ -2,7 +2,7 @@
  *  The canvas owns pointers, panning and drawing; the owner of the engine applies `Effects.ops` (via `Engine.editing`) and the selection.
  *  Touch rules: a tap selects; a drag on an unselected clip pans; a drag on an already selected clip moves it; handles of a selected clip are 44 px targets. */
 import type { Op } from "@app/engine-client";
-import { clampN, describeClip, type Say, fitsOnTrack, inRect, moveOps, moveRoom, moveToTrackOp, snapDelta, trimOp, trimRange, trimTarget, type Edge } from "./edit";
+import { clampN, describeClip, expandLinks, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
 import { GUTTER, LANE, RULER, xToTime, type View } from "./view";
@@ -127,7 +127,7 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "trim": {
       if (g.value === g.orig) return { g: IDLE, fx: NONE };
-      return { g: IDLE, fx: { ops: [trimOp(scene, g.clip, g.edge, g.value)], say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
+      return { g: IDLE, fx: { ops: linkedTrimOps(scene, g.clip, g.edge, g.value), say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
     }
     case "marquee": {
       const [xa, xb] = [Math.min(g.x0, g.x1), Math.max(g.x0, g.x1)];
@@ -143,11 +143,14 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
 }
 
 /** Selection after applying an effect's select to the current one. */
-export function applySelect(cur: ReadonlySet<string>, s: NonNullable<Effects["select"]>): Set<string> {
-  if (s.mode === "set") return new Set(s.ids);
+export function applySelect(cur: ReadonlySet<string>, s: NonNullable<Effects["select"]>, scene?: Scene): Set<string> {
+  // Linked clips are picked (and un-picked) together; without a scene (tests of the plain rules) ids are taken as given.
+  const ids = scene ? [...expandLinks(scene, s.ids)] : s.ids;
+  if (s.mode === "set") return new Set(ids);
   const next = new Set(cur);
-  for (const id of s.ids) {
-    if (s.mode === "toggle" && next.has(id)) next.delete(id);
+  const off = s.mode === "toggle" && s.ids.length > 0 && s.ids.every((id) => cur.has(id));
+  for (const id of ids) {
+    if (off) next.delete(id);
     else next.add(id);
   }
   return next;

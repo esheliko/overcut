@@ -1,7 +1,7 @@
 //! The project document: `Project -> Sequence -> Track -> Clip`, plus the media it references.
 //! Plain data. It is changed only by ops (ADR 0006, `app-timeline`), never directly by the UI.
 
-use crate::ids::{ClipId, MediaId, ProjectId, SequenceId, TrackId};
+use crate::ids::{ClipId, LinkId, MediaId, ProjectId, SequenceId, TrackId};
 use crate::time::{Rational, Time};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -81,6 +81,10 @@ pub struct Clip {
     /// Playback speed, positive. 1/1 in M1.
     #[serde(default = "unit_speed")]
     pub speed: Rational,
+    /// Clips sharing a link edit as one (TL-05, `docs/features/timeline-ops.md`): the picture and the sound of one import. `None` = alone.
+    /// Only the editing layer acts on it; evaluation and export ignore it. Absent in files made before linking existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<LinkId>,
 }
 
 fn unit_speed() -> Rational {
@@ -304,13 +308,17 @@ mod tests {
             source_in: Time::ZERO,
             duration: Time::from_seconds(2).unwrap(),
             speed: unit_speed(),
+            link: None,
         };
-        let (c1, c2) = (clip(&mut ids, 0), clip(&mut ids, 3));
+        let (c1, mut c2) = (clip(&mut ids, 0), clip(&mut ids, 3));
         // linked video + its own audio on the audio track
+        let link = Some(crate::LinkId::new(&mut ids));
+        let c1 = Clip { link, ..c1 };
         let a1 = Clip {
             id: ClipId::new(&mut ids),
             ..c1.clone()
         };
+        c2.link = None;
         p.sequences[0].tracks[0].clips = vec![c1, c2];
         p.sequences[0].tracks[1].clips = vec![a1];
         p.media.push(v);
@@ -325,6 +333,41 @@ mod tests {
         let back: Project = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
         assert!(json.contains("\"schema_version\":1"));
+    }
+
+    #[test]
+    fn links_are_saved_and_a_file_without_them_loads_unlinked() {
+        let p = sample();
+        let mut v = serde_json::to_value(&p).unwrap();
+        let linked = |v: &serde_json::Value, t: usize, c: usize| {
+            v["sequences"][0]["tracks"][t]["clips"][c]
+                .get("link")
+                .cloned()
+        };
+        assert!(
+            linked(&v, 0, 0).is_some() && linked(&v, 1, 0) == linked(&v, 0, 0),
+            "the pair shares one link in the file"
+        );
+        assert!(
+            linked(&v, 0, 1).is_none(),
+            "an unlinked clip writes no link at all"
+        );
+        // A project made before linking existed has no `link` anywhere: it opens, nothing is linked.
+        for t in 0..2 {
+            for c in v["sequences"][0]["tracks"][t]["clips"]
+                .as_array_mut()
+                .unwrap()
+            {
+                c.as_object_mut().unwrap().remove("link");
+            }
+        }
+        let old: Project = serde_json::from_value(v).unwrap();
+        old.validate().unwrap();
+        assert!(old.sequences[0]
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .all(|c| c.link.is_none()));
     }
 
     #[test]

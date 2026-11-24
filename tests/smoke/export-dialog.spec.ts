@@ -8,7 +8,7 @@ async function ready(page: Page) {
   // No save picker in headless Chromium (it opens a native dialog nobody can answer): the download path is the one under test; the picker path is a unit test.
   await page.addInitScript(() => { delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker; });
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "vp9_opus.webm"));
   await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 30_000 });
@@ -18,7 +18,7 @@ const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.
 
 test("Export is disabled until there is something to export", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("export-open")).toBeDisabled();
 });
 

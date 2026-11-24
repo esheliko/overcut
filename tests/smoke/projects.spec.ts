@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 /** PM-06 projects list: create two projects, switch between them, rename, duplicate, delete (docs/features/projects.md). Needs a build with the engine. */
 const ready = async (page: Page) => {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
 };
 const menu = async (page: Page, item: string) => {
