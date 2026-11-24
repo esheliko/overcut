@@ -166,7 +166,7 @@ test("the kind, sort and tag controls sit behind one 44 px \"Filter and sort\" b
   }
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("bin-kind-audio")).toHaveCount(0);
-  expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await expect.poll(async () => (await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44); // polled: the sheet is still animating in
   await toggle.click();
   await expect(page.getByTestId("bin-kind-audio")).toBeVisible();
   await expect(page.getByTestId("bin-filter-on")).toHaveCount(0);
@@ -216,4 +216,18 @@ test("tablet portrait (820x1180): the Media panel is full width above the previe
   expect(meta.height).toBeLessThan(24); // one line
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("desktop (1440x900): a card's name is whole (wraps, at most two lines) and its meta is one line with the full text as the tooltip", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 720, "desktop layout only");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await ready(page);
+  await page.getByTestId("media-input").setInputFiles([file("h264_aac.mp4"), file("vp9_opus.webm")]);
+  await expect(page.getByTestId("bin-item")).toHaveCount(2);
+  const card = page.getByTestId("bin-item").filter({ hasText: "vp9_opus.webm" });
+  const name = card.locator("strong");
+  expect(await name.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true); // the name is not cut off
+  const meta = card.locator(".bin-meta");
+  expect((await meta.boundingBox())!.height).toBeLessThan(24); // one line
+  await expect(meta).toHaveAttribute("title", /0:01 · 160×120 · VP9 \+ OPUS · 17 KB/); // the whole meta on hover
 });

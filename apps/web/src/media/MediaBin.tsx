@@ -71,7 +71,7 @@ function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }:
       <span className="bin-text">
         <strong title={item.name}>{item.name}</strong>
         {item.status === "probing" && <span role="status">{t("media.reading")}</span>}
-        {ready && <span>{meta}</span>}
+        {ready && <span className="bin-meta" title={meta}>{meta}</span>}
         {ready && onTimeline && <span className="bin-on-timeline" data-testid="bin-on-timeline">{t("media.onTimeline")}</span>}
         {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
         {item.status === "offline" && <span role="alert">{t(offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
