@@ -155,10 +155,20 @@ test("the kind, sort and tag controls sit behind one 44 px \"Filter and sort\" b
   await ready(page);
   await page.getByTestId("media-input").setInputFiles([{ name: "h264_aac.mp4", mimeType: "video/mp4", buffer: readFileSync(file("h264_aac.mp4")) }, { name: "vp9_opus.webm", mimeType: "video/webm", buffer: readFileSync(file("vp9_opus.webm")) }]);
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
-  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  // The Media sheet closes on a phone once the imports are ready (App.tsx), so wait for that state before opening it again.
+  await expect(page.locator('[data-testid="bin-item"][data-status="ready"]')).toHaveCount(2, { timeout: 20_000 });
+  if ((page.viewportSize()?.width ?? 0) < 720) {
+    const panel = page.getByTestId("panel-tool");
+    await expect(panel).toHaveAttribute("data-open", "false");
+    await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+    await expect(panel).toHaveAttribute("data-open", "true");
+  }
   const toggle = page.getByTestId("bin-filter-toggle");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("bin-kind-audio")).toHaveCount(0);
+  // The sheet rises with a short transform animation; a box measured mid-animation sits at a fractional offset and can read 43.99997 px.
+  // Wait for the animation to finish, then measure the real control.
+  await page.waitForFunction(() => (document.querySelector('[data-testid="panel-tool"]') as HTMLElement | null)?.getAnimations().every((a) => a.playState === "finished") ?? true);
   expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await toggle.click();
   await expect(page.getByTestId("bin-kind-audio")).toBeVisible();
