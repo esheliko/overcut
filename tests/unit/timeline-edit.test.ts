@@ -221,7 +221,7 @@ test("shortcuts: undo/redo/split/delete anywhere, selection keys only on the can
   assert.deepEqual(globalCommand(key({ key: "Delete" })), { c: "delete" });
   assert.deepEqual(globalCommand(key({ key: "Backspace" })), { c: "delete" });
   assert.deepEqual(canvasCommand(key({ key: "ArrowRight" }), true), { c: "go", dir: "right" });
-  assert.equal(canvasCommand(key({ key: "ArrowRight" }), false), null, "without a selection arrows move the playhead");
+  assert.deepEqual(canvasCommand(key({ key: "ArrowRight" }), false), { c: "step", frames: 1 }, "without a selection arrows move the playhead (stale: this used to be a null here and a switch in the canvas; the registry now owns it)");
   assert.deepEqual(canvasCommand(key({ key: "ArrowRight", altKey: true }), true), { c: "playhead", frames: 1 });
   assert.deepEqual(canvasCommand(key({ key: ",", code: "Comma" }), true), { c: "nudge", frames: -1 });
   assert.deepEqual(canvasCommand(key({ key: ">", code: "Period", shiftKey: true }), true), { c: "nudge", frames: 10 });
