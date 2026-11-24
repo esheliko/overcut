@@ -3,6 +3,8 @@
 ## Behaviour
 Every committed edit is durable within one flush (a few ms) of being made; a crash, a killed tab or a dead Worker loses nothing that was acknowledged. On the next open the app restores the project and its undo history by itself and shows a small, non-blocking note **"Recovered unsaved changes"** with **Undo recovery** (back to the last clean save; the discarded edits are kept in `discarded.jsonl`, never deleted silently).
 
+The project id is no longer fixed: the list (`projects.md`) names projects; the old single project keeps the id `default`.
+
 ## Files (per project; one folder natively, OPFS directory or IndexedDB rows on the web)
 - `project.overcut`: the project as the session began (the last clean save). Replaced atomically, only on a clean close.
 - `journal.jsonl`: a header line `{"header":1,"base":"<crc32>:<len>"}` naming the base, then one **commit record** per line, appended after every edit. Append-only; a crash can only tear the last line.
@@ -39,4 +41,4 @@ The `.overcut` zip keeps its reserved `journal` entry unused: a zip cannot be ap
 - `tests/smoke/persistence.spec.ts`: real engine and real OPFS in Chromium: edit stream, terminate the Worker mid-stream, reload, state equals the last acknowledged op, undo reaches the session start, Undo recovery.
 
 ## Not covered / follow-ups
-Tauri commands are compile-checked by `desktop-check` only (no webview in CI). Raw IPC bodies instead of number arrays for large bytes. Multi-project list (M1-034); open/save-as is in the app menu (`canvas.md`). Folding the journal into the zip entry. Cached sync handle for appends.
+Tauri commands are compile-checked by `desktop-check` only (no webview in CI). Raw IPC bodies instead of number arrays for large bytes. Multi-project list: done, `projects.md`; open/save-as is in the app menu (`canvas.md`). Folding the journal into the zip entry. Cached sync handle for appends.

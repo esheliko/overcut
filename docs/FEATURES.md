@@ -10,7 +10,7 @@
 | PM-03 | Media bin with thumbnails, filter, search, tags, relink missing files | P0 | M1 | = | Virtualized; 10k items |
 | PM-04 | Format support: H.264, HEVC, VP9, AV1, ProRes (native), MP4/MOV/WebM/MKV, JPEG/PNG/WebP/HEIC/AVIF/SVG/GIF, MP3/AAC/WAV/FLAC/Opus/OGG | P0 | M1-M2 | = | Per-platform matrix in ADR 0004; unsupported => clear message + transcode offer |
 | PM-05 | Proxy and thumbnail cache (background, resumable) | P0 | M2 | + | Editing 4K on a phone depends on it |
-| PM-06 | Autosave on every operation, crash recovery, version snapshots | P0 | M1 | + | Op-log journal (ADR 0006) |
+| PM-06 | Autosave on every operation, crash recovery, version snapshots, projects list (`docs/features/projects.md`) | P0 | M1 | + | Op-log journal (ADR 0006) |
 | PM-07 | Open file format `.overcut` (zip + JSON), documented, versioned with migrations | P0 | M1 | + | Spec in `docs/` |
 | PM-08 | Project library: duplicate, rename, archive, import/export project file | P0 | M2 | = | |
 | PM-09 | Collect and consolidate (move media into project) / link in place | P1 | M2 | + | File System Access API where available |
