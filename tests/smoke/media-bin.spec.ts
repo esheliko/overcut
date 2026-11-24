@@ -155,8 +155,15 @@ test("the kind, sort and tag controls sit behind one 44 px \"Filter and sort\" b
   await ready(page);
   await page.getByTestId("media-input").setInputFiles([{ name: "h264_aac.mp4", mimeType: "video/mp4", buffer: readFileSync(file("h264_aac.mp4")) }, { name: "vp9_opus.webm", mimeType: "video/webm", buffer: readFileSync(file("vp9_opus.webm")) }]);
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
-  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  await expect(page.locator('[data-testid=bin-item][data-status="ready"]')).toHaveCount(2, { timeout: 20_000 }); // the phone sheet closes again when the import settles
   const toggle = page.getByTestId("bin-filter-toggle");
+  // the phone sheet closes itself after an import: reopen it only when its controls are hidden (a click on a sheet that is still open would close it)
+  if ((page.viewportSize()?.width ?? 0) < 720) {
+    await expect(async () => {
+      if (!(await toggle.isVisible())) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+      await expect(toggle).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
+  }
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("bin-kind-audio")).toHaveCount(0);
   expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -191,4 +198,22 @@ test("a clip already on the timeline has no \"+\" (no duplicate on a second clic
   await second.getByRole("button", { name: "Add vp9_opus.webm to the timeline" }).click();
   await expect(summary(page)).toContainText("4 clips");
   await expect(page.getByRole("button", { name: /Add vp9_opus\.webm/ })).toHaveCount(0);
+});
+
+test("tablet portrait (820x1180): the Media panel is full width above the preview; a name and its meta are whole, meta on one line", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 0) < 720, "tablet layout only");
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await ready(page);
+  await page.getByTestId("media-input").setInputFiles([file("h264_aac.mp4"), file("vp9_opus.webm")]);
+  await expect(page.getByTestId("bin-item")).toHaveCount(2);
+  const lib = (await page.locator(".library").boundingBox())!;
+  const stage = (await page.locator(".stage").boundingBox())!;
+  expect(lib.width).toBeGreaterThanOrEqual(600); // not the 240 px column that cut names and wrapped the meta one token per line
+  expect(stage.y).toBeGreaterThan(lib.y); // the preview sits under the Media panel
+  const card = page.getByTestId("bin-item").filter({ hasText: "vp9_opus.webm" });
+  expect(await card.locator("strong").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true); // the name is not cut
+  const meta = (await card.locator(".bin-text > span").filter({ hasText: "·" }).first().boundingBox())!; // the meta line
+  expect(meta.height).toBeLessThan(24); // one line
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 });

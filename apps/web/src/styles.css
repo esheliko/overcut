@@ -160,9 +160,9 @@ h2, p { margin: 0; }
   .library::before, .library[data-open="true"]::before, .sheet-close { display: none; }
   .toast { bottom: 24px; }
 }
-/* Tablet in portrait: the preview needs height more than the timeline does */
+/* Tablet in portrait (820 px wide): the Media panel stacks above the preview, full width, so each card has room for its name, meta on one line and its buttons. The tool rail stays on the left; the timeline keeps the bottom. */
 @container editor (min-width: 720px) and (max-width: 1099px) and (orientation: portrait) {
-  .workspace { grid-template-rows: minmax(0, 1fr) clamp(200px, 30%, 320px); grid-template-columns: 84px minmax(220px, 260px) minmax(0, 1fr); }
+  .workspace { grid-template-rows: minmax(300px, 0.9fr) minmax(260px, 1fr) clamp(200px, 30%, 320px); grid-template-columns: 84px minmax(0, 1fr); grid-template-areas: "tools library" "tools stage" "timeline timeline"; }
 }
 /* Laptop and desktop: details panel on the right */
 @container editor (min-width: 1100px) {
