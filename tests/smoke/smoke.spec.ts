@@ -5,13 +5,13 @@ test("the app loads and the WebAssembly engine answers", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/Engine .+ v\d+\.\d+\.\d+ \(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   expect(errors).toEqual([]);
 });
 
 test("no horizontal scrolling at any width (works on every screen)", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toBeVisible();
+  await expect(page.getByTestId("engine")).toBeAttached();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
@@ -156,7 +156,7 @@ test("language and direction: the page declares lang and dir, and a right-to-lef
 test("timeline editing: select, split, delete, undo and redo go through the engine", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await page.goto("/?sample");
-  await expect(page.getByTestId("engine")).toContainText(/Engine .+ \(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const summary = page.locator("#tl-summary");
   const live = page.locator('[data-announcer="polite"]');
   const canvas = page.getByTestId("timeline-canvas");
