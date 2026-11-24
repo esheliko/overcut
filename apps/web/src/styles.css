@@ -311,7 +311,8 @@ h2, p { margin: 0; }
 /* accent picker (menu) and install how-to */
 .menu-accent { padding: 6px 12px 8px; }
 .menu-accent-title { display: block; padding-block: 4px; color: var(--muted); font-size: var(--text-sm); }
-.menu-accent-row { display: flex; flex-wrap: wrap; gap: 2px; margin-inline: -8px; }
+/* F4: a fixed 4-column grid (there are 7 accents, so 4 + 3) instead of a wrap that left the 7th swatch alone. */
+.menu-accent-row { display: grid; grid-template-columns: repeat(4, 44px); gap: 2px; margin-inline: -8px; }
 .swatch { display: grid; place-items: center; inline-size: 44px; block-size: 44px; padding: 0; border: 0; border-radius: var(--radius-full); background: none; }
 .swatch-dot { inline-size: 24px; block-size: 24px; border-radius: var(--radius-full); border: 2px solid var(--line-strong); box-sizing: border-box; }
 .swatch[data-checked="true"] .swatch-dot { border-color: var(--fg); box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--fg); }
