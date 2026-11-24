@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { closeStartGap, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
-import { applySelect, IDLE, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
+import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
 import { buildScene, TICKS_PER_SECOND } from "../../apps/web/src/timeline/scene";
 import { canvasCommand, globalCommand, isModifierKey, type KeyLike } from "../../apps/web/src/timeline/shortcuts";
 import { LANE, RULER, timeToX, type View } from "../../apps/web/src/timeline/view";
@@ -264,4 +264,40 @@ test("closing the start gap: deleting or start-trimming the first clips slides t
 test("a modifier pressed alone is not keyboard use of the timeline (no focus frame over the whole stage)", () => {
   for (const key of ["Shift", "Control", "Alt", "Meta", "AltGraph"]) assert.equal(isModifierKey(key), true, key);
   for (const key of ["ArrowLeft", "s", "Delete", " ", "a"]) assert.equal(isModifierKey(key), false, key);
+});
+
+test("a drag clamped back to 0:00 makes no edit, and the clip is still painted afterwards (no stuck ghost flag)", () => {
+  // The first clip starts at 0: dragging its body left can only come back to 0, which is no edit at all.
+  const v = view(), x = cx(0, v), sel = [0];
+  const c = ctx(sel, v);
+  const flags = flagsOf(scene, sel);
+  let r = pointerDown(c, mouse(x, cy(0)));
+  assert.equal(r.g.k, "press");
+  let g: Gesture = r.g;
+  for (let k = 1; k <= 10; k++) {
+    r = pointerMove(c, g, mouse(x - 10 * k, cy(0)));
+    g = r.g;
+    markPreview(flags, g); // what the canvas does on every pointer move
+    assert.equal(g.k, "move");
+    assert.ok(scene.tStart[0]! + (g as Extract<Gesture, { k: "move" }>).delta >= 0, "never a negative start");
+  }
+  assert.equal(flags[0], 2, "while dragged the clip is a ghost");
+  r = pointerUp(c, g, mouse(x - 100, cy(0)));
+  assert.equal(r.fx.ops, undefined, "clamped to 0 is no move: no op is sent");
+  markPreview(flags, IDLE); // what the canvas does on release
+  assert.deepEqual(flags, flagsOf(scene, sel), "the clip is back to plain selected, so it is painted again");
+});
+
+test("a trim that ends where it started also leaves the clip painted", () => {
+  const v = view(), sel = [1], c = ctx(sel, v), flags = flagsOf(scene, sel);
+  const x1 = timeToX(v, scene.end[1]!);
+  let r = pointerDown(c, mouse(x1, cy(0)));
+  assert.equal(r.g.k, "trim");
+  markPreview(flags, r.g);
+  r = pointerMove(c, r.g, mouse(x1, cy(0)));
+  markPreview(flags, r.g);
+  r = pointerUp(c, r.g, mouse(x1, cy(0)));
+  assert.equal(r.fx.ops, undefined);
+  markPreview(flags, IDLE);
+  assert.deepEqual(flags, flagsOf(scene, sel));
 });
