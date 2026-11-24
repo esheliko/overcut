@@ -2,7 +2,10 @@ import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, type ProjectEnt
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
+import { reportAppInfo } from "./errorScreen/crash";
+import { reportFatal } from "./errorScreen/ErrorScreen";
 import { useI18n } from "./i18n";
+import { useIncoming } from "./incoming";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
 import { Home } from "./Home";
@@ -203,8 +206,8 @@ function Editor({ store }: { store: ProjectStore }) {
     let alive = true;
     createEngine()
       .then(async (e) => ({ info: await e.info(), backend: e.backend, engine: e }))
-      .then(({ engine: e, ...r }) => alive && (setDesktop(e.desktop), setNativeMedia(e.desktop ? e.media : undefined), setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
-      .catch((e: unknown) => alive && setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }));
+      .then(({ engine: e, ...r }) => alive && (reportAppInfo({ version: r.info.version, backend: r.backend }), setDesktop(e.desktop), setNativeMedia(e.desktop ? e.media : undefined), setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
+      .catch((e: unknown) => alive && (setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }), reportFatal("engine-start", e)));
     return () => { alive = false; };
   }, []);
 
@@ -341,11 +344,10 @@ function Editor({ store }: { store: ProjectStore }) {
       } catch (e) { fail("project.open.failed", e); }
     });
   };
-  const onOpen = async () => {
+  /** Open a project file's bytes (from the picker, "Open with" or a launch): a changed project asks first. */
+  const openFromFile = async (file: { name: string; bytes: Uint8Array }) => {
     if (!core) return;
     try {
-      const file = await pickProjectFile();
-      if (!file) return;
       let opened;
       try { opened = await core.openProject(file.bytes); } catch (e) { return fail("project.open.failed", e); }
       if (opened.readOnly) return setToast(t("project.open.newer"));
@@ -361,6 +363,20 @@ function Editor({ store }: { store: ProjectStore }) {
       });
     } catch (e) { fail("project.open.failed", e); }
   };
+  const onOpen = async () => {
+    if (!core) return;
+    try {
+      const file = await pickProjectFile();
+      if (file) await openFromFile(file);
+    } catch (e) { fail("project.open.failed", e); }
+  };
+  // "Open with", the share sheet and desktop launch files (PM-02): same doors as the picker.
+  useIncoming({
+    ready: !!core && !!persistence.session,
+    desktop: desktopApi,
+    onMedia: (sources) => void importFiles(sources),
+    onProject: (s) => void s.file.arrayBuffer().then((b) => openFromFile({ name: s.file.name, bytes: new Uint8Array(b) })).catch((e) => fail("project.open.failed", e)),
+  });
   const onSave = async () => {
     if (!core || !project) return;
     try {

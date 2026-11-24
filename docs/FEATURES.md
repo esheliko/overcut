@@ -6,7 +6,7 @@
 | ID | Feature | Pri | M | CC | Notes |
 |---|---|---|---|---|---|
 | PM-01 | New project with canvas presets (9:16, 1:1, 4:5, 16:9, 21:9, custom), frame rate, resolution | P0 | M1 | = | Changeable later; clips adapt (see TL-24) |
-| PM-02 | Import video/audio/images via picker, drag and drop, paste, share-sheet / "open with" | P0 | M1 | = | Camera roll on mobile via platform pickers |
+| PM-02 | Import video/audio/images via picker, drag and drop, paste, share-sheet / "open with" | P0 | M1 | = | Camera roll on mobile via platform pickers. Open-with / share target: Chromium PWA and desktop app built, per-platform table in `docs/features/open-with.md` (iOS and non-Chromium browsers: none) |
 | PM-03 | Media bin with thumbnails, filter, search, tags, relink missing files | P0 | M1 | = | Virtualized; 10k items |
 | PM-04 | Format support: H.264, HEVC, VP9, AV1, ProRes (native), MP4/MOV/WebM/MKV, JPEG/PNG/WebP/HEIC/AVIF/SVG/GIF, MP3/AAC/WAV/FLAC/Opus/OGG | P0 | M1-M2 | = | Per-platform matrix in ADR 0004; unsupported => clear message + transcode offer |
 | PM-05 | Proxy and thumbnail cache (background, resumable) | P0 | M2 | + | Editing 4K on a phone depends on it |
@@ -167,7 +167,7 @@ All models are open-weight, downloaded on request, cached, removable, run locall
 | XT-03 | Share a project for live co-editing, peer-to-peer (CRDT over WebRTC), no server holding media | P2 | M8 | + | |
 | XT-04 | Review comments and markers on a shared link/file | P2 | M8 | = | |
 | XT-05 | Version history with named snapshots and diff of timeline changes | P2 | M8 | + | Falls out of the operation log |
-| XT-06 | Privacy: no telemetry by default; visible network log; no third-party scripts (opt-in crash reports: M2, split to XT-06b) | P0 | M1 | + | Enforced by CSP and a test; log: Privacy menu and /diagnostics |
+| XT-06 | Privacy: no telemetry by default; visible network log; no third-party scripts (opt-in crash reports: M2, split to XT-06b) | P0 | M1 | + | Enforced by CSP and a test; log: Privacy menu and /diagnostics. Error screen with local "Copy diagnostics report": `docs/features/error-screen.md` |
 | XT-06b | Opt-in crash reports | P1 | M2 | + | Needs an optional, documented endpoint with a local fallback ("Copy crash report" to clipboard / file); off by default; listed in the allow-list and shown in the network log. Moved from M1: a backend conflicts with "no backend" unless designed with care |
 | XT-07 | Update mechanism (web: service worker; desktop: signed updater; mobile: stores) | P0 | M5 | = | |
 | XT-08 | Security: sandboxed plugin runtime, strict CSP, memory-safe engine, fuzzed demuxers | P0 | M1-M9 | + | |

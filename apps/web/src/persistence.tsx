@@ -1,5 +1,6 @@
 import { acquireProjectLock, newProject, openProjectSession, openProjectStorage, type Engine, type ProjectSession, type RecoveryNote, type SaveStatus } from "@app/engine-client";
 import { useEffect, useState, type ReactNode } from "react";
+import { reportSaveStatus } from "./errorScreen/crash";
 import { useI18n } from "./i18n";
 import { sampleProject } from "./timeline/fixture";
 
@@ -45,6 +46,7 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
           onStatus: (s, err) => {
             if (!alive) return;
             setStatus(s);
+            reportSaveStatus(s);
             setProblem(err ? err.message : null);
           },
           onFirstProject: () => void navigator.storage?.persist?.().catch(() => undefined),
@@ -52,9 +54,11 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
         if (!alive) return void opened.session.close().finally(() => terminate?.());
         current = opened.session;
         setSession(opened.session);
+        reportSaveStatus("saved");
         setRecovered(opened.recovered);
         if (e2e) (window as unknown as { __overcut: Hook }).__overcut = { session: opened.session, kill: () => terminate?.(), storageKind: storage.kind };
       } catch (err) {
+        reportSaveStatus("error");
         if (alive) setProblem(err instanceof Error ? err.message : String(err));
       }
     })();

@@ -200,7 +200,6 @@
   "media.relink": "Relink",
   "media.relinkFailed": "That file does not match. Choose the original file again.",
   "media.noMatch": "No media matches “{query}”.",
-  "media.importLabel": "import of {name}",
   "media.imported": "{count, plural, one {# file imported} other {# files imported}}",
   "media.err.notMedia": "{name} is not a video, audio or image file, so it was skipped.",
   "media.err.unsupported": "{name} could not be imported ({ext}). {detail} Files that work everywhere: MP4 or MOV with H.264, WebM with VP9, M4A audio, JPG, PNG and WebP images.",
@@ -511,5 +510,17 @@
   "net.from.app-asset": "App file",
   "net.from.worker": "Background worker",
   "net.from.service-worker": "Service worker",
-  "net.from.user-download": "Your download"
+  "net.from.user-download": "Your download",
+  "crash.title": "Something went wrong",
+  "crash.body": "OverCut ran into a problem it could not recover from. Reloading usually fixes it.",
+  "crash.work.saved": "Your work is saved on this device. Reload and it will be there.",
+  "crash.work.maybe-lost": "OverCut was still saving. Your last few edits may not have been kept; everything before them is saved.",
+  "crash.work.lost": "Saving was not working on this device, so changes made since you last saved the project to a file may be lost.",
+  "crash.work.nothing": "No project was open yet, so no edits were made in this session.",
+  "crash.reload": "Reload",
+  "crash.copy": "Copy diagnostics report",
+  "crash.copied": "Copied. You can paste it into a bug report.",
+  "crash.copyManual": "Copying is blocked here. Select the text below and copy it yourself.",
+  "crash.report": "Diagnostics report",
+  "crash.privacy": "The report stays on this device unless you paste it somewhere. It describes the error and your device, never your project or files."
 }

@@ -4,6 +4,7 @@ import { App } from "./App";
 import { applyLocale, initialLocale, I18nProvider } from "./i18n";
 import { startNetworkCapture } from "./privacy/networkLog";
 import { watchInstallPrompt } from "./install";
+import { ErrorBoundary, ForcedError } from "./errorScreen/ErrorScreen";
 import { applyAccent, applyTheme, loadAccent, loadPref } from "./theme/theme";
 import "./theme/tokens.css";
 import "./styles.css";
@@ -23,9 +24,13 @@ const bench = location.hash.startsWith("#timeline-bench") ? lazy(() => import(".
 // `/#export-harness` drives the export pipeline on a synthetic project (M1-022; the real dialog is M1-035).
 const harness = location.hash === "#export-harness" ? lazy(() => import("./ExportHarness").then((m) => ({ default: m.ExportHarness }))) : null;
 
+// Test-only: `?e2e&force-error=<ms>` makes the app fail after <ms> so the error screen can be checked (tests/smoke/error-screen.spec.ts).
+const params = new URLSearchParams(location.search);
+const forced = params.has("e2e") && params.has("force-error") ? Number(params.get("force-error")) || 0 : null;
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {bench ? <Suspense fallback={null}>{createElement(bench)}</Suspense> : harness ? <Suspense fallback={null}>{createElement(harness)}</Suspense> : <I18nProvider>{onDiagnostics ? <Suspense fallback={null}><Diagnostics /></Suspense> : <App />}</I18nProvider>}
+    {bench ? <Suspense fallback={null}>{createElement(bench)}</Suspense> : harness ? <Suspense fallback={null}>{createElement(harness)}</Suspense> : <I18nProvider>{onDiagnostics ? <Suspense fallback={null}><Diagnostics /></Suspense> : <ErrorBoundary>{forced !== null && <ForcedError delay={forced} />}<App /></ErrorBoundary>}</I18nProvider>}
   </StrictMode>,
 );
 

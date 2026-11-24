@@ -71,6 +71,21 @@ pub fn media_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
         .collect()
 }
 
+/// What "Open with", a double-clicked file or a launch argument may hand the app: media files and `.overcut` projects (files only, in order).
+/// Anything else (flags such as `--foo`, folders, other documents) is ignored.
+pub fn openable_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    paths
+        .into_iter()
+        .filter(|p| {
+            p.is_file()
+                && p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                    let e = e.to_ascii_lowercase();
+                    e == "overcut" || MEDIA_EXTENSIONS.contains(&e.as_str())
+                })
+        })
+        .collect()
+}
+
 /// Reads up to `len` bytes of `path` at `offset` (the webview fingerprints and sniffs a file without loading it).
 pub fn read_range(path: &Path, offset: u64, len: usize) -> io::Result<Vec<u8>> {
     use std::io::{Seek, SeekFrom};
@@ -252,6 +267,31 @@ mod tests {
             .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
             .collect();
         assert_eq!(names, ["a.MP4", "b.wav", "d.mkv"]);
+    }
+
+    #[test]
+    fn launch_arguments_keep_media_and_projects_only() {
+        let d = tmp("launch");
+        for n in ["a.MP4", "film.OverCut", "notes.txt"] {
+            fs::write(d.join(n), b"x").unwrap();
+        }
+        fs::create_dir(d.join("dir.overcut")).unwrap();
+        let got = openable_paths(
+            [
+                "--flag",
+                "a.MP4",
+                "notes.txt",
+                "film.OverCut",
+                "dir.overcut",
+                "gone.mp4",
+            ]
+            .map(|n| d.join(n)),
+        );
+        let names: Vec<_> = got
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
+        assert_eq!(names, ["a.MP4", "film.OverCut"]);
     }
 
     #[test]
