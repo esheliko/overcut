@@ -251,6 +251,8 @@ h2, p { margin: 0; }
 .bin-text strong { color: var(--fg); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bin-error { color: var(--fg); white-space: normal; overflow-wrap: anywhere; }
 .bin-act { flex: none; min-width: 44px; min-height: 44px; }
+.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border-radius: 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.bin-on-timeline { color: var(--accent); font-weight: 600; }
 .bin-link { flex: none; min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tl-drop { grid-area: timeline; display: contents; }
 .tl-drop[data-over="true"] > .timeline { outline: 2px dashed var(--accent); outline-offset: -3px; }

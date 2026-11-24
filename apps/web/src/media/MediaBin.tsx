@@ -1,5 +1,5 @@
 import type { MediaKind } from "@app/engine-client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { Modal } from "../ProjectDialogs";
@@ -7,6 +7,7 @@ import { DEFAULT_FILTER, allTags, viewBin, windowRange, withTag, withoutTag, typ
 import { formatBytes, formatDuration, offlineReason } from "./plan";
 import { ACCEPT, BIN_DRAG_TYPE, fromFileList, hasHandlePicker, pickWithHandles, type Source } from "./sources";
 import type { BinItem } from "./useMediaBin";
+import { useProjectStore } from "../store/projectStore";
 
 type Props = {
   items: BinItem[];
@@ -47,7 +48,7 @@ export function useImportPicker(onImport: (s: Source[]) => void, testId = "media
   return { open, field };
 }
 
-function Card({ item, tags, onAdd, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onRemove" | "onRelink">) {
+function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onRemove" | "onRelink">) {
   const { t } = useI18n();
   const ready = item.status === "ready";
   const meta = [
@@ -71,12 +72,13 @@ function Card({ item, tags, onAdd, onRemove, onRelink, onEditTags }: { item: Bin
         <strong title={item.name}>{item.name}</strong>
         {item.status === "probing" && <span role="status">{t("media.reading")}</span>}
         {ready && <span>{meta}</span>}
+        {ready && onTimeline && <span className="bin-on-timeline" data-testid="bin-on-timeline">{t("media.onTimeline")}</span>}
         {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
         {item.status === "offline" && <span role="alert">{t(offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
         {item.status === "unsupported" && <span role="alert" className="bin-error">{item.message}</span>}
       </span>
-      {onEditTags && <button className="icon-btn bin-act" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /></button>}
-      {ready && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
+      {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span>{t("media.tags.editShort")}</span></button>}
+      {ready && !onTimeline && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
       {item.status === "offline" && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       {item.status === "unsupported" && <button className="icon-btn bin-act" aria-label={t("media.dismiss", { name: item.name })} onClick={() => onRemove(item.id)}><Icon name="close" size={18} /></button>}
     </li>
@@ -147,6 +149,9 @@ function TagsDialog({ item, tags, onTags, onClose }: { item: BinItem; tags: read
 export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove, onRelink }: Props) {
   const { t } = useI18n();
   const { open, field } = useImportPicker(onImport);
+  const project = useProjectStore((s) => s.project);
+  /** Media already placed on a timeline: its card offers no "+" (adding it again only duplicates the clip). */
+  const onTimeline = useMemo(() => new Set((project?.sequences ?? []).flatMap((q) => q.tracks.flatMap((tr) => tr.clips.map((c) => c.media)))), [project]);
   const [filter, setFilter] = useState<BinFilter>(DEFAULT_FILTER);
   const [editing, setEditing] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -155,7 +160,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
   const shown = viewBin(items, meta, { ...filter, tag: activeTag, query });
   const filtersOn = filter.kind !== DEFAULT_FILTER.kind || activeTag !== "" || filter.sort !== DEFAULT_FILTER.sort; // shown on the toggle, so a hidden filter is not forgotten
   const editItem = editing ? items.find((i) => i.id === editing) : undefined;
-  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onAdd={onAdd} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
+  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onTimeline={onTimeline.has(i.id)} onAdd={onAdd} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
   const pending = shown.filter((i) => !meta.has(i.id));
   const settled = shown.filter((i) => meta.has(i.id));
   if (items.length === 0) {
