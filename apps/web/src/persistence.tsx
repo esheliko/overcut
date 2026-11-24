@@ -3,16 +3,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "./i18n";
 import { sampleProject } from "./timeline/fixture";
 
-/** One project for now ("default"); the project list arrives with M1-034. */
-const PROJECT_ID = "default";
-
 type Hook = { session: ProjectSession; kill(): void; storageKind: string };
 
 /**
  * Opens (or recovers) the project and keeps it saved: every edit is in durable storage right after it is made, a crash is repaired on the next
  * open (`docs/features/persistence.md`). Fails soft: when storage is unavailable the editor still works and says so.
  */
-export function usePersistence(engine: Engine | null) {
+export function usePersistence(engine: Engine | null, projectId: string | null) {
   const [recovered, setRecovered] = useState<RecoveryNote | null>(null);
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [problem, setProblem] = useState<string | null>(null);
@@ -21,7 +18,10 @@ export function usePersistence(engine: Engine | null) {
   const [epoch, setEpoch] = useState(0);
 
   useEffect(() => {
-    if (!engine) return;
+    setSession(null);
+    setRecovered(null);
+    setProblem(null);
+    if (!engine || !projectId) return; // no project open (the projects list is showing)
     let alive = true;
     let release: (() => void) | undefined;
     let current: ProjectSession | undefined;
@@ -30,9 +30,9 @@ export function usePersistence(engine: Engine | null) {
     const sample = new URLSearchParams(location.search).has("sample");
     void (async () => {
       try {
-        release = await acquireProjectLock(PROJECT_ID);
+        release = await acquireProjectLock(projectId);
         if (!alive) return release(); // effect already torn down (React strict mode in dev)
-        const storage = await openProjectStorage(PROJECT_ID);
+        const storage = await openProjectStorage(projectId);
         terminate = storage.terminate;
         if (!alive) return terminate?.();
         const opened = await openProjectSession(engine, storage, {
@@ -64,10 +64,10 @@ export function usePersistence(engine: Engine | null) {
     return () => {
       alive = false;
       removeEventListener("pagehide", leave);
-      void current?.close().catch(() => undefined).finally(() => release?.());
+      void current?.close().catch(() => undefined).finally(() => { terminate?.(); release?.(); });
       if (!current) release?.();
     };
-  }, [engine]);
+  }, [engine, projectId]);
 
   const undoRecovery = async () => {
     try {

@@ -1,10 +1,13 @@
-import { createEngine, newProject, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
+import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { useI18n } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
+import { Home } from "./Home";
+import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects } from "./projects";
+import { startScreen } from "./projectsView";
 import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
 import { canvasSummary, hasPicture } from "./canvas";
 import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
@@ -110,7 +113,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void } }) {
+function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -144,6 +147,7 @@ function AppMenu({ compact, theme, status, project }: { compact: boolean; theme:
           )}
           <AccentPicker />
           <ScrubPrepItem />
+          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={() => { setOpen(false); project.onProjects(); }}>{t("menu.projects")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={() => { setOpen(false); project.onNew(); }}>{t("menu.new")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={() => { setOpen(false); project.onOpen(); }}>{t("menu.openProject")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={() => { setOpen(false); project.onSave(); }}>{t("menu.saveProject")}</button>
@@ -169,7 +173,11 @@ function Editor({ store }: { store: ProjectStore }) {
   const [themePref, setThemePref] = useState<ThemePref>(loadPref);
   const [engine, setEngine] = useState<EngineState>({ status: "loading" });
   const [core, setCore] = useState<Engine | null>(null);
-  const persistence = usePersistence(core);
+  const [openId, setOpenId] = useState<string | null>(null); // the project being edited; null while the projects list shows (or is still loading)
+  const [list, setList] = useState<ProjectEntry[] | null>(null); // null until the list is read
+  const [lastId, setLastId] = useState<string | null>(null);
+  const [homeBusy, setHomeBusy] = useState(false);
+  const persistence = usePersistence(core, openId);
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
@@ -364,6 +372,96 @@ function Editor({ store }: { store: ProjectStore }) {
       setToast(t("project.save.done", { name: saved }));
     } catch (e) { fail("project.save.failed", e); }
   };
+  // ---- the projects list (PM-06, docs/features/projects.md) ----
+  const refreshList = async () => { const l = await (await getRegistry()).list(); setList(l); return l; };
+  const openEntry = (e: { id: string; name: string }, fromFile = false) => {
+    setName(e.name || null);
+    clean.current = null;
+    setLocating(fromFile);
+    setOpenId(e.id);
+    setLastId(e.id);
+    void getRegistry().then((r) => r.setCurrent(e.id)).catch(() => undefined);
+  };
+  // First screen: the list when there are several projects, the only project when there is one, a new project when there are none.
+  useEffect(() => {
+    if (!core) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const data = await loadProjects(core);
+        const items = await refreshList();
+        if (!alive) return;
+        setLastId(data.current);
+        const screen = startScreen(items.length);
+        if (screen === "editor") openEntry(items.find((i) => i.id === data.current) ?? items[0]!);
+        else if (screen === "new") {
+          const e = await createProject(core, "");
+          if (alive) { setList([e]); openEntry(e); }
+        }
+      } catch {
+        // The list is unavailable (blocked storage): carry on with the one project every install has, as before the list existed. Saving says what is wrong.
+        if (alive) openEntry({ id: LEGACY_PROJECT_ID, name: "" });
+      }
+    })();
+    return () => { alive = false; };
+  }, [core]);
+  // Last-edited time and canvas facts of the open project: written to the list shortly after edits stop (and when leaving), never on just opening it.
+  const touchBase = useRef<Project | null>(null);
+  const pendingTouch = useRef<{ id: string; project: Project } | null>(null);
+  const touchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flushTouch = (): Promise<void> => {
+    clearTimeout(touchTimer.current);
+    const p = pendingTouch.current;
+    pendingTouch.current = null;
+    return p ? getRegistry().then((r) => r.update(p.id, { modified: Date.now(), ...summarize(p.project) })).catch(() => undefined) : Promise.resolve();
+  };
+  useEffect(() => {
+    if (!project || !openId) { touchBase.current = null; return; }
+    if (touchBase.current === null) { touchBase.current = project; return; }
+    if (touchBase.current === project) return;
+    pendingTouch.current = { id: openId, project };
+    clearTimeout(touchTimer.current);
+    touchTimer.current = setTimeout(() => void flushTouch(), 1500);
+  }, [project, openId]);
+  useEffect(() => { const f = () => void flushTouch(); addEventListener("pagehide", f); return () => removeEventListener("pagehide", f); }, []);
+  const goHome = async () => {
+    await flushTouch();
+    try { await refreshList(); } catch (e) { return fail("projects.failed", e); }
+    setOpenId(null);
+  };
+  const homeTask = async (run: () => Promise<void>) => {
+    setHomeBusy(true);
+    try { await run(); } catch (e) { fail("projects.failed", e); } finally { setHomeBusy(false); }
+  };
+  const homeNew = () => void homeTask(async () => { const e = await createProject(core!, ""); await refreshList(); openEntry(e); announce(t("project.new.done")); });
+  const homeOpenFile = () => void homeTask(async () => {
+    const file = await pickProjectFile();
+    if (!file) return;
+    let opened;
+    try { opened = await core!.openProject(file.bytes); } catch (e) { return fail("project.open.failed", e); }
+    if (opened.readOnly) return setToast(t("project.open.newer"));
+    const label = nameOfFile(file.name) || opened.project.name;
+    const e = await createProject(core!, label, file.bytes);
+    await refreshList();
+    openEntry(e, true);
+    announce(t("project.open.done", { name: label }));
+  });
+  const homeRename = (e: ProjectEntry, next: string) => void homeTask(async () => { await (await getRegistry()).update(e.id, { name: next }); await refreshList(); });
+  const homeDuplicate = (e: ProjectEntry) => void homeTask(async () => {
+    const copy = await duplicateProject(core!, e, t("app.untitled"));
+    await refreshList();
+    announce(t("projects.duplicated", { name: copy.name }));
+    setToast(t("projects.duplicated", { name: copy.name }));
+  });
+  const homeDelete = (e: ProjectEntry) => void homeTask(async () => {
+    await deleteProject(e);
+    if (lastId === e.id) setLastId(null);
+    await refreshList();
+    announce(t("projects.deleted", { name: e.name || t("app.untitled") }));
+    setToast(t("projects.deleted", { name: e.name || t("app.untitled") }));
+  });
+  const showHome = openId === null && list !== null;
+
   const restoreVersion = async (id: string, label: string) => {
     const session = persistence.session;
     if (!session) return;
@@ -399,12 +497,13 @@ function Editor({ store }: { store: ProjectStore }) {
     : t("engine.failed", { message: engine.message });
 
   return (
-    <div className="editor" ref={editorRef} data-profile={profile} data-testid="editor">
+    <div className={showHome ? "editor home-mode" : "editor"} ref={editorRef} data-profile={profile} data-testid="editor">
+      {showHome ? <Home entries={list} current={lastId} busy={homeBusy} onOpen={(e) => openEntry(e)} onNew={homeNew} onOpenFile={homeOpenFile} onRename={homeRename} onDuplicate={homeDuplicate} onDelete={homeDelete} /> : <>
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           {!compact && <button className="icon-btn" aria-label={t("theme.change", { theme: themeName })} title={themeName} onClick={cycleTheme} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>}
         </div>
-        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => setName((n) => n?.trim() || null)} aria-label={t("project.name")} spellCheck={false} />
+        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
           <span className="chip" data-testid="engine" data-state={engine.status} aria-live="polite">
             <span className="dot" aria-hidden="true" />
@@ -415,7 +514,7 @@ function Editor({ store }: { store: ProjectStore }) {
             </span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} project={{ onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
+          <AppMenu compact={compact} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
         </div>
       </header>
 
@@ -461,6 +560,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
       {dialog && dialog !== "canvas" && dialog !== "privacy" && dialog !== "versions" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
+      </>}
       <div className="toast" role="status">{toast}</div>
     </div>
   );

@@ -366,3 +366,27 @@ h2, p { margin: 0; }
 .tag-chips li.export-note { background: none; padding: 0; }
 .bin-fixed .bin-text { overflow: hidden; }
 .bin-fixed .bin-text > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- projects list (PM-06) ---- */
+.editor.home-mode { grid-template-rows: minmax(0, 1fr); }
+.home { display: grid; grid-template-rows: auto minmax(0, 1fr); min-block-size: 0; overflow: hidden; }
+.home-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); padding: var(--space-3) var(--space-4); border-block-end: 1px solid var(--line); }
+.home-head h1 { flex: 1 1 auto; font-size: var(--text-lg); font-weight: 700; }
+.home-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.home-actions .export-go, .home-actions .export-secondary { min-block-size: var(--target); }
+.home-body { overflow: auto; padding: var(--space-4); }
+.project-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.project-card { display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface-2); min-inline-size: 0; }
+.project-card[data-current="true"] { border-color: var(--accent); }
+.project-open { display: flex; align-items: center; gap: var(--space-3); min-block-size: 76px; padding: var(--space-3) var(--space-4); text-align: start; background: none; border: 0; color: var(--fg); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.project-open:hover { background: var(--surface-3); }
+.project-shape { display: grid; place-items: center; flex: none; inline-size: 52px; block-size: 52px; border-radius: 10px; background: var(--surface-3); }
+.project-shape > span { display: block; border: 2px solid var(--accent); border-radius: 3px; }
+.project-text { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+.project-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-text span { color: var(--muted); font-size: var(--text-sm, 0.875rem); }
+.project-tools { display: flex; border-block-start: 1px solid var(--line); }
+.project-tools button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-block-size: var(--target); min-inline-size: 0; padding: 0 var(--space-2); background: none; border: 0; color: var(--fg); }
+.project-tools button + button { border-inline-start: 1px solid var(--line); }
+.project-tools button:hover:not(:disabled) { background: var(--surface-3); }
+.project-tools button:disabled, .project-open:disabled { opacity: 0.5; }
