@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
+import { closeStartGap, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
 import { applySelect, IDLE, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
@@ -116,6 +116,17 @@ test("hit zones for trim handles are at least 44 px wide for touch, even on a na
   assert.ok(HANDLE_MOUSE < HANDLE_TOUCH);
 });
 
+test("mouse: the edge of an unselected clip trims it and selects it; touch still needs a selection first", () => {
+  const i = 4, v = view(), y = cy(0), x0 = timeToX(v, scene.start[i]!);
+  const none = flagsOf(scene, []);
+  assert.equal(handleAt(scene, v, none, x0, y, false), null);
+  assert.deepEqual(handleAt(scene, v, none, x0, y, false, true), { clip: i, edge: "start" });
+  const r = pointerDown(ctx(), mouse(x0, y));
+  assert.equal(r.g.k, "trim");
+  assert.deepEqual(r.fx.select, { mode: "set", ids: [scene.id[i]] });
+  assert.notEqual(pointerDown(ctx(), touch(x0, y)).g.k, "trim");
+});
+
 test("click selects, shift/ctrl toggles, and a tap on empty space seeks and clears", () => {
   let r = pointerDown(ctx(), mouse(cx(1), cy(0)));
   assert.deepEqual(r.fx.select, { mode: "set", ids: [scene.id[1]] });
@@ -229,4 +240,23 @@ test("shortcuts: undo/redo/split/delete anywhere, selection keys only on the can
   assert.deepEqual(canvasCommand(key({ key: "[", code: "BracketLeft" }), true), { c: "trimToPlayhead", edge: "start" });
   assert.deepEqual(canvasCommand(key({ key: "a", ctrlKey: true }), false), { c: "selectAll" });
   assert.deepEqual(canvasCommand(key({ key: "Escape" }), true), { c: "clear" });
+});
+
+test("closing the start gap: deleting or start-trimming the first clips slides the rest left; other edits are left alone", () => {
+  const all = [...Array(scene.clipCount).keys()];
+  const t0 = Math.min(...all.map((i) => scene.tStart[i]!));
+  const front = all.filter((i) => scene.tStart[i]! === t0), rest = all.filter((i) => scene.tStart[i]! !== t0);
+  assert.ok(rest.length > 0);
+  const next = Math.min(...rest.map((i) => scene.tStart[i]!));
+  const out = closeStartGap(scene, deleteOps(scene, front));
+  const moves = out.filter((o) => o.op === "move");
+  assert.equal(out.length, front.length + rest.length, "every remaining clip gets one move");
+  for (const o of moves) { if (o.op !== "move") continue; const i = rest.find((k) => scene.id[k] === o.clip)!; assert.equal(o.start, scene.tStart[i]! - (next - t0)); }
+  assert.ok(moves.some((o) => o.op === "move" && o.start === t0), "the new first clip lands where the project started");
+  const del = deleteOps(scene, rest.slice(0, 1));
+  assert.deepEqual(closeStartGap(scene, del), del, "deleting something later leaves a deliberate gap alone");
+  const mv = moveOps(scene, front, scene.frameTicks);
+  assert.deepEqual(closeStartGap(scene, mv), mv, "a move is the user's own placement");
+  const ft = scene.frameTicks, e = trimOp(scene, front[0]!, "end", scene.tStart[front[0]!]! + scene.tDur[front[0]!]! - ft);
+  assert.deepEqual(closeStartGap(scene, [e]), [e], "an end trim never moves anything");
 });
