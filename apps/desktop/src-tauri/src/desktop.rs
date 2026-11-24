@@ -291,6 +291,28 @@ pub fn desktop_cancel_h264(state: tauri::State<'_, H264Download>) {
     state.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
+/// Files the app was launched with, or asked to open while running (`overcut://open` says there are new ones). Taken once by the page.
+#[derive(Default)]
+pub struct LaunchFiles(pub std::sync::Mutex<Vec<String>>);
+
+/// Remembers `paths` (media and `.overcut` only) for the page and tells it to look. Used for launch arguments, a second launch and macOS "Open with".
+pub fn queue_launch_files(app: &tauri::AppHandle, paths: impl IntoIterator<Item = PathBuf>) {
+    let paths = paths_json(disk::openable_paths(paths));
+    if paths.is_empty() {
+        return;
+    }
+    if let Ok(mut q) = app.state::<LaunchFiles>().0.lock() {
+        q.extend(paths);
+    }
+    let _ = app.emit("overcut://open", ());
+}
+
+/// The files waiting to be opened; empties the queue.
+#[tauri::command]
+pub fn desktop_launch_files(state: tauri::State<'_, LaunchFiles>) -> Vec<String> {
+    state.0.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
+}
+
 /// Forwards OS file drops onto the window to the page as `overcut://drop` (media paths only) and hover state as `overcut://drag` (bool).
 pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
     let WindowEvent::DragDrop(drag) = event else {

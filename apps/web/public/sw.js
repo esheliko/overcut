@@ -15,8 +15,24 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
+// Share sheet (PM-02, docs/features/open-with.md): the manifest's share_target POSTs the shared files here. They are parked in a cache on this device
+// (never sent anywhere), then the page is opened at /?shared=<id> and takes them. Keep the constants in step with apps/web/src/incoming.ts.
+const SHARE_ACTION = "/share-target", SHARE_CACHE = "overcut-share";
+async function takeShare(req) {
+  try {
+    const files = (await req.formData()).getAll("files").filter((f) => typeof f !== "string");
+    if (files.length === 0) return Response.redirect("/", 303);
+    const id = crypto.randomUUID(), cache = await caches.open(SHARE_CACHE);
+    await Promise.all(files.map((f, i) => cache.put(`/__shared/${id}/${i}`, new Response(f, { headers: { "content-type": f.type || "application/octet-stream", "x-name": encodeURIComponent(f.name) } }))));
+    return Response.redirect(`/?shared=${id}`, 303);
+  } catch { return Response.redirect("/", 303); }
+}
 self.addEventListener("fetch", (e) => {
   const req = e.request;
+  if (new URL(req.url).pathname === SHARE_ACTION && new URL(req.url).origin === self.location.origin) {
+    e.respondWith(req.method === "POST" ? takeShare(req) : Response.redirect("/", 303));
+    return;
+  }
   if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
   if (req.mode === "navigate") {
     e.respondWith(fetch(req).then((r) => { const copy = r.clone(); caches.open(VERSION).then((c) => c.put("/", copy)); return r; }).catch(() => caches.match("/")));

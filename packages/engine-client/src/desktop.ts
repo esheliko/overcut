@@ -18,6 +18,10 @@ export interface DesktopApi {
   fileAt(path: string): Promise<File | null>;
   /** Files dropped from the OS onto the window; `onHover` says whether a drag is over the window. Resolves to the unsubscribe function. */
   onDrop(handler: (files: File[]) => void, onHover?: (over: boolean) => void): Promise<() => void>;
+  /** Files the app was launched with or asked to open ("Open with", a double-clicked `.overcut`): returned once, then forgotten. */
+  launchFiles(): Promise<File[]>;
+  /** Fires when the OS asks the running app to open files (a second launch, macOS "Open with"); call `launchFiles` then. Resolves to the unsubscribe function. */
+  onOpen(handler: () => void): Promise<() => void>;
   projectsFolder(): Promise<string>;
   /** Lets the person choose where projects are kept; null when cancelled. */
   chooseProjectsFolder(): Promise<string | null>;
@@ -155,6 +159,8 @@ export function createDesktopApi(invoke: Invoke, listen: Listen): DesktopApi {
       ]);
       return () => off.forEach((f) => f());
     },
+    launchFiles: async () => many(await invoke<string[]>("desktop_launch_files")),
+    onOpen: async (handler) => listen<null>("overcut://open", () => handler()),
     projectsFolder: () => invoke<string>("desktop_projects_folder"),
     chooseProjectsFolder: () => invoke<string | null>("desktop_choose_projects_folder"),
     saveExport: (fileName, suggested) => invoke<string | null>("desktop_save_export", { fileName, suggested }),

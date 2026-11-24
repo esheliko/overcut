@@ -351,6 +351,7 @@ macro_rules! handlers {
             peaks_view_open,
             peaks_view_columns,
             peaks_view_close,
+            desktop::desktop_launch_files,
             desktop::desktop_pick_media,
             desktop::desktop_file_size,
             desktop::desktop_read_range,
@@ -373,6 +374,7 @@ pub fn run() {
         .on_window_event(desktop::on_window_event)
         .manage(EditorState::default())
         .manage(desktop::H264Download::default())
+        .manage(desktop::LaunchFiles::default())
         .manage(Mutex::new(PeaksState::default()))
         .setup(|app| {
             // An OpenH264 library the person downloaded earlier is loaded before libav is first used. No network call, nothing when absent.
@@ -380,7 +382,8 @@ pub fn run() {
             if let Ok(dir) = desktop::app_data(app.handle()) {
                 app_native_media::openh264::preload_installed(&dir);
             }
-            let _ = app;
+            // "Open with" / double-click on Windows and Linux pass the files as arguments; the page takes them with `desktop_launch_files`.
+            desktop::queue_launch_files(app.handle(), std::env::args_os().skip(1).map(std::path::PathBuf::from));
             Ok(())
         });
     #[cfg(feature = "native-media")]
@@ -405,6 +408,15 @@ pub fn run() {
     #[cfg(not(feature = "native-media"))]
     let builder = builder.invoke_handler(handlers![]);
     builder
-        .run(tauri::generate_context!())
-        .expect("error while running the application");
+        .build(tauri::generate_context!())
+        .expect("error while building the application")
+        .run(|app, event| {
+            // macOS (and iOS) deliver "Open with" as an event, not as arguments.
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let tauri::RunEvent::Opened { urls } = event {
+                desktop::queue_launch_files(app, urls.iter().filter_map(|u| u.to_file_path().ok()));
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+            let _ = (app, event);
+        });
 }
