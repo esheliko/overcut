@@ -382,6 +382,12 @@ h2, p { margin: 0; }
   .bin-select { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; font-size: 13px; }
   .bin-count { margin: 0; font-size: 12px; }
 }
+/* Phone portrait with the Media sheet open: the notices (refusals, saved-work notes) sit just above the sheet, so they never cover the media they refer to. */
+@media (orientation: portrait) and (max-width: 719px) {
+  body:has(.library[data-open="true"]) { --sheet-h: min(52dvh, 440px); --above-sheet: calc(100dvh - 68px - var(--sheet-h) - env(safe-area-inset-bottom) - 16px); }
+  body:has(.library[data-open="true"]) :is(.refusal-note, .persist-notes) { bottom: calc(env(safe-area-inset-bottom) + 68px + var(--sheet-h) + 8px); max-block-size: var(--above-sheet); }
+  body:has(.library[data-open="true"]) .refusal-note ul { max-block-size: min(40vh, calc(var(--above-sheet) - 24px)); }
+}
 
 /* ---- projects list (PM-06) ---- */
 .editor.home-mode { grid-template-rows: minmax(0, 1fr); }
