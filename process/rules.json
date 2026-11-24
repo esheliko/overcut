@@ -42,13 +42,28 @@
         "> 2. Change it there. Run `npm run lint && npm run typecheck && npm test` (CI also runs the WebAssembly build and smoke). `npm run build` only if you touched `crates/wasm`, `packages/engine-client`, the Vite config, `apps/web/public/sw.js` or how the engine is loaded. Finish all related changes, then push ONCE (every push costs a CI run).",
         "> 3. `git push -u origin <branch>`, then ONE PR against `main` (`create_pull_request`; mirror the PR template; one change per PR). No PR for half-finished work.",
         "> 4. **Wait for CI**: `subscribe_pr_activity`, end your turn; the `verify` verdict wakes you (cheap: a wake within the hour hits the warm prompt cache). Never poll or `sleep`. If subscribing fails, retry once; then read the `verify` check run yourself; never hand CI-waiting to the owner. Red `verify`: fix the cause on the same branch (change a test only when stale, and say so; never skip, delete or loosen one), push, wait again. Unrelated flake: re-run once and say so in the PR.",
-        "> 5. **Merge only when `verify` is green on the PR's latest commit**; if `main` moved, `update_pull_request_branch` and wait for the new verdict. Then `merge_pull_request` (squash, clear title, keep the `Claude-Session:` trailer). Never merge red or unverified, or someone else's PR unless the owner asked. Auto-merge is NOT available here (no branch protection on the free plan). If the branch delete fails, ignore it; do not retry.",
+        "> 5. **Merge only when `verify` is green on the PR's latest commit**; if `main` moved, `update_pull_request_branch` and wait for the new verdict. Then `merge_pull_request` (squash, clear title, keep the `Claude-Session:` trailer). Never merge red or unverified, or someone else's PR unless the owner asked. Auto-merge is NOT available here (no branch protection on the free plan). If the branch delete fails, ignore it; do not retry. While the M1 freeze is on (rule `m1-freeze`), merge only M1 PRs into `main`.",
         "> 6. **Done once merged.** A merge to `main` deploys the web app by itself (`deploy-web`, only when app code changed); native apps ship from version tags (`DEPLOYING.md`). Do NOT deploy, tag, release or wait unless the owner asked.",
         "> 7. **A red `main` is still owned by someone.** A worker spawned by an orchestrator stops after merging (no watching, no extra report). An owner-driven session runs once in the background `node scripts/ci-status.mjs --wait --for <merge-sha>` (`git fetch origin main` first). The orchestrator runs `node scripts/ci-status.mjs` once per batch. Red `verify` prints one **Owner** session (the `Claude-Session:` trailer) and a `>>>` line with your role: **the Owner fixes it now** (new branch + PR, tell the owner if a released build is affected). A session that starts while `main` is red (start hook, issue #2) fixes what is plausibly its own area first.",
         "> 8. **Times you tell the owner are ALWAYS Israel time (Asia/Jerusalem, IST), never UTC.** Get it with `TZ=Asia/Jerusalem date '+%Y-%m-%d %H:%M'`, do not convert in your head; logs, `git log`, GitHub and the CI board show UTC.",
         "> Docs-only changes (CLAUDE.md, `docs/`, `.claude/`) follow the same flow. `.claude/hooks/session-start.sh` checks this every session."
       ],
       "sessionHook": "STANDING RULES (CLAUDE.md top): never push to main; branch from origin/main, ONE PR, merge only on green verify, never deploy or tag a release unless asked (CI deploys the web app after merge). Orchestrated workers stop after merging; owner-driven sessions run ci-status --wait --for <sha> in background.",
+      "promptHook": ""
+    },
+    {
+      "id": "m1-freeze",
+      "title": "main takes only M1 work until the owner lifts the freeze",
+      "added": "2026-11-24",
+      "decidedBy": "owner",
+      "enforcedBy": [],
+      "reviewed": "2026-11-24",
+      "why": "Owner, 2026-11-24 (issue #84): finish M1 first. M2 work merged into main would mix milestones before M1 is done, so M2 lanes push to their own branches and wait.",
+      "claudeMd": [
+        "> ## ⚠️ STANDING RULE: main takes only M1 work until the owner lifts the freeze",
+        "> Owner, 2026-11-24 (issue #84): \"do not merge any M2 work. main stays in M1 until we finish.\" Do not merge M2 PRs (#83, #85, #86 at the time of writing) or any other M2 work into `main`; push it to its branch and wait. The freeze lifts when the M1 exit checklist in `docs/M1-STATUS.md` is green or the owner says so. Where M2 work lands while frozen is the owner's decision (issue #89); do not choose it."
+      ],
+      "sessionHook": "M1 FREEZE: main takes only M1 work until the owner lifts it (issue #84); M2 PRs wait on their branches, do not merge them.",
       "promptHook": ""
     },
     {

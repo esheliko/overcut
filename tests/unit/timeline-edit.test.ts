@@ -5,7 +5,7 @@ import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
 import { applySelect, IDLE, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
 import { buildScene, TICKS_PER_SECOND } from "../../apps/web/src/timeline/scene";
-import { canvasCommand, globalCommand, type KeyLike } from "../../apps/web/src/timeline/shortcuts";
+import { canvasCommand, globalCommand, isModifierKey, type KeyLike } from "../../apps/web/src/timeline/shortcuts";
 import { LANE, RULER, timeToX, type View } from "../../apps/web/src/timeline/view";
 
 const project = fixtureProject({ tracks: 4, clipsPerTrack: 6 });
@@ -259,4 +259,9 @@ test("closing the start gap: deleting or start-trimming the first clips slides t
   assert.deepEqual(closeStartGap(scene, mv), mv, "a move is the user's own placement");
   const ft = scene.frameTicks, e = trimOp(scene, front[0]!, "end", scene.tStart[front[0]!]! + scene.tDur[front[0]!]! - ft);
   assert.deepEqual(closeStartGap(scene, [e]), [e], "an end trim never moves anything");
+});
+
+test("a modifier pressed alone is not keyboard use of the timeline (no focus frame over the whole stage)", () => {
+  for (const key of ["Shift", "Control", "Alt", "Meta", "AltGraph"]) assert.equal(isModifierKey(key), true, key);
+  for (const key of ["ArrowLeft", "s", "Delete", " ", "a"]) assert.equal(isModifierKey(key), false, key);
 });

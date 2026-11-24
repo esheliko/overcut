@@ -1,7 +1,8 @@
 name: Android emulator (proxy)
 # Non-blocking: never part of `verify`. A low-end Android profile (ADR 0013 emulator proxy). Untested until its first run; fix forward from the artifact.
+# Weekly (Monday 01:17 UTC), not nightly, to save Actions minutes (issue #91).
 on:
-  schedule: [{ cron: '17 1 * * *' }]
+  schedule: [{ cron: '17 1 * * 1' }]
   workflow_dispatch:
 permissions:
   contents: read

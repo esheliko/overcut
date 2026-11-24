@@ -69,9 +69,11 @@ jobs:
 
   # Non-blocking (M1 exit criterion "budgets measured in CI", issue #51): not required by deploy-web. Numbers are runner numbers; refresh
   # tests/perf/baseline.json from this job's `perf-results` artifact (docs/PERFORMANCE.md, "Refreshing the baseline").
+  # Runs only on pushes to main, not on every pull request, to save Actions minutes (issue #91).
   perf:
     name: perf
     needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 25
@@ -96,9 +98,10 @@ jobs:
           set -o pipefail
           { echo '### perf vs baseline'; echo '```'; node tests/perf/compare.mjs perf-results.json tests/perf/baseline.json; echo '```'; } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # Non-blocking: short time-boxed cargo-fuzz run per target (nightly). A crash uploads its artifact; nothing requires the job.
+  # Non-blocking: short time-boxed cargo-fuzz run per target. Runs only on pushes to main (issue #91). A crash uploads its artifact; nothing requires the job.
   fuzz:
     name: fuzz
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 20

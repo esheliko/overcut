@@ -7,7 +7,7 @@ import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } fr
 import { handleAt } from "./hit";
 import { applySelect, IDLE, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
-import { canvasCommand, type Command } from "./shortcuts";
+import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
 
@@ -367,7 +367,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onCancel}
-        onKeyDown={(e) => { delete e.currentTarget.dataset.pointer; onKey(e); }}
+        onKeyDown={(e) => { if (!isModifierKey(e.key)) delete e.currentTarget.dataset.pointer; onKey(e); }}
         onBlur={(e) => { delete e.currentTarget.dataset.pointer; }}
       />
       <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>
