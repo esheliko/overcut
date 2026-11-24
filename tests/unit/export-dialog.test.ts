@@ -229,6 +229,20 @@ test("platform presets: X and YouTube keep Full HD and the project's shape; fram
   assert.deepEqual([p.width, p.height], [1080, 1920]);
 });
 
+test("Facebook preset: Full HD, 60 fps at most, no cap or duration warning, shape kept, never enlarged", () => {
+  const f = presetChoice("facebook", clip(600, { fps: 120 }));
+  assert.deepEqual([f.width, f.height, f.fps], [1920, 1080, 60]);
+  assert.equal(f.capBytes, undefined);
+  assert.deepEqual(presetWarnings("facebook", f, clip(600, { fps: 120 }), H264), []);
+  const p = presetChoice("facebook", PHONE); // vertical stays vertical (Reels), no bars
+  assert.deepEqual([p.width, p.height], [1080, 1920]);
+  assert.equal(needsBars("facebook", HD), false);
+  const small = presetChoice("facebook", clip(10, { width: 640, height: 360 }));
+  assert.deepEqual([small.width, small.height], [640, 360]);
+  assert.equal(presetHint("facebook", HD).key, "export.preset.facebook.hint");
+  assert.equal(presetHint("facebook", clip(10, { width: 640, height: 360 })).key, "export.preset.facebook.capped");
+});
+
 test("size cap: the video bitrate is lowered so the estimate lands under WhatsApp 16 MB and Discord 10 MB", () => {
   for (const [id, cap] of [["whatsapp", 16_000_000], ["discord", 10_000_000]] as const) {
     for (const seconds of [10, 30, 60, 120]) {

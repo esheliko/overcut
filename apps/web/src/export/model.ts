@@ -2,9 +2,9 @@
  *  Unit-tested in tests/unit/export-dialog.test.ts. Rules: docs/features/export-dialog.md. */
 import { ExportError, type DesktopCodecs, type ExportErrorCode, type ExportFormatId, type ExportFormatOption, type ExportFormats, type ExportSettings } from "@app/engine-client";
 
-export type PresetId = "original" | "youtube" | "vertical" | "x" | "whatsapp" | "discord" | "small";
+export type PresetId = "original" | "youtube" | "vertical" | "x" | "facebook" | "whatsapp" | "discord" | "small";
 export type QualityId = "high" | "medium" | "low";
-export const PRESET_IDS: readonly PresetId[] = ["original", "youtube", "vertical", "x", "whatsapp", "discord", "small"];
+export const PRESET_IDS: readonly PresetId[] = ["original", "youtube", "vertical", "x", "facebook", "whatsapp", "discord", "small"];
 export const QUALITIES: readonly QualityId[] = ["high", "medium", "low"];
 /** Video bitrate as a share of the default for the size (ADR 0004: bits per pixel). */
 export const QUALITY_FACTOR: Record<QualityId, number> = { high: 1, medium: 0.6, low: 0.35 };
@@ -70,6 +70,8 @@ export const PLATFORMS: Partial<Record<PresetId, PlatformSpec>> = {
   youtube: { short: 1080, fpsMax: 60 },
   vertical: { short: 1080, fpsMax: 60, tall: true },
   x: { short: 1080, fpsMax: 60, capBytes: 512_000_000, maxSeconds: 140 },
+  /** Feed and Reels share one spec: Full HD, no cap used (reported 10 GB / 240 min is out of reach), and the shape is kept (Reels framing is TL-24). */
+  facebook: { short: 1080, fpsMax: 60 },
   whatsapp: { short: 720, fpsMax: 30, capBytes: 16_000_000 },
   discord: { short: 720, fpsMax: 30, capBytes: 10_000_000 },
 };
@@ -259,6 +261,7 @@ export function presetHint(id: PresetId, src: Source, locale?: string): { key: s
     case "youtube": return { key: short < 1080 ? "export.preset.youtube.capped" : "export.preset.youtube.hint", values: { size } };
     case "small": return { key: short < 720 ? "export.preset.small.capped" : "export.preset.small.hint", values: { size } };
     case "vertical": return { key: needsBars(id, src) ? "export.preset.vertical.bars" : "export.preset.vertical.hint", values: { size } };
+    case "facebook": return { key: short < 1080 ? "export.preset.facebook.capped" : "export.preset.facebook.hint", values: { size } };
     case "x": return { key: short < 1080 ? "export.preset.x.capped" : "export.preset.x.hint", values: { size } };
     case "whatsapp":
     case "discord": return { key: "export.preset.capped.hint", values: { size, cap: formatBytes(PLATFORMS[id]!.capBytes!, locale) } };

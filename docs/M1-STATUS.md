@@ -1,28 +1,28 @@
 # M1 "First cut" status audit
 
-Audit of 2026-11-23 against `origin/main` at `a8c7ba1`. Nothing was built for this audit; it only reads the code, tests, docs and merged PRs, and runs the built app once headless. Legend: **done** (merged, with a test), **partial** (works, something the feature row asks for is missing), **missing**. "Device" means it needs a real phone or laptop, not the container.
+Audit of 2026-11-23 against `origin/main` at `a8c7ba1`; reconciled 2026-11-24 with `main` at `314248c` (PRs up to #79). Nothing was built for this audit; it only reads the code, tests, docs and merged PRs, and runs the built app once headless. Legend: **done** (merged, with a test), **partial** (works, something the feature row asks for is missing), **missing**. "Device" means it needs a real phone or laptop, not the container.
 
-**Verdict: M1 is not complete.** The vertical slice (import, trim, split, delete, undo/redo, play, export) works end to end on web and has a desktop path. What is missing is mostly outside the slice: five hardware or user proofs, two ADRs still "proposed", the perf CI job, and some rows of the P0 feature table (canvas presets, `.overcut` open/save UI, accent colours, opt-in crash reports and the network log, copy/paste/duplicate/ripple delete, history panel, numeric trim).
+**Verdict (2026-11-24): the M1 code is complete; what remains is proof, not building.** The vertical slice (import, trim, split, delete, undo/redo, play, export) works end to end on web and desktop, and every P0 row the M1 plan lists is merged with tests (canvas presets, `.overcut` open/save, projects list, accent colours, network log and error screen, copy/paste/duplicate, history panel, numeric trim, scrub strip, platform export presets). Still open: owner/device proofs, the 5-user activation test, ADR 0003/0004 acceptance (after the proofs), and process-session CI work (perf job, fuzz targets). Section 5 lists exactly that.
 
 ## 1. Feature IDs (docs/FEATURES.md rows)
 | ID | Status | Evidence / what is missing |
 |---|---|---|
 | PM-01 New project, canvas presets, fps, resolution | **done** (canvas, new project; update 2026-11-23) | Canvas dialog (16:9, 9:16, 1:1, 4:5, 21:9, custom; 24-60 fps; 720p-4K; Match first clip default), `set_canvas` op, undoable, in the project file, used by preview and export (`docs/features/canvas.md`); New project in the app menu |
-| PM-02 Import via picker, drop, paste, open-with | **partial** | Picker, drop and paste: `MediaBin.tsx`, `tests/smoke/media-bin.spec.ts` (6 tests). Desktop native import/drop: PR #56. Share sheet / "open with": **built** (this PR): PWA `file_handlers` + `share_target` (service worker, no network), desktop file associations + launch files; per-platform support in `docs/features/open-with.md`. Unverified on real devices/OS; second launch while running needs `tauri-plugin-single-instance` (follow-up) |
+| PM-02 Import via picker, drop, paste, open-with | **done** (device unchecked) | Picker, drop and paste: `MediaBin.tsx`, `tests/smoke/media-bin.spec.ts` (6 tests). Desktop native import/drop: PR #56. Share sheet / "open with": **done** (PR #78): PWA `file_handlers` + `share_target` (service worker, no network), desktop file associations + launch files; per-platform support in `docs/features/open-with.md`. **done in code**; unverified on real devices/OS; second launch while running needs `tauri-plugin-single-instance` (follow-up) |
 | PM-03 Media bin: thumbnails, filter, search, tags, relink | **done** | Poster thumbnails, search (names and tags), offline relink (PR #60), type filter, sort, undoable tags (`set_media_tags`), windowed list measured at 10k items (`media-bin.md`) |
-| PM-06 Autosave, crash recovery, version snapshots | done | Op-log journal, OPFS / IndexedDB / Tauri folder, "Recovered unsaved changes" + Undo recovery, killed-process smoke (PR #34, `persistence.spec.ts`). Version snapshots: done (`versions.md`). Multi-project list: done (`projects.md`, update 2026-11-24) |
+| PM-06 Autosave, crash recovery, version snapshots, projects list | **done** | Op-log journal, OPFS / IndexedDB / Tauri folder, "Recovered unsaved changes" + Undo recovery, killed-process smoke (PR #34, `persistence.spec.ts`). Version snapshots: done (`versions.md`). Multi-project list: open, rename, duplicate, delete local projects (PR #79, `projects.md`) |
 | PM-07 `.overcut` zip + JSON, documented, migrations | **partial** (open/save UI done; update 2026-11-23) | Reader/writer, migrations, fuzz target (PR #24, `docs/features/project-file.md`). Save project as / Open project in the app menu (web and desktop; `canvas.md`). The live journal is a sidecar, not in the zip (`persistence.md`); fuzz target is not run in CI |
-| PM-12 Offline everywhere, installable PWA | **partial** | `sw.js`, manifest, offline fix and allow-list test (PR #54, `network.spec.ts`). Install affordance: menu "Install app" (`beforeinstallprompt`) and an iOS Add-to-Home-Screen how-to (this PR). Installability on a real phone unverified |
+| PM-12 Offline everywhere, installable PWA | **partial** | `sw.js`, manifest, offline fix and allow-list test (PR #54, `network.spec.ts`). Install affordance: menu "Install app" (`beforeinstallprompt`) and an iOS Add-to-Home-Screen how-to (PR #69). Installability on a real phone unverified |
 | TL-02 Split, trim (drag, numeric), delete, ripple delete, duplicate, copy/paste | **done** (ripple delete moved to M2) | Split, delete (lift), drag and keyboard trim: PR #35. Duplicate, copy/cut/paste, numeric timing: `timeline-clipboard.test.ts`, smoke `clipboard-history.spec.ts` |
 | TL-06 Unlimited undo/redo, history panel | **done** | Undo/redo buttons and shortcuts, survives recovery (PR #19, #35, #49); history panel (jump to any step) |
 | PV-01 Real-time preview, frame-accurate scrub, JKL, frame step | **partial** | Worker player, audio master clock, JKL, frame step (PR #39, #59, `preview.spec.ts`). 60 fps on the reference laptop is unproven; WebGPU path unverified on hardware; the Galaxy S24 Chrome has no WebGPU so it depends on WebGL2 (`PERFORMANCE.md`) |
-| EX-01 Export MP4 (H.264) / WebM, M1: 1080p30 H.264 | **partial** | Web: streaming WebCodecs export in a Worker (PR #36, #45; WebM/VP9 2.2x realtime in the container, `export.md`). Desktop: libav H.264/AAC (commit 5d50b91, PR #56). Real-footage speed unmeasured; desktop H.264 needs a hardware encoder or the OpenH264 download (issue #57, not built); desktop WebM not built (issue #58) |
-| EX-02 Presets per platform, size-targeted | **partial** | Presets Original, YouTube, 9:16 (TikTok/Reels/Shorts), X, WhatsApp, Discord (size caps, bitrate fitted), Small + advanced, calibrated estimate (PR #45, #46, this PR). Limits are search-reported, not confirmed on the platforms' help pages (`export.md` table); no Facebook chip |
-| EX-04 Hardware encoding, software fallback | **partial** | WebCodecs picks what the device offers (`export.md`); desktop falls back to opt-in OpenH264 which is not built. Hardware-encode speed unmeasured on any device |
+| EX-01 Export MP4 (H.264) / WebM, M1: 1080p30 H.264 | **partial** | Web: streaming WebCodecs export in a Worker (PR #36, #45; WebM/VP9 2.2x realtime in the container, `export.md`). Desktop: libav H.264/AAC (commit 5d50b91, PR #56). Real-footage speed unmeasured; desktop H.264 needs a hardware encoder or the OpenH264 download (PR #74, pins empty: issue #72); desktop WebM built (PR #74) |
+| EX-02 Presets per platform, size-targeted | **done** | Presets Original, YouTube, 9:16 (TikTok/Reels/Shorts), X, Facebook (feed + Reels), WhatsApp, Discord (size caps, bitrate fitted), Small + advanced, calibrated estimate (PR #45, #46, #69, this update). Limits re-checked 2026-11-24 against excerpts of the official help pages (the container cannot open them directly); per-row source and confirmed/unconfirmed in the `export.md` table. WhatsApp's current figure is contradictory on its own pages |
+| EX-04 Hardware encoding, software fallback | **partial** | WebCodecs picks what the device offers (`export.md`); desktop falls back to the opt-in OpenH264 download (built, PR #74; pins empty, issue #72). Hardware-encode speed unmeasured on any device |
 | AU-01 Waveforms (M1 part) | **done** | Peaks pyramid, cache and wiring (PR #41, #48; unit `media-cache.test.ts`) |
 | UX-01 Responsive layouts | **done** (device unchecked) | Phone, tablet, desktop shells; overflow checked at phone and desktop in smoke; phone top bar PR #60. Foldable / ultrawide not specifically tested |
-| UX-05 Themes: dark, light, high contrast, accent colours, follows system | **partial** | Dark / light / high-contrast, system default, 7 accent colours in the menu (WCAG-tested per theme x accent, this PR) |
-| XT-06 Privacy: no telemetry, opt-in crash reports, visible network log, no third-party scripts | **partial** | Allow-list (`config/network-allowlist.json`) + strict CSP + CI test (PR #54, `network.spec.ts`). Visible network log built (Privacy menu and `/diagnostics`, `recordNetworkEvent` hook for desktop downloads; smoke asserts no foreign host). Opt-in crash reports moved to M2 as XT-06b (needs an optional endpoint with a local fallback; docs PR). CSP as a response header: issue #55 (PR #61 open) |
+| UX-05 Themes: dark, light, high contrast, accent colours, follows system | **done** | Dark / light / high-contrast, system default, 7 accent colours in the menu (WCAG-tested per theme x accent, PR #69) |
+| XT-06 Privacy: no telemetry, opt-in crash reports, visible network log, no third-party scripts | **done** (crash reports: M2) | Allow-list (`config/network-allowlist.json`) + strict CSP + CI test (PR #54, `network.spec.ts`). Visible network log (PR #73, #75, #78; Privacy menu and `/diagnostics`, `recordNetworkEvent` hook for desktop downloads; smoke asserts no foreign host). Opt-in crash reports moved to M2 as XT-06b (needs an optional endpoint with a local fallback; docs PR). Error screen with local diagnostics report (PR #78). CSP as a response header: issue #55, merged in PR #61 |
 
 ## 2. M1 backlog (docs/IMPLEMENTATION_PLAN.md section 4)
 | Item | Status | Evidence |
@@ -38,7 +38,7 @@ Audit of 2026-11-23 against `origin/main` at `a8c7ba1`. Nothing was built for th
 | M1-012 MP4/MOV + WebM demux, probe, fuzz | done | PR #18, #23 |
 | M1-013 Waveform extraction + cache | done | PR #41, #48 |
 | M1-014 [S3] WebCodecs encode + mux, sync test | partial | PR #29 (A/V sync verified in the container); real-device speed and drift unmeasured |
-| M1-015 [S4] Native decode/encode via libav | partial | commit 5d50b91; desktop-only; no CI build (issue #52, PR #61 open); parity vs web not reported |
+| M1-015 [S4] Native decode/encode via libav | partial | commit 5d50b91; desktop-only; CI native-media job merged in PR #61 (issue #52 part 1; part 2 open); parity vs web not reported |
 | M1-020 [S2] wgpu 3 layers on WebGPU/WebGL2 + golden frames | partial | commit 3cf70ab, PR #44; WebGL2 verified headless; WebGPU not on hardware; ADR 0003 accepted for the browser path but `adr/README.md` still lists it "proposed" |
 | M1-021 Colour pipeline v0 | done | commit b542a41 |
 | M1-022 Export render path, deterministic output | done | PR #36, #44 |
@@ -50,8 +50,8 @@ Audit of 2026-11-23 against `origin/main` at `a8c7ba1`. Nothing was built for th
 | M1-035 Export dialog: presets, progress, cancel, save/share | done | PR #45, #46, #47 |
 | M1-036 Theme tokens, i18n, a11y primitives | done | PR #32 (English only) |
 | M1-040 Persistence, autosave, recovery, `kill -9` test | done | PR #34 |
-| M1-041 Desktop shell: Tauri commands, dialogs, drag-drop, `release.yml` dry run | partial | PR #56; compile-checked only (no webview in CI); desktop preview of on-disk files, WebM, OpenH264 not built (issues #57, #58); release dry run not reported |
-| M1-042 Network allow-list + CSP | done | PR #54; header form: issue #55 / PR #61 |
+| M1-041 Desktop shell: Tauri commands, dialogs, drag-drop, `release.yml` dry run | partial | PR #56, #74; compile-checked only (no webview in CI); preview of on-disk files, native WebM and the opt-in OpenH264 downloader built (PR #74; download pins still empty, issue #72); release dry run not reported |
+| M1-042 Network allow-list + CSP | done | PR #54; header form: issue #55, PR #61 (merged) |
 | M1-043 Perf harness, device definitions, budgets | partial | PR 8f989ef (`tests/perf`, `PERFORMANCE.md`, device files); no CI job (issue #51) |
 | M1-044 Activation script + test with 5 users | partial | Script and pass bar: [ACTIVATION-TEST.md](ACTIVATION-TEST.md); the test with 5 users is not run yet (owner) |
 
@@ -66,7 +66,7 @@ Audit of 2026-11-23 against `origin/main` at `a8c7ba1`. Nothing was built for th
 | No network calls (CI checks) | **met** | `tests/smoke/network.spec.ts`, allow-list `hosts: []`, strict CSP meta (PR #54) |
 | Budgets measured in CI | **not met** | Harness exists; the CI job is issue #51 (open, process session). Baseline is a container number |
 | Process issues #14, #17 | done | closed by PR #31 |
-| Process issues #51, #52, #55 | **needs owner** | Open `process-request`s. PR #61 (open, green) covers #52 and #55 per the board; #51 still open |
+| Process issues #51, #52, #55 | **partly done** | PR #61 merged (CSP response header, native-media CI job: #55 and #52 part 1). #51 (perf CI job) and #52 part 2 still open (process session) |
 
 ## 4. Spot check of the real flow
 Built the app (`npm run build`, wasm-bindgen-cli 0.2.130) and served it with `vite preview`; headless Chromium with no GPU, once at 1280x800 and once at 390x844 touch, using the repo fixture `crates/media/tests/fixtures/h264_aac.mp4` (160x120, 1 s).
@@ -81,15 +81,19 @@ Built the app (`npm run build`, wasm-bindgen-cli 0.2.130) and served it with `vi
   7. A 1 s clip at the default zoom occupies about 40 px of a 30 s ruler (see the desktop screenshot logic: the ruler starts at 30 s); the keyboard shortcut `0` fits, I did not look for a visible Fit button.
 - **Not covered**: a real 1080p file, a real GPU, the desktop app, a phone browser, touch trim drag (I did not drive it).
 
-## 5. Gaps to close before Alpha (most important first)
-1. **Device proofs** (owner, no code): 60 fps 1080p preview on the Windows laptop and the Mac; 1080p30 export speed on the S24 (and iPhone 14); then accept ADR 0003 / 0004 and update `adr/README.md`. Add an in-app preview-fps and export-speed test to `/diagnostics` so the owner can run them (today it has no end-to-end test).
-2. **Activation test** (M1-044): write the script and run it with 5 first-time users; measure against 90 s. Fix split-with-no-effect feedback, the undo-removes-the-import surprise, the phone Media drawer staying open over the toolbar and the dead "soon" rail entries first.
-3. **Perf CI job** (issue #51) and refresh the baseline from a CI run; merge PR #61 (#52, #55).
-4. **Real-footage export and preview speed**: test with a real 1080p30 phone clip (and a long-GOP one: seek p95 200-380 ms on both devices); ~~automatic proxy / keyframe cache for low-tier devices~~ done as the scrub strip (`docs/features/preview.md` "Smooth scrubbing": detection from GOP + tier + measured seeks, background JPEG strip in OPFS, status chip, menu switch, 512 MB cap); still to verify on the S24 and with a real long-GOP phone clip.
-5. **Project lifecycle**: new project with canvas presets (PM-01: 21:9, custom, fps, change later), open and save a `.overcut` file from the UI (PM-07). (Version snapshots, PM-06: done.)
-6. ~~Editing rows left in TL-02 / TL-06~~ done; ripple delete stays M2 (FEATURES row reconciled).
-7. **Desktop**: OpenH264 downloader (#57) and native WebM, preview of on-disk files, Windows drag behaviour (#58); there is no CI test that runs the desktop app and no release dry run result.
-8. **Export presets** (EX-02): add TikTok / Reels / X / WhatsApp / Discord size-capped presets, or narrow the row to the four built.
-9. ~~XT-06~~ done: visible network log built; opt-in crash reports moved to M2 (XT-06b) with the reason. Crash/error screen built with "Copy diagnostics report" (`docs/features/error-screen.md`).
-10. **UX-05 accent colours**; **PM-02/12** ~~share sheet / open-with~~ built, install prompt done; (PM-03 tags, filters and the 10k check: done); fuzz targets (`app-media`, `app-model`) not run in CI.
-11. **Docs consistency**: ROADMAP M1 lists M1 exit as "all merged and the checklist green" (plan section 4); this file is the checklist until a CI-backed one exists.
+## 5. What is really left (2026-11-24)
+Owner / device proofs (no code, needs real hardware or people):
+1. **Preview fps**: 1080p 60 fps end to end on the Windows laptop and the Mac (PV-01).
+2. **Export speed**: 1080p30 in-app on the S24 and iPhone 14 (EX-01, M1-014; low-phone seek budget on the calibrated proxy is 195 ms vs 120 ms).
+3. **Scrub strip on a real long-GOP phone clip** on the S24 (`docs/features/preview.md` "Smooth scrubbing"), and the first real 1080p30 phone clip through export.
+4. **Activation test with 5 first-time users** against 90 s (script and pass bar: [ACTIVATION-TEST.md](ACTIVATION-TEST.md), M1-044).
+5. **ADR 0003 / 0004 acceptance** (and `adr/README.md`) after proofs 1 to 3.
+6. Installability on a real phone, open-with / share target per OS (`open-with.md`), desktop shell on real Windows/macOS/Linux.
+
+Process session (CI and process files, not feature work):
+7. **Perf CI job** (issue #51) and a baseline refreshed from CI; **fuzz targets** (`app-media`, `app-model`, project file) run in CI.
+8. **Issue #52 part 2** (native-media CI beyond the compile check); a release dry run result.
+
+Small code follow-ups:
+9. **OpenH264 download pins** (issue #72): `PINS` in `openh264.rs` are empty, so the opt-in download cannot run yet.
+10. Single-instance second launch for open-with (`tauri-plugin-single-instance`); opt-in crash reports are XT-06b (M2); ripple delete is M2.
