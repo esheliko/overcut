@@ -12,6 +12,7 @@ import { TICKS_PER_SECOND, type Scene } from "./scene";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
 
 export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement };
+const CLIP_LIST_MAX = 200;
 const NO_SEL: ReadonlySet<string> = new Set();
 
 type Props = {
@@ -370,6 +371,15 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         onBlur={(e) => { delete e.currentTarget.dataset.pointer; }}
       />
       <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>
+      {/* Text alternative to the canvas: every clip (capped) in reading order, so a screen reader can browse what the picture shows. */}
+      {scene.clipCount > 0 && (
+        <ul className="sr-only" aria-label={t("timeline.clipList")} data-testid="tl-clip-list">
+          {Array.from({ length: Math.min(scene.clipCount, CLIP_LIST_MAX) }, (_, i) => {
+            const say = describeClip(scene, i);
+            return <li key={scene.id[i]}>{t(say.key, say.values)}{selected.has(scene.id[i]!) ? ` ${t("timeline.clipSelected")}` : ""}</li>;
+          })}
+        </ul>
+      )}
     </>
   );
 }
