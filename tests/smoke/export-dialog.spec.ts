@@ -33,7 +33,7 @@ test("one click on Export (the smart default) makes a file and saves it", async 
   await expect(dialog).toBeVisible();
   // presets are big tappable chips; the default is the project's own size
   const chips = page.locator(".export-chip-choice");
-  await expect(chips).toHaveCount(7);
+  await expect(chips).toHaveCount(8);
   for (const c of await chips.all()) expect((await c.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(page.getByTestId("export-preset-original")).toBeChecked();
   await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
