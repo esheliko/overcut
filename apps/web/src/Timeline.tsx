@@ -278,7 +278,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         onApply={(ops, field, name) => commit(mirrorTrims(scene, ops), say("timeline.say.timed", { field, name }))} /></Suspense>}
       <div className="tl-stage">
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={(ids) => setSelected(expandLinks(scene, ids))} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} />
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} />
       </div>
     </section>
   );
