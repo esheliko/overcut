@@ -149,9 +149,11 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
   const { open, field } = useImportPicker(onImport);
   const [filter, setFilter] = useState<BinFilter>(DEFAULT_FILTER);
   const [editing, setEditing] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
   const tagList = allTags(meta);
   const activeTag = tagList.some((x) => x.toLowerCase() === filter.tag.toLowerCase()) ? filter.tag : ""; // a tag nobody uses any more stops filtering
   const shown = viewBin(items, meta, { ...filter, tag: activeTag, query });
+  const filtersOn = filter.kind !== DEFAULT_FILTER.kind || activeTag !== "" || filter.sort !== DEFAULT_FILTER.sort; // shown on the toggle, so a hidden filter is not forgotten
   const editItem = editing ? items.find((i) => i.id === editing) : undefined;
   const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onAdd={onAdd} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
   const pending = shown.filter((i) => !meta.has(i.id));
@@ -172,26 +174,39 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
     <div className="bin">
       {field}
       <button className="primary bin-import" onClick={open} data-testid="import-more"><Icon name="plus" size={18} /><span>{t("media.import")}</span></button>
-      <div className="bin-filters" role="group" aria-label={t("media.filter")}>
-        <div className="bin-kinds">
-          {KINDS.map((k) => <button key={k} className="bin-chip" aria-pressed={filter.kind === k} onClick={() => setFilter({ ...filter, kind: k })} data-testid={`bin-kind-${k}`}>{t(`media.kind.${k}`)}</button>)}
+      <button
+        className="bin-filter-toggle"
+        aria-expanded={filterOpen}
+        aria-controls="bin-filter-panel"
+        onClick={() => setFilterOpen((o) => !o)}
+        data-testid="bin-filter-toggle"
+      >
+        <Icon name="filters" size={18} />
+        <span>{t("media.filterSort")}</span>
+        {filtersOn && <span className="bin-on" data-testid="bin-filter-on">{t("media.filterOn")}</span>}
+      </button>
+      {filterOpen && (
+        <div id="bin-filter-panel" className="bin-filters" role="group" aria-label={t("media.filterSort")} data-testid="bin-filter-panel">
+          <div className="bin-kinds">
+            {KINDS.map((k) => <button key={k} className="bin-chip" aria-pressed={filter.kind === k} onClick={() => setFilter({ ...filter, kind: k })} data-testid={`bin-kind-${k}`}>{t(`media.kind.${k}`)}</button>)}
+          </div>
+          <div className="bin-selects">
+            <label className="bin-select">{t("media.sort")}
+              <select value={filter.sort} onChange={(e) => setFilter({ ...filter, sort: e.target.value as BinSort })} data-testid="bin-sort">
+                {SORTS.map((s) => <option key={s} value={s}>{t(`media.sort.${s}`)}</option>)}
+              </select>
+            </label>
+            {tagList.length > 0 && (
+              <label className="bin-select">{t("media.tags.filter")}
+                <select value={activeTag} onChange={(e) => setFilter({ ...filter, tag: e.target.value })} data-testid="bin-tag-filter">
+                  <option value="">{t("media.tags.all")}</option>
+                  {tagList.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
         </div>
-        <div className="bin-selects">
-        <label className="bin-select">{t("media.sort")}
-          <select value={filter.sort} onChange={(e) => setFilter({ ...filter, sort: e.target.value as BinSort })} data-testid="bin-sort">
-            {SORTS.map((s) => <option key={s} value={s}>{t(`media.sort.${s}`)}</option>)}
-          </select>
-        </label>
-        {tagList.length > 0 && (
-          <label className="bin-select">{t("media.tags.filter")}
-            <select value={activeTag} onChange={(e) => setFilter({ ...filter, tag: e.target.value })} data-testid="bin-tag-filter">
-              <option value="">{t("media.tags.all")}</option>
-              {tagList.map((x) => <option key={x} value={x}>{x}</option>)}
-            </select>
-          </label>
-        )}
-        </div>
-      </div>
+      )}
       <p className="bin-count" role="status" data-testid="bin-count">{t("media.count", { shown: settled.length, total: meta.size })}</p>
       {shown.length === 0 ? <p className="bin-none">{query ? t("media.noMatch", { query }) : t("media.noFilterMatch")}</p> : (
         <>
