@@ -73,8 +73,9 @@ interface Candidate {
 /** Preference order for `auto`: ADR 0004, "Recommended default export presets". */
 const AUTO_ORDER: Candidate[] = [
   { container: "mp4", video: "avc", audio: "aac" },
+  // H.264 wins even without an AAC encoder (Opus audio): the person asked for MP4 by default; the warning says what that costs.
+  { container: "mp4", video: "avc", audio: "opus", warning: "This device cannot add AAC audio, so the MP4 has Opus audio. Some phones, TVs and editors may not play it." },
   { container: "webm", video: "vp9", audio: "opus" },
-  { container: "mp4", video: "avc", audio: "opus", warning: "This MP4 has Opus audio, which many phones, TVs and editors cannot play. Use WebM, or a browser that can encode AAC, for the widest support." },
   { container: "mp4", video: "vp9", audio: "opus", warning: "This MP4 uses VP9 and Opus: it plays in browsers but many devices cannot open it." },
   { container: "webm", video: "av1", audio: "opus" },
   { container: "mp4", video: "av1", audio: "opus", warning: "This MP4 uses AV1 and Opus: it plays in recent browsers but many devices cannot open it." },

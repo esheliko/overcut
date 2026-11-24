@@ -5,7 +5,7 @@ import { onThemeChange } from "../theme/tokens";
 import { DARK, drawTimeline, newOverlay, paletteFromCss, type DrawStats, type Overlay, type Palette } from "./draw";
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
 import { handleAt } from "./hit";
-import { applySelect, IDLE, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
+import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
@@ -194,14 +194,13 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   };
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
-    const o = ui.current, f = flags.current;
+    const o = ui.current;
     o.ghosts = null; o.trimClip = -1; o.marquee = null;
+    markPreview(flags.current, g);
     if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTrack = g.track !== g.from ? g.track : -1;
-      for (const i of g.sel) f[i] = 2;
     } else if (g.k === "trim") {
       o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND;
-      f[g.clip] = 2;
     } else if (g.k === "marquee") o.marquee = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 };
     invalidate();
   };

@@ -148,6 +148,15 @@ export function videoBitrate(c: Choice, src: Source, codec: ExportFormatOption["
 
 export const audioBitrate = (audio: "aac" | "opus"): number => (audio === "aac" ? 192_000 : 128_000);
 
+/**
+ * A plain-words note for the dialog when the file is WebM only because this device cannot make MP4 (ADR 0004: H.264 is the default wherever
+ * it encodes). Null otherwise, including when the person picked WebM on purpose. Pure; the copy key lives in en.json.
+ */
+export function formatNote(f: ExportFormatOption, options: readonly ExportFormatOption[]): "export.format.noMp4" | null {
+  if (f.container !== "webm" || options.length === 0) return null;
+  return options.some((o) => o.id === "mp4-h264") ? null : "export.format.noMp4";
+}
+
 /** The format the choice resolves to on this device, or null when none is encodable. */
 export function pickFormat(c: Choice, options: readonly ExportFormatOption[], auto: ExportFormatId | null): ExportFormatOption | null {
   const id = c.format === "auto" ? auto : c.format;

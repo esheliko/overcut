@@ -39,7 +39,7 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   await hit(() => button("Split at playhead").click());
   await expect(page.locator("#tl-summary")).toContainText("4 clips");
   await hit(() => pointer(at(0.5, 0)));
-  await expect(page.getByTestId("tl-selected")).toHaveText("2 selected"); // picking the picture picked its sound too
+  await expect(page.getByTestId("tl-selected")).toHaveText("1 clip + linked audio"); // one click is one clip; its sound came along
   await hit(() => button("Delete").and(page.locator('[title^="Delete"]')).click());
   await expect(page.locator("#tl-summary")).toContainText("2 clips");
   await expect(page.locator("#tl-summary")).toContainText("2 seconds"); // 3 s minus the 1 s cut off the front, and no empty stretch left in front
