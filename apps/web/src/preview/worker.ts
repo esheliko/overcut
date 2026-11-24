@@ -319,6 +319,13 @@ async function parity(frame: number): Promise<unknown> {
 
 scope.addEventListener("message", (e) => {
   const m = e.data;
+  // A reply answers a request this worker is already waiting on (upload path, audio resume, native call): resolve it at once. Queued behind
+  // the chain it could deadlock: an rpc that waits for a present (probe) holds the chain while the draw it waits for needs this reply.
+  if (m.type === "reply") {
+    pending.get(m.id)?.(m.value);
+    pending.delete(m.id);
+    return;
+  }
   chain = chain.then(() => handle(m)).catch((err) => post({ type: "error", message: err instanceof Error ? err.message : String(err) }));
 });
 let chain: Promise<void> = Promise.resolve();
@@ -377,9 +384,7 @@ async function handle(m: ToPreview): Promise<void> {
     case "clock":
       anchor = { audio: m.audio, epoch: m.epoch };
       return;
-    case "reply":
-      pending.get(m.id)?.(m.value);
-      pending.delete(m.id);
+    case "reply": // handled in the message listener, outside the chain
       return;
     case "rpc":
       try {
