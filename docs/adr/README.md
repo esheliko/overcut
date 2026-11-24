@@ -19,7 +19,7 @@ Format: Context, Decision, Consequences, Status (`proposed` -> `accepted` -> may
 | [0013](0013-reference-devices.md) | Reference devices for budgets | **accepted** (owner's devices; low-end Android via proxy) |
 | [0014](0014-governance-funding.md) | Governance and funding | **open: by M3** |
 | 0015 | Keyframes and animatable properties (written by spike S9, M2-001) | proposed (engineering; recommendation in plan 4b.3) |
-| 0016 | Proxies: codec, resolution, storage, resume (S10, M2-020) | proposed (engineering) |
+| [0016](0016-proxies.md) | Proxies: codec, resolution, storage, resume (S10, M2-020) | proposed (engineering; container bars met, device bars are calibrated estimates until a device run) |
 | 0017 | A/V drift measurement and VFR policy (S11, M2-021) | proposed (engineering) |
 | 0018 | Export queue and resume (S12, M2-022) | proposed (engineering) |
 | 0019 | Optional crash-report endpoint (XT-06b, M2-053) | **open: owner-level** (first server, running cost; do not pick) |

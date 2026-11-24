@@ -5,9 +5,9 @@ import { mkdirSync, rmSync, existsSync, renameSync, readdirSync, readFileSync, w
 import { createHash } from 'node:crypto';
 const [src, dir, segArg, killArg] = process.argv.slice(2);
 const SEG = Number(segArg ?? 4), KILL = Number(killArg ?? 9000), FPS = 30;
-if (process.env.S10_WORKER) { await worker(process.env.S10_WORKER); process.exit(0); }
 const dur = Number(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', src], { encoding: 'utf8' }).stdout);
 const n = Math.ceil(dur / SEG);
+if (process.env.S10_WORKER) { await worker(process.env.S10_WORKER); process.exit(0); }
 // One segment = one closed-GOP file (keyframe at frame 0, GOP 30, no B-frames), written to .tmp and renamed when complete (OPFS: manifest entry written after the file).
 async function worker(d) {
   for (let i = 0; i < n; i++) {
