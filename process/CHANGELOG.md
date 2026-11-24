@@ -2,6 +2,13 @@
 
 Every change to a rule, instruction, hook, CI or deploy mechanism gets an entry here (newest first) with an expected effect and a review-by date, so a change is judged by what happened, not by feel. Format and workflow: `.claude/skills/process/SKILL.md`. Checked by `tests/unit/process-changelog.test.ts`.
 
+## 2026-11-24 · #93 · Remove the deploy board
+What: deleted the `deploy-board` workflow, its two scripts and unit test, the "deploy board" section of `DEPLOYING.md`, and the mentions in `CLAUDE.md`, `ci.yml` and `process-changelog.mjs`. The `deploy-web` step names are no longer load-bearing.
+Why: owner asked to remove the board and every trace of it.
+Expected effect: no Deploy board workflow runs, no board issue is written; `grep -ri "deploy.board"` finds only this entry; `verify` stays green.
+Review by: 2026-12-08
+Status: pending
+
 ## 2026-11-23 · #55 · CSP as a response header
 What: `vercel.json` sends `Content-Security-Policy` (the `apps/web/csp.ts` value plus `frame-ancestors 'none'`) on every path; a unit test fails if the two drift apart.
 Why: a header also covers frame-ancestors and the service worker script, which the meta tag cannot.

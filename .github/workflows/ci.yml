@@ -143,7 +143,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 2 }
-      # Step names are read by scripts/deploy-board-core.mjs (deployOutcome) to tell the deploy board what happened: keep them.
       - name: Does this commit change the shipped app?
         id: changed
         run: |

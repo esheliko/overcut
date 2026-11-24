@@ -1,7 +1,7 @@
 // Pure parser/validator for process/CHANGELOG.md (newest first). Entry format, one per change:
 //   ## 2026-11-20 · #164 · Short title
 //   What: ...   Why: ...   Expected effect: ...   Review by: YYYY-MM-DD   Status: pending|confirmed|missed|n/a
-// Used by tests/unit/process-changelog.test.ts; the deploy board can reuse parseChangelog.
+// Used by tests/unit/process-changelog.test.ts.
 export const STATUSES = ['pending', 'confirmed', 'missed', 'n/a'];
 const HEAD = /^## (\d{4}-\d{2}-\d{2}) · (#\d+|—) · (.+)$/;
 const FIELDS = ['What', 'Why', 'Expected effect', 'Review by', 'Status'];
