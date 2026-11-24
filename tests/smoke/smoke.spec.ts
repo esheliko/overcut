@@ -317,3 +317,17 @@ for (const p of PROFILES) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   });
 }
+
+test("holding Shift after selecting a clip does not outline the whole timeline; Shift+click still toggles the clip", async ({ page }) => {
+  await page.goto("/?sample");
+  await expect(page.locator("#tl-summary")).toContainText("2 tracks, 14 clips");
+  const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
+  const stageFrame = () => page.evaluate(() => getComputedStyle(document.querySelector(".tl-stage")!, "::after").boxShadow);
+  await page.mouse.click(box.x + 108, box.y + 26 + 26); // the first clip, as in the editing test
+  await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
+  await page.keyboard.down("Shift");
+  expect(await stageFrame()).toBe("none"); // the keyboard focus frame must not appear for a bare modifier
+  await page.mouse.click(box.x + 108, box.y + 26 + 26);
+  await page.keyboard.up("Shift");
+  await expect(page.getByTestId("tl-selected")).toHaveCount(0); // Shift+click on a selected clip still toggles it off
+});
