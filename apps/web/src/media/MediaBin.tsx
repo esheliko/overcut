@@ -4,7 +4,7 @@ import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { Modal } from "../ProjectDialogs";
 import { DEFAULT_FILTER, allTags, viewBin, windowRange, withTag, withoutTag, type BinFilter, type BinMeta, type BinSort } from "./binView";
-import { formatBytes, formatDuration } from "./plan";
+import { formatBytes, formatDuration, offlineReason } from "./plan";
 import { ACCEPT, BIN_DRAG_TYPE, fromFileList, hasHandlePicker, pickWithHandles, type Source } from "./sources";
 import type { BinItem } from "./useMediaBin";
 
@@ -72,12 +72,12 @@ function Card({ item, tags, onAdd, onRemove, onRelink, onEditTags }: { item: Bin
         {item.status === "probing" && <span role="status">{t("media.reading")}</span>}
         {ready && <span>{meta}</span>}
         {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
-        {item.status === "offline" && <span role="alert">{t("media.offline")}</span>}
+        {item.status === "offline" && <span role="alert">{t(offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
         {item.status === "unsupported" && <span role="alert" className="bin-error">{item.message}</span>}
       </span>
       {onEditTags && <button className="icon-btn bin-act" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /></button>}
       {ready && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
-      {item.status === "offline" && <button className="bin-link" onClick={() => onRelink(item.id)}>{t("media.relink")}</button>}
+      {item.status === "offline" && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       {item.status === "unsupported" && <button className="icon-btn bin-act" aria-label={t("media.dismiss", { name: item.name })} onClick={() => onRemove(item.id)}><Icon name="close" size={18} /></button>}
     </li>
   );
