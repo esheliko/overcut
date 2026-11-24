@@ -39,6 +39,13 @@ function label(sec: number): string {
 }
 
 const FONT = '500 10.5px Inter, system-ui, sans-serif';
+const LABEL_SCRIM = "rgba(0,0,0,0.62)", LABEL_FG = "#fff";
+const nameWidths = new Map<string, number>();
+function nameWidth(ctx: CanvasRenderingContext2D, name: string): number {
+  let w = nameWidths.get(name);
+  if (w === undefined) { w = ctx.measureText(name).width; if (nameWidths.size > 500) nameWidths.clear(); nameWidths.set(name, w); }
+  return w;
+}
 const FONT_CLIP = '600 11px Inter, system-ui, sans-serif';
 const FONT_HEAD = '600 11px Inter, system-ui, sans-serif';
 const TILE_W = 54;
@@ -134,7 +141,6 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       }
     }
     // Pass 3: names where they fit.
-    ctx.fillStyle = p.fg;
     ctx.font = FONT_CLIP;
     ctx.textBaseline = "top";
     for (i = first; i < last; i++) {
@@ -143,7 +149,15 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       if (w < 56) continue;
       const tx = (x < GUTTER ? GUTTER : x) + 6;
       const room = x + w - tx - 6;
-      if (room > 24 && !(sel !== null && sel[i] === 2)) ctx.fillText(scene.name[i]!, tx, y + 7, room);
+      if (room > 24 && !(sel !== null && sel[i] === 2)) {
+        // A dark pill behind the name keeps it readable over any thumbnail, in every theme.
+        const name = scene.name[i]!;
+        const tw = Math.min(room, nameWidth(ctx, name));
+        ctx.fillStyle = LABEL_SCRIM;
+        ctx.fillRect(tx - 4, y + 6, tw + 8, 15);
+        ctx.fillStyle = LABEL_FG;
+        ctx.fillText(name, tx, y + 8, room);
+      }
     }
     // Pass 4: selection outline and trim handles (few clips, so strokes are fine).
     if (sel !== null) {
