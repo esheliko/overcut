@@ -389,11 +389,12 @@ function Editor({ store }: { store: ProjectStore }) {
     void (async () => {
       try {
         const data = await loadProjects(core);
-        const items = await refreshList();
+        const items = await (await getRegistry()).list();
         if (!alive) return;
         setLastId(data.current);
         const screen = startScreen(items.length);
-        if (screen === "editor") openEntry(items.find((i) => i.id === data.current) ?? items[0]!);
+        if (screen === "home") setList(items);
+        else if (screen === "editor") { setList(items); openEntry(items.find((i) => i.id === data.current) ?? items[0]!); }
         else if (screen === "new") {
           const e = await createProject(core, "");
           if (alive) { setList([e]); openEntry(e); }
