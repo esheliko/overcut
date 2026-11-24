@@ -186,7 +186,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   };
   const applyFx = (fx: Effects) => {
     const l = live.current;
-    if (fx.select) setSelection(applySelect(l.selected, fx.select));
+    if (fx.select) setSelection(applySelect(l.selected, fx.select, l.scene));
     if (fx.seek !== undefined) l.onFrame(clamp(Math.round(fx.seek * l.fps), 0, l.endFrame));
     if (fx.ops) l.onEdit?.(fx.ops, fx.say ?? { key: "timeline.say.edited" });
     else if (fx.say) l.onAnnounce?.(fx.say);

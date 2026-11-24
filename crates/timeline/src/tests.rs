@@ -3,8 +3,8 @@
 
 use crate::*;
 use app_model::{
-    Clip, ClipId, IdSource, MediaId, MediaKind, MediaRef, Project, Rational, Resolution, SeqIds,
-    Time, Track, TrackId, TrackKind,
+    Clip, ClipId, IdSource, LinkId, MediaId, MediaKind, MediaRef, Project, Rational, Resolution,
+    SeqIds, Time, Track, TrackId, TrackKind,
 };
 use proptest::prelude::*;
 
@@ -66,6 +66,7 @@ fn clip(ids: &mut SeqIds, media: MediaId, start: i64, source_in: i64, dur: i64) 
         source_in: t(source_in),
         duration: t(dur),
         speed: Rational::new(1, 1).unwrap(),
+        link: None,
     }
 }
 
@@ -170,6 +171,7 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
                 clip: c.id,
                 at: Time::from_ticks(at),
                 new_id: ClipId::new(ids),
+                new_link: None,
             }
         }
         Step::TrimIn { clip, delta } => {
@@ -382,6 +384,7 @@ fn each_validation_rule_rejects_and_leaves_the_project_alone() {
                 clip: a,
                 at: t(0),
                 new_id: ClipId(app_model::Id::from_u128(5000)),
+                new_link: None,
             },
             |e| matches!(e, OpError::SplitOutside),
         ),
@@ -391,6 +394,7 @@ fn each_validation_rule_rejects_and_leaves_the_project_alone() {
                 clip: a,
                 at: t(5),
                 new_id: b,
+                new_link: None,
             },
             |e| matches!(e, OpError::IdInUse(_)),
         ),
@@ -489,6 +493,7 @@ fn split_keeps_the_picture_continuous() {
             clip: a,
             at: t(4),
             new_id,
+            new_link: None,
         },
     )
     .unwrap();
@@ -532,6 +537,7 @@ fn speed_that_needs_a_fraction_of_a_tick_is_refused_not_rounded() {
             clip: a,
             at: Time::from_ticks(1),
             new_id: ClipId(app_model::Id::from_u128(9999)),
+            new_link: None,
         },
     );
     assert_eq!(r, Err(OpError::InexactSpeed));
@@ -828,6 +834,7 @@ fn s7_per_op_cost_at_5k_clips() {
                 clip: c,
                 at: t(((i * 7919) % 5000) as i64 * 12 + 5),
                 new_id: ClipId::new(&mut ids),
+                new_link: None,
             },
             3 => Op::Delete { clip: c },
             _ => Op::TrimIn {
@@ -899,7 +906,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 13, "one example per Op variant");
+    assert_eq!(ops.len(), 14, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -1188,6 +1195,7 @@ fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
             source_in: Time::from_ticks(0),
             duration: Time::from_ticks(500),
             speed: Rational::new(1, 1).unwrap(),
+            link: None,
         };
         h.apply(&mut p, Op::InsertClip { track: tr, clip: c }, None)
             .unwrap();
@@ -1320,4 +1328,262 @@ fn set_canvas_is_one_undoable_step_and_validates() {
     };
     assert!(h.apply(&mut p, unknown, None).is_err());
     assert_eq!(p, after);
+}
+
+// ---- Linked picture and sound (TL-05): one link id on the clips of one import ------------------------------------------------------
+
+/// V1 clip `a` (0..10 of the 100-unit video) and the sound of the same stretch on A1, both with one link; plus an unlinked clip `c` after them.
+fn linked_pair() -> (Project, SeqIds, [ClipId; 3], LinkId) {
+    let (mut p, mut ids) = base();
+    let m = p.media[0].id;
+    let link = LinkId::new(&mut ids);
+    let mut pic = clip(&mut ids, m, 0, 0, 10);
+    let mut snd = clip(&mut ids, m, 0, 0, 10);
+    let other = clip(&mut ids, m, 20, 10, 10);
+    pic.link = Some(link);
+    snd.link = Some(link);
+    let (pi, si, oi) = (pic.id, snd.id, other.id);
+    p.sequences[0].tracks[0].clips = vec![pic, other];
+    p.sequences[0].tracks[2].clips = vec![snd];
+    p.validate().unwrap();
+    (p, ids, [pi, si, oi], link)
+}
+
+fn find(p: &Project, id: ClipId) -> Clip {
+    p.sequences[0]
+        .tracks
+        .iter()
+        .flat_map(|t| &t.clips)
+        .find(|c| c.id == id)
+        .cloned()
+        .unwrap()
+}
+
+#[test]
+fn splitting_both_halves_of_a_link_keeps_the_pieces_linked_pairwise_and_undoes_in_one_step() {
+    let (mut p, mut ids, [pic, snd, _], link) = linked_pair();
+    let before = p.clone();
+    let (rp, rs, fresh) = (
+        ClipId::new(&mut ids),
+        ClipId::new(&mut ids),
+        LinkId::new(&mut ids),
+    );
+    let mut h = History::new();
+    h.apply_batch(
+        &mut p,
+        vec![
+            Op::Split {
+                clip: pic,
+                at: t(4),
+                new_id: rp,
+                new_link: Some(fresh),
+            },
+            Op::Split {
+                clip: snd,
+                at: t(4),
+                new_id: rs,
+                new_link: Some(fresh),
+            },
+        ],
+        None,
+    )
+    .unwrap();
+    assert_eq!(
+        (find(&p, pic).link, find(&p, snd).link),
+        (Some(link), Some(link)),
+        "the left pieces keep the old link"
+    );
+    assert_eq!(
+        (find(&p, rp).link, find(&p, rs).link),
+        (Some(fresh), Some(fresh)),
+        "the right pieces share the new one"
+    );
+    assert_ne!(link, fresh);
+    assert!(h.undo(&mut p).unwrap());
+    assert_eq!(p, before, "one undo puts both halves back");
+}
+
+#[test]
+fn a_split_gives_the_right_part_a_link_only_when_the_clip_was_linked() {
+    let (mut p, mut ids, [pic, _, other], _) = linked_pair();
+    let (r1, r2, fresh) = (
+        ClipId::new(&mut ids),
+        ClipId::new(&mut ids),
+        LinkId::new(&mut ids),
+    );
+    // Linked clip, no new_link given (its partner is not split): the right part is alone.
+    apply(
+        &mut p,
+        Op::Split {
+            clip: pic,
+            at: t(4),
+            new_id: r1,
+            new_link: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(find(&p, r1).link, None);
+    // Unlinked clip: a new_link is ignored.
+    apply(
+        &mut p,
+        Op::Split {
+            clip: other,
+            at: t(24),
+            new_id: r2,
+            new_link: Some(fresh),
+        },
+    )
+    .unwrap();
+    assert_eq!((find(&p, other).link, find(&p, r2).link), (None, None));
+}
+
+#[test]
+fn set_link_unlinks_and_relinks_and_undoes() {
+    let (mut p, _, [pic, snd, _], link) = linked_pair();
+    let mut h = History::new();
+    h.apply(
+        &mut p,
+        Op::SetLink {
+            clip: snd,
+            link: None,
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!((find(&p, pic).link, find(&p, snd).link), (Some(link), None));
+    h.apply(
+        &mut p,
+        Op::SetLink {
+            clip: snd,
+            link: Some(link),
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(find(&p, snd).link, Some(link));
+    h.undo(&mut p).unwrap();
+    h.undo(&mut p).unwrap();
+    assert_eq!(
+        find(&p, snd).link,
+        Some(link),
+        "undoing both steps goes back to linked"
+    );
+    assert!(matches!(
+        apply(
+            &mut p,
+            Op::SetLink {
+                clip: ClipId(app_model::Id::from_u128(77)),
+                link: None
+            }
+        ),
+        Err(OpError::UnknownClip(_))
+    ));
+}
+
+#[test]
+fn trim_move_and_delete_of_both_halves_are_one_undo_step_and_undo_restores_the_link() {
+    let (mut p, _, [pic, snd, _], link) = linked_pair();
+    let before = p.clone();
+    let (v1, a1) = (p.sequences[0].tracks[0].id, p.sequences[0].tracks[2].id);
+    let mut h = History::new();
+    // Cut the front of both (trim_in) in one step: picture and sound stay in sync.
+    h.apply_batch(
+        &mut p,
+        vec![
+            Op::TrimIn {
+                clip: pic,
+                start: t(3),
+            },
+            Op::TrimIn {
+                clip: snd,
+                start: t(3),
+            },
+        ],
+        None,
+    )
+    .unwrap();
+    let (a, b) = (find(&p, pic), find(&p, snd));
+    assert_eq!(
+        (a.start, a.source_in, a.duration),
+        (b.start, b.source_in, b.duration)
+    );
+    // Move both.
+    h.apply_batch(
+        &mut p,
+        vec![
+            Op::Move {
+                clip: pic,
+                track: v1,
+                start: t(5),
+            },
+            Op::Move {
+                clip: snd,
+                track: a1,
+                start: t(5),
+            },
+        ],
+        None,
+    )
+    .unwrap();
+    assert_eq!((find(&p, pic).start, find(&p, snd).start), (t(5), t(5)));
+    // Delete both.
+    h.apply_batch(
+        &mut p,
+        vec![Op::Delete { clip: pic }, Op::Delete { clip: snd }],
+        None,
+    )
+    .unwrap();
+    assert!(p.sequences[0].tracks[2].clips.is_empty());
+    h.undo(&mut p).unwrap();
+    assert_eq!(
+        (find(&p, pic).link, find(&p, snd).link),
+        (Some(link), Some(link)),
+        "undoing a delete brings the link back"
+    );
+    h.undo(&mut p).unwrap();
+    h.undo(&mut p).unwrap();
+    assert_eq!(p, before);
+}
+
+#[test]
+fn a_batch_that_fails_on_one_half_leaves_both_untouched() {
+    let (mut p, _, [pic, snd, _], _) = linked_pair();
+    let before = p.clone();
+    // The sound may be trimmed to t(3), the picture beyond its end may not: nothing changes.
+    let r = History::new().apply_batch(
+        &mut p,
+        vec![
+            Op::TrimIn {
+                clip: snd,
+                start: t(3),
+            },
+            Op::TrimIn {
+                clip: pic,
+                start: t(30),
+            },
+        ],
+        None,
+    );
+    assert!(r.is_err());
+    assert_eq!(p, before);
+}
+
+#[test]
+fn a_link_whose_partner_is_gone_is_harmless() {
+    let (mut p, _, [pic, snd, _], link) = linked_pair();
+    apply(&mut p, Op::Delete { clip: snd }).unwrap();
+    p.validate().unwrap();
+    assert_eq!(
+        find(&p, pic).link,
+        Some(link),
+        "the survivor keeps its (now single) link and edits alone"
+    );
+    apply(
+        &mut p,
+        Op::TrimOut {
+            clip: pic,
+            end: t(8),
+        },
+    )
+    .unwrap();
 }

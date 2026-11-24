@@ -1,5 +1,5 @@
 import type { ExportApi } from "./export/types";
-import type { Clip, ClipId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TrackId } from "./model.generated";
+import type { Clip, ClipId, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
 
 export * from "./capabilities";
@@ -226,10 +226,13 @@ export function parseOpenedProject(json: string): OpenedProject {
  */
 export type Op =
   | { op: "insert_clip"; track: TrackId; clip: Clip }
-  | { op: "split"; clip: ClipId; at: Time; new_id: ClipId }
+  /** `new_link`: the link of the right part of a linked clip (give both pieces of a linked pair the same one); absent = the right part is alone. */
+  | { op: "split"; clip: ClipId; at: Time; new_id: ClipId; new_link?: LinkId }
   | { op: "trim_in"; clip: ClipId; start: Time }
   | { op: "trim_out"; clip: ClipId; end: Time }
   | { op: "move"; clip: ClipId; track: TrackId; start: Time }
+  /** Link the clip to others sharing `link`, or with `null` let it edit alone (TL-05). */
+  | { op: "set_link"; clip: ClipId; link: LinkId | null }
   | { op: "delete"; clip: ClipId }
   | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
   | { op: "set_media"; media: MediaId; uri: string; hash: string | null }

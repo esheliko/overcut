@@ -8,7 +8,7 @@ import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
-import { clampN, closeStartGap, deleteOps, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, trimOp } from "./timeline/edit";
+import { clampN, closeStartGap, deleteOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
 import { sampleProject } from "./timeline/fixture";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
@@ -44,7 +44,7 @@ const KEYS = { undo: "Ctrl+Z", redo: "Ctrl+Shift+Z", split: "S", del: "Del", dup
 /** The history step name (lower case, "Undo <name>") for an edit, from the message that announces it. */
 const LABELS: Record<string, string> = { "timeline.say.split": "timeline.label.split", "timeline.say.deleted": "timeline.label.deleted", "timeline.say.moved": "timeline.label.moved",
   "timeline.say.nudged": "timeline.label.nudged", "timeline.say.trimmed": "timeline.label.trimmed", "timeline.say.duplicated": "timeline.label.duplicated",
-  "timeline.say.cut": "timeline.label.cut", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed" };
+  "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed" };
 const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
@@ -176,12 +176,13 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         break;
       }
       case "trimToPlayhead": case "trimBy": {
-        if (mine.length !== 1) { speak(locked ?? say("timeline.say.selectOne")); break; }
-        const i = mine[0]!;
+        const reps = groupReps(sc, mine); // a linked picture and sound count as one clip: they trim together
+        if (reps.length !== 1) { speak(locked ?? say("timeline.say.selectOne")); break; }
+        const i = reps[0]!;
         const r = trimRange(sc, i, cmd.edge);
         const value = cmd.c === "trimBy" ? trimTarget(sc, i, cmd.edge, r.at + cmd.frames * ft) : clampN(tick, r.min, r.max);
         if (value === r.at) { speak(say("timeline.say.cantTrim")); break; }
-        commit([trimOp(sc, i, cmd.edge, value)], say("timeline.say.trimmed", { edge: cmd.edge, name: sc.name[i]! }));
+        commit(linkedTrimOps(sc, i, cmd.edge, value), say("timeline.say.trimmed", { edge: cmd.edge, name: sc.name[i]! }));
         break;
       }
       case "copy": case "cut": case "duplicate": {
@@ -209,6 +210,12 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         if (plan.skipped > 0) onNotice(t("timeline.say.pasteSkipped", { count: plan.skipped }));
         break;
       }
+      case "unlink": {
+        const ops = unlinkOps(sc, mine);
+        if (ops.length === 0) break;
+        commit(ops, say("timeline.say.unlinked", { count: ops.length }));
+        break;
+      }
       default: break;
     }
   }, [speak, commit, undoRedo, onNotice, t, setSelected]);
@@ -232,7 +239,9 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const redoText = redoLabel && proj.canRedo ? t("timeline.redo.what", { what: redoLabel }) : t("timeline.redo");
   const none = selected.size === 0;
   const oneIdx = indicesOf(scene, selected);
-  const oneClip = oneIdx.length === 1 && !scene.trackLocked[scene.clipTrack[oneIdx[0]!]!] ? oneIdx : null;
+  const oneRep = groupReps(scene, oneIdx); // a linked picture and sound are one clip to the timing dialog (its edit is mirrored onto the partner)
+  const oneClip = oneRep.length === 1 && !scene.trackLocked[scene.clipTrack[oneRep[0]!]!] ? oneRep : null;
+  const anyLinked = oneIdx.some((i) => scene.link[i]);
   useEffect(() => { if (dialog === "timing" && !oneClip) setDialog(null); }, [dialog, oneClip]);
   return (
     <section className="timeline" aria-label={t("timeline.label")} data-testid="panel-timeline">
@@ -258,6 +267,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
           <button className="icon-btn" aria-label={t("timeline.copy")} title={tip(t("timeline.copy"), KEYS.copy)} data-testid="tl-copy" disabled={off || none} onClick={() => run({ c: "copy" })}><Icon name="copy" /></button>
           <button className="icon-btn" aria-label={t("timeline.cut")} title={tip(t("timeline.cut"), KEYS.cut)} data-testid="tl-cut" disabled={off || none} onClick={() => run({ c: "cut" })}><Icon name="cut" /></button>
           <button className="icon-btn" aria-label={t("timeline.paste")} title={tip(t("timeline.paste"), KEYS.paste)} data-testid="tl-paste" disabled={off || held.length === 0} onClick={() => run({ c: "paste" })}><Icon name="paste" /></button>
+          <button className="icon-btn" aria-label={t("timeline.unlink")} title={t("timeline.unlink")} data-testid="tl-unlink" disabled={off || !anyLinked} onClick={() => run({ c: "unlink" })}><Icon name="unlink" /></button>
           <span className="sep" aria-hidden="true" />
           <button className="icon-btn" aria-label={t("timeline.timing")} title={t("timeline.timing")} data-testid="tl-timing" aria-haspopup="dialog" disabled={off || !oneClip} onClick={() => setDialog("timing")}><Icon name="timing" /></button>
           <button className="icon-btn" aria-label={t("timeline.history")} title={t("timeline.history")} data-testid="tl-history" aria-haspopup="dialog" disabled={off} onClick={() => setDialog("history")}><Icon name="history" /></button>
@@ -265,10 +275,10 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       </div>
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
-        onApply={(ops, field, name) => commit(ops, say("timeline.say.timed", { field, name }))} /></Suspense>}
+        onApply={(ops, field, name) => commit(mirrorTrims(scene, ops), say("timeline.say.timed", { field, name }))} /></Suspense>}
       <div className="tl-stage">
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={setSelected} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} />
+          selected={selected} onSelect={(ids) => setSelected(expandLinks(scene, ids))} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} />
       </div>
     </section>
   );

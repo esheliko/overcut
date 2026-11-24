@@ -13,7 +13,7 @@ const hook = (page: Page) => page.evaluate(async () => { const h = (window as un
 test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay consistent", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const summary = page.locator("#tl-summary");
   const total = page.getByTestId("timecode");
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 }); // empty project: the preview offers the bin's import too

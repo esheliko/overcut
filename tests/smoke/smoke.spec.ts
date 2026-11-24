@@ -249,7 +249,7 @@ test("top bar on a small phone: project name truncates but stays editable, Expor
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 700 });
     await page.goto("/");
-    await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+    await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
     const name = page.getByLabel("Project name");
     const exp = page.getByTestId("export-open");
     await expect(exp).toBeVisible();

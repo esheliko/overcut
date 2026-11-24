@@ -376,7 +376,18 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 clip: removed,
             }]))
         }
-        Op::Split { clip, at, new_id } => {
+        Op::SetLink { clip, link } => {
+            let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
+            let t = track_mut(p, loc.seq, loc.track);
+            let old = std::mem::replace(&mut t.clips[loc.clip].link, link);
+            Ok(Inverse(vec![Op::SetLink { clip, link: old }]))
+        }
+        Op::Split {
+            clip,
+            at,
+            new_id,
+            new_link,
+        } => {
             let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
             let t = &p.sequences[loc.seq].tracks[loc.track];
             unlocked(t)?;
@@ -396,6 +407,7 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 source_in: add(c.source_in, scaled(left_len, c.speed)?)?,
                 duration: sub(end, at)?,
                 speed: c.speed,
+                link: c.link.and(new_link),
             };
             let undo = restore_geometry(c);
             // Both halves lie inside the original, so they are valid whenever it was; no further checks needed.

@@ -10,7 +10,7 @@ const FLASH = resolve("crates/media/tests/fixtures/flash_click.mp4"); // 3 s, 30
 const ready = async (page: Page) => {
   await page.addInitScript(() => { delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker; delete (window as { showOpenFilePicker?: unknown }).showOpenFilePicker; });
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
 };
 const menu = async (page: Page, item: string) => {
@@ -101,7 +101,7 @@ test("canvas settings are a project edit (undo), survive an import, and new proj
 
   // 7. A new window has none of the files: opening the project shows them as not on this device, and Locate files reconnects them by name and size.
   await page.reload();
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 }); // autosave brought the project back
   const chooser3 = page.waitForEvent("filechooser");
   await menu(page, "Open project…");

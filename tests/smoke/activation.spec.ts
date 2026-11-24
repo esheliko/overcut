@@ -5,7 +5,7 @@ import { resolve } from "node:path";
  *  driven the way a newcomer would, through visible labelled controls only. It counts the clicks/taps (fewer is better) and bounds the wall time.
  *  A person's 90 s is not measured here; this catches a journey that grew steps, dead ends or slowness. Needs a build with the engine. */
 const CLIP = resolve("crates/media/tests/fixtures/flash_click.mp4"); // 3 s, 30 fps, picture + sound
-const MAX_CLICKS = 12;
+const MAX_CLICKS = 9; // 8 on desktop (import, ruler, Split, select, Delete, Export, Export, Save) + the Media tab on a phone
 const BUDGET_MS = 60_000;
 
 test("first-time journey: import, cut the start off, export, save", async ({ page }, info) => {
@@ -18,7 +18,7 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   // Headless Chromium has no native open/save dialogs: without the handle pickers the app uses the plain file input (a file chooser) and a download, the paths we can drive.
   await page.addInitScript(() => { const w = window as unknown as Record<string, unknown>; delete w.showSaveFilePicker; delete w.showOpenFilePicker; });
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const started = Date.now(); // the clock starts when the app is ready: engine download is the network's, not the journey's
 
   // 1. Import: on a phone the Media sheet is a tab, on desktop it is already open.
@@ -28,7 +28,7 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   await (await chooser).setFiles(CLIP);
   await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 30_000 });
 
-  // 2. Trim: put the playhead 1 s in (click the ruler), Split, then Delete the first part on the picture and the sound.
+  // 2. Trim: put the playhead 1 s in (click the ruler), Split, then select the first part and Delete it: the picture and its sound are linked, so ONE select and ONE Delete cover both.
   const canvas = page.getByTestId("timeline-canvas");
   const box = (await canvas.boundingBox())!;
   const pps = Number(await canvas.getAttribute("data-pps"));
@@ -38,11 +38,9 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   await hit(() => pointer({ x: box.x + gutter + 1 * pps, y: box.y + ruler / 2 }));
   await hit(() => button("Split at playhead").click());
   await expect(page.locator("#tl-summary")).toContainText("4 clips");
-  for (const row of [0, 1]) {
-    await hit(() => pointer(at(0.5, row)));
-    await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
-    await hit(() => button("Delete").and(page.locator('[title^="Delete"]')).click());
-  }
+  await hit(() => pointer(at(0.5, 0)));
+  await expect(page.getByTestId("tl-selected")).toHaveText("2 selected"); // picking the picture picked its sound too
+  await hit(() => button("Delete").and(page.locator('[title^="Delete"]')).click());
   await expect(page.locator("#tl-summary")).toContainText("2 clips");
   await expect(page.locator("#tl-summary")).toContainText("2 seconds"); // 3 s minus the 1 s cut off the front, and no empty stretch left in front
 
