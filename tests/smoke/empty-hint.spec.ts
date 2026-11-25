@@ -16,3 +16,13 @@ test("empty timeline shows the start hint, hides it once a clip is in", async ({
   await expect(page.locator("#tl-summary")).toContainText("2 clips");
   await expect(hint).toHaveCount(0);
 });
+
+test("tablet top bar: the saved status is shown whole, not cut to 'Saved o…'", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "tablet width");
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.goto("/");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  const text = page.locator('[data-testid="save-state"] .chip-text');
+  await expect(text).toBeVisible();
+  expect(await text.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+});

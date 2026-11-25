@@ -139,6 +139,7 @@ h2, p { margin: 0; }
   .chip-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .primary span { display: inline; }
 }
+@media (max-width: 1100px) { .project-name { width: min(26vw, 170px); } .topbar { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.7fr); } } /* tablet: the right side (saved status, Export, menu) gets the room, not the name */
 @media (min-width: 480px) { .tc-total { display: inline; } }
 /* Small phones (<480 px): logo | project name (takes the rest, ellipsis, tap to rename) | Export | "..."; theme toggle and engine status are in the menu. */
 @media (max-width: 479px) {
@@ -231,6 +232,8 @@ h2, p { margin: 0; }
 @media (max-width: 420px) { .diag-row { grid-template-columns: minmax(0, 1fr); } }
 .menu { position: relative; }
 .menu-pop { position: absolute; z-index: 30; top: calc(100% + 6px); inset-inline-end: 0; min-width: 260px; padding: 6px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-2); box-shadow: var(--shadow); max-block-size: calc(100dvh - var(--top) - 16px); overflow-y: auto; }
+/* Scroll hint: the menu fades at an edge that has more to scroll to. */
+.menu-pop { background: linear-gradient(var(--surface-2) 30%, transparent) top / 100% 24px no-repeat local, linear-gradient(transparent, var(--surface-2) 70%) bottom / 100% 24px no-repeat local, radial-gradient(farthest-side at 50% 0, color-mix(in srgb, var(--fg) 20%, transparent), transparent) top / 100% 10px no-repeat scroll, radial-gradient(farthest-side at 50% 100%, color-mix(in srgb, var(--fg) 20%, transparent), transparent) bottom / 100% 10px no-repeat scroll, var(--surface-2); }
 .menu-pop a { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: var(--fg); text-decoration: none; }
 .menu-pop a:hover, .menu-row:hover { background: var(--surface-3); }
 .menu-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--fg); font: inherit; text-align: start; }
@@ -462,6 +465,7 @@ h2, p { margin: 0; }
 .sc-preset { display: flex; align-items: center; gap: 12px; font-weight: 600; }
 .sc-preset select { flex: 1; min-height: 44px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--fg); font: inherit; }
 .sc-note { min-height: 1.2em; color: var(--muted); font-size: 13px; }
+.sc-note:empty { position: absolute; inline-size: 1px; block-size: 1px; min-height: 0; overflow: hidden; } /* still a live region, but no empty row (and no gap) under the intro */
 .sc-clash { padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); }
 .sc-group h3 { margin: 12px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .sc-group ul { list-style: none; margin: 0; padding: 0; }
