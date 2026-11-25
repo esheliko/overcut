@@ -29,7 +29,13 @@ M0 Foundations ──► M1 First cut ──► M2 Real editing ──► M3 Sou
 - TL-01/03/04/05/07/08/09/10/12/13/14/19/20/22, PM-04/05/08/09, PV-02/06, EX-03/05, UX-02/03/04, AU-03.
 - Multi-track, snapping, ripple/roll/slip/slide, keyframes with easing, transform and PiP, speed (constant/reverse/freeze), proxies, VFR handling, export queue, shortcut sets, command palette.
 - **M2 backlog**: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) section 4b (items M2-001 to M2-053, lanes, spikes S9-S12, how each exit criterion is measured, "Not in M2" list).
-- **Exit**: 1000-clip, 20-track timeline pans and zooms at 60 fps; undo/redo property tests pass 10k random sequences; a 30 min 4K project edits smoothly with proxies on the reference laptop; A/V sync drift < 1 frame over 2 h. Plus the M1 field validation items (5-person activation test, 60 fps preview on the reference laptop, phone export >= 1x realtime) measured on the reference devices.
+- **Status (2026-11-26, owner decision): scope cut to "real editing" for users.** Built on `m2`: multi-track, snapping, ripple/roll/slip/slide, transform and PiP (inspector + on-canvas handles), keyframes with easing, constant speed with pitch kept, markers and in/out range, shortcut presets and command palette, project library; zoom 10 s to 10 h with overview and pinch is the last item. Moved to **M2.1 Media** below: proxies (PM-05, PV-02), VFR handling (TL-22, PM-04), export queue (EX-03), GIF/WebP/APNG/stills (EX-05), format matrix (PM-04), collect/consolidate (PM-09), opt-in crash reports (XT-06b), freeze/reverse speed, keyframe graph editor.
+- **Exit** (amended 2026-11-26): undo/redo property tests pass 10k random sequences (**met**, `npm run test:e2`); 1000-clip, 20-track timeline pans and zooms at 60 fps on desktop in the container bench (**met**; device proof is field validation); every M2 flow passes the human QA sweep (`docs/m2/ux-audit.md`) with no open P0/P1 and has a smoke step; export matches preview for multi-track, PiP, keyframes and speed (checked with ffprobe). **Field validation** (owner's devices, does not block M2): 60 fps timeline on the reference laptop and phone, plus the M1 field items.
+
+## M2.1 Media (~4-6 weeks, after M2)
+**Goal**: heavy media, fast and reliable.
+- PM-04/05, PV-02, TL-22, EX-03/05, PM-09, XT-06b (local part), speed freeze/reverse, keyframe graph editor; plan items M2-020 (ADR 0016 done), M2-021..023, M2-027/028, M2-031..034, M2-050, M2-052/053.
+- **Exit**: a 30 min 4K project edits smoothly with proxies on the reference laptop; A/V sync drift < 1 frame over 2 h; a killed export resumes; formats outside the support matrix get a clear message.
 
 ## M3 Sound and words (~8 weeks) **Public beta**
 **Goal**: audio and text at CapCut level, including auto captions.
