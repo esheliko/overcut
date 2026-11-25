@@ -181,6 +181,14 @@ h2, p { margin: 0; }
   .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: 320px minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
   .inspector { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 }
+/* P3: laptop and desktop (1100 px and up): the two timeline toolbar rows share one row (edit | clip tools | zoom), so the track gets the 48 px back. Nothing is removed. */
+@container editor (min-width: 1100px) {
+  .tl-bars { display: flex; align-items: center; gap: 0; min-height: 48px; padding: 0 6px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .tl-bars .tl-bar { display: contents; }
+  .tl-bars .tl-bar .tl-group { flex: 0 0 auto; }
+  .tl-bars .tl-bar2 .tl-group { order: 1; margin-inline-start: 6px; padding-inline-start: 6px; border-inline-start: 1px solid var(--line-strong); }
+  .tl-bars .zoom { order: 2; margin-inline-start: auto; }
+}
 /* Ultrawide (>= 1900 px and at least 2:1): wider side panels, the timeline gets the extra width and more height */
 @container editor (min-width: 1900px) and (min-aspect-ratio: 2/1) {
   .workspace { grid-template-columns: 96px 360px minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr) clamp(240px, 42%, 460px); gap: 8px; padding: 0 8px 8px; }
