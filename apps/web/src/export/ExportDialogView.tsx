@@ -1,5 +1,5 @@
 /** The export dialog itself (settings, progress, done, failed). Loaded on first use so it stays out of the first-load JavaScript. */
-import { h264Percent, parseH264Failure, probeExportFormats, type DesktopCodecs, type ExportFormats, type H264FailureCode, type H264Progress } from "@app/engine-client";
+import { h264Percent, parseH264Failure, probeExportFormats, type DesktopCodecs, type ExportFormatOption, type ExportFormats, type H264FailureCode, type H264Progress } from "@app/engine-client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
@@ -8,7 +8,7 @@ import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
-import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
+import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, formatLabelKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
 
 const probes = new Map<string, Promise<ExportFormats>>();
@@ -127,7 +127,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
     onStart(buildSettings(choice, src, format));
   };
 
-  const fmtName = (id: string) => desktop && id === "webm-vp9" ? t("export.format.webm-vp9.offline") : t(`export.format.${id}`);
+  const fmtName = (o: ExportFormatOption) => t(formatLabelKey(o, Boolean(desktop)));
   const fps = src.fps % 1 === 0 ? String(src.fps) : src.fps.toFixed(2);
 
   if (!ready) return <p className="export-note" role="status">{t("export.checking")}</p>;
@@ -171,7 +171,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
           </label>
           <label>{t("export.field.format")}
             <select value={format?.id ?? ""} onChange={(e) => edit({ format: e.target.value as Choice["format"] })} data-testid="export-format">
-              {fmts?.options.map((o) => <option key={o.id} value={o.id}>{fmtName(o.id)}</option>)}
+              {fmts?.options.map((o) => <option key={o.id} value={o.id}>{fmtName(o)}</option>)}
             </select>
           </label>
           <label>{t("export.field.quality")}
@@ -184,7 +184,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
 
       {format && (
         <p className="export-estimate" data-testid="export-estimate">
-          {t("export.estimate", { size: formatBytes(estimateBytes(choice, src, format), locale), format: fmtName(format.id) })}
+          {t("export.estimate", { size: formatBytes(estimateBytes(choice, src, format), locale), format: fmtName(format) })}
         </p>
       )}
       {format && choice.capBytes !== undefined && <p className="export-note" data-testid="export-cap-note">{t("export.cap.aims", { cap: formatBytes(choice.capBytes, locale) })}</p>}
