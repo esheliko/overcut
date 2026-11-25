@@ -12,7 +12,7 @@ h2, p { margin: 0; }
 .icon-btn { display: inline-grid; place-items: center; width: var(--target); height: var(--target); min-width: var(--target); padding: 0; background: none; border: 0; border-radius: 10px; color: var(--fg); transition: background var(--dur-fast); }
 .icon-btn:hover { background: var(--surface-3); }
 .icon-btn:active { transform: scale(0.94); }
-.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.icon-btn:disabled { opacity: 0.5; cursor: default; }
 .icon-btn:disabled:hover { background: none; }
 .tl-sel { margin-left: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 
