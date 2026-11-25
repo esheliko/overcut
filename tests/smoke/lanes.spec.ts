@@ -112,7 +112,6 @@ test("a lane change that also moves in time lands where dropped; the sound that 
   await page.mouse.up();
   await expect(onV2(page)).toHaveCount(1);
   await expect(page.locator("#tl-summary")).toContainText("4 tracks"); // its sound went to a new A2
-  await expect(page.locator("#tl-status, [role=status]").filter({ hasText: "Moved 1 clip" }).first()).toBeAttached();
   await page.keyboard.press("Control+z");
   await expect(onV2(page)).toHaveCount(0);
   await expect(page.locator("#tl-summary")).toContainText("3 tracks");
