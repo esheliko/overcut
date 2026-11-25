@@ -5,7 +5,7 @@ import { currentSettings, saveSettings } from "./keymap";
 import { useKeymapSettings } from "./useKeymap";
 import { COMMANDS, PRESETS, bind, buildKeymap, chordLabel, chordOf, conflictsFor, reset, type CommandDef, type KeymapSettings } from "./registry";
 
-const GROUPS = ["edit", "tool", "select", "clip", "playhead", "view", "transport"] as const;
+const GROUPS = ["edit", "tool", "track", "select", "clip", "playhead", "view", "transport"] as const;
 const isApple = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
 
 /** Keyboard shortcuts: pick a preset ("like X"), change any command's keys, see and resolve conflicts, reset. Stored on this device only. */

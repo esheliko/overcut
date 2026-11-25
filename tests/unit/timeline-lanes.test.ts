@@ -86,3 +86,14 @@ test("a media card dropped on a lane uses that lane and judges free space there 
   assert.equal(placeAt(project, 6 * TICKS, 2 * TICKS), 8 * TICKS, "all tracks: busy");
   assert.equal(placeAt(project, 6 * TICKS, 2 * TICKS, [v2]), 6 * TICKS, "V2 only: free");
 });
+
+test("keyboard reorder hops over exactly one neighbour and refuses at the ends", async () => {
+  const { hopStep } = await import("../../apps/web/src/timeline/arrange");
+  // V1 holds a (0-4 s, linked to the sound on A1) and c (6-8 s): the pair cannot hop over c (the sound has no neighbour), a lone c hops back over a? no: the pair's lengths differ.
+  assert.deepEqual(hopStep(scene, [lone], 1), [], "c is the last clip on V1: nothing after it");
+  const back = hopStep(scene, [lone], -1);
+  assert.ok(back.length > 0, "c hops before a");
+  assert.ok(back.every((o) => o.op === "move"));
+  assert.deepEqual(hopStep(scene, [pic, snd], 1), [], "the sound has no neighbour, so the pair stays together");
+  assert.deepEqual(hopStep(scene, [], 1), []);
+});

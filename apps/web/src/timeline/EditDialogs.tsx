@@ -2,6 +2,7 @@
  *  top layer (never clipped by the short timeline panel) and gives Esc, focus trap and focus return for free; the backdrop is clear so the timeline stays visible.
  *  On a phone they are bottom sheets, on a desktop a card at the bottom right. */
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { rememberFocus } from "../a11y/restoreFocus";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { parseTimecode, timecode } from "../timecode";
@@ -16,8 +17,9 @@ function Sheet({ title, testid, onClose, children }: { title: string; testid: st
   const { t } = useI18n();
   useEffect(() => {
     const d = ref.current;
+    const back = rememberFocus(); // the button that opened the sheet (the More menu hands focus on to it)
     if (d && !d.open) d.showModal();
-    return () => { if (d?.open) d.close(); };
+    return () => { if (d?.open) d.close(); back(); };
   }, []);
   return (
     <dialog ref={ref} className="edit-sheet" aria-labelledby={testid + "-title"} data-testid={testid} onCancel={(e) => { e.preventDefault(); onClose(); }}

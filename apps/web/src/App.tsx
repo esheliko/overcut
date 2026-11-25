@@ -137,11 +137,21 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
   };
   useEffect(() => {
     if (!open) return;
+    const rows = () => [...(ref.current?.querySelectorAll<HTMLElement>(".menu-pop button, .menu-pop a[href]") ?? [])];
+    rows()[0]?.focus({ preventScroll: true }); // keyboard users land on the first item, not on the button they came from
     const away = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); trigger.current?.focus({ preventScroll: true }); return; }
+      const list = rows();
+      const at = list.indexOf(document.activeElement as HTMLElement);
+      const go = e.key === "ArrowDown" ? at + 1 : e.key === "ArrowUp" ? at - 1 : e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : null;
+      if (go === null || list.length === 0 || !ref.current?.contains(document.activeElement)) return;
+      e.preventDefault();
+      list[(go + list.length) % list.length]!.focus();
+    };
     document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", key); };
   }, [open]);
   return (
     <div className="menu" ref={ref}>
