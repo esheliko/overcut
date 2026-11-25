@@ -68,7 +68,7 @@ export function TimelineBench() {
         el.dispatchEvent(new PointerEvent(type, { pointerId: 7, pointerType: "mouse", bubbles: true, cancelable: true, clientX: r.left + x, clientY: r.top + y, buttons: 1, ...extra }));
       };
       if (all) { el.dispatchEvent(new KeyboardEvent("keydown", { key: "a", ctrlKey: true, bubbles: true })); await new Promise((r) => requestAnimationFrame(r)); }
-      const x0 = GUTTER + 60, y0 = RULER + LANE / 2;
+      const x0 = (h.view.gutter ?? GUTTER) + 60, y0 = RULER + LANE / 2;
       fire("pointerdown", x0, y0);
       await new Promise((r) => requestAnimationFrame(r));
       const dt = new Float64Array(moves);
