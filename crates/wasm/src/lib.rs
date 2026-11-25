@@ -55,6 +55,10 @@ impl Editor {
     ) -> Result<String, String> {
         self.0.evaluate_json(sequence, ticks, audio_samples)
     }
+    /// Snap a time or dragged span to clip edges, playhead and markers; params and answer JSON in `docs/features/snapping.md`.
+    pub fn snap(&self, sequence: &str, params: &str) -> Result<String, String> {
+        self.0.snap_json(sequence, params)
+    }
     /// Commit-log lines (JSON Lines) produced since the last call; the host appends them to durable storage.
     pub fn take_log(&mut self) -> String {
         self.0.take_log()

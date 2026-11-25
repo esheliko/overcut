@@ -1,4 +1,4 @@
-import { parseRecovery, type Editing, type EditOutcome, type FrameDescription, type Op, type TrackProps } from "./types";
+import { parseRecovery, type SnapQuery, type SnapResult, type Editing, type EditOutcome, type FrameDescription, type Op, type TrackProps } from "./types";
 import type { Project, SequenceId, Track, TrackId, TrackKind } from "./model.generated";
 
 /** What each backend supplies: the engine's string-in, string-out editor calls. Rejections/throws carry the engine's message. */
@@ -11,6 +11,7 @@ export interface RawEditing {
   journal(): Promise<string> | string;
   /** `ticks` is an exact integer (i64 on the engine side). */
   evaluate(sequence: string, ticks: bigint, audioSamples: number): Promise<string> | string;
+  snap(sequence: string, paramsJson: string): Promise<string> | string;
   takeLog(): Promise<string> | string;
   checkpoint(): Promise<string> | string;
   /** Returns the `Recovery` report JSON (snake_case, as the engine writes it). */
@@ -57,6 +58,12 @@ export function createEditing(raw: RawEditing): Editing {
         if (!Number.isSafeInteger(ticks)) throw new Error("ticks must be a safe integer");
         if (!Number.isInteger(audioSamples) || audioSamples < 0 || audioSamples > 0xffff_ffff) throw new Error("audioSamples must be an integer in 0..2^32-1");
         return JSON.parse(await raw.evaluate(sequence, BigInt(ticks), audioSamples)) as FrameDescription;
+      }),
+    snap: (sequence: string, q: SnapQuery) =>
+      call(async () => {
+        const times = [q.t, q.tolerance, q.playhead ?? 0, q.span ?? 0, ...(q.markers ?? [])];
+        if (!times.every(Number.isSafeInteger) || q.tolerance < 0) throw new Error("snap times must be safe integers and tolerance >= 0");
+        return JSON.parse(await raw.snap(sequence, JSON.stringify(q))) as SnapResult;
       }),
     takeLog: () => call(async () => raw.takeLog()),
     checkpoint: () => call(async () => raw.checkpoint()),
