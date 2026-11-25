@@ -20,3 +20,4 @@
 ## Test plan
 - `tests/unit/commands.test.ts`: every pre-registry shortcut resolves as before, presets, bind/conflict/reset, chord recording and labels, settings validation, labels exist.
 - `tests/smoke/shortcuts.spec.ts`: remap Split to Q, Q splits and S does not, clash asks, survives reload, preset switch.
+- M2 a11y: `Mod+Alt+Left/Right` hop the selected clip over its neighbour (keyboard reorder, `hopStep`; Alt+Shift+Arrow is already the 30-frame playhead step), `Alt+Up/Down` change lane, track switches as commands (`Shift+M` mute, `Shift+H` hide; solo and lock have no default key because `Shift+L`/`Shift+S` belong to playback and split) plus the More menu's "Track options" for the same switches. The app menu focuses its first item on open, Up/Down/Home/End move, Escape returns focus to its button; the history and timing sheets restore focus like the other dialogs.
