@@ -30,6 +30,8 @@ export interface Effects {
   seek?: number;
   /** Edits to apply as ONE undo step. */
   ops?: Op[];
+  /** The `say` is also shown as a visible notice (not only announced): a refusal a sighted user must see. */
+  visible?: boolean;
   /** Open the menu of this track (row index); the canvas knows where its header is. */
   menu?: number;
   /** Spoken/visible description of what happened. */
@@ -92,14 +94,16 @@ function toolDown(c: Ctx, e: PEvent): R | null {
       return { g: { k: "tool", tool, sx: e.x, clip: i, edge: edge.edge, cuts: [], lo: r.lo, hi: r.hi, delta: 0 }, fx: pick(i) };
     }
     const cuts = rollCuts(scene, i, edge.edge);
-    if (cuts.length === 0) return { g: IDLE, fx: { say: { key: "timeline.say.noCut" } } };
+    if (cuts.length === 0) return { g: IDLE, fx: { say: { key: "timeline.say.noCut" }, visible: true } };
     const r = rollRangeAll(scene, cuts);
+    if (r.lo === 0 && r.hi === 0) return { g: IDLE, fx: { ...pick(i), say: { key: "timeline.say.noRoom.roll" }, visible: true } }; // fresh imports have no spare footage: say so instead of doing nothing
     return { g: { k: "tool", tool, sx: e.x, clip: i, edge: edge.edge, cuts, lo: r.lo, hi: r.hi, delta: 0 }, fx: pick(i) };
   }
   if (body.kind !== "clip") return null;
   const i = body.clip;
   const r = tool === "slip" ? slipRange(scene, i) : slideRange(scene, i);
   if (!r) return locked();
+  if (r.lo === 0 && r.hi === 0) return { g: IDLE, fx: { ...pick(i), say: { key: tool === "slip" ? "timeline.say.noRoom.slip" : "timeline.say.noRoom.slide" }, visible: true } };
   return { g: { k: "tool", tool, sx: e.x, clip: i, edge: null, cuts: [], lo: r.lo, hi: r.hi, delta: 0 }, fx: { ...pick(i), say: describeClip(scene, i) } };
 }
 
@@ -131,7 +135,7 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     return { g: press("move", false), fx: { select: { mode: "set", ids: [id] }, say: describeClip(scene, h.clip) } };
   }
   if (h.kind === "gutter") {
-    const part = headerPart(view, e.x, e.y - RULER + view.scrollY - h.track * LANE);
+    const part = headerPart(view, e.x, e.y - RULER + view.scrollY - h.track * LANE, scene.trackKind[h.track]!);
     return { g: part ? { k: "hdr", track: h.track, part, sx: e.x, sy: e.y, touch } : touch ? { k: "pan" } : IDLE, fx: NONE };
   }
   return { g: { k: "press", sx: e.x, sy: e.y, then: touch ? "pan" : "marquee", tapClip: -1, collapse: false, clearOnTap: !(e.shift || e.additive) }, fx: NONE };

@@ -59,7 +59,8 @@ export function handleAt(scene: Scene, v: View, selected: Uint8Array, x: number,
     const inside = Math.min(zone / 2, w / 3), outside = zone - inside;
     const x0 = gut(v) + scene.start[i]! * v.pps - v.scrollX, x1 = x0 + w;
     const ds = Math.abs(x - x0), de = Math.abs(x - x1);
-    if (x >= x0 - outside && x <= x0 + inside && ds < bestD) { best = { clip: i, edge: "start" }; bestD = ds; }
+    // On a shared edge (a cut) the pointer's side picks: right of it = the right clip's start, left of it = the left clip's end.
+    if (x >= x0 - outside && x <= x0 + inside && (ds < bestD || (x >= x0 && ds <= bestD + 0.5))) { best = { clip: i, edge: "start" }; bestD = ds; }
     if (x >= x1 - inside && x <= x1 + outside && de < bestD) { best = { clip: i, edge: "end" }; bestD = de; }
   }
   return best;

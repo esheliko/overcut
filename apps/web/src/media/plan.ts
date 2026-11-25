@@ -3,6 +3,7 @@
  * which edit ops put it on the timeline. Unit tests: tests/unit/media-plan.test.ts. Behaviour: docs/features/media-bin.md.
  */
 import { adoptedFormat } from "../canvas";
+import { planSound } from "../timeline/soundLane";
 import type { Clip, MediaKind, MediaRef, Op, Project, Rational, Resolution, Track } from "@app/engine-client";
 
 /** Ticks per second (ADR 0010). */
@@ -124,9 +125,13 @@ export function insertOps(p: Project, media: MediaRef, probed: Probed, start: nu
     ops.push({ op: "insert_clip", track: at.id, clip: clip() });
   } else {
     if (!vt) return null;
-    const withSound = media.kind === "video" && probed.hasAudio && at;
-    ops.push({ op: "insert_clip", track: vt.id, clip: clip(!!withSound) });
-    if (withSound) ops.push({ op: "insert_clip", track: at.id, clip: clip(true) });
+    const withSound = media.kind === "video" && probed.hasAudio;
+    ops.push({ op: "insert_clip", track: vt.id, clip: clip(withSound) });
+    if (withSound) {
+      // The sound goes to the first audio track that is free over the picture's range, or a new one: the picture never moves because the sound clashes.
+      const snd = planSound(p, [{ start, end: start + duration, prefer: at?.id }], ids);
+      ops.push(...snd.ops, { op: "insert_clip", track: snd.tracks[0]!, clip: clip(true) });
+    }
   }
   return ops;
 }

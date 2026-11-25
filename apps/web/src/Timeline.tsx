@@ -10,6 +10,7 @@ import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
 import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
 import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
+import { PALETTE_EVENT } from "./commands/palette";
 import { hopStep } from "./timeline/arrange";
 import { ToolbarMenu } from "./timeline/ToolbarMenu";
 import { chordLabel } from "./commands/registry";
@@ -174,6 +175,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
     const locked = picked.length > 0 && mine.length === 0 ? say("timeline.locked") : null;
     const tick = Math.round((f * TICKS_PER_SECOND) / FPS);
     switch (cmd.c) {
+      case "palette": window.dispatchEvent(new Event(PALETTE_EVENT)); break;
       case "undo": case "redo": undoRedo(cmd.c); break;
       case "split": {
         const hit = splittable(sc, tick, picked.length ? picked : null);
@@ -221,6 +223,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         const row = mine.length ? sc.clipTrack[mine[0]!]! : sc.trackId.indexOf(armed.current ?? "");
         if (row < 0) { const m = say("timeline.say.noTrack"); speak(m); onNotice(t(m.key)); break; }
         const r = toggleTrack(sc, row, cmd.part);
+        if (r.ops.length === 0) { speak(r.say); onNotice(t(r.say.key, r.say.values)); break; }
         commit(r.ops, r.say);
         break;
       }
@@ -305,8 +308,9 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       : a.a === "remove" ? removeTrack(sc, a.track)
       : a.a === "move" ? reorderTrack(sc, a.track, a.to)
       : addTrack(sc, a.kind, newClipId());
+    if (r && r.ops.length === 0) { speak(r.say); onNotice(t(r.say.key, r.say.values)); return; }
     if (r) commit(r.ops, r.say);
-  }, [commit]);
+  }, [commit, speak, onNotice, t]);
   const openMenu = useCallback((target: TrackMenuTarget, anchor: DOMRect) => setMenu({ target, anchor }), []);
 
   // Shortcuts that work anywhere except while typing in a field.
@@ -388,7 +392,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       <div className="tl-stage">
         {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t("timeline.empty")}</p>}
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} tool={tool} onLane={(id) => { armed.current = id; }} />
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} tool={tool} onLane={(id) => { armed.current = id; }} />
       </div>
     </section>
   );

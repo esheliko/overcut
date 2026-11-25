@@ -6,6 +6,7 @@
 
 /** What a command does. Timeline commands carry the payload the timeline already understood before the registry existed. */
 export type Command =
+  | { c: "palette" }
   | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" } | { c: "unlink" }
   /** Ripple delete (pull the rest of the track in) and close the empty gap before the selection. */
   | { c: "rippleDelete" } | { c: "closeGap" }
@@ -54,6 +55,8 @@ const D = (id: string, context: Context, keys: readonly string[], command: Comma
   ({ id, label: `cmd.${id}`, context, keys, command, ...extra });
 
 export const COMMANDS: readonly CommandDef[] = [
+  /** Opens the command palette (Ctrl/Cmd+K; also a button in the top bar and a menu row). */
+  D("app.palette", "global", ["Mod+K"], { c: "palette" }),
   D("edit.undo", "global", ["Mod+Z"], { c: "undo" }),
   D("edit.redo", "global", ["Mod+Shift+Z", "Mod+Y"], { c: "redo" }),
   D("edit.copy", "global", ["Mod+C"], { c: "copy" }),
