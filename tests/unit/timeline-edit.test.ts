@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { closeStartGap, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
+import { closeStartGap, seamOps, seamRange, seamTarget, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
 import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
@@ -309,4 +309,29 @@ test("start-trimming an imported clip and its linked sound keeps the new start (
   assert.equal(pair.tStart[1], 0);
   const ops = [trimOp(pair, 0, "start", TICKS_PER_SECOND / 10), trimOp(pair, 1, "start", TICKS_PER_SECOND / 10)];
   assert.deepEqual(closeStartGap(pair, ops), ops, "the trimmed start must not be slid back to 0 (the end would move to 2.9 s with the start still at 0)");
+});
+
+test("a seam between two touching clips moves the boundary: the left end and the right start move together (issue #105)", () => {
+  const p = fixtureProject({ tracks: 2, clipsPerTrack: 2, clipSec: 4 });
+  const c = p.sequences[0]!.tracks[0]!.clips;
+  c[1]!.start = c[0]!.start + c[0]!.duration; // split: touching, one seam
+  const s = buildScene(p);
+  const ft = s.frameTicks, at = s.tStart[1]!;
+  assert.equal(s.tStart[0]! + s.tDur[0]!, at, "the two clips touch");
+  // right: both clips move by the same amount, on whole frames, the left one first only when moving left
+  const right = seamTarget(s, 0, 1, at + ft * 10);
+  assert.equal(right, at + ft * 10);
+  const ops = seamOps(s, 0, 1, right);
+  assert.equal(ops[0]!.op, "trim_in", "the right clip starts first when the seam moves right, so the two never overlap");
+  assert.deepEqual(ops.map((o) => o.op), ["trim_in", "trim_out"]);
+  assert.equal((ops[0] as { clip: string }).clip, s.id[1]);
+  assert.equal((ops[1] as { end: number }).end, right);
+  // left: the right clip has no source before its start (source_in 0), so the seam cannot move left past it
+  assert.equal(seamTarget(s, 0, 1, at - ft * 10), at, "no source to reveal: clamped at the seam");
+  assert.equal(seamOps(s, 0, 1, at - ft * 3)[0]!.op, "trim_out", "moving left, the left clip shrinks first");
+  // the left clip keeps at least one frame, and the right clip keeps at least one frame
+  const far = seamTarget(s, 0, 1, at + 10_000 * ft);
+  assert.equal(far, s.tStart[1]! + s.tDur[1]! - ft, "the right clip keeps one frame");
+  assert.ok(far - s.tStart[0]! >= ft);
+  assert.equal(seamRange(s, 0, 1).at, at);
 });
