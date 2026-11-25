@@ -31,6 +31,8 @@ interface Props {
   fileOf(id: string): Promise<File | null>;
   /** Ids (comma separated) of the media readable right now; a change makes the preview ask for files that were offline before. */
   readyIds?: string;
+  /** The bin already holds media: the Media panel's "Import media" is the one import control, so this hint offers none. */
+  hasMedia?: boolean;
   /** Import files (the same flow as the bin; the empty preview offers it too). */
   onImport(s: Source[]): void;
   playing: boolean;
@@ -45,7 +47,7 @@ interface Props {
  * The player, the GPU compositor and the decoders live in the preview Worker (`preview/worker.ts`); this component sends it the project, the files and
  * the transport commands, and shows the playhead it reports.
  */
-export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, onCanvas, onPlaying }: Props) {
+export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying }: Props) {
   const { t } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
@@ -174,9 +176,11 @@ export function PreviewPanel({ engine, fileOf, readyIds, onImport, playing, onCa
             <div className="canvas-hint">
               <Icon name="film" size={30} />
               <span>{t("preview.hint")}</span>
-              <button className="chip-btn" disabled={!engine} onClick={open} data-testid="preview-import">
-                <Icon name="upload" size={18} /><span>{t("media.import")}</span>
-              </button>
+              {!hasMedia && (
+                <button className="chip-btn" disabled={!engine} onClick={open} data-testid="preview-import">
+                  <Icon name="upload" size={18} /><span>{t("media.import")}</span>
+                </button>
+              )}
             </div>
           )}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
