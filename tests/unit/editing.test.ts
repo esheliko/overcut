@@ -34,7 +34,7 @@ function fake(over: Partial<RawEditing> = {}) {
 }
 
 test("the contract holds one example of every op the Op type allows", () => {
-  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["add_marker", "add_media", "add_track", "close_gap", "delete", "delete_keyframe", "delete_marker", "insert_clip", "move", "move_keyframe", "move_marker", "move_track", "remove_media", "remove_track", "ripple_delete", "ripple_trim", "roll", "set_canvas", "set_clip", "set_clip_transform", "set_easing", "set_keyframe", "set_link", "set_marker_props", "set_media", "set_media_tags", "set_range", "set_sequence_format", "set_track_props", "slide", "slip", "split", "trim_in", "trim_out"]);
+  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["add_marker", "add_media", "add_track", "close_gap", "delete", "delete_keyframe", "delete_marker", "insert_clip", "move", "move_keyframe", "move_marker", "move_track", "remove_media", "remove_track", "ripple_delete", "ripple_trim", "roll", "set_canvas", "set_clip", "set_clip_speed", "set_clip_transform", "set_easing", "set_keyframe", "set_link", "set_marker_props", "set_media", "set_media_tags", "set_range", "set_sequence_format", "set_track_props", "slide", "slip", "split", "trim_in", "trim_out"]);
 });
 
 test("a single op and a list go over as JSON (a list is one undo step); the coalesce key rides along", async () => {

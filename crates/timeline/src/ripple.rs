@@ -6,7 +6,7 @@
 
 use crate::apply::{add, apply_all, find_clip, find_track, scaled, sub, OpError};
 use crate::op::{Edge, Inverse, Op};
-use app_model::{Clip, ClipId, Project, Time, TrackId};
+use app_model::{Clip, ClipId, Project, Rational, Time, TrackId};
 
 pub(crate) fn apply_compound(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
     let ops = match op {
@@ -25,6 +25,11 @@ pub(crate) fn apply_compound(p: &mut Project, op: Op) -> Result<Inverse, OpError
         Op::Roll { left, right, to } => roll(p, left, right, to)?,
         Op::Slip { clip, delta } => slip(p, clip, delta)?,
         Op::Slide { clip, delta } => slide(p, clip, delta)?,
+        Op::SetClipSpeed {
+            clip,
+            speed,
+            ripple,
+        } => set_speed(p, clip, speed, ripple)?,
         _ => unreachable!("only the compound ops are routed here"),
     };
     // Report the step's own error, not "batch step 3 failed".
@@ -40,6 +45,7 @@ fn set(c: &Clip, start: Time, source_in: Time, duration: Time) -> Op {
         start,
         source_in,
         duration,
+        speed: None,
     }
 }
 
@@ -222,4 +228,43 @@ fn slide(p: &Project, clip: ClipId, delta: Time) -> Result<Vec<Op>, OpError> {
         ops.extend(next_op);
     }
     Ok(ops)
+}
+
+/// Slowest and fastest clip speed the editor offers (`docs/features/speed.md`).
+pub const MIN_SPEED: Rational = Rational { num: 1, den: 4 };
+pub const MAX_SPEED: Rational = Rational { num: 4, den: 1 };
+
+/// `Op::SetClipSpeed`: keep the start and the source window, change the length to `source length / speed`.
+fn set_speed(p: &Project, clip: ClipId, speed: Rational, ripple: bool) -> Result<Vec<Op>, OpError> {
+    let (seq, track, c) = clip_ref(p, clip)?;
+    let speed = Rational::new(speed.num, speed.den).ok_or(OpError::BadSpeed)?;
+    let (lo, hi) = (i128::from(MIN_SPEED.den), i128::from(MAX_SPEED.num));
+    // speed in [1/4, 4]: num * 4 >= den and num <= 4 * den.
+    let (n, d) = (i128::from(speed.num), i128::from(speed.den));
+    if n <= 0 || n * lo < d || n > hi * d {
+        return Err(OpError::BadSpeed);
+    }
+    let old_end = c.end().ok_or(OpError::OutOfRange)?;
+    let source_len = i128::from(scaled(c.duration, c.speed)?.ticks());
+    // A length `k * d` ticks reads exactly `k * n` source ticks: take the most whole steps that fit the source window.
+    let steps = source_len / n;
+    let new_len = i64::try_from(steps * d).map_err(|_| OpError::OutOfRange)?;
+    let new_len = Time::from_ticks(new_len);
+    let shift = sub(new_len, c.duration)?;
+    let resized = Op::SetClip {
+        clip,
+        start: c.start,
+        source_in: c.source_in,
+        duration: new_len,
+        speed: Some(speed),
+    };
+    if !ripple {
+        return Ok(vec![resized]);
+    }
+    let moves = shift_after(p, seq, track, old_end, shift, false)?;
+    Ok(if shift > Time::ZERO {
+        [moves, vec![resized]].concat()
+    } else {
+        [vec![resized], moves].concat()
+    })
 }
