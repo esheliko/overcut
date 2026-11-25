@@ -20,12 +20,15 @@ test("app menu: opens on the first item, arrows and Home/End move, Escape return
   await expect(button).toBeFocused();
 });
 
-test("track switches from the keyboard: Shift+M mutes the selected clip's track", async ({ page }) => {
+test("track switches from the keyboard: Shift+M mutes the selected clip's audio track (video tracks have no mute)", async ({ page }) => {
   await page.goto("/?sample");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.locator("#tl-summary")).toContainText("Untitled project: 2 tracks"); // the engine has opened the sample project: edits work
   await page.getByTestId("timeline-canvas").focus();
   await page.keyboard.press("Enter"); // select the clip at the playhead
+  await page.keyboard.press("Shift+M"); // a video track has no mute: a short message, nothing changes
+  await expect(page.locator('[data-announcer="polite"]')).toContainText(/audio tracks/i);
+  await page.keyboard.press("ArrowDown"); // the audio clip below
   await page.keyboard.press("Shift+M");
   await expect(page.locator('[data-announcer="polite"]')).toContainText(/muted/i);
   await page.keyboard.press("Shift+M");
