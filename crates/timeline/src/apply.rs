@@ -47,6 +47,8 @@ pub enum OpError {
     SplitOutside,
     /// A speed ratio would need a fraction of a tick.
     InexactSpeed,
+    /// `SetClipSpeed` with a speed outside `MIN_SPEED..=MAX_SPEED`.
+    BadSpeed,
     /// `SetTrackProps` / `AddTrack` with a bad name (empty, untrimmed, over `MAX_TRACK_NAME`), height or colour.
     BadTrack,
     /// A sequence may hold at most `MAX_TRACKS` tracks.
@@ -230,8 +232,18 @@ fn insert_sorted(t: &mut Track, c: Clip) {
 }
 
 /// Replace a clip's geometry. `SetClip` can hop a clip over a neighbour (the gap allows it), so re-seat it in sorted order.
-fn set_geometry(t: &mut Track, idx: usize, start: Time, source_in: Time, duration: Time) {
+fn set_geometry(
+    t: &mut Track,
+    idx: usize,
+    start: Time,
+    source_in: Time,
+    duration: Time,
+    speed: Option<Rational>,
+) {
     let mut c = t.clips.remove(idx);
+    if let Some(s) = speed {
+        c.speed = s;
+    }
     c.start = start;
     c.source_in = source_in;
     c.duration = duration;
@@ -248,6 +260,7 @@ fn restore_geometry(loc_clip: &Clip) -> Op {
         start: loc_clip.start,
         source_in: loc_clip.source_in,
         duration: loc_clip.duration,
+        speed: None,
     }
 }
 
@@ -818,28 +831,30 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
             let end = c.end().ok_or(OpError::OutOfRange)?;
             let moved = sub(start, c.start)?;
             let source_in = add(c.source_in, scaled(moved, c.speed)?)?;
-            set_clip_checked(p, loc, start, source_in, sub(end, start)?)
+            set_clip_checked(p, loc, start, source_in, sub(end, start)?, None)
         }
         Op::TrimOut { clip, end } => {
             let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
             let c = clip_at(p, loc);
             let (start, source_in) = (c.start, c.source_in);
-            set_clip_checked(p, loc, start, source_in, sub(end, start)?)
+            set_clip_checked(p, loc, start, source_in, sub(end, start)?, None)
         }
         Op::SetClip {
             clip,
             start,
             source_in,
             duration,
+            speed,
         } => {
             let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
-            set_clip_checked(p, loc, start, source_in, duration)
+            set_clip_checked(p, loc, start, source_in, duration, speed)
         }
         op @ (Op::RippleTrim { .. }
         | Op::RippleDelete { .. }
         | Op::CloseGap { .. }
         | Op::Roll { .. }
         | Op::Slip { .. }
+        | Op::SetClipSpeed { .. }
         | Op::Slide { .. }) => crate::ripple::apply_compound(p, op),
         Op::Move { clip, track, start } => {
             let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
@@ -878,6 +893,7 @@ fn set_clip_checked(
     start: Time,
     source_in: Time,
     duration: Time,
+    speed: Option<Rational>,
 ) -> Result<Inverse, OpError> {
     let t = &p.sequences[loc.seq].tracks[loc.track];
     unlocked(t)?;
@@ -886,17 +902,24 @@ fn set_clip_checked(
         start,
         source_in,
         duration,
+        speed: speed.unwrap_or(c.speed),
         ..c.clone()
     };
     check_clip(p, t, &next)?;
     check_overlap(t, &next, Some(c.id))?;
-    let undo = restore_geometry(c);
+    let mut undo = restore_geometry(c);
+    if let (Some(s), Op::SetClip { speed: back, .. }) = (speed, &mut undo) {
+        if s != c.speed {
+            *back = Some(c.speed);
+        }
+    }
     set_geometry(
         track_mut(p, loc.seq, loc.track),
         loc.clip,
         start,
         source_in,
         duration,
+        speed,
     );
     Ok(Inverse(vec![undo]))
 }
