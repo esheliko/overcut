@@ -1,5 +1,6 @@
 //! S7 property tests. Case count: `PROPTEST_CASES` (default 256 here; the S7 bar of 100k is
 //! `PROPTEST_CASES=100000 cargo test -p app-timeline --release`).
+//! The E2 gate (M2-011) is the 10k run over every op: `npm run test:e2` (release mode).
 
 #![allow(clippy::field_reassign_with_default)]
 use crate::apply::MAX_TRACKS;
@@ -197,6 +198,38 @@ enum Step {
         t: i8,
         easing: u8,
     },
+    /// Link or unlink a clip (a small set of link ids so links collide and survive splits).
+    SetLink {
+        clip: usize,
+        link: Option<u8>,
+    },
+    /// Media-bin ops (import, relink, tags, remove). `n` picks the item; an item that clips use must refuse removal.
+    AddMedia {
+        video: bool,
+    },
+    RemoveMedia {
+        n: usize,
+    },
+    SetMedia {
+        n: usize,
+        uri: u8,
+        hash: Option<u8>,
+    },
+    SetMediaTags {
+        n: usize,
+        tags: Vec<u8>,
+    },
+    /// Sequence format and canvas: rates and sizes include bad ones (0) on purpose.
+    SetFormat {
+        fps: u8,
+        w: u8,
+    },
+    SetCanvas {
+        fps: u8,
+        w: u8,
+        size_fixed: bool,
+        rate_fixed: bool,
+    },
     Undo,
     Redo,
 }
@@ -250,6 +283,13 @@ fn step() -> impl Strategy<Value = Step> {
             .prop_map(|(clip, prop, t)| Step::DeleteKey { clip, prop, t }),
         2 => (0..2usize, 0..3usize, 0..4i8, any::<u8>())
             .prop_map(|(clip, prop, t, easing)| Step::SetEase { clip, prop, t, easing }),
+        2 => (any::<usize>(), prop::option::of(0..3u8)).prop_map(|(clip, link)| Step::SetLink { clip, link }),
+        1 => any::<bool>().prop_map(|video| Step::AddMedia { video }),
+        1 => any::<usize>().prop_map(|n| Step::RemoveMedia { n }),
+        1 => (any::<usize>(), 0..4u8, prop::option::of(0..4u8)).prop_map(|(n, uri, hash)| Step::SetMedia { n, uri, hash }),
+        1 => (any::<usize>(), prop::collection::vec(0..5u8, 0..4)).prop_map(|(n, tags)| Step::SetMediaTags { n, tags }),
+        1 => (0..4u8, 0..4u8).prop_map(|(fps, w)| Step::SetFormat { fps, w }),
+        1 => (0..4u8, 0..4u8, any::<bool>(), any::<bool>()).prop_map(|(fps, w, size_fixed, rate_fixed)| Step::SetCanvas { fps, w, size_fixed, rate_fixed }),
         2 => Just(Step::Undo),
         2 => Just(Step::Redo),
     ]
@@ -287,7 +327,7 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
             } else {
                 i64::from(start)
             };
-            let m = &p.media[media % p.media.len()];
+            let m = p.media.get(media % p.media.len().max(1))?;
             Op::InsertClip {
                 track: tr.id,
                 clip: clip(ids, m.id, start, i64::from(source_in), i64::from(dur)),
@@ -352,8 +392,7 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
             let m = p
                 .media
                 .iter()
-                .find(|m| matches!(m.kind, MediaKind::Video))
-                .unwrap();
+                .find(|m| matches!(m.kind, MediaKind::Video))?;
             let clips = if with_clip {
                 vec![clip(ids, m.id, 0, 0, 5)]
             } else {
@@ -509,8 +548,88 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
             t: t(i64::from(kt)),
             easing: easing_of(easing),
         },
+        Step::SetLink { clip, link } => Op::SetLink {
+            clip: pick(clip)?.id,
+            link: link.map(|n| LinkId(app_model::Id::from_u128(u128::from(n) + 1_000_000))),
+        },
+        Step::AddMedia { video } => Op::AddMedia {
+            index: (video && p.media.len() > 1).then_some(1),
+            media: media(
+                ids,
+                if video {
+                    MediaKind::Video
+                } else {
+                    MediaKind::Audio
+                },
+                Some(40),
+            ),
+        },
+        Step::RemoveMedia { n } => Op::RemoveMedia {
+            media: p.media.get(n % p.media.len().max(1))?.id,
+        },
+        Step::SetMedia { n, uri, hash } => Op::SetMedia {
+            media: p.media.get(n % p.media.len().max(1))?.id,
+            uri: format!("file-{uri}"),
+            hash: hash.map(|h| format!("b3-64k:{h:016x}")),
+        },
+        Step::SetMediaTags { n, ref tags } => Op::SetMediaTags {
+            media: p.media.get(n % p.media.len().max(1))?.id,
+            tags: tags.iter().map(|t| format!("tag{t}")).collect(),
+        },
+        Step::SetFormat { fps, w } => Op::SetSequenceFormat {
+            sequence: p.sequences[0].id,
+            frame_rate: Rational::new(i64::from(fps) * 12, 1).unwrap_or(Rational::FPS_30),
+            resolution: Resolution {
+                width: u32::from(w) * 640,
+                height: u32::from(w) * 360,
+            },
+        },
+        Step::SetCanvas {
+            fps,
+            w,
+            size_fixed,
+            rate_fixed,
+        } => Op::SetCanvas {
+            sequence: p.sequences[0].id,
+            frame_rate: Rational::new(i64::from(fps) * 12, 1).unwrap_or(Rational::FPS_30),
+            resolution: Resolution {
+                width: u32::from(w) * 640,
+                height: u32::from(w) * 360,
+            },
+            size_fixed,
+            rate_fixed,
+        },
         Step::Undo | Step::Redo => return None,
     })
+}
+
+/// The E2 invariants, checked independently of `Project::validate`: on every track the clips are in order and never overlap, every
+/// clip points at a media entry that exists, and a save/reopen round trip gives the same project (links included).
+fn check_invariants(p: &Project) -> Result<(), TestCaseError> {
+    for s in &p.sequences {
+        for tr in &s.tracks {
+            for w in tr.clips.windows(2) {
+                let end = w[0].end().unwrap().ticks();
+                prop_assert!(
+                    end <= w[1].start.ticks(),
+                    "clips overlap or are out of order on {}",
+                    tr.name
+                );
+            }
+            for c in &tr.clips {
+                prop_assert!(
+                    p.media.iter().any(|m| m.id == c.media),
+                    "clip points at a missing media entry"
+                );
+            }
+        }
+    }
+    p.validate()
+        .map_err(|e| TestCaseError::fail(e.to_string()))?;
+    let json = serde_json::to_string(p).unwrap();
+    let back: Project = serde_json::from_str(&json).unwrap();
+    prop_assert_eq!(&back, p, "save/reopen changed the project (links?)");
+    Ok(())
 }
 
 proptest! {
@@ -527,7 +646,7 @@ proptest! {
             match apply(&mut p, op.clone()) {
                 Ok(inv) => {
                     applied += 1;
-                    p.validate().map_err(|e| TestCaseError::fail(format!("{op:?} left an invalid project: {e}")))?;
+                    check_invariants(&p).map_err(|e| TestCaseError::fail(format!("{op:?}: {e}")))?;
                     let after = p.clone();
                     apply_all(&mut p, &inv.0).map_err(|e| TestCaseError::fail(format!("inverse of {op:?} failed: {e}")))?;
                     prop_assert_eq!(&p, &before, "undo(do({:?})) != x", op);
@@ -575,7 +694,7 @@ proptest! {
                     }
                 }
             }
-            p.validate().map_err(|e| TestCaseError::fail(e.to_string()))?;
+            check_invariants(&p)?;
         }
         let replayed = replay(&start, h.journal()).map_err(|(i, e)| TestCaseError::fail(format!("journal op {i}: {e}")))?;
         prop_assert_eq!(&replayed, &p, "replay(journal) != state");
@@ -1189,7 +1308,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        22,
+        29,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -1458,8 +1577,18 @@ fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
         },
     };
     // one undo step for both, the way import applies them
-    h.apply_batch(&mut p, vec![Op::AddMedia { media: new.clone() }, fmt], None)
-        .unwrap();
+    h.apply_batch(
+        &mut p,
+        vec![
+            Op::AddMedia {
+                media: new.clone(),
+                index: None,
+            },
+            fmt,
+        ],
+        None,
+    )
+    .unwrap();
     assert_eq!(p.media.last().unwrap(), &new);
     assert_eq!(p.sequences[0].resolution.width, 1080);
     h.undo(&mut p).unwrap();
@@ -1467,13 +1596,23 @@ fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
     h.redo(&mut p).unwrap();
     assert_eq!(p.media.len(), before.media.len() + 1);
     // duplicate id, empty uri, bad format, removing media a clip uses
-    let dup = Op::AddMedia { media: new.clone() };
+    let dup = Op::AddMedia {
+        media: new.clone(),
+        index: None,
+    };
     assert!(h.apply(&mut p, dup, None).is_err());
     let mut empty = new.clone();
     empty.id = MediaId::new(&mut ids);
     empty.uri.clear();
     assert!(h
-        .apply(&mut p, Op::AddMedia { media: empty }, None)
+        .apply(
+            &mut p,
+            Op::AddMedia {
+                media: empty,
+                index: None
+            },
+            None
+        )
         .is_err());
     let (tr, clip) = {
         let t = &p.sequences[0].tracks[0];
