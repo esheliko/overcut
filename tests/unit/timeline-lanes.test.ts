@@ -97,3 +97,26 @@ test("keyboard reorder hops over exactly one neighbour and refuses at the ends",
   assert.deepEqual(hopStep(scene, [pic, snd], 1), [], "the sound has no neighbour, so the pair stays together");
   assert.deepEqual(hopStep(scene, [], 1), []);
 });
+
+test("a video dropped over occupied time keeps its picture on the target lane; its sound takes a free audio track or a new one, in one batch", () => {
+  const ref = project.media[0]!;
+  const seq = project.sequences[0]!;
+  const v2 = seq.tracks[1]!.id, a1 = seq.tracks[2]!.id;
+  let n = 100;
+  const ids = () => id(String(n++));
+  // V2 is free from 3 s, A1 is busy until 4 s: the sound clashes on A1, yet the picture stays at 3 s on V2 (picture-in-picture from the bin).
+  const start = placeAt(project, 3 * TICKS, 4 * TICKS, [v2]);
+  assert.equal(start, 3 * TICKS);
+  const ops = insertOps(project, ref, video, start, ids, v2)!;
+  assert.equal(ops[0]!.op === "insert_clip" && ops[0].track, v2);
+  const add = ops.find((o) => o.op === "add_track");
+  assert.ok(add && add.op === "add_track" && add.track.kind === "audio" && add.track.name === "A2", "a new audio track A2");
+  assert.equal(add!.op === "add_track" && add!.index, seq.tracks.length, "at the bottom");
+  const snd = ops[ops.length - 1]!;
+  assert.ok(snd.op === "insert_clip" && snd.track === (add as { track: { id: string } }).track.id && snd.clip.start === 3 * TICKS);
+  assert.ok(ops.indexOf(add!) < ops.indexOf(snd), "the track exists before its clip is inserted");
+  // Free on A1 (after 4 s): no new track, the sound goes to A1.
+  const late = insertOps(project, ref, video, 5 * TICKS, ids, v2)!;
+  assert.equal(late.some((o) => o.op === "add_track"), false);
+  assert.equal(late[late.length - 1]!.op === "insert_clip" && (late[late.length - 1] as { track: string }).track, a1);
+});

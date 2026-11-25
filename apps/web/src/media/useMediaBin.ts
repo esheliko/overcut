@@ -138,8 +138,9 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     const len = ref.kind === "image" ? STILL_SECONDS * TICKS : ref.duration ?? 0;
     // Dropped on a lane: free space is judged on the tracks the clip will really use (a drop on V2 must not be pushed to the end because V1 is busy there).
     const { vt, at } = destTracks(cur, ref, track);
-    const used = (ref.kind === "audio" ? [at] : ref.kind === "video" ? [vt, at] : [vt]).flatMap((t) => (t ? [t.id] : []));
-    return insertOps(cur, ref, l.probed, start === "end" ? timelineEnd(cur) : placeAt(cur, start, len, track ? used : undefined), undefined, track);
+    // A video's sound does not decide where the picture goes: it takes any free audio track, or a new one (see `insertOps`).
+    const used = (ref.kind === "audio" ? [at] : [vt]).flatMap((t) => (t ? [t.id] : []));
+    return insertOps(cur, ref, l.probed, start === "end" ? timelineEnd(cur) : placeAt(cur, start, len, used), undefined, track);
   }, [fileFor]);
 
   const importSources = useCallback(async (sources: Source[]): Promise<void> => {
