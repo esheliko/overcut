@@ -56,8 +56,8 @@ const BAR = 3;
 export interface Overlay {
   /** Per clip index: 1 = selected, 2 = selected and being dragged or trimmed (its body is not drawn; a ghost is). */
   selected: Uint8Array | null;
-  /** Move preview: the clips, the shift in seconds, and the track every ghost sits on (-1 = each clip's own track). */
-  ghosts: number[] | null; ghostDSec: number; ghostTrack: number;
+  /** Move preview: the clips, the shift in seconds, and the row of each ghost (parallel to `ghosts`; null = each clip's own track). */
+  ghosts: number[] | null; ghostDSec: number; ghostTracks: number[] | null;
   /** Trim preview: clip index (-1 none), which edge, and the new boundary in seconds. */
   trimClip: number; trimEnd: boolean; trimSec: number;
   /** Text on the move ghost instead of the clip name (slip / slide show their amount). */
@@ -72,7 +72,7 @@ export interface Overlay {
   /** A marker being dragged along the ruler: its id and where it would land (seconds). */
   markerDrag: { id: string; sec: number } | null;
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, ghostLabel: null, lane: -1, marquee: null, guideSec: null, trackDrag: null, markerDrag: null });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, ghostLabel: null, lane: -1, marquee: null, guideSec: null, trackDrag: null, markerDrag: null });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -203,9 +203,10 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     ctx.save(); ctx.globalAlpha = 0.14; ctx.fillStyle = p.accent; ctx.fillRect(gut(v), ly, v.width - gut(v), LANE - 1); ctx.restore();
   }
   if (ui.ghosts !== null) {
-    for (const i of ui.ghosts) {
-      // Only the clip of the target lane's kind changes lane (its linked sound stays on its own track).
-      const tr = ui.ghostTrack >= 0 && scene.trackKind[scene.clipTrack[i]!] === scene.trackKind[ui.ghostTrack] ? ui.ghostTrack : scene.clipTrack[i]!;
+    for (let n = 0; n < ui.ghosts.length; n++) {
+      const i = ui.ghosts[n]!;
+      // A lane change gives each ghost its own row (clips of the other kind, like a linked sound, stay on their track).
+      const tr = ui.ghostTracks !== null ? ui.ghostTracks[n]! : scene.clipTrack[i]!;
       ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, scene.trackKind[tr] === 1, ui.ghostLabel ?? scene.name[i]);
     }
   }
