@@ -42,6 +42,23 @@ export function hitTest(scene: Scene, v: View, x: number, y: number, edgePx = 8)
 export const HANDLE_TOUCH = 44;
 export const HANDLE_MOUSE = 16;
 
+/** The seam under (x, y): the boundary between two clips on one track that touch (the first one's end is the second one's start),
+ *  or null. Only seams with a selected clip on either side count, unless `any` (mouse): then every seam counts. The nearest seam wins. */
+export function seamAt(scene: Scene, v: View, selected: Uint8Array, x: number, y: number, touch: boolean, any = false): { left: number; right: number } | null {
+  const track = trackAtY(scene, v, y);
+  if (track < 0 || x < GUTTER) return null;
+  const zone = touch ? HANDLE_TOUCH : HANDLE_MOUSE;
+  const lo = scene.trackFirst[track]!, hi = scene.trackFirst[track + 1]!;
+  let best: { left: number; right: number } | null = null, bestD = Infinity;
+  for (let i = lo; i + 1 < hi; i++) {
+    if (scene.tStart[i]! + scene.tDur[i]! !== scene.tStart[i + 1]!) continue;
+    if (!any && !selected[i] && !selected[i + 1]) continue;
+    const bx = GUTTER + scene.end[i]! * v.pps - v.scrollX, d = Math.abs(x - bx);
+    if (d <= zone / 2 && d < bestD) { best = { left: i, right: i + 1 }; bestD = d; }
+  }
+  return best;
+}
+
 /** Trim handle under (x, y) among the clips flagged in `selected`, or null. The zone straddles the edge: up to half of it
  *  inside the clip (never more than a third of the clip, so a narrow clip keeps a body to grab) and the rest outside, so it is
  *  always `zone` px wide and stays usable however narrow the clip is. The nearest edge wins where two zones overlap.

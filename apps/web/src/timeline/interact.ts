@@ -2,8 +2,8 @@
  *  The canvas owns pointers, panning and drawing; the owner of the engine applies `Effects.ops` (via `Engine.editing`) and the selection.
  *  Touch rules: a tap selects; a drag on an unselected clip pans; a drag on an already selected clip moves it; handles of a selected clip are 44 px targets. */
 import type { Op } from "@app/engine-client";
-import { clampN, describeClip, expandLinks, groupReps, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
-import { handleAt, hitTest, trackAtY } from "./hit";
+import { clampN, describeClip, expandLinks, groupReps, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, seamOps, seamRange, seamTarget, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
+import { handleAt, hitTest, seamAt, trackAtY } from "./hit";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
 import { GUTTER, LANE, RULER, xToTime, type View } from "./view";
 
@@ -35,7 +35,7 @@ export type Gesture =
   /** Pointer is down but has not moved far enough to know what it is: a tap, or a drag that becomes `then`. */
   | { k: "press"; sx: number; sy: number; then: "move" | "pan" | "marquee" | "none"; tapClip: number; collapse: boolean; clearOnTap: boolean }
   | { k: "move"; sx: number; sel: number[]; room: { left: number; right: number }; delta: number; track: number; from: number }
-  | { k: "trim"; sx: number; clip: number; edge: Edge; orig: number; value: number }
+  | { k: "trim"; sx: number; clip: number; edge: Edge; orig: number; value: number; right?: number } // right: the seam's other clip (a seam drag moves the boundary)
   | { k: "marquee"; x0: number; y0: number; x1: number; y1: number };
 
 export const IDLE: Gesture = { k: "idle" };
@@ -47,19 +47,29 @@ type R = { g: Gesture; fx: Effects };
 export function markPreview(f: Uint8Array, g: Gesture): void {
   for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
   if (g.k === "move") for (const i of g.sel) f[i] = 2;
-  else if (g.k === "trim") f[g.clip] = 2;
+  else if (g.k === "trim") { f[g.clip] = 2; if (g.right !== undefined) f[g.right] = 2; }
 }
 
 export function pointerDown(c: Ctx, e: PEvent): R {
   const { scene, view } = c;
   const touch = e.kind === "touch";
   if (e.y < RULER) return e.x >= GUTTER ? { g: { k: "scrub" }, fx: { seek: xToTime(view, e.x) } } : { g: IDLE, fx: NONE };
+  const sm = seamAt(scene, view, c.selFlags, e.x, e.y, touch);
+  if (sm && !scene.trackLocked[scene.clipTrack[sm.left]!] && !scene.trackLocked[scene.clipTrack[sm.right]!]) {
+    const at = seamRange(scene, sm.left, sm.right).at;
+    return { g: { k: "trim", sx: e.x, clip: sm.left, edge: "end", orig: at, value: at, right: sm.right }, fx: NONE };
+  }
   const hd = handleAt(scene, view, c.selFlags, e.x, e.y, touch);
   if (hd && !scene.trackLocked[scene.clipTrack[hd.clip]!]) {
     const r = trimRange(scene, hd.clip, hd.edge);
     return { g: { k: "trim", sx: e.x, clip: hd.clip, edge: hd.edge, orig: r.at, value: r.at }, fx: NONE };
   }
   const eh = touch ? null : handleAt(scene, view, c.selFlags, e.x, e.y, false, true); // mouse: an edge of an unselected clip trims it (and selects it)
+  const seam = touch ? null : seamAt(scene, view, c.selFlags, e.x, e.y, false, true); // mouse: any seam moves, selecting both clips
+  if (seam && !scene.trackLocked[scene.clipTrack[seam.left]!] && !scene.trackLocked[scene.clipTrack[seam.right]!] && (!eh || seam.left === eh.clip || seam.right === eh.clip)) {
+    const at = seamRange(scene, seam.left, seam.right).at;
+    return { g: { k: "trim", sx: e.x, clip: seam.left, edge: "end", orig: at, value: at, right: seam.right }, fx: { select: { mode: "set", ids: [scene.id[seam.left]!, scene.id[seam.right]!] } } };
+  }
   if (eh && !scene.trackLocked[scene.clipTrack[eh.clip]!]) {
     const r = trimRange(scene, eh.clip, eh.edge);
     return { g: { k: "trim", sx: e.x, clip: eh.clip, edge: eh.edge, orig: r.at, value: r.at }, fx: { select: { mode: "set", ids: [scene.id[eh.clip]!] } } };
@@ -108,7 +118,8 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
       return { g: { ...g, delta, track }, fx: NONE };
     }
     case "trim": {
-      const value = trimTarget(scene, g.clip, g.edge, g.orig + ((e.x - g.sx) / view.pps) * TPS);
+      const desired = g.orig + ((e.x - g.sx) / view.pps) * TPS;
+      const value = g.right !== undefined ? seamTarget(scene, g.clip, g.right, desired) : trimTarget(scene, g.clip, g.edge, desired);
       return { g: { ...g, value }, fx: NONE };
     }
     case "marquee":
@@ -136,7 +147,8 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "trim": {
       if (g.value === g.orig) return { g: IDLE, fx: NONE };
-      return { g: IDLE, fx: { ops: linkedTrimOps(scene, g.clip, g.edge, g.value), say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
+      const ops = g.right !== undefined ? seamOps(scene, g.clip, g.right, g.value) : linkedTrimOps(scene, g.clip, g.edge, g.value);
+      return { g: IDLE, fx: { ops, say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
     }
     case "marquee": {
       const [xa, xb] = [Math.min(g.x0, g.x1), Math.max(g.x0, g.x1)];
