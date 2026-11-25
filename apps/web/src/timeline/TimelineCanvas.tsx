@@ -78,7 +78,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const appliedSel = useRef<ReadonlySet<string> | null>(null);
   const resetPreview = () => {
     const o = ui.current;
-    o.ghosts = null; o.trimClip = -1; o.marquee = null; o.guideSec = null;
+    o.ghosts = null; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null;
     const f = flags.current;
     for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
   };
@@ -272,7 +272,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
     const o = ui.current;
-    o.ghosts = null; o.ghostTracks = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
+    o.ghosts = null; o.ghostTracks = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
     markPreview(flags.current, g);
     if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTracks = g.to; o.lane = g.mv ? g.track : -1;
@@ -282,7 +282,11 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     } else if (g.k === "tool") {
       const sc = live.current.scene, i = g.clip, d = g.delta / TICKS_PER_SECOND;
       if (g.tool === "ripple") { o.trimClip = i; o.trimEnd = g.edge === "end"; o.trimSec = (g.edge === "end" ? sc.end[i]! : sc.start[i]!) + d; }
-      else if (g.tool === "roll") o.guideSec = sc.start[g.cuts[0]![1]]! + d;
+      else if (g.tool === "roll") {
+        const [l, r] = g.cuts.find((x) => x[0] === g.clip) ?? g.cuts[0]!;
+        o.guideSec = sc.start[r]! + d;
+        if (g.seam) { o.trimClip = l; o.trimEnd = true; o.trimSec = o.guideSec; o.trimRight = r; } // the two-sided ghost of a seam drag (#105)
+      }
       else { o.ghosts = [i]; o.ghostDSec = g.tool === "slide" ? d : 0; o.ghostLabel = t(g.tool === "slide" ? "timeline.tool.slideLabel" : "timeline.tool.slipLabel", { amount: `${d < 0 ? "−" : "+"}${Math.abs(d).toFixed(2)}` }); }
     } else if (g.k === "marquee") o.marquee = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 };
     else if (g.k === "tdrag") o.trackDrag = { from: g.from, to: g.to, y: g.y };

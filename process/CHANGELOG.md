@@ -2,6 +2,20 @@
 
 Every change to a rule, instruction, hook, CI or deploy mechanism gets an entry here (newest first) with an expected effect and a review-by date, so a change is judged by what happened, not by feel. Format and workflow: `.claude/skills/process/SKILL.md`. Checked by `tests/unit/process-changelog.test.ts`.
 
+## 2026-11-25 · #166 · Previews only for PRs labelled `preview`
+What: `preview.yml` triggers on `pull_request` (labeled/synchronize/opened/reopened) and runs only with the `preview` label; no preview for branch pushes. A Vercel refusal now fails the job and comments on the PR instead of ending green with an empty URL. `deploy-web` unchanged.
+Why: owner approved on #166 after previews on every push hit Vercel's free daily deployment limit.
+Expected effect: far fewer Vercel deployments per day; no `api-deployments-free-per-day` refusal blocks a labelled preview silently.
+Review by: 2026-12-09
+Status: pending
+
+## 2026-11-25 · #175 · E2 undo/redo gate in verify
+What: `ci.yml` `verify` runs `npm run test:e2 --if-present` after the build.
+Why: the 10k-sequence undo/redo gate (plan 4b.4) must run in CI; the script exists only on `m2` until it merges.
+Expected effect: no change on main now; the gate (~45 s) turns on automatically when m2 lands.
+Review by: 2026-12-09
+Status: pending
+
 ## 2026-11-24 · #84 · main frozen to M1 work
 What: new standing rule `m1-freeze` (main takes only M1 work until the owner lifts the freeze; M2 PRs wait on their branches); step 5 of `branch-pr` says so.
 Why: owner said no M2 work merges into main until M1 is finished.

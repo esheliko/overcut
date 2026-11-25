@@ -4,7 +4,7 @@
 import type { Op } from "@app/engine-client";
 import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, lanePlan, type LanePlan, type LaneMove, type Say, inRect, linkedTrimOps, moveOps, moveRoom, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { hopOps, planHop, snapMove, SNAP_PX } from "./arrange";
-import { handleAt, hitTest, trackAtY } from "./hit";
+import { handleAt, hitTest, seamAt, trackAtY } from "./hit";
 import { headerPart, type HeaderPart } from "./header";
 import { frameTick, markerAt, moveMarkerPlan } from "./markers";
 import { reorderTrack, rowAt, toggleTrack } from "./tracks";
@@ -54,7 +54,8 @@ export type Gesture =
       /** Tick the selection snapped to or landed against: the painter draws a guide line there. */ guide?: number | null }
   | { k: "trim"; sx: number; clip: number; edge: Edge; orig: number; value: number }
   /** An edit-tool drag (TL-04): ripple trim of `edge`, roll of the cut `cuts`, slip or slide of `clip`. `delta` is in timeline ticks, snapped to frames inside [lo, hi]. */
-  | { k: "tool"; tool: "ripple" | "roll" | "slip" | "slide"; sx: number; clip: number; edge: Edge | null; cuts: [number, number][]; lo: number; hi: number; delta: number }
+  | { k: "tool"; tool: "ripple" | "roll" | "slip" | "slide"; sx: number; clip: number; edge: Edge | null; cuts: [number, number][]; lo: number; hi: number; delta: number;
+      /** A roll started by dragging the seam between two touching clips in the Select tool (#105): both clips are ghosted. */ seam?: boolean }
   | { k: "marquee"; x0: number; y0: number; x1: number; y1: number }
   /** Pointer is down on a track header: a tap on a switch flips it, a tap elsewhere opens the menu, a drag of the name (mouse) or a long press (touch) reorders. */
   | { k: "hdr"; track: number; part: HeaderPart; sx: number; sy: number; touch: boolean }
@@ -129,6 +130,19 @@ function toolDown(c: Ctx, e: PEvent): R | null {
   return { g: { k: "tool", tool, sx: e.x, clip: i, edge: null, cuts: [], lo: r.lo, hi: r.hi, delta: 0 }, fx: { ...pick(i), say: describeClip(scene, i) } };
 }
 
+/** Dragging the seam between two touching clips in the Select tool is a roll of that cut (#105): the boundary moves, both clips follow,
+ *  with the roll tool's frame snapping, guide line, linked-clip rules and "no extra footage" notice. `pickBoth`: select both clips. */
+function seamDown(c: Ctx, e: PEvent, sm: { left: number; right: number }, pickBoth: boolean): R | null {
+  const { scene } = c;
+  if (scene.trackLocked[scene.clipTrack[sm.left]!] || scene.trackLocked[scene.clipTrack[sm.right]!]) return null;
+  const cuts = rollCuts(scene, sm.left, "end");
+  if (cuts.length === 0) return null;
+  const pick: Effects = pickBoth ? { select: { mode: "set", ids: [scene.id[sm.left]!, scene.id[sm.right]!] } } : NONE;
+  const r = rollRangeAll(scene, cuts);
+  if (r.lo === 0 && r.hi === 0) return { g: IDLE, fx: { ...pick, say: { key: "timeline.say.noRoom.roll" }, visible: true } };
+  return { g: { k: "tool", tool: "roll", sx: e.x, clip: sm.left, edge: "end", cuts, lo: r.lo, hi: r.hi, delta: 0, seam: true }, fx: pick };
+}
+
 export function pointerDown(c: Ctx, e: PEvent): R {
   const { scene, view } = c;
   const touch = e.kind === "touch";
@@ -145,6 +159,8 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     return { g: { k: "trim", sx: e.x, clip: hd.clip, edge: hd.edge, orig: r.at, value: r.at }, fx: NONE };
   }
   const eh = touch ? null : handleAt(scene, view, c.selFlags, e.x, e.y, false, true); // mouse: an edge of an unselected clip trims it (and selects it)
+  const seam = touch ? null : seamAt(scene, view, c.selFlags, e.x, e.y, false, true); // mouse: any seam moves, selecting both clips
+  if (seam && (!eh || seam.left === eh.clip || seam.right === eh.clip)) { const r = seamDown(c, e, seam, true); if (r) return r; }
   if (eh && !scene.trackLocked[scene.clipTrack[eh.clip]!]) {
     const r = trimRange(scene, eh.clip, eh.edge);
     return { g: { k: "trim", sx: e.x, clip: eh.clip, edge: eh.edge, orig: r.at, value: r.at }, fx: { select: { mode: "set", ids: [scene.id[eh.clip]!] } } };
@@ -205,7 +221,8 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
       return { g: { ...g, delta: snap.delta, track, mv: null, to: null, hop: 0, guide: snap.guide }, fx: NONE };
     }
     case "trim": {
-      const value = trimTarget(scene, g.clip, g.edge, g.orig + ((e.x - g.sx) / view.pps) * TPS);
+      const desired = g.orig + ((e.x - g.sx) / view.pps) * TPS;
+      const value = trimTarget(scene, g.clip, g.edge, desired);
       return { g: { ...g, value }, fx: NONE };
     }
     case "tool": {
@@ -264,7 +281,8 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "trim": {
       if (g.value === g.orig) return { g: IDLE, fx: NONE };
-      return { g: IDLE, fx: { ops: linkedTrimOps(scene, g.clip, g.edge, g.value), say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
+      const ops = linkedTrimOps(scene, g.clip, g.edge, g.value);
+      return { g: IDLE, fx: { ops, say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
     }
     case "tool": {
       if (g.delta === 0) return { g: IDLE, fx: NONE };

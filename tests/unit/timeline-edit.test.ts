@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { rollCuts, rollOps, rollRangeAll, snapTo } from "../../apps/web/src/timeline/ripple";
 import { closeStartGap, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
@@ -313,4 +314,47 @@ test("start-trimming an imported clip and its linked sound keeps the new start (
   assert.equal(pair.tStart[1], 0);
   const ops = [trimOp(pair, 0, "start", TICKS_PER_SECOND / 10), trimOp(pair, 1, "start", TICKS_PER_SECOND / 10)];
   assert.deepEqual(closeStartGap(pair, ops), ops, "the trimmed start must not be slid back to 0 (the end would move to 2.9 s with the start still at 0)");
+});
+
+test("a seam between two touching clips moves the boundary as a roll: the left end and the right start move together (issue #105)", () => {
+  const p = fixtureProject({ tracks: 2, clipsPerTrack: 2, clipSec: 4 });
+  const c = p.sequences[0]!.tracks[0]!.clips;
+  c[1]!.start = c[0]!.start + c[0]!.duration; // split: touching, one seam
+  const s = buildScene(p);
+  const ft = s.frameTicks, at = s.tStart[1]!;
+  assert.equal(s.tStart[0]! + s.tDur[0]!, at, "the two clips touch");
+  // A seam drag in Select is a roll of that cut (rollCuts / rollRangeAll / rollOps / snapTo in ripple.ts).
+  const cuts = rollCuts(s, 0, "end");
+  assert.deepEqual(cuts[0], [0, 1]);
+  const range = rollRangeAll(s, cuts);
+  // the right clip has no source before its start (source_in 0), so the seam cannot move left
+  assert.ok(range.lo === 0, "no source to reveal: nothing to the left");
+  // right: whole frames, the right clip keeps at least one frame
+  assert.equal(snapTo(s, ft * 10 + 3, range), ft * 10);
+  const far = snapTo(s, 10_000 * ft, range);
+  assert.ok(far <= s.tDur[1]! - ft, "the right clip keeps one frame");
+  assert.ok(s.tDur[0]! + far >= ft);
+  assert.ok(snapTo(s, -ft * 10, range) === 0, "clamped at the seam");
+  const ops = rollOps(s, cuts, ft * 10);
+  assert.deepEqual(ops, [{ op: "roll", left: s.id[0], right: s.id[1], to: at + ft * 10 }]);
+});
+
+test("pressing a seam in the Select tool starts a roll of that cut and releasing it applies the roll op (issue #105)", () => {
+  const p = fixtureProject({ tracks: 1, clipsPerTrack: 2, clipSec: 4 });
+  const c = p.sequences[0]!.tracks[0]!.clips;
+  c[1]!.start = c[0]!.start + c[0]!.duration;
+  p.media[0]!.duration = 30 * TICKS_PER_SECOND;
+  const s = buildScene(p);
+  const v = view();
+  const k: Ctx = { scene: s, view: v, selected: new Set(), selFlags: flagsOf(s, []) };
+  const x = timeToX(v, s.end[0]!), y = cy(0);
+  const down = pointerDown(k, mouse(x, y));
+  assert.equal(down.g.k, "tool");
+  if (down.g.k !== "tool") return;
+  assert.equal(down.g.tool, "roll");
+  assert.ok(down.g.seam);
+  assert.deepEqual(down.fx.select, { mode: "set", ids: [s.id[0], s.id[1]] }, "a mouse press selects both clips");
+  const moved = pointerMove(k, down.g, mouse(x + 2.2 * s.frameTicks / TICKS_PER_SECOND * v.pps, y));
+  const up = pointerUp(k, moved.g, mouse(x + 2.2 * s.frameTicks / TICKS_PER_SECOND * v.pps, y));
+  assert.deepEqual(up.fx.ops, [{ op: "roll", left: s.id[0], right: s.id[1], to: s.tStart[1]! + 2 * s.frameTicks }]);
 });
