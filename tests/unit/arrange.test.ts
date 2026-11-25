@@ -135,3 +135,15 @@ test("sameLayout: a rebuilt but identical scene keeps a drag alive; any moved cl
   const shifted = buildScene(fixtureProject({ tracks: 2, clipsPerTrack: 6, clipSec: 5 }));
   assert.equal(sameLayout(scene, shifted), false);
 });
+
+test("snapMove snaps to markers and the in/out points, with the guide", () => {
+  const sc = structuredClone(scene);
+  sc.markers = [{ id: "m", ticks: 1 * TPS, sec: 1, name: "", colour: null, chapter: false }];
+  sc.range = { start: 20 * TPS, end: 30 * TPS };
+  const s = sc.tStart[1]!;
+  const toMarker = snapMove(sc, [1], 1 * TPS - s + 3, -s, 100 * TPS, null, 50);
+  assert.equal(toMarker.guide, 1 * TPS);
+  assert.equal(s + toMarker.delta, 1 * TPS);
+  const toIn = snapMove(sc, [1], 20 * TPS - s - 4, -s, 100 * TPS, null, 50);
+  assert.equal(toIn.guide, 20 * TPS);
+});

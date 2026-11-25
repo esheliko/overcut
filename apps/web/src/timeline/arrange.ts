@@ -14,11 +14,13 @@ export interface SnapResult {
   guide: number | null;
 }
 
-/** Candidate targets: every unselected clip's start and end, the playhead and 0:00. */
+/** Candidate targets: every unselected clip's start and end, the markers, the in/out points, the playhead and 0:00. */
 function targets(scene: Scene, sel: readonly number[], playhead: number | null): number[] {
   const skip = new Set(sel);
   const out: number[] = [0];
   if (playhead !== null) out.push(playhead);
+  for (const m of scene.markers) out.push(m.ticks);
+  if (scene.range) out.push(scene.range.start, scene.range.end);
   for (let i = 0; i < scene.clipCount; i++) {
     if (skip.has(i)) continue;
     out.push(scene.tStart[i]!, scene.tStart[i]! + scene.tDur[i]!);

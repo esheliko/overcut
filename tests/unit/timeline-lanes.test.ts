@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TICKS, destTracks, insertOps, mediaRef, placeAt, type Probed } from "../../apps/web/src/media/plan";
-import { flagsOf, laneChanger, laneOps, laneShift, laneStepOps, laneTracks } from "../../apps/web/src/timeline/edit";
+import { flagsOf, laneChanger, laneOps, lanePlan, laneShift, laneStepOps, laneTracks } from "../../apps/web/src/timeline/edit";
 import { pointerDown, pointerMove, pointerUp, type Ctx, type PEvent } from "../../apps/web/src/timeline/interact";
 import { buildScene } from "../../apps/web/src/timeline/scene";
 import { gut, LANE, RULER, type View } from "../../apps/web/src/timeline/view";
@@ -158,4 +158,33 @@ test("lane changes on different tracks keep their spacing; the clip furthest alo
   assert.equal(laneShift(sc, [a, b], flagsOf(sc, [a, b]), up, 0), 0, "V2's clip leaves, so V1's clip fits where it was");
   const ops = laneOps(sc, [a, b], up, 0);
   assert.deepEqual(ops.map((o) => o.op === "move" && o.clip), [sc.id[b], sc.id[a]], "V2 -> V3 first, then V1 -> V2");
+});
+
+test("a cross-track drop that moves in time keeps the picture's time; its sound goes to a free audio track (a new one when none)", () => {
+  const p = structuredClone(newProject("x"));
+  p.media.push(mediaRef("m1", "v.mp4", "u", video, null));
+  const seq = p.sequences[0]!;
+  seq.tracks.splice(1, 0, newTrack(id("20"), "video", "V2"));
+  const [v1, , a1] = seq.tracks as [typeof seq.tracks[0], typeof seq.tracks[0], typeof seq.tracks[0]];
+  const c = (n: string, start: number, dur: number, link?: string) => ({ id: id(n), media: "m1", start: start * TICKS, source_in: 0, duration: dur * TICKS, speed: { num: 1, den: 1 }, ...(link ? { link } : {}) });
+  v1.clips.push(c("a", 0, 4, id("f1")), c("c", 6, 2, id("f2")));
+  a1.clips.push(c("b", 0, 4, id("f1")), c("e", 6, 2, id("f2")));
+  const sc = buildScene(p);
+  const pic = sc.id.indexOf(id("c")), snd = sc.id.indexOf(id("e"));
+  const sel = [pic, snd];
+  const mv = laneChanger(sc, sel, sc.trackName.indexOf("V2"))!;
+  const plan = lanePlan(sc, sel, flagsOf(sc, sel), mv, -4 * TICKS)!;
+  assert.equal(plan.delta, -4 * TICKS, "the picture lands where it was dropped");
+  assert.equal(plan.fresh, 1);
+  assert.deepEqual(plan.to, [sc.trackName.indexOf("V2"), sc.trackCount], "the sound goes to a new audio track");
+  const ops = laneOps(sc, sel, mv, plan.delta, plan, () => id("99"));
+  assert.equal(ops[0]!.op, "add_track");
+  const moves = ops.filter((o) => o.op === "move");
+  assert.equal(moves.length, 2);
+  assert.ok(moves.every((o) => o.op === "move" && o.start === 2 * TICKS));
+  assert.ok(moves.some((o) => o.op === "move" && o.track === id("99")));
+  // With room on A1 the sound stays where it was.
+  const free = lanePlan(sc, sel, flagsOf(sc, sel), mv, 0)!;
+  assert.deepEqual(free.to, [sc.trackName.indexOf("V2"), sc.clipTrack[snd]!]);
+  assert.equal(free.fresh, 0);
 });

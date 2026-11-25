@@ -1,5 +1,5 @@
 import { acquireProjectLock, newProject, openProjectSession, openProjectStorage, type Engine, type ProjectSession, type RecoveryNote, type SaveStatus } from "@app/engine-client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { reportSaveStatus } from "./errorScreen/crash";
 import { useI18n } from "./i18n";
 import { longSampleProject, sampleProject } from "./timeline/fixture";
@@ -83,13 +83,19 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
       setProblem(err instanceof Error ? err.message : String(err));
     }
   };
-  return { ready: session !== null, session, epoch, recovered, status, problem, undoRecovery, dismiss: () => setRecovered(null) };
+  const dismiss = useCallback(() => setRecovered(null), []);
+  return { ready: session !== null, session, epoch, recovered, status, problem, undoRecovery, dismiss };
 }
 
 /** Small, non-blocking notes: what was recovered (with an undo) and why saving is not working. */
 export function PersistenceNotes({ state, extra }: { state: ReturnType<typeof usePersistence>; extra?: ReactNode }) {
   const { t } = useI18n();
   const { recovered, problem, undoRecovery, dismiss } = state;
+  useEffect(() => {
+    if (!recovered) return;
+    const h = setTimeout(dismiss, 6000); // the note is a courtesy: it leaves on its own so it never sits over the lowest tracks
+    return () => clearTimeout(h);
+  }, [recovered, dismiss]);
   if (!recovered && !problem && !extra) return null;
   return (
     <div className="persist-notes">

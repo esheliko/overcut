@@ -85,3 +85,34 @@ test("two selected pictures change lane together: both on V2, their sounds stay 
   await page.keyboard.press("Control+z");
   await expect(onV2(page)).toHaveCount(0);
 });
+
+test("a lane change that also moves in time lands where dropped; the sound that would clash goes to a new A2; one undo", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "mouse drag");
+  await page.goto("/");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  await page.getByTestId("media-input").setInputFiles(media);
+  await expect(page.locator("#tl-summary")).toContainText("2 tracks, 2 clips", { timeout: 30_000 });
+  const canvas = page.getByTestId("timeline-canvas");
+  await canvas.focus();
+  for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("s");
+  await expect(page.locator("#tl-summary")).toContainText("4 clips");
+  await page.getByTestId("tl-more").click();
+  await page.getByTestId("track-add-video").click();
+  await expect(page.locator("#tl-summary")).toContainText("3 tracks");
+  const box = (await canvas.boundingBox())!;
+  const dg = await gutterShift(page);
+  // Pick up the right half on V1 near its far end, carry it up to V2 and back in time over the first half's range on A1.
+  const x = box.x + dg + 48 + 300;
+  await page.mouse.click(x, box.y + 30 + 52 + 26);
+  await page.mouse.move(x, box.y + 30 + 52 + 26);
+  await page.mouse.down();
+  await page.mouse.move(x - 40, box.y + 30 + 52 + 10, { steps: 4 });
+  await page.mouse.move(x - 120, box.y + 30 + 26, { steps: 6 });
+  await page.mouse.up();
+  await expect(onV2(page)).toHaveCount(1);
+  await expect(page.locator("#tl-summary")).toContainText("4 tracks"); // its sound went to a new A2
+  await page.keyboard.press("Control+z");
+  await expect(onV2(page)).toHaveCount(0);
+  await expect(page.locator("#tl-summary")).toContainText("3 tracks");
+});
