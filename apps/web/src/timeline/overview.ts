@@ -6,8 +6,8 @@ export const MIN_WINDOW = 12;
 /** Width of an edge handle (px): grabbing within it resizes (zooms) instead of panning. */
 export const EDGE = 10;
 
-/** Seconds the bar spans: the project plus the end padding the timeline scrolls past. */
-export const overviewSpan = (v: View, lengthSec: number) => Math.max(1, lengthSec + END_PAD / v.pps);
+/** Seconds the bar spans: the project length, independent of the zoom so the clips in the bar stay put while zooming. */
+export const overviewSpan = (_v: View, lengthSec: number) => Math.max(1, lengthSec);
 
 /** The whole project already fits the timeline width: the bar is hidden. */
 export const fitsView = (v: View, lengthSec: number) => lengthSec * v.pps + END_PAD <= v.width - gut(v) + 0.5;
