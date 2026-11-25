@@ -1,6 +1,7 @@
 import type { Op, Sequence } from "@app/engine-client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FPS_CHOICES, QUALITIES, SHAPES, canvasOp, choiceOf, fpsLabel, frameRateOf, resolutionOf, sameCanvas, type CanvasChoice } from "./canvas";
+import { rememberFocus } from "./a11y/restoreFocus";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { NetworkLog } from "./privacy/NetworkLog";
@@ -12,9 +13,10 @@ export function Modal({ title, titleId, testId, onClose, children, role }: { tit
   const head = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const d = ref.current;
+    const back = rememberFocus();
     if (d && !d.open) d.showModal();
     head.current?.focus({ preventScroll: true });
-    return () => d?.close();
+    return () => { d?.close(); back(); };
   }, []);
   return (
     <dialog ref={ref} className="pj-dialog" role={role} aria-labelledby={titleId} data-testid={testId} onCancel={(e) => { e.preventDefault(); onClose(); }}>

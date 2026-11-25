@@ -105,3 +105,16 @@ Driven as a human with mouse (1440x900), touch emulation (820x1180 and 390x844) 
 - The shortcuts dialog has a tall empty gap under the intro text on desktop and phone, and on a phone (no keyboard) its use is limited. `[C]`
 - While a drag is in progress the dragged clip is drawn faded with its name nearly invisible; keep the name readable. `[C]`
 - Tablet (820 px, touch): the saved status is still cut to "Saved o…" and the media list is clipped by the preview below it (it scrolls). `[C]`
+
+## Round 4: keyboard-only and accessible names (m2 at c5d6ce0)
+
+Every visible button, input, select, menu item and radio in the main view, menu, shortcuts, export and canvas dialogs has an accessible name (script check: none unnamed). Each dialog opens with focus on its heading and a `aria-labelledby` title; Esc closes it.
+
+**P1**
+- **Focus was lost when a dialog closed** `[QA]`, fixed in this PR. After Esc on the Export or Canvas dialog focus went to the page root instead of the button that opened it, so a keyboard or screen-reader user restarted from the top of the page. `a11y/restoreFocus.ts` puts focus back on the opener (Export, Canvas, project dialogs). Checked: Esc on Export returns to "Export", on Canvas to the canvas button.
+- **The "…" menu does not follow the menu pattern** `[C]` (`App.tsx`). It has `role="menu"` but focus stays on the Menu button when it opens, and Arrow Down does nothing; only Tab walks the items (and the accent swatches). Expected: focus moves to the first item, Arrow Up/Down, Home/End, Esc returns to the button (Esc already does).
+
+**P2**
+- The history and clip timing dialogs (`timeline/EditDialogs.tsx`) and the shortcuts dialog (`commands/`) should use the same restore-focus helper if they do not already. `[C]`
+- Dialogs wrap Tab through the page root before coming back (native dialog behaviour in this browser); acceptable, noted.
+- Drag alternatives: with a clip selected `,` and `.` nudge it and announce "Can't move further" at a neighbour. There is no keyboard way to jump a clip over its neighbour (the mouse reorder); consider Alt+Arrow. `[C]`
