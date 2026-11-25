@@ -10,6 +10,7 @@ import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
 import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
 import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
+import { PALETTE_EVENT } from "./commands/palette";
 import { hopStep } from "./timeline/arrange";
 import { ToolbarMenu } from "./timeline/ToolbarMenu";
 import { chordLabel } from "./commands/registry";
@@ -174,6 +175,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
     const locked = picked.length > 0 && mine.length === 0 ? say("timeline.locked") : null;
     const tick = Math.round((f * TICKS_PER_SECOND) / FPS);
     switch (cmd.c) {
+      case "palette": window.dispatchEvent(new Event(PALETTE_EVENT)); break;
       case "undo": case "redo": undoRedo(cmd.c); break;
       case "split": {
         const hit = splittable(sc, tick, picked.length ? picked : null);

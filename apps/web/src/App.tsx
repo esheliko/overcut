@@ -23,6 +23,12 @@ import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePre
 import { ThemeMenu } from "./ThemeMenu";
 import { ExportControl } from "./export/ExportDialog";
 import { ShortcutsDialog } from "./commands/ShortcutsDialog";
+import { Palette } from "./commands/Palette";
+import { PALETTE_EVENT } from "./commands/palette";
+import { currentKeymap } from "./commands/keymap";
+import { chordLabel } from "./commands/registry";
+/** The palette's first key as the user sees it (Ctrl+K, or whatever it was remapped to). */
+const paletteKey = (): string => chordLabel(currentKeymap().get("app.palette")?.[0] ?? "Mod+K");
 import { VersionsDialog, useAutoSnapshots } from "./Versions";
 import { binMeta, type BinMeta } from "./media/binView";
 import { MediaBin } from "./media/MediaBin";
@@ -120,7 +126,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, save, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; status: ReactNode; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void } }) {
+function AppMenu({ compact, theme, status, save, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; status: ReactNode; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void; onPalette(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -170,6 +176,7 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
               <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
             </>
           )}
+          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><span>{t("palette.open")}</span><kbd className="menu-hint">{paletteKey()}</kbd></button>
           <div className="menu-group" role="presentation">{t("menu.group.project")}</div>
           <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}>{t("menu.projects")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}>{t("menu.new")}</button>
@@ -213,6 +220,8 @@ function Editor({ store }: { store: ProjectStore }) {
   const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | "shortcuts" | { title: string; body: string; confirm: string; run(): Promise<void> }>(null);
   const [locating, setLocating] = useState(false); // after opening a file: offer to reconnect media that is not on this device
   const [playing, setPlaying] = useState(false);
+  const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
+  useEffect(() => { const open = () => setPalette(true); window.addEventListener(PALETTE_EVENT, open); return () => window.removeEventListener(PALETTE_EVENT, open); }, []);
   const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
   const [refusals, setRefusals] = useState<string[]>([]); // phone: files refused in an import, kept on screen until dismissed (the Media sheet closes after a successful one)
@@ -578,8 +587,9 @@ function Editor({ store }: { store: ProjectStore }) {
             <span className="dot" aria-hidden="true" />
             <span className="chip-text">{t(`save.state.${saveState}`)}</span>
           </span>
+          <button className="icon-btn palette-btn" aria-label={t("palette.open")} title={`${t("palette.open")} (${paletteKey()})`} data-testid="palette-open" onClick={() => setPalette(true)}><Icon name="search" size={20} /></button>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts") }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
+          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts"), onPalette: () => setPalette(true) }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
         </div>
       </header>
 
@@ -624,6 +634,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {dialog === "privacy" && <PrivacyDialog onClose={() => setDialog(null)} />}
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
+      {palette && <Palette onClose={() => setPalette(false)} />}
       {dialog && typeof dialog === "object" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       </>}
