@@ -12,6 +12,11 @@ const menu = async (page: Page, item: string) => {
 };
 const cards = (page: Page) => page.getByTestId("project-card");
 const card = (page: Page, name: string) => cards(page).filter({ has: page.getByTestId("project-name").getByText(name, { exact: true }) });
+/** A project action lives in the card's "…" menu: open it, pick the item. */
+const act = async (page: Page, name: string, item: "rename" | "duplicate" | "delete" | "export" | "archive" | "restore") => {
+  await card(page, name).getByTestId("project-more").click();
+  await page.getByTestId(`project-${item}`).click();
+};
 const overflowX = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 test("projects list: two projects, switch, rename, duplicate, delete, and it is the first screen after a reload", async ({ page }, info) => {
@@ -51,7 +56,7 @@ test("projects list: two projects, switch, rename, duplicate, delete, and it is 
 
   // Rename project 2 from the list.
   await menu(page, "Projects");
-  await card(page, "Untitled project").getByTestId("project-rename").click();
+  await act(page, "Untitled project", "rename");
   if (phone) expect((await page.getByTestId("rename-ok").boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await page.getByTestId("rename-input").fill("Beta");
   await page.getByTestId("rename-ok").click();
@@ -59,7 +64,7 @@ test("projects list: two projects, switch, rename, duplicate, delete, and it is 
 
   // Touch targets on the list.
   if (phone) {
-    for (const id of ["project-open", "project-rename", "project-duplicate", "project-delete", "projects-new"]) {
+    for (const id of ["project-open", "project-more", "projects-new"]) {
       const box = (await page.getByTestId(id).first().boundingBox())!;
       expect(box.height, id).toBeGreaterThanOrEqual(44);
     }
@@ -67,15 +72,15 @@ test("projects list: two projects, switch, rename, duplicate, delete, and it is 
   }
 
   // Duplicate Alpha: a third project with the same canvas; the original stays.
-  await card(page, "Alpha").getByTestId("project-duplicate").click();
+  await act(page, "Alpha", "duplicate");
   await expect(card(page, "Alpha copy")).toContainText("1080 × 1920");
   await expect(cards(page)).toHaveCount(3);
 
   // Delete asks first; cancelling keeps it, confirming removes it.
-  await card(page, "Alpha copy").getByTestId("project-delete").click();
+  await act(page, "Alpha copy", "delete");
   await page.getByTestId("confirm-cancel").click();
   await expect(cards(page)).toHaveCount(3);
-  await card(page, "Alpha copy").getByTestId("project-delete").click();
+  await act(page, "Alpha copy", "delete");
   await page.getByTestId("confirm-ok").click();
   await expect(cards(page)).toHaveCount(2);
 
