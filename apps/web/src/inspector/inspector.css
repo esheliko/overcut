@@ -19,3 +19,6 @@
 .th-se { left: 100%; top: 100%; cursor: nwse-resize; } .th-sw { left: 0; top: 100%; cursor: nesw-resize; }
 .th-rot { left: 50%; top: -30px; cursor: grab; }
 .th-rot::after { background: var(--accent, #4aa3ff); box-shadow: 0 0 0 2px #fff; }
+
+/* The handles' 44 px hit areas can poke past the canvas edge: never let them widen the page. */
+.stage-view { overflow: clip; }

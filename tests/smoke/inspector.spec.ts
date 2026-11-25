@@ -26,6 +26,12 @@ test("inspector: fields edit the selected clip's transform, undo reverts, reset 
   else await page.mouse.click(box.x + dg + 68, box.y + 56);
   if (phone) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
 
+  // On a phone the tool sheet covers the Undo button: close it, undo, reopen (as the project-store spec does for the Media sheet).
+  const undo = async () => {
+    if (phone) await page.getByRole("button", { name: "Close panel" }).click();
+    await page.getByRole("button", { name: UNDO }).click();
+    if (phone) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
+  };
   const x = page.getByTestId("insp-position_x");
   const rot = page.getByTestId("insp-rotation");
   await expect(x).toBeVisible();
@@ -37,8 +43,8 @@ test("inspector: fields edit the selected clip's transform, undo reverts, reset 
   await expect(page.getByTestId("insp-reset")).toBeEnabled();
 
   // Each field edit is its own step; undo twice restores the identity, reset is disabled again.
-  await page.getByRole("button", { name: UNDO }).click();
-  await page.getByRole("button", { name: UNDO }).click();
+  await undo();
+  await undo();
   await expect(x).toHaveValue("0");
   await expect(rot).toHaveValue("0");
   await expect(page.getByTestId("insp-reset")).toBeDisabled();
