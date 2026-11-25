@@ -350,6 +350,8 @@ h2, p { margin: 0; }
 
 /* Network activity (XT-06) */
 .pj-dialog:has([data-testid="network-log"]) { inline-size: min(720px, calc(100vw - 24px)); }
+.net-details { margin-block: 12px; }
+.net-details > summary { display: inline-flex; align-items: center; min-block-size: 44px; font-weight: 600; color: var(--accent); cursor: pointer; }
 .net-scroll { max-block-size: 40dvh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
 .net-table { inline-size: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .net-table th, .net-table td { padding: 6px 10px; text-align: start; border-block-end: 1px solid var(--line); white-space: nowrap; }
