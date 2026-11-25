@@ -13,6 +13,8 @@ export type Command =
   | { c: "tool"; tool: "select" | "ripple" | "roll" | "slip" | "slide" }
   /** Move the selection one lane up or down (same kind of track). */
   | { c: "lane"; dir: "up" | "down" }
+  /** Keyboard reorder: hop over the neighbouring clip; and the track switches of the selected clip's track. */
+  | { c: "hop"; dir: 1 | -1 } | { c: "trackToggle"; part: "mute" | "solo" | "lock" | "hide" }
   | { c: "slip"; frames: number } | { c: "slide"; frames: number } | { c: "roll"; frames: number }
   | { c: "go"; dir: "left" | "right" | "up" | "down" }
   /** Move the selection by whole frames. */
@@ -72,6 +74,11 @@ export const COMMANDS: readonly CommandDef[] = [
   D("tool.slip", "global", ["Y"], { c: "tool", tool: "slip" }),
   D("tool.slide", "global", ["U"], { c: "tool", tool: "slide" }),
 
+  D("track.mute", "global", ["Shift+M"], { c: "trackToggle", part: "mute" }),
+  D("track.solo", "global", [], { c: "trackToggle", part: "solo" }),
+  D("track.lock", "global", [], { c: "trackToggle", part: "lock" }),
+  D("track.hide", "global", ["Shift+H"], { c: "trackToggle", part: "hide" }),
+
   D("select.all", "canvas", ["Mod+A"], { c: "selectAll" }),
   D("select.clear", "canvas", ["Escape"], { c: "clear" }),
   D("select.pick", "canvas", ["Enter"], { c: "pick" }),
@@ -92,6 +99,8 @@ export const COMMANDS: readonly CommandDef[] = [
 
   D("clip.laneUp", "canvas", ["Alt+ArrowUp"], { c: "lane", dir: "up" }),
   D("clip.laneDown", "canvas", ["Alt+ArrowDown"], { c: "lane", dir: "down" }),
+  D("clip.hopBack", "canvas", ["Mod+Alt+ArrowLeft"], { c: "hop", dir: -1 }),
+  D("clip.hopForward", "canvas", ["Mod+Alt+ArrowRight"], { c: "hop", dir: 1 }),
   D("clip.slipBack", "canvas", ["Mod+Comma"], { c: "slip", frames: -1 }),
   D("clip.slipForward", "canvas", ["Mod+Period"], { c: "slip", frames: 1 }),
   D("clip.slideBack", "canvas", ["Mod+Shift+Comma"], { c: "slide", frames: -1 }),

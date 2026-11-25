@@ -148,6 +148,19 @@ export function hopOps(scene: Scene, sel: readonly number[], n: number): Op[] {
   return [...away, ...mid, ...back];
 }
 
+/** Keyboard reorder: the selection hops over ONE neighbour (`dir` 1 = later). Empty when there is none (or linked tracks' neighbours differ in length, as in a drag). */
+export function hopStep(scene: Scene, sel: readonly number[], dir: 1 | -1): Op[] {
+  const by = plans(scene, sel);
+  if (!by || by.size === 0) return [];
+  let len = -1;
+  for (const p of by.values()) {
+    const j = (dir > 0 ? p.next : p.prev)[0];
+    if (j === undefined || (len >= 0 && scene.tDur[j] !== len)) return [];
+    len = scene.tDur[j]!;
+  }
+  return hopOps(scene, sel, dir);
+}
+
 /** Where a media item dropped at `tick` lands: pulled onto the nearest clip edge, the playhead or 0:00 within `reach`, else on a whole frame. */
 export function snapDrop(scene: Scene, tick: number, playhead: number | null, reach: number, frameTicks: number): SnapResult {
   let best: SnapResult = { delta: Math.max(0, Math.round(tick / frameTicks) * frameTicks), guide: null };
