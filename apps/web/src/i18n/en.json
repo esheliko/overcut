@@ -218,6 +218,7 @@
   "media.err.notMedia": "{name} is not a video, audio or image file, so it was skipped.",
   "media.err.unsupported": "{name} could not be imported ({ext}). {detail} Files that work everywhere: MP4 or MOV with H.264, WebM with VP9, M4A audio, JPG, PNG and WebP images.",
   "media.err.failed": "{name} could not be read. The file may be damaged or still downloading. Try choosing it again.",
+  "timeline.empty": "Drop or import media to start. Export turns on once the timeline has a clip.",
   "export.needClip": "Add a clip to the timeline to export",
   "export.title": "Export video",
   "export.loading": "Loading export…",
