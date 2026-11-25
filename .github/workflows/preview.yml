@@ -1,12 +1,10 @@
 name: Preview
-# A Vercel preview for every branch push (not main), so the owner can open any branch's work, including WIP without a PR. See DEPLOYING.md.
+# A Vercel preview only for pull requests carrying the `preview` label (owner decision, issue #166). No preview for plain branch pushes. See DEPLOYING.md.
 on:
-  push:
-    branches-ignore: [main]
-    paths-ignore: ['docs/**', 'process/**', '.claude/**', '**.md']
-  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize, opened, reopened]
 concurrency:
-  group: preview-${{ github.ref }}
+  group: preview-${{ github.head_ref }}
   cancel-in-progress: true
 permissions:
   contents: read
@@ -14,13 +12,16 @@ permissions:
 jobs:
   preview:
     name: preview
+    if: contains(github.event.pull_request.labels.*.name, 'preview') && (github.event.action != 'labeled' || github.event.label.name == 'preview')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-      BRANCH: ${{ github.ref_name }}
+      BRANCH: ${{ github.head_ref }}
+      PR: ${{ github.event.pull_request.number }}
+      SHA: ${{ github.event.pull_request.head.sha }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: 'Idle: VERCEL_TOKEN missing'
@@ -53,15 +54,24 @@ jobs:
       - name: Build (WebAssembly engine + web app)
         if: env.VERCEL_TOKEN != ''
         run: npm run build
-      - name: Deploy preview to Vercel
+      - name: Deploy preview to Vercel (fails visibly when Vercel refuses)
         if: env.VERCEL_TOKEN != ''
         run: |
+          fail() {
+            echo "::error::Preview refused: $1"
+            gh pr comment "$PR" --body "Preview for \`$BRANCH\` (commit ${SHA::7}) was refused and NOT deployed. Reason: $1. See the Preview job log." || true
+            exit 1
+          }
           node scripts/vercel-output.mjs
-          url=$(npx --yes vercel@66 deploy --prebuilt --token "$VERCEL_TOKEN" | tail -1)
+          if ! out=$(npx --yes vercel@66 deploy --prebuilt --token "$VERCEL_TOKEN" 2>&1); then
+            echo "$out"
+            fail "$(echo "$out" | grep -iE 'error|limit|refus|api-' | head -3 | tr '\n' ' ')"
+          fi
+          url=$(echo "$out" | tail -1)
+          case "$url" in https://*) ;; *) echo "$out"; fail "Vercel returned no deployment URL" ;; esac
           slug=$(echo "$BRANCH" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]\+/-/g; s/^-//; s/-$//' | cut -c1-40 | sed 's/-$//')
           alias="${GITHUB_REPOSITORY#*/}-${slug}.vercel.app"
           if npx --yes vercel@66 alias set "$url" "$alias" --token "$VERCEL_TOKEN"; then link="https://$alias"; else echo "::warning::alias failed, using the plain preview URL"; link="$url"; fi
           echo "### Preview for \`$BRANCH\`: $link" >> "$GITHUB_STEP_SUMMARY"
-          body="Preview for \`$BRANCH\` (commit ${GITHUB_SHA::7}): $link"
-          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
-          if [ -n "$pr" ]; then gh pr comment "$pr" --edit-last --create-if-none --body "$body" || gh pr comment "$pr" --body "$body"; fi
+          body="Preview for \`$BRANCH\` (commit ${SHA::7}): $link"
+          gh pr comment "$PR" --edit-last --create-if-none --body "$body" || gh pr comment "$PR" --body "$body"
