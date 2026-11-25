@@ -7,6 +7,11 @@
 /** What a command does. Timeline commands carry the payload the timeline already understood before the registry existed. */
 export type Command =
   | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" } | { c: "unlink" }
+  /** Ripple delete (pull the rest of the track in) and close the empty gap before the selection. */
+  | { c: "rippleDelete" } | { c: "closeGap" }
+  /** Pick the edit tool (the toolbar's), or edit the selection by whole frames: slip the source window, slide between neighbours, roll its end cut. */
+  | { c: "tool"; tool: "select" | "ripple" | "roll" | "slip" | "slide" }
+  | { c: "slip"; frames: number } | { c: "slide"; frames: number } | { c: "roll"; frames: number }
   | { c: "go"; dir: "left" | "right" | "up" | "down" }
   /** Move the selection by whole frames. */
   | { c: "nudge"; frames: number }
@@ -56,6 +61,15 @@ export const COMMANDS: readonly CommandDef[] = [
   D("edit.split", "global", ["S"], { c: "split" }),
   D("edit.delete", "global", ["Delete", "Backspace"], { c: "delete" }),
 
+  D("edit.rippleDelete", "global", ["Shift+Delete", "Shift+Backspace"], { c: "rippleDelete" }),
+  D("edit.closeGap", "global", ["Mod+Delete", "Mod+Backspace"], { c: "closeGap" }),
+
+  D("tool.select", "global", ["V"], { c: "tool", tool: "select" }),
+  D("tool.ripple", "global", ["B"], { c: "tool", tool: "ripple" }),
+  D("tool.roll", "global", ["N"], { c: "tool", tool: "roll" }),
+  D("tool.slip", "global", ["Y"], { c: "tool", tool: "slip" }),
+  D("tool.slide", "global", ["U"], { c: "tool", tool: "slide" }),
+
   D("select.all", "canvas", ["Mod+A"], { c: "selectAll" }),
   D("select.clear", "canvas", ["Escape"], { c: "clear" }),
   D("select.pick", "canvas", ["Enter"], { c: "pick" }),
@@ -73,6 +87,13 @@ export const COMMANDS: readonly CommandDef[] = [
   D("clip.trimEndForward", "canvas", ["Alt+Period"], { c: "trimBy", edge: "end", frames: 1 }),
   D("clip.trimStartBack", "canvas", ["Alt+Shift+Comma"], { c: "trimBy", edge: "start", frames: -1 }),
   D("clip.trimStartForward", "canvas", ["Alt+Shift+Period"], { c: "trimBy", edge: "start", frames: 1 }),
+
+  D("clip.slipBack", "canvas", ["Mod+Comma"], { c: "slip", frames: -1 }),
+  D("clip.slipForward", "canvas", ["Mod+Period"], { c: "slip", frames: 1 }),
+  D("clip.slideBack", "canvas", ["Mod+Shift+Comma"], { c: "slide", frames: -1 }),
+  D("clip.slideForward", "canvas", ["Mod+Shift+Period"], { c: "slide", frames: 1 }),
+  D("clip.rollBack", "canvas", ["Mod+Alt+Comma"], { c: "roll", frames: -1 }),
+  D("clip.rollForward", "canvas", ["Mod+Alt+Period"], { c: "roll", frames: 1 }),
 
   D("playhead.back", "canvas", ["Alt+ArrowLeft"], { c: "playhead", frames: -1 }),
   D("playhead.forward", "canvas", ["Alt+ArrowRight"], { c: "playhead", frames: 1 }),

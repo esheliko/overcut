@@ -8,10 +8,11 @@ import { handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart, type HeaderPart } from "./header";
 import { reorderTrack, rowAt, toggleTrack } from "./tracks";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
+import { cutAt, rippleRange, rippleTrimOps, rollCuts, rollOps, rollRangeAll, slideOps, slideRange, slipOps, slipRange, snapTo, type Range, type Tool } from "./ripple";
 import { gut, LANE, RULER, xToTime, type View } from "./view";
 
 export type PointerKind = "mouse" | "touch" | "pen";
-export interface PEvent { x: number; y: number; kind: PointerKind; shift: boolean; /** Ctrl or Cmd. */ additive: boolean }
+export interface PEvent { x: number; y: number; kind: PointerKind; shift: boolean; /** Ctrl or Cmd. */ additive: boolean; /** Alt (Option): the edit tools without a mode switch. */ alt?: boolean }
 export interface Ctx {
   scene: Scene;
   view: View;
@@ -20,6 +21,8 @@ export interface Ctx {
   selFlags: Uint8Array;
   /** Playhead in ticks: a snap target while moving. */
   playhead?: number | null;
+  /** The tool chosen in the toolbar (select when absent). */
+  tool?: Tool;
 }
 export interface Effects {
   select?: { mode: "set" | "toggle" | "add"; ids: string[] };
@@ -45,6 +48,8 @@ export type Gesture =
       /** Clips jumped over (reorder): > 0 to the right, < 0 to the left. */ hop?: number;
       /** Tick the selection snapped to or landed against: the painter draws a guide line there. */ guide?: number | null }
   | { k: "trim"; sx: number; clip: number; edge: Edge; orig: number; value: number }
+  /** An edit-tool drag (TL-04): ripple trim of `edge`, roll of the cut `cuts`, slip or slide of `clip`. `delta` is in timeline ticks, snapped to frames inside [lo, hi]. */
+  | { k: "tool"; tool: "ripple" | "roll" | "slip" | "slide"; sx: number; clip: number; edge: Edge | null; cuts: [number, number][]; lo: number; hi: number; delta: number }
   | { k: "marquee"; x0: number; y0: number; x1: number; y1: number }
   /** Pointer is down on a track header: a tap on a switch flips it, a tap elsewhere opens the menu, a drag of the name (mouse) or a long press (touch) reorders. */
   | { k: "hdr"; track: number; part: HeaderPart; sx: number; sy: number; touch: boolean }
@@ -61,12 +66,49 @@ export function markPreview(f: Uint8Array, g: Gesture): void {
   for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
   if (g.k === "move") for (const i of g.sel) f[i] = 2;
   else if (g.k === "trim") f[g.clip] = 2;
+  else if (g.k === "tool" && (g.tool === "slip" || g.tool === "slide")) f[g.clip] = 2;
+}
+
+/** Which tool a press uses: the toolbar's, or with Alt held (no mode switch) roll / ripple on an edge, slip on a body, slide on a body with Shift. */
+function toolDown(c: Ctx, e: PEvent): R | null {
+  const { scene, view } = c;
+  const touch = e.kind === "touch";
+  let tool: Tool = c.tool ?? "select";
+  const edge = handleAt(scene, view, c.selFlags, e.x, e.y, touch, true);
+  const body = hitTest(scene, view, e.x, e.y, 0);
+  if (tool === "select") {
+    if (!e.alt) return null;
+    tool = edge ? (cutAt(scene, edge.clip, edge.edge) ? "roll" : "ripple") : e.shift ? "slide" : "slip";
+  }
+  const locked = (): R => ({ g: IDLE, fx: { say: { key: "timeline.locked" } } });
+  const pick = (i: number): Effects => ({ select: { mode: "set", ids: [scene.id[i]!] } });
+  if (tool === "ripple" || tool === "roll") {
+    if (!edge) return null;
+    const i = edge.clip;
+    if (scene.trackLocked[scene.clipTrack[i]!]) return locked();
+    if (tool === "ripple") {
+      const r = rippleRange(scene, i, edge.edge);
+      if (!r) return locked();
+      return { g: { k: "tool", tool, sx: e.x, clip: i, edge: edge.edge, cuts: [], lo: r.lo, hi: r.hi, delta: 0 }, fx: pick(i) };
+    }
+    const cuts = rollCuts(scene, i, edge.edge);
+    if (cuts.length === 0) return { g: IDLE, fx: { say: { key: "timeline.say.noCut" } } };
+    const r = rollRangeAll(scene, cuts);
+    return { g: { k: "tool", tool, sx: e.x, clip: i, edge: edge.edge, cuts, lo: r.lo, hi: r.hi, delta: 0 }, fx: pick(i) };
+  }
+  if (body.kind !== "clip") return null;
+  const i = body.clip;
+  const r = tool === "slip" ? slipRange(scene, i) : slideRange(scene, i);
+  if (!r) return locked();
+  return { g: { k: "tool", tool, sx: e.x, clip: i, edge: null, cuts: [], lo: r.lo, hi: r.hi, delta: 0 }, fx: { ...pick(i), say: describeClip(scene, i) } };
 }
 
 export function pointerDown(c: Ctx, e: PEvent): R {
   const { scene, view } = c;
   const touch = e.kind === "touch";
   if (e.y < RULER) return e.x >= gut(view) ? { g: { k: "scrub" }, fx: { seek: xToTime(view, e.x) } } : { g: IDLE, fx: NONE };
+  const tl = toolDown(c, e);
+  if (tl) return tl;
   const hd = handleAt(scene, view, c.selFlags, e.x, e.y, touch);
   if (hd && !scene.trackLocked[scene.clipTrack[hd.clip]!]) {
     const r = trimRange(scene, hd.clip, hd.edge);
@@ -132,6 +174,11 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
       const value = trimTarget(scene, g.clip, g.edge, g.orig + ((e.x - g.sx) / view.pps) * TPS);
       return { g: { ...g, value }, fx: NONE };
     }
+    case "tool": {
+      const dx = ((e.x - g.sx) / view.pps) * TPS;
+      const d = snapTo(scene, g.tool === "slip" ? -dx : dx, { lo: g.lo, hi: g.hi } as Range);
+      return { g: { ...g, delta: d }, fx: NONE };
+    }
     case "marquee":
       return { g: { ...g, x1: e.x, y1: e.y }, fx: NONE };
     case "hdr": {
@@ -176,6 +223,13 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     case "trim": {
       if (g.value === g.orig) return { g: IDLE, fx: NONE };
       return { g: IDLE, fx: { ops: linkedTrimOps(scene, g.clip, g.edge, g.value), say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
+    }
+    case "tool": {
+      if (g.delta === 0) return { g: IDLE, fx: NONE };
+      const name = scene.name[g.clip]!;
+      const ops = g.tool === "ripple" ? rippleTrimOps(scene, g.clip, g.edge!, g.delta) : g.tool === "roll" ? rollOps(scene, g.cuts, g.delta) : g.tool === "slip" ? slipOps(scene, g.clip, g.delta) : slideOps(scene, g.clip, g.delta);
+      const key = g.tool === "ripple" ? "timeline.say.rippled" : g.tool === "roll" ? "timeline.say.rolled" : g.tool === "slip" ? "timeline.say.slipped" : "timeline.say.slid";
+      return { g: IDLE, fx: { ops, say: { key, values: { name, frames: Math.round(Math.abs(g.delta) / scene.frameTicks) } } } };
     }
     case "hdr": {
       if (g.part === "name") return { g: IDLE, fx: { menu: g.track } };
