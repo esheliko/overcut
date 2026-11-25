@@ -17,12 +17,17 @@ test("empty timeline shows the start hint, hides it once a clip is in", async ({
   await expect(hint).toHaveCount(0);
 });
 
-test("tablet top bar: the saved status is shown whole, not cut to 'Saved o…'", async ({ page }, info) => {
+test("tablet top bar: the saved status is shown whole, or as its dot with the words kept for screen readers, never cut to 'Saved o…'", async ({ page }, info) => {
   test.skip(info.project.name === "phone", "tablet width");
-  await page.setViewportSize({ width: 820, height: 1180 });
+  const text = page.locator('[data-testid="save-state"] .chip-text');
+  const whole = () => text.evaluate((el) => el.scrollWidth <= el.clientWidth);
+  await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
-  const text = page.locator('[data-testid="save-state"] .chip-text');
   await expect(text).toBeVisible();
-  expect(await text.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await whole()).toBe(true);
+  await page.setViewportSize({ width: 820, height: 1180 }); // narrower than ~900 px of editor: the chip keeps only its dot (M1), the text stays for screen readers
+  await expect(page.getByTestId("save-state")).toBeVisible();
+  await expect(text).toHaveText(/\S/);
+  expect((await text.boundingBox())!.width).toBeLessThanOrEqual(1);
 });

@@ -305,3 +305,12 @@ test("a trim that ends where it started also leaves the clip painted", () => {
   markPreview(flags, IDLE);
   assert.deepEqual(flags, flagsOf(scene, sel));
 });
+
+test("start-trimming an imported clip and its linked sound keeps the new start (issue #106)", () => {
+  // Imported media: a video and a sound clip, both at 0, linked. The gesture sends trim_in for each (same amount).
+  const pair = buildScene(fixtureProject({ tracks: 2, clipsPerTrack: 1, clipSec: 3 }));
+  assert.equal(pair.tStart[0], 0);
+  assert.equal(pair.tStart[1], 0);
+  const ops = [trimOp(pair, 0, "start", TICKS_PER_SECOND / 10), trimOp(pair, 1, "start", TICKS_PER_SECOND / 10)];
+  assert.deepEqual(closeStartGap(pair, ops), ops, "the trimmed start must not be slid back to 0 (the end would move to 2.9 s with the start still at 0)");
+});

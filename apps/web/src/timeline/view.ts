@@ -58,6 +58,20 @@ export const sliderToPps = (s: number) => clampPps(MIN_PPS * Math.pow(MAX_PPS / 
 /** Pixels per second that fit `lengthSec` in the viewport. */
 export const fitPps = (v: View, lengthSec: number) => clampPps((v.width - gut(v) - END_PAD) / Math.max(1, lengthSec));
 
+/** Mutates `v`: scrolls the least needed to keep time `sec` (the playhead) on screen, with a margin from the edges. */
+export function revealTime(v: View, sec: number, margin = 24) {
+  const x = timeToX(v, sec);
+  if (x < gut(v)) v.scrollX = Math.max(0, sec * v.pps - margin);
+  else if (x > v.width - margin) v.scrollX = gut(v) + sec * v.pps - (v.width - margin);
+}
+
+/** Mutates `v`: a zoom change keeps the playhead (or the viewport centre when it is off screen) steady, then keeps it visible. */
+export function zoomKeeping(v: View, pps: number, sec: number) {
+  const px = timeToX(v, sec);
+  zoomAt(v, pps, px > gut(v) && px < v.width ? px : gut(v) + (v.width - gut(v)) / 2);
+  revealTime(v, sec);
+}
+
 /** Exponential fling decay: velocity (px/ms) after dt ms. */
 export const decayVelocity = (vel: number, dtMs: number, tauMs = 325) => vel * Math.exp(-dtMs / tauMs);
 
