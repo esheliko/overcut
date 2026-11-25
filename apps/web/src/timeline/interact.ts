@@ -5,8 +5,10 @@ import type { Op } from "@app/engine-client";
 import { clampN, describeClip, expandLinks, groupReps, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { hopOps, planHop, snapMove, SNAP_PX } from "./arrange";
 import { handleAt, hitTest, trackAtY } from "./hit";
+import { headerPart, type HeaderPart } from "./header";
+import { reorderTrack, rowAt, toggleTrack } from "./tracks";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
-import { GUTTER, LANE, RULER, xToTime, type View } from "./view";
+import { gut, LANE, RULER, xToTime, type View } from "./view";
 
 export type PointerKind = "mouse" | "touch" | "pen";
 export interface PEvent { x: number; y: number; kind: PointerKind; shift: boolean; /** Ctrl or Cmd. */ additive: boolean }
@@ -25,6 +27,8 @@ export interface Effects {
   seek?: number;
   /** Edits to apply as ONE undo step. */
   ops?: Op[];
+  /** Open the menu of this track (row index); the canvas knows where its header is. */
+  menu?: number;
   /** Spoken/visible description of what happened. */
   say?: Say;
 }
@@ -41,7 +45,11 @@ export type Gesture =
       /** Clips jumped over (reorder): > 0 to the right, < 0 to the left. */ hop?: number;
       /** Tick the selection snapped to or landed against: the painter draws a guide line there. */ guide?: number | null }
   | { k: "trim"; sx: number; clip: number; edge: Edge; orig: number; value: number }
-  | { k: "marquee"; x0: number; y0: number; x1: number; y1: number };
+  | { k: "marquee"; x0: number; y0: number; x1: number; y1: number }
+  /** Pointer is down on a track header: a tap on a switch flips it, a tap elsewhere opens the menu, a drag of the name (mouse) or a long press (touch) reorders. */
+  | { k: "hdr"; track: number; part: HeaderPart; sx: number; sy: number; touch: boolean }
+  /** Reordering tracks: row `from` is being carried to row `to` (same kind only), pointer at y. */
+  | { k: "tdrag"; from: number; to: number; y: number };
 
 export const IDLE: Gesture = { k: "idle" };
 type R = { g: Gesture; fx: Effects };
@@ -58,7 +66,7 @@ export function markPreview(f: Uint8Array, g: Gesture): void {
 export function pointerDown(c: Ctx, e: PEvent): R {
   const { scene, view } = c;
   const touch = e.kind === "touch";
-  if (e.y < RULER) return e.x >= GUTTER ? { g: { k: "scrub" }, fx: { seek: xToTime(view, e.x) } } : { g: IDLE, fx: NONE };
+  if (e.y < RULER) return e.x >= gut(view) ? { g: { k: "scrub" }, fx: { seek: xToTime(view, e.x) } } : { g: IDLE, fx: NONE };
   const hd = handleAt(scene, view, c.selFlags, e.x, e.y, touch);
   if (hd && !scene.trackLocked[scene.clipTrack[hd.clip]!]) {
     const r = trimRange(scene, hd.clip, hd.edge);
@@ -80,7 +88,10 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     if (touch) return { g: press("pan", false), fx: NONE }; // a tap selects on release; a drag pans
     return { g: press("move", false), fx: { select: { mode: "set", ids: [id] }, say: describeClip(scene, h.clip) } };
   }
-  if (h.kind === "gutter") return { g: touch ? { k: "pan" } : IDLE, fx: NONE };
+  if (h.kind === "gutter") {
+    const part = headerPart(view, e.x, e.y - RULER + view.scrollY - h.track * LANE);
+    return { g: part ? { k: "hdr", track: h.track, part, sx: e.x, sy: e.y, touch } : touch ? { k: "pan" } : IDLE, fx: NONE };
+  }
   return { g: { k: "press", sx: e.x, sy: e.y, then: touch ? "pan" : "marquee", tapClip: -1, collapse: false, clearOnTap: !(e.shift || e.additive) }, fx: NONE };
 }
 
@@ -123,6 +134,14 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "marquee":
       return { g: { ...g, x1: e.x, y1: e.y }, fx: NONE };
+    case "hdr": {
+      if (Math.hypot(e.x - g.sx, e.y - g.sy) <= SLOP) return { g, fx: NONE };
+      if (g.touch) return { g: { k: "pan" }, fx: NONE }; // a touch drag on a header scrolls the tracks; a long press picks the header up (longPress)
+      if (g.part !== "name") return { g: IDLE, fx: NONE }; // dragged off a switch: cancelled, nothing flips
+      return pointerMove(c, { k: "tdrag", from: g.track, to: g.track, y: e.y }, e);
+    }
+    case "tdrag":
+      return { g: { ...g, y: e.y, to: rowAt(scene, g.from, e.y, view.scrollY, RULER, LANE) }, fx: NONE };
     default:
       return { g, fx: NONE };
   }
@@ -130,6 +149,7 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
 
 /** A touch that rests on an unselected clip (it did not move for a moment) picks the clip up: it selects and the next drag moves it instead of panning. */
 export function longPress(c: Ctx, g: Gesture): R | null {
+  if (g.k === "hdr" && g.touch) return { g: { k: "tdrag", from: g.track, to: g.track, y: g.sy }, fx: { say: { key: "timeline.say.track.lifted", values: { name: c.scene.trackName[g.track]! } } } };
   if (g.k !== "press" || g.tapClip < 0 || g.then !== "pan") return null;
   const i = g.tapClip;
   if (c.scene.trackLocked[c.scene.clipTrack[i]!]) return null;
@@ -157,11 +177,20 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
       if (g.value === g.orig) return { g: IDLE, fx: NONE };
       return { g: IDLE, fx: { ops: linkedTrimOps(scene, g.clip, g.edge, g.value), say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
     }
+    case "hdr": {
+      if (g.part === "name") return { g: IDLE, fx: { menu: g.track } };
+      const r = toggleTrack(scene, g.track, g.part);
+      return { g: IDLE, fx: r };
+    }
+    case "tdrag": {
+      const r = reorderTrack(scene, g.from, g.to);
+      return { g: IDLE, fx: r ?? NONE };
+    }
     case "marquee": {
       const [xa, xb] = [Math.min(g.x0, g.x1), Math.max(g.x0, g.x1)];
       const [ya, yb] = [Math.min(g.y0, g.y1), Math.max(g.y0, g.y1)];
       const row = (y: number) => Math.floor((clampN(y, RULER, 1e9) - RULER + view.scrollY) / LANE);
-      const hit = inRect(scene, xToTime(view, Math.max(xa, GUTTER)), xToTime(view, xb), row(ya), row(yb));
+      const hit = inRect(scene, xToTime(view, Math.max(xa, gut(view))), xToTime(view, xb), row(ya), row(yb));
       const ids = hit.map((i) => scene.id[i]!);
       const clips = groupReps(scene, hit).length; // a linked sound counts with its picture
       return { g: IDLE, fx: { select: { mode: e.shift || e.additive ? "add" : "set", ids }, say: { key: "timeline.say.selectedCount", values: { count: clips } } } };
@@ -193,6 +222,6 @@ export function sameLayout(prev: Scene, next: Scene): boolean {
   for (let i = 0; i < prev.clipCount; i++) {
     if (prev.id[i] !== next.id[i] || prev.tStart[i] !== next.tStart[i] || prev.tDur[i] !== next.tDur[i] || prev.clipTrack[i] !== next.clipTrack[i]) return false;
   }
-  for (let t = 0; t < prev.trackCount; t++) if (prev.trackLocked[t] !== next.trackLocked[t] || prev.trackId[t] !== next.trackId[t]) return false;
+  for (let t = 0; t < prev.trackCount; t++) if (prev.trackLocked[t] !== next.trackLocked[t] || prev.trackId[t] !== next.trackId[t] || prev.trackKind[t] !== next.trackKind[t]) return false;
   return true;
 }

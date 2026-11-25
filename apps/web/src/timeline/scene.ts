@@ -29,6 +29,15 @@ export interface Scene {
   /** Per track: locked (1) or not (0), and the track id. */
   trackLocked: Uint8Array;
   trackId: string[];
+  /** Per track: muted, soloed, hidden (1/0), and whether it takes part in the output given the solos of its kind (`trackLive`). */
+  trackMuted: Uint8Array;
+  trackSolo: Uint8Array;
+  trackHidden: Uint8Array;
+  trackLive: Uint8Array;
+  /** Where each row sits in the model's track stack (0 = bottom), and the sequence the tracks belong to. Rows are shown top to bottom as
+   *  the video tracks from the highest down, then the audio tracks from the first, so a track above another is composited over it. */
+  trackModel: Uint16Array;
+  sequenceId: string;
   /** Track index of each clip. */
   clipTrack: Uint16Array;
   /** Ticks per frame of the sequence (integer for every common rate). */
@@ -44,8 +53,17 @@ export interface Scene {
 
 export const EMPTY_SCENE: Scene = buildScene(null);
 
+/** Model stack indices in display order: video tracks from the top of the stack down, then audio tracks bottom-up. */
+export function displayOrder(tracks: readonly { kind: string }[]): number[] {
+  const video: number[] = [], audio: number[] = [];
+  tracks.forEach((t, i) => { if (t.kind === "audio") audio.push(i); else video.push(i); });
+  return [...video.reverse(), ...audio];
+}
+
 export function buildScene(project: Project | null, sequence = 0): Scene {
-  const tracks = project?.sequences[sequence]?.tracks ?? [];
+  const stack = project?.sequences[sequence]?.tracks ?? [];
+  const order = displayOrder(stack);
+  const tracks = order.map((i) => stack[i]!);
   const media = new Map<string, string>();
   const mediaLen = new Map<string, number>();
   const mediaById = new Map<string, MediaRef>();
@@ -72,6 +90,12 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     mediaDur: new Float64Array(total),
     trackLocked: new Uint8Array(tracks.length),
     trackId: [],
+    trackMuted: new Uint8Array(tracks.length),
+    trackSolo: new Uint8Array(tracks.length),
+    trackHidden: new Uint8Array(tracks.length),
+    trackLive: new Uint8Array(tracks.length),
+    trackModel: Uint16Array.from(order),
+    sequenceId: project?.sequences[sequence]?.id ?? "",
     clipTrack: new Uint16Array(total),
     frameTicks: rate && rate.num > 0 ? Math.round((TICKS_PER_SECOND * rate.den) / rate.num) : TICKS_PER_SECOND / 30,
     media: new Array<string>(total),
@@ -86,6 +110,9 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     scene.trackName.push(t.name);
     scene.trackId.push(t.id);
     scene.trackLocked[ti] = t.locked ? 1 : 0;
+    scene.trackMuted[ti] = t.muted ? 1 : 0;
+    scene.trackSolo[ti] = t.solo ? 1 : 0;
+    scene.trackHidden[ti] = t.hidden ? 1 : 0;
     scene.trackFirst[ti] = i;
     // The model guarantees sorted, non-overlapping clips; sort anyway so a bad document cannot break the binary search.
     const clips = isSorted(t.clips) ? t.clips : [...t.clips].sort((a, b) => a.start - b.start);
@@ -110,6 +137,10 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     }
   });
   scene.trackFirst[tracks.length] = i;
+  // Live = not muted, not hidden, and (when some track of the same kind is soloed) soloed itself; the engine's own rule (`Track::is_live`).
+  const soloed = [false, false];
+  for (let t = 0; t < tracks.length; t++) if (scene.trackSolo[t]) soloed[scene.trackKind[t]!] = true;
+  for (let t = 0; t < tracks.length; t++) scene.trackLive[t] = !scene.trackMuted[t] && !scene.trackHidden[t] && (!soloed[scene.trackKind[t]!] || scene.trackSolo[t]) ? 1 : 0;
   return scene;
 }
 

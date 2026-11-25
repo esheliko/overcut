@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { gutterShift } from "./timeline-geometry";
 
 /** M1-044 automated proxy for the activation test (docs/ACTIVATION-TEST.md): the whole first-time journey (import, trim off the start, export, save)
  *  driven the way a newcomer would, through visible labelled controls only. It counts the clicks/taps (fewer is better) and bounds the wall time.
@@ -32,7 +33,7 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   const canvas = page.getByTestId("timeline-canvas");
   const box = (await canvas.boundingBox())!;
   const pps = Number(await canvas.getAttribute("data-pps"));
-  const gutter = 48, ruler = 30, lane = 52;
+  const gutter = 48 + (await gutterShift(page)), ruler = 30, lane = 52;
   const at = (sec: number, row: number) => ({ x: box.x + gutter + sec * pps, y: box.y + ruler + lane * (row + 0.5) });
   const pointer = async (p: { x: number; y: number }) => (phone ? page.touchscreen.tap(p.x, p.y) : page.mouse.click(p.x, p.y));
   await hit(() => pointer({ x: box.x + gutter + 1 * pps, y: box.y + ruler / 2 }));
