@@ -475,11 +475,7 @@ h2, p { margin: 0; }
 .project-text { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
 .project-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-text span { color: var(--muted); font-size: var(--text-sm, 0.875rem); }
-.project-tools { display: flex; border-block-start: 1px solid var(--line); }
-.project-tools button { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-block-size: var(--target); min-inline-size: 0; padding: 0 var(--space-2); background: none; border: 0; color: var(--fg); }
-.project-tools button + button { border-inline-start: 1px solid var(--line); }
-.project-tools button:hover:not(:disabled) { background: var(--surface-3); }
-.project-tools button:disabled, .project-open:disabled { opacity: 0.5; }
+.project-open:disabled { opacity: 0.5; }
 
 /* Error screen (errorScreen/ErrorScreen.tsx): calm, one column, buttons >= 44px. */
 .crash { min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; max-width: 520px; margin-inline: auto; padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }

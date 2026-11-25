@@ -76,10 +76,11 @@ export function TrackMenu({ scene, target, anchor, onAct, onClose }: Props) {
   } else {
     const { lo, hi } = rowRange(scene, track);
     const lockedNote = scene.trackLocked[track] === 1;
+    const audio = scene.trackKind[track] === 1; // video tracks have no mute / solo (their sound is on the linked audio track)
     body = <>
       <div className="menu-group" role="presentation">{scene.trackName[track]}</div>
-      {row(t("timeline.track.mute"), () => act({ a: "toggle", track, part: "mute" }), { on: isOn(scene, track, "mute"), testid: "track-mute" })}
-      {row(t("timeline.track.solo"), () => act({ a: "toggle", track, part: "solo" }), { on: isOn(scene, track, "solo"), testid: "track-solo" })}
+      {(audio || isOn(scene, track, "mute")) && row(t("timeline.track.mute"), () => act({ a: "toggle", track, part: "mute" }), { on: isOn(scene, track, "mute"), testid: "track-mute" })}
+      {(audio || isOn(scene, track, "solo")) && row(t("timeline.track.solo"), () => act({ a: "toggle", track, part: "solo" }), { on: isOn(scene, track, "solo"), testid: "track-solo" })}
       {row(t("timeline.track.lock"), () => act({ a: "toggle", track, part: "lock" }), { on: isOn(scene, track, "lock"), testid: "track-lock" })}
       {row(t("timeline.track.hide"), () => act({ a: "toggle", track, part: "hide" }), { on: isOn(scene, track, "hide"), testid: "track-hide" })}
       <div className="menu-group" role="presentation">{t("timeline.track.arrange")}</div>

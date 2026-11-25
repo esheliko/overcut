@@ -131,7 +131,7 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     return { g: press("move", false), fx: { select: { mode: "set", ids: [id] }, say: describeClip(scene, h.clip) } };
   }
   if (h.kind === "gutter") {
-    const part = headerPart(view, e.x, e.y - RULER + view.scrollY - h.track * LANE);
+    const part = headerPart(view, e.x, e.y - RULER + view.scrollY - h.track * LANE, scene.trackKind[h.track]!);
     return { g: part ? { k: "hdr", track: h.track, part, sx: e.x, sy: e.y, touch } : touch ? { k: "pan" } : IDLE, fx: NONE };
   }
   return { g: { k: "press", sx: e.x, sy: e.y, then: touch ? "pan" : "marquee", tapClip: -1, collapse: false, clearOnTap: !(e.shift || e.additive) }, fx: NONE };

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { gutterShift } from "./timeline-geometry";
 
-test("tracks: add a track, rename it from its header menu, flip mute, remove it, undo", async ({ page }, info) => {
+test("tracks: add a track, rename it from its header menu, video tracks have no mute, lock it, remove it, undo", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await page.goto("/?sample");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
@@ -21,11 +21,16 @@ test("tracks: add a track, rename it from its header menu, flip mute, remove it,
   await page.getByTestId("track-name-input").fill("Titles");
   await page.keyboard.press("Enter");
   await expect(page.locator("#tl-summary")).toContainText("3 tracks");
-  // Mute from the menu, then remove the track; one undo brings it back.
+  // A video track has no Mute / Solo (its sound is on the linked audio track): lock it from the menu, then remove it; one undo brings it back.
   await header(0, 20, 14);
-  await page.getByTestId("track-mute").click();
+  await expect(page.getByTestId("track-menu")).toBeVisible();
+  await expect(page.getByTestId("track-mute")).toHaveCount(0);
+  await expect(page.getByTestId("track-solo")).toHaveCount(0);
+  await page.getByTestId("track-lock").click();
   await header(0, 20, 14);
-  await expect(page.getByTestId("track-mute")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("track-lock")).toHaveAttribute("aria-checked", "true");
+  await page.getByTestId("track-lock").click(); // unlock: a locked track cannot be removed
+  await header(0, 20, 14);
   await page.getByTestId("track-remove").click();
   await expect(summary).toContainText("2 tracks");
   await page.keyboard.press("Control+z");

@@ -3,7 +3,7 @@
 import { readColors } from "../theme/tokens";
 import { firstEndingAfter, type Scene } from "./scene";
 import { gut, LANE, RULER, tickStep, timeToX, type View } from "./view";
-import { IND, SW, switchX, TOGGLES, type Toggle } from "./header";
+import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
 import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
 
 export interface Palette {
@@ -344,18 +344,23 @@ function header(ctx: CanvasRenderingContext2D, scene: Scene, v: View, p: Palette
   ctx.fillStyle = live ? p.fg : p.muted;
   ctx.font = FONT_HEAD;
   ctx.textAlign = "left";
-  ctx.fillText(scene.trackName[t]!, 30, y + 15.5, gut(v) - 38);
+  ctx.fillText(scene.trackName[t]!, 30, y + 15.5, gut(v) - (v.compact ? 48 : 38));
   if (v.compact) {
+    // A small chevron: the whole header opens the track menu.
+    const cx = gut(v) - 12, cy = y + 15.5;
+    ctx.strokeStyle = p.muted; ctx.lineWidth = 1.5; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(cx - 3.5, cy - 1.8); ctx.lineTo(cx, cy + 1.8); ctx.lineTo(cx + 3.5, cy - 1.8); ctx.stroke();
+    ctx.lineCap = "butt"; ctx.lineJoin = "miter";
     let x = IND.x0;
     for (const part of TOGGLES) {
-      if (!state(scene, t, part)) continue;
+      if (!state(scene, t, part)) continue; // (a video track that still carries an old mute shows it, so it is not invisible)
       glyph(ctx, p, part, x, y + IND.y, IND.size, true);
       x += IND.size + IND.gap;
     }
     return;
   }
-  for (let i = 0; i < TOGGLES.length; i++) {
-    const part = TOGGLES[i]!, on = state(scene, t, part), x = switchX(i), by = y + SW.y;
+  for (const part of togglesFor(scene.trackKind[t]!)) {
+    const on = state(scene, t, part), x = switchX(TOGGLES.indexOf(part)), by = y + SW.y;
     if (on) { ctx.fillStyle = part === "lock" || part === "hide" ? p.fg : p.accent; ctx.fillRect(x, by, SW.w, SW.h); }
     else { ctx.strokeStyle = p.lineStrong; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, by + 0.5, SW.w - 1, SW.h - 1); }
     glyph(ctx, p, part, x + (SW.w - 14) / 2, by + (SW.h - 14) / 2, 14, on);

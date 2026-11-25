@@ -36,9 +36,13 @@ test("live: muted, hidden, and other tracks of a kind while one is soloed are no
 });
 
 test("switches flip the property through set_track_props and say what happened", () => {
-  const r = toggleTrack(scene, 1, "mute");
-  assert.deepEqual(r.ops, [{ op: "set_track_props", track: scene.trackId[1], muted: true }]);
-  assert.deepEqual(r.say, { key: "timeline.say.track.mute.on", values: { name: "V1" } });
+  const r = toggleTrack(scene, 2, "mute"); // A1
+  assert.deepEqual(r.ops, [{ op: "set_track_props", track: scene.trackId[2], muted: true }]);
+  assert.deepEqual(r.say, { key: "timeline.say.track.mute.on", values: { name: "A1" } });
+  // Video tracks have no mute or solo: a short message, no op. One that already carries an old mute may still clear it.
+  for (const part of ["mute", "solo"] as const) assert.deepEqual(toggleTrack(scene, 1, part), { ops: [], say: { key: "timeline.say.track.audioOnly", values: { name: "V1" } } });
+  const old = structuredClone(project); old.sequences[0]!.tracks[0]!.muted = true;
+  assert.deepEqual(toggleTrack(buildScene(old), 1, "mute").ops, [{ op: "set_track_props", track: scene.trackId[1], muted: false }]);
   const p = structuredClone(project); p.sequences[0]!.tracks[0]!.locked = true;
   const locked = toggleTrack(buildScene(p), 1, "lock");
   assert.deepEqual(locked.ops, [{ op: "set_track_props", track: scene.trackId[1], locked: false }]);
@@ -80,28 +84,32 @@ test("reordering stays within a kind and uses the model index of the row it take
   assert.equal(rowAt(scene, 2, 0, 0, RULER, LANE), 2);
 });
 
-test("header parts: four switches on a wide header, the whole compact header is one target", () => {
+test("header parts: audio has four switches, video only lock and hide (same slots), the whole compact header is one target", () => {
   const w = view();
-  assert.equal(headerPart(w, 20, 10), "name");
-  assert.equal(headerPart(w, 20, 36), "mute");
-  assert.equal(headerPart(w, 54, 36), "solo");
-  assert.equal(headerPart(w, 90, 36), "lock");
-  assert.equal(headerPart(w, 120, 36), "hide");
-  assert.equal(headerPart(w, GUTTER_WIDE + 1, 36), null);
+  assert.equal(headerPart(w, 20, 10, 1), "name");
+  assert.equal(headerPart(w, 20, 36, 1), "mute");
+  assert.equal(headerPart(w, 54, 36, 1), "solo");
+  assert.equal(headerPart(w, 90, 36, 1), "lock");
+  assert.equal(headerPart(w, 120, 36, 1), "hide");
+  assert.equal(headerPart(w, 20, 36, 0), "name", "video: no mute switch");
+  assert.equal(headerPart(w, 54, 36, 0), "name", "video: no solo switch");
+  assert.equal(headerPart(w, 90, 36, 0), "lock");
+  assert.equal(headerPart(w, 120, 36, 0), "hide");
+  assert.equal(headerPart(w, GUTTER_WIDE + 1, 36, 1), null);
   const c = view({ gutter: GUTTER_COMPACT, compact: true });
-  assert.equal(headerPart(c, 20, 36), "name");
-  assert.equal(headerPart(c, 59, 4), "name");
+  assert.equal(headerPart(c, 20, 36, 1), "name");
+  assert.equal(headerPart(c, 59, 4, 0), "name");
 });
 
 test("pointer: a tap on a switch flips it, a tap on the name opens the menu, a drag off a switch cancels", () => {
-  let r = pointerDown(ctx(), mouse(20, laneY(1, 36)));
+  let r = pointerDown(ctx(), mouse(20, laneY(2, 36))); // A1's mute switch
   assert.equal(r.g.k, "hdr");
-  const up = pointerUp(ctx(), r.g, mouse(20, laneY(1, 36)));
-  assert.deepEqual(up.fx.ops, [{ op: "set_track_props", track: scene.trackId[1], muted: true }]);
+  const up = pointerUp(ctx(), r.g, mouse(20, laneY(2, 36)));
+  assert.deepEqual(up.fx.ops, [{ op: "set_track_props", track: scene.trackId[2], muted: true }]);
   r = pointerDown(ctx(), mouse(60, laneY(2, 10)));
   assert.deepEqual(pointerUp(ctx(), r.g, mouse(60, laneY(2, 10))).fx, { menu: 2 });
-  r = pointerDown(ctx(), mouse(20, laneY(1, 36)));
-  const moved = pointerMove(ctx(), r.g, mouse(20, laneY(1, 36) + 40));
+  r = pointerDown(ctx(), mouse(20, laneY(2, 36)));
+  const moved = pointerMove(ctx(), r.g, mouse(20, laneY(2, 36) + 40));
   assert.equal(moved.g.k, "idle");
 });
 

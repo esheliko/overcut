@@ -307,7 +307,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         const p = local(e);
         const sc = live.current.scene, v = view.current;
         const t = trackAtY(sc, v, p.y);
-        const part = t >= 0 && p.x < gut(v) ? headerPart(v, p.x, p.y - RULER + v.scrollY - t * LANE) : null;
+        const part = t >= 0 && p.x < gut(v) ? headerPart(v, p.x, p.y - RULER + v.scrollY - t * LANE, sc.trackKind[t]!) : null;
         canvas.current!.style.cursor = part ? (part === "name" ? "grab" : "pointer") : handleAt(sc, v, flags.current, p.x, p.y, false, true) ? "ew-resize" : live.current.tool !== "select" ? "crosshair" : "";
       }
       return;
