@@ -70,3 +70,23 @@ None found in the journeys above. Not verified: touch drag on the timeline (a sc
 8. P1-6 repetitive preset descriptions (`export/model.ts`, `en.json`) `[QA]`
 9. P1-10 save state invisible on phone `[C]`
 10. P1-9 "…" menu is one flat list, no Help/Shortcuts `[C]`
+
+## Round 2: editing core (m2 at 7fa42a0)
+
+Driven at 1440x900 with the keyboard, against a real export checked with `ffprobe`. Correction to P1-1: the media bin does have an Add (+) button and its cards are draggable; what is missing is dragging clips on the timeline itself.
+
+**Verified fine**
+- Keyboard precision: Right/Left step one frame, Shift+Right one second, `,` `.` nudge a frame, Home/End jump; the timecode matches every step (00:00:01:00 after Shift+Right, 01:02 after one more Shift+Right from 00:02, and so on).
+- Split at the playhead (`S`), select clip with Enter, Delete: linked picture and sound go together, the gap closes (3 s becomes 2 s). `]` trims the end to the playhead and Ctrl+Z restores it.
+- Undo and redo: 6x Ctrl+Z goes back to an empty project, 6x Ctrl+Shift+Z returns to the same edit.
+- Playback: Space plays and pauses; the timecode advances (about 1.2 s of play moved the playhead 1 s 3 frames; start-up latency, not measured further).
+- Export file: 320x180, H.264 30 fps, video 2.000 s, Opus audio 2.020 s, container 2.020 s. Matches the 2 s edit; the audio is 20 ms longer than the picture (P2-a below).
+- Reload straight after a split: the split was kept ("4 clips"), with a "Recovered unsaved changes / Undo recovery" toast.
+
+**P1**
+- **Offline media card was unreadable** `[QA]`, fixed in this PR. After a reload in a browser without file handles the bin card showed the message one word per line next to the Tags and "Choose file" buttons. The Choose file button now sits under the message. Screenshots at phone and desktop widths.
+- **After a reload the picture is gone until every file is chosen again** (browsers without file handles, for example Firefox and Safari). By design (the message explains it), but for a creator who closes the tab it means re-picking every clip; consider a single "Choose all files" action (the code has `relinkMany`) offered in the toast. `[C]`
+
+**P2**
+- a. Exported audio is 20 ms longer than the picture (Opus pre-roll/padding); harmless alone, watch it when A/V sync work lands. `[A]`
+- b. The recovery toast on a phone wraps its close button onto a second row and covers the preview. `[C]`
