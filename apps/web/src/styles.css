@@ -445,3 +445,8 @@ h2, p { margin: 0; }
 .crash-actions button { min-height: 44px; padding: 0 18px; border-radius: 10px; font-weight: 700; }
 .crash-muted { color: var(--muted); font-size: 13px; }
 .crash-report { width: 100%; min-height: 120px; box-sizing: border-box; font: 12px/1.4 ui-monospace, monospace; }
+/* F3 theme menu: the top-bar popover and the phone menu rows; the checked choice has a visible tick, not colour alone. */
+.theme-menu { position: relative; }
+.theme-pop { inset-inline-start: 0; inset-inline-end: auto; min-width: 200px; }
+.menu-check { display: inline-block; inline-size: 1.2em; font-weight: 700; }
+.menu-row[aria-checked="true"] { font-weight: 700; }

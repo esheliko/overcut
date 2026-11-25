@@ -122,11 +122,19 @@ test("theme: follows the system, the toggle overrides it, the choice is remember
   const toggle = page.getByTestId("theme-toggle");
   // Below 480 px the toggle lives in the "..." menu (it stays open while the toggle is used).
   if (!(await toggle.isVisible())) await page.getByRole("button", { name: "Menu" }).click();
-  // system -> dark -> light -> high-contrast -> system
-  await toggle.click();
+  // F3: the toggle opens a small menu (System, Dark, Light, High contrast). Esc closes it and gives focus back to the toggle.
+  if (await toggle.isVisible()) {
+    await toggle.click();
+    await expect(page.getByTestId("theme-menu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("theme-menu")).toHaveCount(0);
+    await expect(toggle).toBeFocused();
+    await toggle.click();
+  }
+  await page.getByRole("menuitemradio", { name: "Dark" }).click();
   await expect(html).toHaveAttribute("data-theme", "dark");
-  await toggle.click();
-  await toggle.click();
+  if (await toggle.isVisible()) await toggle.click();
+  await page.getByRole("menuitemradio", { name: "High contrast" }).click();
   await expect(html).toHaveAttribute("data-theme", "high-contrast");
   await expect(page.locator("[data-announcer=polite]")).toContainText("High contrast");
   await page.reload();
@@ -260,7 +268,7 @@ test("top bar on a small phone: project name truncates but stays editable, Expor
     await name.fill("A very long project name that cannot possibly fit in the bar");
     await expect(name).toHaveValue("A very long project name that cannot possibly fit in the bar");
     await page.getByRole("button", { name: "Menu" }).click();
-    await expect(page.getByTestId("theme-toggle")).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "High contrast" })).toBeVisible(); // F3: the phone menu lists the theme choices
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   }
 });
