@@ -98,11 +98,26 @@ pub enum Op {
     /// Remove the clip.
     Delete { clip: ClipId },
     /// Set a clip's geometry exactly. Used by inverses (restore what a trim or split changed); also a valid edit.
+    /// `speed`: absent = unchanged (a clip's playback speed, `docs/features/speed.md`); when given, `duration` must read a whole number of
+    /// source ticks at that speed. Used by the inverse of `SetClipSpeed`.
     SetClip {
         clip: ClipId,
         start: Time,
         source_in: Time,
         duration: Time,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        speed: Option<Rational>,
+    },
+    /// Change a clip's playback speed (M2-008, `docs/features/speed.md`): `speed` in `MIN_SPEED..=MAX_SPEED` (`BadSpeed` otherwise). The clip
+    /// keeps its start and source window, so its timeline length becomes `source length / speed`, rounded down to the whole ticks the new
+    /// speed can read exactly (at most `speed.num` source ticks, under 1 ms in practice, are dropped at the end; `EmptyClip` when none are
+    /// left). Without `ripple` the clip must still fit its neighbours (`Overlap`, nothing moves); with it the clips that start at or after
+    /// the old end shift by the length change on the clip's own track. Atomic, one undo step.
+    SetClipSpeed {
+        clip: ClipId,
+        speed: Rational,
+        #[serde(default, skip_serializing_if = "is_false")]
+        ripple: bool,
     },
     /// Add a track to a sequence at stack position `index` (0 = bottom, `tracks.len()` = top). Its id must be new. A track that carries
     /// clips is allowed (the inverse of `RemoveTrack` restores them); the clips are checked like `InsertClip`.

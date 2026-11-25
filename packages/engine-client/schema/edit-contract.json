@@ -49,7 +49,11 @@
       "clip": "00000000000000000000000000000064",
       "start": 0,
       "source_in": 10,
-      "duration": 20
+      "duration": 20,
+      "speed": {
+        "num": 3,
+        "den": 2
+      }
     },
     {
       "op": "set_media",
@@ -280,6 +284,15 @@
       "op": "slide",
       "clip": "00000000000000000000000000000010",
       "delta": 4000
+    },
+    {
+      "op": "set_clip_speed",
+      "clip": "00000000000000000000000000000010",
+      "speed": {
+        "num": 2,
+        "den": 1
+      },
+      "ripple": true
     },
     {
       "op": "add_marker",
