@@ -2,6 +2,7 @@ import type { MediaRef, Project } from "../model.generated";
 import type { FrameDescription, MediaApi } from "../types";
 import { openBlobMedia } from "./blob-media";
 import { AudioMixer } from "./audio-mix";
+import type { Stretcher } from "../audio-stretch";
 import { layerOf, renderExportFrame, type GpuLayer, type GpuRenderer } from "../render";
 import { openMedia, type DrawableFrame, type MediaAudio, type MediaVideo, type OpenedMedia } from "./media";
 import { outputFrameTimes, type ExportEnv } from "./pipeline";
@@ -22,6 +23,8 @@ export interface WebEnvInput {
   storage: ExportStorage;
   /** The engine's `evaluate` for the snapshotted project (a wasm `Editor` in the worker). */
   evaluate(sequence: string, ticks: number, audioSamples: number): FrameDescription;
+  /** Pitch-keeping audio stretch for clips whose speed is not 1 (the wasm module in the worker). */
+  stretch?: Stretcher;
   /** The production decoder, used for media whose file is in `settings.sources`. */
   media?: MediaApi;
   /** Creates the GPU compositor (the same Rust one the preview uses) on the export's own canvas. */
@@ -120,7 +123,7 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
     throw e instanceof ExportError ? e : new ExportError("encode_failed", `Could not start encoding: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  const mixer = new AudioMixer(plan.sampleRate, audioOf);
+  const mixer = new AudioMixer(plan.sampleRate, audioOf, input.stretch);
   let mime = "";
   const env: ExportEnv<VideoFrame> = {
     plan,

@@ -50,6 +50,12 @@ pub struct AudioSegment {
     /// Source seconds per timeline second (the mixer resamples by this and the media rate).
     pub speed: Rational,
     pub gain: f32,
+    /// The clip's first source tick and the source ticks it reads in all (`duration * speed`): what a pitch-keeping stretcher turns into
+    /// the clip's whole timeline length (`docs/features/speed.md`).
+    pub clip_source_in: Time,
+    pub clip_source_len: Time,
+    /// Samples from the clip's first sample to this segment's first sample (0 when the segment starts with the clip).
+    pub clip_offset: u32,
 }
 
 /// Output of [`evaluate_into`]. Keep one and reuse it: the vectors are cleared, not reallocated.
@@ -185,6 +191,13 @@ pub fn evaluate_into(seq: &Sequence, t: Time, audio_samples: u32, out: &mut Fram
                         source_start,
                         speed: c.speed,
                         gain: 1.0,
+                        clip_source_in: c.source_in,
+                        clip_source_len: Time::from_ticks(
+                            (i128::from(c.duration.ticks()) * i128::from(c.speed.num)
+                                / i128::from(c.speed.den.max(1)))
+                                as i64,
+                        ),
+                        clip_offset: (a - ceil_sample(c.start.ticks(), rate)).max(0) as u32,
                     });
                 }
             }
@@ -434,6 +447,10 @@ mod tests {
         let w = evaluate(&s, Time::from_ticks(SEC), 4);
         assert_eq!(w.audio[0].source_start, Time::ZERO);
         assert_eq!(w.audio[0].speed, half);
+        // The stretcher's view of the clip: its whole source window (2 s of timeline at 1/2x reads 1 s of source).
+        assert_eq!(w.audio[0].clip_source_in, Time::ZERO);
+        assert_eq!(w.audio[0].clip_source_len, Time::from_ticks(SEC));
+        assert_eq!(w.audio[0].clip_offset, 0);
         // Floor on a fractional result (3 + floor(7*3/2) = 13).
         let tiny = source_at(Time::from_ticks(3), 7, Rational { num: 3, den: 2 });
         assert_eq!(tiny, Some(Time::from_ticks(13)));
