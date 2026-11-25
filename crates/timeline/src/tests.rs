@@ -115,6 +115,13 @@ enum Step {
         source_in: u8,
         dur: u8,
     },
+    /// M2-008: speeds include out-of-range and awkward fractions on purpose.
+    SetSpeed {
+        clip: usize,
+        num: u8,
+        den: u8,
+        ripple: bool,
+    },
     AddTrack {
         video: bool,
         index: usize,
@@ -288,6 +295,7 @@ fn step() -> impl Strategy<Value = Step> {
         3 => (any::<usize>(), 0..4usize, 0..70u8).prop_map(|(clip, track, start)| Step::Move { clip, track, start }),
         2 => any::<usize>().prop_map(|clip| Step::Delete { clip }),
         1 => (any::<usize>(), 0..60u8, 0..30u8, 0..25u8).prop_map(|(clip, start, source_in, dur)| Step::SetClip { clip, start, source_in, dur }),
+        3 => (any::<usize>(), 0..20u8, 1..9u8, any::<bool>()).prop_map(|(clip, num, den, ripple)| Step::SetSpeed { clip, num, den, ripple }),
         1 => (any::<bool>(), any::<usize>(), any::<bool>()).prop_map(|(video, index, with_clip)| Step::AddTrack { video, index, with_clip }),
         1 => any::<usize>().prop_map(|track| Step::RemoveTrack { track }),
         1 => (any::<usize>(), any::<usize>()).prop_map(|(track, index)| Step::MoveTrack { track, index }),
@@ -417,6 +425,17 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
             start: t(i64::from(start)),
             source_in: t(i64::from(source_in)),
             duration: t(i64::from(dur)),
+            speed: None,
+        },
+        Step::SetSpeed {
+            clip,
+            num,
+            den,
+            ripple,
+        } => Op::SetClipSpeed {
+            clip: pick(clip)?.id,
+            speed: Rational::new(i64::from(num), i64::from(den)).unwrap(), // reduced, as on the wire
+            ripple,
         },
         Step::AddTrack {
             video,
@@ -1420,7 +1439,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        34,
+        35,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -1436,7 +1455,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 34, "one example per Op variant");
+    assert_eq!(ops.len(), 35, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -4080,4 +4099,162 @@ fn markers_are_snap_targets_without_the_caller_passing_them() {
         (r["time"].as_i64(), r["hit"]["kind"].as_str()),
         (Some(30_000), Some("marker"))
     );
+}
+
+// ---- M2-008: clip speed ----
+
+fn rat(num: i64, den: i64) -> Rational {
+    Rational { num, den }
+}
+
+fn speed_of(p: &Project, id: ClipId) -> Rational {
+    all_clips(p).into_iter().find(|c| c.id == id).unwrap().speed
+}
+
+#[test]
+fn set_speed_keeps_the_source_window_and_changes_the_length() {
+    let (mut p, _, _, [a, b, c], o) = row();
+    // 10 units of source at 2x last 5 units; at 1/2x, 20. Without ripple the gap stays open / the clip must fit.
+    let after = do_undo(
+        &mut p,
+        Op::SetClipSpeed {
+            clip: a,
+            speed: rat(2, 1),
+            ripple: false,
+        },
+    );
+    assert_eq!(geom(&after, a), (0, 10, 5));
+    assert_eq!(speed_of(&after, a), rat(2, 1));
+    assert_eq!(geom(&after, b), (10, 30, 10), "no ripple: neighbours stay");
+    // Slowing a clip that has a neighbour right behind it is refused whole.
+    let before = p.clone();
+    let e = apply(
+        &mut p,
+        Op::SetClipSpeed {
+            clip: a,
+            speed: rat(1, 2),
+            ripple: false,
+        },
+    );
+    assert!(
+        matches!(e, Err(OpError::Batch { .. }) | Err(OpError::Overlap { .. })),
+        "{e:?}"
+    );
+    assert_eq!(p, before);
+    // With ripple the later clips of the track move by the change; the other track does not.
+    let after = do_undo(
+        &mut p,
+        Op::SetClipSpeed {
+            clip: a,
+            speed: rat(1, 2),
+            ripple: true,
+        },
+    );
+    assert_eq!(geom(&after, a), (0, 10, 20));
+    assert_eq!(geom(&after, b), (20, 30, 10));
+    assert_eq!(geom(&after, c), (30, 50, 10));
+    assert_eq!(geom(&after, o), (15, 0, 10));
+    // Speeding up with ripple closes the gap.
+    let after = do_undo(
+        &mut p,
+        Op::SetClipSpeed {
+            clip: a,
+            speed: rat(4, 1),
+            ripple: true,
+        },
+    );
+    assert_eq!(speed_of(&after, a), rat(4, 1));
+    // 10 units = 10_000 ticks at 4x last 2_500 ticks: b closes up to start there.
+    let b_start = all_clips(&after)
+        .into_iter()
+        .find(|x| x.id == b)
+        .unwrap()
+        .start;
+    assert_eq!(b_start, Time::from_ticks(10_000 - 7_500));
+}
+
+#[test]
+fn set_speed_rounds_down_to_whole_ticks_and_refuses_bad_values() {
+    let (mut p, _, _, [_, _, c], _) = row();
+    // 10_000 source ticks at 3/2x: 6666.67 ticks -> k = 10_000 / 3 = 3333 steps of 2 ticks = 6666 ticks, reading 9_999 source ticks.
+    let after = do_undo(
+        &mut p,
+        Op::SetClipSpeed {
+            clip: c,
+            speed: rat(3, 2),
+            ripple: false,
+        },
+    );
+    let clip = all_clips(&after).into_iter().find(|x| x.id == c).unwrap();
+    assert_eq!(clip.duration, Time::from_ticks(6_666));
+    for bad in [rat(0, 1), rat(-1, 2), rat(1, 5), rat(41, 10), rat(5, 1)] {
+        let before = p.clone();
+        let e = apply(
+            &mut p,
+            Op::SetClipSpeed {
+                clip: c,
+                speed: bad,
+                ripple: false,
+            },
+        );
+        assert!(matches!(e, Err(OpError::BadSpeed)), "{bad:?}: {e:?}");
+        assert_eq!(p, before);
+    }
+    assert!(matches!(
+        apply(
+            &mut p,
+            Op::SetClipSpeed {
+                clip: c,
+                speed: rat(1, 0),
+                ripple: false
+            }
+        ),
+        Err(OpError::BadSpeed)
+    ));
+    // Speeding up cannot run past the media: 4x reads the same window, so it always fits; the original window is the limit.
+    assert!(apply(
+        &mut p,
+        Op::SetClipSpeed {
+            clip: c,
+            speed: rat(4, 1),
+            ripple: false
+        }
+    )
+    .is_ok());
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { max_shrink_iters: 2000, ..ProptestConfig::default() })]
+
+    /// Any speed change that applies keeps the source window inside what it read before (never more), reads whole ticks, stays valid,
+    /// and one undo restores the project exactly. After it, the source time of the clip's frames is monotonic.
+    #[test]
+    fn speed_change_keeps_window_undoes_exactly_and_maps_monotonically(
+        num in 1..=16i64, den in 1..=4i64, dur in 1..40i64, ripple in any::<bool>(), second in 0..4usize,
+    ) {
+        let (mut p, mut ids) = base();
+        let m = p.media[0].id;
+        let c = clip(&mut ids, m, 0, 3, dur);
+        let id = c.id;
+        p.sequences[0].tracks[0].clips = vec![c];
+        let before = p.clone();
+        let old_src = i128::from(dur) * i128::from(U);
+        let Ok(inv) = apply(&mut p, Op::SetClipSpeed { clip: id, speed: rat(num, den), ripple }) else {
+            prop_assert_eq!(&p, &before);
+            return Ok(());
+        };
+        p.validate().unwrap();
+        let c = all_clips(&p).into_iter().find(|c| c.id == id).unwrap();
+        let read = i128::from(c.duration.ticks()) * i128::from(c.speed.num) / i128::from(c.speed.den);
+        prop_assert!(read <= old_src && old_src - read < i128::from(c.speed.num.max(1)));
+        // Source time at consecutive timeline ticks never goes back.
+        let mut prev = i128::MIN;
+        for step in 0..c.duration.ticks().min(200 + second as i64) {
+            let st = i128::from(c.source_in.ticks()) + i128::from(step) * i128::from(c.speed.num) / i128::from(c.speed.den);
+            prop_assert!(st >= prev);
+            prev = st;
+        }
+        apply_all(&mut p, &inv.0).unwrap();
+        prop_assert_eq!(&p, &before);
+    }
 }

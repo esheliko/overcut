@@ -267,7 +267,14 @@ export type Op =
   | { op: "delete_marker"; marker: MarkerId }
   /** Set the in/out range and whether playback loops over it; `range: null` clears it (`looping` must then be false). Needs 0 <= start < end. */
   | { op: "set_range"; sequence: SequenceId; range: TimeRange | null; looping?: boolean }
-  | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
+  /** `speed` left out = unchanged; given, `duration` must read whole source ticks at it (the inverse of `set_clip_speed` uses this). */
+  | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time; speed?: Rational }
+  /**
+   * Set a clip's playback speed, 1/4..4 (anything else is refused, `BadSpeed`). The clip keeps its start and source window, so its length becomes
+   * `source length / speed`, rounded down to the whole ticks that speed reads exactly (under a millisecond lost). Without `ripple` the clip must
+   * still fit its neighbours (`Overlap`); with it the later clips of the same track shift by the change. One undo step.
+   */
+  | { op: "set_clip_speed"; clip: ClipId; speed: Rational; ripple?: boolean }
   | { op: "set_media"; media: MediaId; uri: string; hash: string | null }
   | { op: "set_media_tags"; media: MediaId; tags: string[] }
   | { op: "add_media"; media: MediaRef }

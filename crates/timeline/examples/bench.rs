@@ -188,6 +188,7 @@ fn main() {
                     start,
                     source_in: t(0),
                     duration: t(29),
+                    speed: None,
                 },
             );
             assert!(r.is_ok());
