@@ -12,8 +12,10 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
 
   // No dead promises: only Media in the tool rail, and no empty Details panel.
   const rail = page.getByRole("navigation", { name: "Tools" }).getByRole("button");
-  await expect(rail).toHaveCount(1);
-  await expect(rail.first()).toHaveText("Media");
+  if (phone) {
+    await expect(rail).toHaveCount(1);
+    await expect(rail.first()).toHaveText("Media");
+  } else await expect(rail).toHaveCount(0); // the Media panel is always open on a wide screen: no rail with a single tool
   await expect(page.getByTestId("panel-inspector")).toHaveCount(0);
 
   // The shape control is the project's canvas (not just the preview), and says what it is.

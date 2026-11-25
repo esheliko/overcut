@@ -519,6 +519,8 @@ function Editor({ store }: { store: ProjectStore }) {
   const active = TOOLS.find((x) => x.id === activeId && shown(x)) ?? TOOLS[0]!;
   const activeLabel = t(`tool.${active.id}.label`);
   const rail = TOOLS.filter((x) => shown(x) && !(wide && x.id === "edit"));
+  /** Tablet and up dock the tool panel open, so a rail with a single tool (Media, in M1) switches nothing: it is left out and its column goes to the panels. */
+  const railHidden = roomy && rail.length === 1;
   const themeName = t(`theme.${themePref}`);
   const engineText = engine.status === "loading" ? t("engine.starting")
     : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
@@ -553,15 +555,15 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
       </header>
 
-      <main className="workspace" data-inspector={wide && DETAILS_READY}>
-        <nav className="tools" aria-label={t("tools.nav")}>
+      <main className="workspace" data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined}>
+        {!railHidden && <nav className="tools" aria-label={t("tools.nav")}>
           {rail.map((x) => (
             <button key={x.id} className="tool" aria-pressed={activeId === x.id && (roomy || sheet)} onClick={() => pick(x.id)}>
               <Icon name={x.icon} size={24} />
               <span>{t(`tool.${x.id}.label`)}</span>
             </button>
           ))}
-        </nav>
+        </nav>}
 
         <section className="library" data-open={sheet} aria-label={activeLabel} data-testid="panel-tool">
           <button className="sheet-close icon-btn" aria-label={t("panel.close")} onClick={() => setSheet(false)}><Icon name="close" size={18} /></button>
