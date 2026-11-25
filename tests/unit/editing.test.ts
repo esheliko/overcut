@@ -24,6 +24,7 @@ function fake(over: Partial<RawEditing> = {}) {
     project: () => '{"schema_version":1}',
     journal: () => '{"op":"delete"}\n',
     evaluate: () => "{}",
+    snap: () => '{"time":0,"delta":0,"hit":null}',
     takeLog: () => '{"n":1,"r":"undo"}\n',
     checkpoint: () => '{"seq":0,"project":{}}',
     recover: () => '{"replayed":1,"dropped":0,"full_history":true,"valid_log":"x"}',
@@ -114,4 +115,15 @@ test("track op builders produce exactly the wire shapes pinned in the contract",
   assert.deepEqual(setTrackPropsOp(props.track, patch), props);
   // `null` (reset) must survive JSON, an omitted field must stay omitted.
   assert.equal(JSON.stringify(setTrackPropsOp(props.track, { height: null })), `{"op":"set_track_props","track":"${props.track}","height":null}`);
+});
+
+test("snap sends the query as JSON, parses the answer and rejects non-integer or negative-tolerance input before the engine", async () => {
+  const answer = { time: 100, delta: -3, hit: { time: 100, kind: "clip_edge" } };
+  const { editing, calls } = fake({ snap: (...a) => (calls.push(["snap", a]), JSON.stringify(answer)) });
+  assert.deepEqual(await editing.snap("seq", { t: 103, tolerance: 10, exclude: [], markers: [7], span: 50 }), answer);
+  assert.equal(argsOf(calls, 0)[0], "seq");
+  assert.deepEqual(JSON.parse(argsOf(calls, 0)[1] as string), { t: 103, tolerance: 10, exclude: [], markers: [7], span: 50 });
+  await assert.rejects(editing.snap("seq", { t: 1.5, tolerance: 10 }));
+  await assert.rejects(editing.snap("seq", { t: 1, tolerance: -1 }));
+  assert.equal(calls.length, 1);
 });

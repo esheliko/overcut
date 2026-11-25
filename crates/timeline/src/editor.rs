@@ -199,4 +199,39 @@ impl Editor {
         evaluate_into(seq, Time::from_ticks(ticks), audio_samples, &mut self.frame);
         serde_json::to_string(&self.frame).map_err(|e| e.to_string())
     }
+
+    /// Snap a time (or a dragged span) to the sequence's clip edges, the playhead and markers (`docs/features/snapping.md`).
+    /// `params`: `{"t":ticks,"tolerance":ticks,"playhead":ticks|null,"exclude":[clip ids],"markers":[ticks],"span":len ticks|null}`;
+    /// with `span` the answer's `time` is the new START of a span of that length. Returns `{"time":ticks,"delta":ticks,"hit":{"time","kind"}|null}`.
+    pub fn snap_json(&self, sequence: &str, params: &str) -> Result<String, String> {
+        #[derive(Deserialize)]
+        struct Params {
+            t: Time,
+            tolerance: Time,
+            #[serde(default)]
+            playhead: Option<Time>,
+            #[serde(default)]
+            exclude: Vec<app_model::ClipId>,
+            #[serde(default)]
+            markers: Vec<Time>,
+            #[serde(default)]
+            span: Option<Time>,
+        }
+        let q: Params = serde_json::from_str(params).map_err(|e| e.to_string())?;
+        let id = Id::parse(sequence).ok_or("sequence id is not 32 hex characters")?;
+        let seq = self
+            .project
+            .sequences
+            .iter()
+            .find(|s| s.id.0 == id)
+            .ok_or("unknown sequence")?;
+        let targets = crate::snap::targets_of(seq, &q.exclude, q.playhead, &q.markers);
+        let r = match q.span {
+            Some(len) => crate::snap::snap_span(q.t, len, &targets, q.tolerance),
+            None => crate::snap::snap(q.t, &targets, q.tolerance),
+        };
+        let delta = r.time.ticks().saturating_sub(q.t.ticks());
+        serde_json::to_string(&serde_json::json!({"time": r.time, "delta": delta, "hit": r.hit}))
+            .map_err(|e| e.to_string())
+    }
 }

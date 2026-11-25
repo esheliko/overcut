@@ -19,6 +19,7 @@ mod history;
 mod op;
 mod recovery;
 mod ripple;
+mod snap;
 
 pub use apply::{apply, apply_all, OpError};
 pub use editor::{EditOutcome, Editor};
@@ -28,6 +29,7 @@ pub use evaluate::{
 pub use history::{journal_from_jsonl, journal_to_jsonl, replay, CoalesceKey, History};
 pub use op::{Edge, Inverse, Op};
 pub use recovery::Recovery;
+pub use snap::{snap, snap_span, targets_of, Snap, Target, TargetKind};
 
 #[cfg(test)]
 mod tests;
