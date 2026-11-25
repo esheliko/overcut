@@ -285,7 +285,8 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
       return { g: IDLE, fx: { ops, say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
     }
     case "tool": {
-      if (g.delta === 0) return { g: IDLE, fx: NONE };
+      // A slip dragged the way the footage has run out (e.g. the right half of a split, dragged later) clamps to 0: say so instead of doing nothing.
+      if (g.delta === 0) return { g: IDLE, fx: g.tool === "slip" && Math.abs(e.x - g.sx) > SLOP ? { say: { key: "timeline.say.slipOtherWay" }, visible: true } : NONE };
       const name = scene.name[g.clip]!;
       const ops = g.tool === "ripple" ? rippleTrimOps(scene, g.clip, g.edge!, g.delta) : g.tool === "roll" ? rollOps(scene, g.cuts, g.delta) : g.tool === "slip" ? slipOps(scene, g.clip, g.delta) : slideOps(scene, g.clip, g.delta);
       const key = g.tool === "ripple" ? "timeline.say.rippled" : g.tool === "roll" ? "timeline.say.rolled" : g.tool === "slip" ? "timeline.say.slipped" : "timeline.say.slid";
