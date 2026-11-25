@@ -17,6 +17,7 @@
     "test": "npm run test:ts && npm run test:rust",
     "test:ts": "node --import tsx --test \"tests/unit/*.test.ts\"",
     "test:rust": "cargo test --workspace",
+    "test:e2": "PROPTEST_CASES=10000 cargo test -p app-timeline --release",
     "gen:model-types": "node scripts/gen-model-types.mjs",
     "rules:build": "node scripts/build-rules.mjs",
     "rules:check": "node scripts/build-rules.mjs --check",
