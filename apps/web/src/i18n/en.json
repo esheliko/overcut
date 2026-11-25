@@ -210,6 +210,7 @@
   "media.offline": "File not found on this device",
   "media.offline.reopen": "Your browser does not keep imported files after a reload. Choose it again to use it.",
   "media.relink": "Choose file",
+  "media.relinkAll": "Choose all {count} missing files…",
   "media.relinkNamed": "Choose {name} again",
   "media.refusalDismiss": "Dismiss",
   "media.relinkFailed": "That file does not match. Choose the original file again.",

@@ -121,8 +121,15 @@ h2, p { margin: 0; }
 .refusal-note { position: fixed; z-index: 41; inset-inline: 16px; margin-inline: auto; bottom: calc(env(safe-area-inset-bottom) + 140px); width: max-content; max-width: calc(100vw - 32px); display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--surface-3); border: 1px solid var(--danger); box-shadow: var(--shadow); font-weight: 500; }
 .refusal-note ul { margin: 0; padding: 6px 0 0; list-style: none; display: grid; gap: 6px; max-height: 40vh; overflow: auto; overflow-wrap: anywhere; }
 .refusal-note .icon-btn { flex: none; min-width: 44px; min-height: 44px; }
+.persist-note .icon-btn { flex: none; min-width: 44px; min-height: 44px; }
 .persist-note.danger { border-color: var(--danger); padding-inline-end: 16px; }
 .persist-note button:not(.icon-btn) { white-space: nowrap; min-height: var(--target); padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); }
+@media (max-width: 719px) {
+  .persist-note { display: grid; grid-template-columns: 1fr auto; align-items: start; justify-content: stretch; padding: 8px 8px 12px 16px; }
+  .persist-note > span { grid-column: 1; align-self: center; text-align: start; }
+  .persist-note > .icon-btn { grid-column: 2; grid-row: 1; }
+  .persist-note > button:not(.icon-btn) { grid-column: 1 / -1; justify-self: start; }
+}
 @media (min-width: 720px) { .persist-notes { bottom: 72px; } }
 
 /* Small phones: the status chip shrinks to a dot (text stays for screen readers). */
@@ -367,6 +374,7 @@ h2, p { margin: 0; }
 .versions-act { min-block-size: 44px; min-inline-size: 44px; padding-inline: var(--space-3); font-size: var(--text-sm); }
 
 .bin-filter-toggle { display: flex; align-items: center; gap: var(--space-2); inline-size: 100%; min-block-size: 44px; padding-inline: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); font-weight: 600; text-align: start; }
+.bin-filter-toggle.bin-relink-all { border-color: var(--accent); color: var(--accent); }
 .bin-filter-toggle[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
 .bin-filter-toggle > span:nth-child(2) { flex: 1; min-inline-size: 0; }
 .bin-on { padding-inline: var(--space-2); border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: var(--text-sm); }
