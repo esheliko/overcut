@@ -9,6 +9,7 @@ import { Icon } from "./icons";
 import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
 import { clampN, closeStartGap, deleteOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
+import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { sampleProject } from "./timeline/fixture";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
@@ -44,11 +45,13 @@ type Props = {
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
 const NO_SELECTION: ReadonlySet<string> = new Set();
-const KEYS = { undo: "Ctrl+Z", redo: "Ctrl+Shift+Z", split: "S", del: "Del", dup: "Ctrl+D", copy: "Ctrl+C", cut: "Ctrl+X", paste: "Ctrl+V" };
+const KEYS = { rippleDel: "Shift+Del", closeGap: "Ctrl+Del", undo: "Ctrl+Z", redo: "Ctrl+Shift+Z", split: "S", del: "Del", dup: "Ctrl+D", copy: "Ctrl+C", cut: "Ctrl+X", paste: "Ctrl+V" };
 /** The history step name (lower case, "Undo <name>") for an edit, from the message that announces it. */
 const LABELS: Record<string, string> = { "timeline.say.split": "timeline.label.split", "timeline.say.deleted": "timeline.label.deleted", "timeline.say.moved": "timeline.label.moved",
   "timeline.say.nudged": "timeline.label.nudged", "timeline.say.trimmed": "timeline.label.trimmed", "timeline.say.duplicated": "timeline.label.duplicated",
   "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed",
+  "timeline.say.rippled": "timeline.label.rippled", "timeline.say.rolled": "timeline.label.rolled", "timeline.say.slipped": "timeline.label.slipped", "timeline.say.slid": "timeline.label.slid",
+  "timeline.say.rippleDeleted": "timeline.label.rippleDeleted", "timeline.say.gapClosed": "timeline.label.gapClosed",
   "timeline.say.track.added": "timeline.label.track.added", "timeline.say.track.removed": "timeline.label.track.removed", "timeline.say.track.moved": "timeline.label.track.edited", "timeline.say.track.renamed": "timeline.label.track.edited",
   ...Object.fromEntries(TRACK_SAY_KEYS.map((k) => [k, "timeline.label.track.edited"])) };
 const tip = (label: string, keys: string) => label + " (" + keys + ")";
@@ -108,6 +111,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const [held, setHeld] = useState<readonly Held[]>([]);
   const heldRef = useRef(held);
   heldRef.current = held;
+  const [tool, setTool] = useState<Tool>("select");
   const [dialog, setDialog] = useState<"history" | "timing" | null>(null);
   const [menu, setMenu] = useState<{ target: TrackMenuTarget; anchor: DOMRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -173,6 +177,39 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         if (mine.length === 0) { speak(locked ?? say("timeline.say.nothingToDelete")); break; }
         commit(deleteOps(sc, mine), say("timeline.say.deleted", { count: mine.length }));
         setSelected(NO_SELECTION);
+        break;
+      }
+      case "rippleDelete": {
+        if (mine.length === 0) { speak(locked ?? say("timeline.say.nothingToDelete")); break; }
+        commit(rippleDeleteOps(sc, mine), say("timeline.say.rippleDeleted", { count: mine.length }));
+        setSelected(NO_SELECTION);
+        break;
+      }
+      case "closeGap": {
+        const ops = closeGapOps(sc, mine);
+        if (ops.length === 0) { const m = say(mine.length === 0 ? "timeline.say.selectFirst" : "timeline.say.noGap"); speak(locked ?? m); onNotice(t((locked ?? m).key)); break; }
+        commit(ops, say("timeline.say.gapClosed", { count: ops.length }));
+        break;
+      }
+      case "tool": setTool(cmd.tool); speak(say("timeline.say.tool", { tool: cmd.tool })); break;
+      case "slip": case "slide": case "roll": {
+        const reps = groupReps(sc, mine);
+        if (reps.length !== 1) { speak(locked ?? say("timeline.say.selectOne")); break; }
+        const i = reps[0]!;
+        const bad = () => { const m = say("timeline.say.cantMove"); speak(m); onNotice(t(m.key)); };
+        const name = sc.name[i]!;
+        if (cmd.c === "roll") {
+          const cuts = rollCuts(sc, i, "end");
+          if (cuts.length === 0) { const m = say("timeline.say.noCut"); speak(m); onNotice(t(m.key)); break; }
+          const d = snapTo(sc, cmd.frames * ft, rollRangeAll(sc, cuts));
+          if (d === 0) { bad(); break; }
+          commit(rollOps(sc, cuts, d), say("timeline.say.rolled", { name, frames: Math.abs(d / ft) }));
+          break;
+        }
+        const r = cmd.c === "slip" ? slipRange(sc, i) : slideRange(sc, i);
+        const d = r ? snapTo(sc, cmd.frames * ft, r) : 0;
+        if (d === 0) { bad(); break; }
+        commit(cmd.c === "slip" ? slipOps(sc, i, d) : slideOps(sc, i, d), say(cmd.c === "slip" ? "timeline.say.slipped" : "timeline.say.slid", { name, frames: Math.abs(d / ft) }));
         break;
       }
       case "nudge": {
@@ -295,10 +332,17 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
           <button className="icon-btn" aria-label={t("timeline.cut")} title={tip(t("timeline.cut"), KEYS.cut)} data-testid="tl-cut" disabled={off || none} onClick={() => run({ c: "cut" })}><Icon name="cut" /></button>
           <button className="icon-btn" aria-label={t("timeline.paste")} title={tip(t("timeline.paste"), KEYS.paste)} data-testid="tl-paste" disabled={off || held.length === 0} onClick={() => run({ c: "paste" })}><Icon name="paste" /></button>
           <button className="icon-btn" aria-label={t("timeline.unlink")} title={t("timeline.unlink")} data-testid="tl-unlink" disabled={off || !anyLinked} onClick={() => run({ c: "unlink" })}><Icon name="unlink" /></button>
+          <button className="icon-btn" aria-label={t("timeline.rippleDelete")} title={tip(t("timeline.rippleDelete"), KEYS.rippleDel)} data-testid="tl-ripple-delete" disabled={off || none} onClick={() => run({ c: "rippleDelete" })}><Icon name="rippleDelete" /></button>
+          <button className="icon-btn" aria-label={t("timeline.closeGap")} title={tip(t("timeline.closeGap"), KEYS.closeGap)} data-testid="tl-close-gap" disabled={off || none} onClick={() => run({ c: "closeGap" })}><Icon name="closeGap" /></button>
           <span className="sep" aria-hidden="true" />
           <button className="icon-btn" aria-label={t("timeline.timing")} title={t("timeline.timing")} data-testid="tl-timing" aria-haspopup="dialog" disabled={off || !oneClip} onClick={() => setDialog("timing")}><Icon name="timing" /></button>
           <button className="icon-btn" aria-label={t("timeline.history")} title={t("timeline.history")} data-testid="tl-history" aria-haspopup="dialog" disabled={off} onClick={() => setDialog("history")}><Icon name="history" /></button>
         </div>
+      </div>
+      <div className="tl-bar tl-tools" role="radiogroup" aria-label={t("timeline.tools")} data-testid="tl-tools">
+        {TOOLS.map((k) => (
+          <button key={k} type="button" role="radio" aria-checked={tool === k} className={tool === k ? "tl-tool on" : "tl-tool"} data-testid={`tl-tool-${k}`} title={t(`timeline.tool.${k}.hint`)} onClick={() => run({ c: "tool", tool: k })}>{t(`timeline.tool.${k}`)}</button>
+        ))}
       </div>
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
@@ -307,7 +351,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       <div className="tl-stage">
         {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t("timeline.empty")}</p>}
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} />
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} tool={tool} />
       </div>
     </section>
   );

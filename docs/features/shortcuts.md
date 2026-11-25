@@ -15,6 +15,7 @@
 ## Edge cases
 - Same chord in `global` and `canvas`: conflict (global is live everywhere). Same chord in `canvas` and `transport` is not (different focus), e.g. Comma nudges a clip in the timeline and steps a frame in the player.
 - Defaults and every preset are conflict-free (unit test).
+- M2-045 adds the "Edit tools" group (V B N Y U) and ripple delete / close gap / slip / slide / roll by frame (`timeline-drag.md`).
 
 ## Test plan
 - `tests/unit/commands.test.ts`: every pre-registry shortcut resolves as before, presets, bind/conflict/reset, chord recording and labels, settings validation, labels exist.

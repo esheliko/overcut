@@ -60,13 +60,15 @@ export interface Overlay {
   ghosts: number[] | null; ghostDSec: number; ghostTrack: number;
   /** Trim preview: clip index (-1 none), which edge, and the new boundary in seconds. */
   trimClip: number; trimEnd: boolean; trimSec: number;
+  /** Text on the move ghost instead of the clip name (slip / slide show their amount). */
+  ghostLabel: string | null;
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Where a drag snapped or will drop (seconds): a thin guide line across the tracks. Null = none. */
   guideSec: number | null;
   /** Reordering tracks: the row being carried, the row it would land on, and the pointer y. Null = none. */
   trackDrag: { from: number; to: number; y: number } | null;
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, marquee: null, guideSec: null, trackDrag: null });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, ghostLabel: null, marquee: null, guideSec: null, trackDrag: null });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -185,7 +187,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   if (ui.ghosts !== null) {
     for (const i of ui.ghosts) {
       const tr = ui.ghostTrack >= 0 ? ui.ghostTrack : scene.clipTrack[i]!;
-      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, scene.trackKind[tr] === 1, scene.name[i]);
+      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, scene.trackKind[tr] === 1, ui.ghostLabel ?? scene.name[i]);
     }
   }
   if (ui.trimClip >= 0) {
