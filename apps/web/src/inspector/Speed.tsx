@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { useI18n } from "../i18n";
 import { useProjectStore, useStore } from "../store/projectStore";
-import { formatSpeed, MAX_SPEED, MIN_SPEED, speedOf, speedOps, speedTarget, SPEED_PRESETS, toRational } from "./speedModel";
+import { announce } from "../a11y/announcer";
+import { clipSpan, formatSpeed, MAX_SPEED, MIN_SPEED, speedOf, speedOps, speedTarget, SPEED_PRESETS, toRational } from "./speedModel";
 import "./inspector.css";
 
 /** The Speed tab: presets, a number field, "move later clips" (ripple), a note that the sound keeps its pitch. One edit = one undo step. */
@@ -24,6 +25,8 @@ export function SpeedSection(): ReactNode {
     try {
       await store.apply(speedOps(target.group, r, ripple), undefined, t("speed.undoLabel"));
       setMessage("");
+      const span = clipSpan(store.getState().project, target.clip.id); // the status line must read the new length, not the old one
+      if (span) announce(t("speed.announce", { speed: formatSpeed(x), ...span }));
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
       setMessage(/Overlap/.test(why) ? t("speed.noRoom") : /BadSpeed/.test(why) ? t("speed.range", { min: String(MIN_SPEED), max: String(MAX_SPEED) }) : t("speed.failed"));

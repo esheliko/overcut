@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Project } from "@app/engine-client";
-import { formatSpeed, speedOf, speedOps, speedTarget, toRational } from "../../apps/web/src/inspector/speedModel";
+import { clipSpan, formatSpeed, speedOf, speedOps, speedTarget, toRational } from "../../apps/web/src/inspector/speedModel";
 
 test("toRational: two decimals, reduced, 0.25 to 4 only", () => {
   assert.deepEqual(toRational(2), { num: 2, den: 1 });
@@ -40,4 +40,12 @@ test("one set_clip_speed per clip of the group", () => {
     { op: "set_clip_speed", clip: "a", speed: { num: 2, den: 1 }, ripple: true },
     { op: "set_clip_speed", clip: "b", speed: { num: 2, den: 1 }, ripple: true },
   ]);
+});
+
+test("clipSpan reads the clip's current span (after a speed change the end moves)", () => {
+  const T = 705_600_000;
+  const p = { media: [{ id: "v", name: "B.mp4" }], sequences: [{ tracks: [{ name: "V1", clips: [{ id: "b", media: "v", start: 6 * T, duration: 3 * T }] }] }] } as unknown as Project;
+  assert.deepEqual(clipSpan(p, "b"), { name: "B.mp4", track: "V1", from: "0:06.00", to: "0:09.00" });
+  assert.equal(clipSpan(p, "gone"), null);
+  assert.equal(clipSpan(null, "b"), null);
 });
