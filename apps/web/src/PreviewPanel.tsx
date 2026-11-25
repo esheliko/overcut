@@ -5,7 +5,7 @@ import { Icon } from "./icons";
 import { clipCount, timelineEnd } from "./media/plan";
 import { useImportPicker } from "./media/MediaBin";
 import type { Source } from "./media/sources";
-import { canvasSummary, shapeOf } from "./canvas";
+import { canvasSummary, ratioLabel } from "./canvas";
 import { canvasBackingSize } from "./preview/layout";
 import { acquirePreviewHost, type PlayerProxy, type PreviewHost } from "./preview/host";
 import { rateLabel, TICKS_PER_SECOND, timecodeHMS, type Rate } from "./preview/timing";
@@ -199,7 +199,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
           <button className="icon-btn" aria-label={t("player.end")} onClick={() => p()?.seek(p()!.endFrame)}><Icon name="forward" size={20} /></button>
         </div>
         <button className="ratio chip-btn" onClick={onCanvas} aria-label={t("canvas.open", { summary: canvasText })} title={t("canvas.hint")} data-testid="canvas-open">
-          <Icon name="canvas" size={18} /><span>{shapeOf(size)}</span>
+          <Icon name="canvas" size={18} /><span>{ratioLabel(size)}</span>
         </button>
       </div>
     </section>
