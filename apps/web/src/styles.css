@@ -350,13 +350,24 @@ h2, p { margin: 0; }
 .install-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
 .install-dialog h2 { margin: 0 0 var(--space-3); font-size: var(--text-lg); }
 .install-dialog ol { margin: 0 0 var(--space-3); padding-inline-start: var(--space-5); display: grid; gap: var(--space-2); }
-/* Second toolbar row (TL-02/06): duplicate, copy, cut, paste, timing, history. Six 44 px buttons fit at 320 px. */
-.tl-bar2 { justify-content: flex-start; min-height: 48px; }
-.tl-bar2 .tl-group { flex-wrap: wrap; }
-/* Edit tools (TL-04): a visible toggle row, so touch has what the desktop does with Alt. Five 44 px-high buttons share the width, down to 320 px. */
-.tl-tools { gap: 4px; padding: 4px 6px; min-height: 0; justify-content: stretch; }
-.tl-tool { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 4px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--fg); font: inherit; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tl-tool.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* (second toolbar row removed: its buttons live in the More menu) Was: TL-02/06: duplicate, copy, cut, paste, timing, history. Six 44 px buttons fit at 320 px. */
+
+/* One toolbar row: undo redo | split delete ripple | tool picker + More | zoom. The picker is tinted while a tool other than Select is active, so nobody is stuck in Ripple unaware (Esc returns to Select). */
+.tl-pick { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--fg); font: inherit; font-size: 13px; white-space: nowrap; }
+.tl-pick.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.tl-caret { font-size: 10px; opacity: 0.7; }
+.tl-group { min-width: 0; }
+.tl-group .tl-pick { margin-inline-start: 4px; }
+.menu-hint { margin-inline-start: auto; color: var(--muted); font: inherit; font-size: 12px; }
+.menu-label { min-width: 0; display: grid; }
+.menu-why { color: var(--muted); font-size: 11px; line-height: 1.2; }
+.tl-menu { max-height: calc(100dvh - 16px); overflow-y: auto; }
+.tl-menu .menu-row[aria-disabled="true"] { opacity: 0.55; }
+/* Phones: the menu is a bottom sheet and the zoom +/- buttons leave the bar (pinch, the Fit button and the More menu cover them). */
+.tl-sheet { position: fixed; inset: auto 0 0 0 !important; width: auto; min-width: 0; max-height: 70dvh; overflow: auto; border-radius: 16px 16px 0 0; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+.tl-sheet-title { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; font-weight: 700; }
+@media (max-width: 480px) { .tl-wide { display: none; } .tl-pick { padding: 0 6px; } .tl-group .tl-pick { margin-inline-start: 0; } }
+@media (max-width: 359px) { .tl-fit { display: none; } }
 .tl-stage { --gutter-w: 148px; }
 @media (max-width: 559px), (pointer: coarse) { .tl-stage { --gutter-w: 60px; } }
 .edit-sheet { inline-size: min(380px, calc(100vw - 16px)); max-block-size: min(70dvh, 520px); margin: auto 12px 12px auto; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow); overflow: auto; }

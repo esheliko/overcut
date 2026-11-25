@@ -307,7 +307,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         const sc = live.current.scene, v = view.current;
         const t = trackAtY(sc, v, p.y);
         const part = t >= 0 && p.x < gut(v) ? headerPart(v, p.x, p.y - RULER + v.scrollY - t * LANE) : null;
-        canvas.current!.style.cursor = part ? (part === "name" ? "grab" : "pointer") : handleAt(sc, v, flags.current, p.x, p.y, false, true) ? "ew-resize" : "";
+        canvas.current!.style.cursor = part ? (part === "name" ? "grab" : "pointer") : handleAt(sc, v, flags.current, p.x, p.y, false, true) ? "ew-resize" : live.current.tool !== "select" ? "crosshair" : "";
       }
       return;
     }
@@ -388,7 +388,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
       e.preventDefault();
       const sel = indicesOf(l.scene, l.selected);
       switch (cmd.c) {
-        case "clear": if (l.selected.size) { setSelection(new Set()); l.onAnnounce?.({ key: "timeline.say.cleared" }); } break;
+        case "clear": if (l.tool !== "select") { l.onCommand?.({ c: "tool", tool: "select" }); break; } if (l.selected.size) { setSelection(new Set()); l.onAnnounce?.({ key: "timeline.say.cleared" }); } break;
         case "selectAll": setSelection(new Set(l.scene.id)); l.onAnnounce?.({ key: "timeline.say.selectedCount", values: { count: l.scene.clipCount } }); break;
         case "playhead": l.onFrame(clamp(l.frame + cmd.frames, 0, l.endFrame)); break;
         case "pick": {

@@ -12,7 +12,7 @@ test("tracks: add a track, rename it from its header menu, flip mute, remove it,
   // Add a video track: with the toolbar button (desktop) or from a header menu (phone, where the toolbar button makes room).
   const header = async (row: number, dx: number, dy: number) => (phone ? page.touchscreen.tap(box.x + dx, box.y + 30 + row * 52 + dy) : page.mouse.click(box.x + dx, box.y + 30 + row * 52 + dy));
   if (phone) { await header(0, 20, 20); await page.getByTestId("track-add-video").click(); }
-  else { await page.getByTestId("tl-add-track").click(); await page.getByTestId("track-add-video").click(); }
+  else { await page.getByTestId("tl-more").click(); await page.getByTestId("track-add-video").click(); }
   await expect(summary).toContainText("3 tracks");
   // The new video track is on top (row 0): open its menu and rename it.
   await header(0, 20, 14);

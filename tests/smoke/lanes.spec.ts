@@ -10,7 +10,7 @@ async function withSecondVideoTrack(page: Page) {
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.getByTestId("media-input").setInputFiles(media);
   await expect(page.locator("#tl-summary")).toContainText("2 tracks, 2 clips", { timeout: 30_000 });
-  await page.getByTestId("tl-add-track").click();
+  await page.getByTestId("tl-more").click();
   await page.getByTestId("track-add-video").click();
   await expect(page.locator("#tl-summary")).toContainText("3 tracks");
 }
