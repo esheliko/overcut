@@ -14,6 +14,8 @@ import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
 import { clampPps, fitPps, ppsToSlider, sliderToPps } from "./timeline/view";
 import { TimelineCanvas, type CanvasHandle } from "./timeline/TimelineCanvas";
+import { TrackMenu, type TrackAction, type TrackMenuTarget } from "./timeline/TrackMenu";
+import { addTrack, removeTrack, renameTrack, reorderTrack, toggleTrack, TRACK_SAY_KEYS } from "./timeline/tracks";
 import { useProjectStore, useStore } from "./store/projectStore";
 
 export const TIMELINE_SECONDS = 60;
@@ -46,7 +48,9 @@ const KEYS = { undo: "Ctrl+Z", redo: "Ctrl+Shift+Z", split: "S", del: "Del", dup
 /** The history step name (lower case, "Undo <name>") for an edit, from the message that announces it. */
 const LABELS: Record<string, string> = { "timeline.say.split": "timeline.label.split", "timeline.say.deleted": "timeline.label.deleted", "timeline.say.moved": "timeline.label.moved",
   "timeline.say.nudged": "timeline.label.nudged", "timeline.say.trimmed": "timeline.label.trimmed", "timeline.say.duplicated": "timeline.label.duplicated",
-  "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed" };
+  "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed",
+  "timeline.say.track.added": "timeline.label.track.added", "timeline.say.track.removed": "timeline.label.track.removed", "timeline.say.track.moved": "timeline.label.track.edited", "timeline.say.track.renamed": "timeline.label.track.edited",
+  ...Object.fromEntries(TRACK_SAY_KEYS.map((k) => [k, "timeline.label.track.edited"])) };
 const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
@@ -105,6 +109,8 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const heldRef = useRef(held);
   heldRef.current = held;
   const [dialog, setDialog] = useState<"history" | "timing" | null>(null);
+  const [menu, setMenu] = useState<{ target: TrackMenuTarget; anchor: DOMRect } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
   const closeDialog = useCallback(() => setDialog(null), []); // the native dialog hands focus back to the button that opened it
   const lengthSec = Math.max(endFrame / fps, scene.endSec);
   const lengthRef = useRef(lengthSec);
@@ -222,6 +228,17 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
     }
   }, [speak, commit, undoRedo, onNotice, t, setSelected]);
 
+  const trackAction = useCallback((a: TrackAction) => {
+    const sc = live.current.scene;
+    const r = a.a === "toggle" ? toggleTrack(sc, a.track, a.part)
+      : a.a === "rename" ? renameTrack(sc, a.track, a.name)
+      : a.a === "remove" ? removeTrack(sc, a.track)
+      : a.a === "move" ? reorderTrack(sc, a.track, a.to)
+      : addTrack(sc, a.kind, newClipId());
+    if (r) commit(r.ops, r.say);
+  }, [commit]);
+  const openMenu = useCallback((target: TrackMenuTarget, anchor: DOMRect) => setMenu({ target, anchor }), []);
+
   // Shortcuts that work anywhere except while typing in a field.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -257,6 +274,11 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
           <span className="sep" aria-hidden="true" />
           <button className="icon-btn" aria-label={t("timeline.split")} title={tip(t("timeline.split"), KEYS.split)} disabled={off} onClick={() => run({ c: "split" })}><Icon name="split" /></button>
           <button className="icon-btn" aria-label={t("timeline.delete")} title={tip(t("timeline.delete"), KEYS.del)} disabled={off || none} onClick={() => run({ c: "delete" })}><Icon name="trash" /></button>
+          <span className={scene.trackCount > 0 ? "sep tl-add-narrow" : "sep"} aria-hidden="true" />
+          <button className={scene.trackCount > 0 ? "icon-btn tl-add-narrow" : "icon-btn"} aria-label={t("timeline.track.addButton")} title={t("timeline.track.addButton")} data-testid="tl-add-track" aria-haspopup="menu" disabled={off}
+            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu({ kind: "add" }, new DOMRect(r.left, r.bottom, 0, 0)); }}><Icon name="tracks" /></button>
+          <button className="icon-btn tl-track-options" aria-label={t("timeline.track.optionsButton")} title={t("timeline.track.optionsButton")} data-testid="tl-track-options" aria-haspopup="menu" disabled={off || oneIdx.length === 0}
+            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu({ kind: "track", track: scene.clipTrack[oneIdx[0]!]! }, new DOMRect(r.left, r.bottom, 0, 0)); }}><Icon name="trackOptions" /></button>
           {!none && <span className="tl-sel" data-testid="tl-selected">{withLinked ? t("timeline.selected.linked", { count: clipCount }) : t("timeline.selected", { count: clipCount })}</span>}
         </div>
         <label className="zoom">
@@ -281,10 +303,11 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
         onApply={(ops, field, name) => commit(mirrorTrims(scene, ops), say("timeline.say.timed", { field, name }))} /></Suspense>}
+      {menu && <TrackMenu scene={scene} target={menu.target} anchor={menu.anchor} onAct={trackAction} onClose={closeMenu} />}
       <div className="tl-stage">
         {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t("timeline.empty")}</p>}
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} onDropMedia={onDropMedia} />
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} />
       </div>
     </section>
   );

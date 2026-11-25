@@ -45,6 +45,8 @@ const PATHS = {
   timing: `${c(12, 13, 8)}M12 9v4l3 2M9 2h6`,
   history: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2",
   canvas: "M3 7h18v10H3zM7 3v4M17 3v4M7 17v4M17 17v4",
+  tracks: "M4 6h12M4 12h9M4 18h12M19 8v8M15 12h8",
+  trackOptions: "M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
 } as const;
 

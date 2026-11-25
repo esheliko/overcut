@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gutterShift } from "./timeline-geometry";
 
 // TL-02 / TL-06: duplicate, copy / paste, numeric trim and the history panel, all through the toolbar (touch friendly) on phone and desktop.
 test("duplicate, copy and paste, numeric timing and the history panel go through the engine", async ({ page }, info) => {
@@ -19,7 +20,8 @@ test("duplicate, copy and paste, numeric timing and the history panel go through
   }
 
   const box = (await canvas.boundingBox())!;
-  const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + x, box.y + y) : page.mouse.click(box.x + x, box.y + y));
+  const dg = await gutterShift(page);
+  const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + dg + x, box.y + y) : page.mouse.click(box.x + dg + x, box.y + y));
   await at(108, 30 + 26); // select the first clip
 
   await page.getByTestId("tl-duplicate").click();

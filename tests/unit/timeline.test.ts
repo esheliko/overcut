@@ -11,7 +11,8 @@ const view = (o: Partial<View> = {}): View => ({ pps: 40, scrollX: 0, scrollY: 0
 test("scene flattens the project into sorted typed arrays", () => {
   assert.equal(scene.trackCount, 4);
   assert.equal(scene.clipCount, 40);
-  assert.deepEqual([...scene.trackKind], [0, 1, 0, 1]);
+  assert.deepEqual([...scene.trackKind], [0, 0, 1, 1], "rows: video tracks from the top of the stack down, then audio");
+  assert.deepEqual([...scene.trackModel], [2, 0, 1, 3]);
   for (let t = 0; t < 4; t++) for (let i = scene.trackFirst[t]! + 1; i < scene.trackFirst[t + 1]!; i++) assert.ok(scene.start[i]! >= scene.end[i - 1]!);
   assert.equal(scene.start[0], 0);
   assert.ok(Math.abs(scene.end[0]! * TICKS_PER_SECOND - Math.round(scene.end[0]! * TICKS_PER_SECOND)) < 1e-3);
