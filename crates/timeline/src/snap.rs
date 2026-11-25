@@ -221,6 +221,7 @@ mod tests {
                         duration: tk(900),
                         speed: Rational::new(1, 1).unwrap(),
                         link: None,
+                        transform: Default::default(),
                     })
                     .collect(),
             })

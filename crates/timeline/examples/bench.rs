@@ -75,6 +75,7 @@ fn main() {
                 duration: t(29),
                 speed: Rational::new(1, 1).unwrap(),
                 link: None,
+                transform: Default::default(),
             };
             clip_ids.push((ti, c.id, k));
             track.clips.push(c);

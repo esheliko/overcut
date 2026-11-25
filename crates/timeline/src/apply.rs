@@ -6,7 +6,7 @@ use app_model::{
 };
 use std::fmt;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum OpError {
     UnknownClip(ClipId),
     UnknownTrack(TrackId),
@@ -22,6 +22,8 @@ pub enum OpError {
     BadMediaRef,
     /// `SetMediaTags` with an empty, untrimmed, duplicate or too long tag, or too many tags.
     BadTags,
+    /// `SetClipTransform` (or an inserted clip) with a non-finite value, a scale <= 0, or opacity / crop out of range.
+    BadTransform,
     /// The id of a new clip is already used by something in the document.
     IdInUse(String),
     TrackLocked(TrackId),
@@ -149,6 +151,7 @@ fn check_clip(p: &Project, track: &Track, c: &Clip) -> Result<(), OpError> {
         return Err(OpError::KindMismatch);
     }
     c.end().ok_or(OpError::OutOfRange)?;
+    c.transform.validate().map_err(|_| OpError::BadTransform)?;
     if let Some(len) = media.duration {
         let end_in_source = add(c.source_in, scaled(c.duration, c.speed)?)?;
         if end_in_source > len {
@@ -532,6 +535,17 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
             let old = std::mem::replace(&mut t.clips[loc.clip].link, link);
             Ok(Inverse(vec![Op::SetLink { clip, link: old }]))
         }
+        Op::SetClipTransform { clip, transform } => {
+            let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
+            unlocked(&p.sequences[loc.seq].tracks[loc.track])?;
+            transform.validate().map_err(|_| OpError::BadTransform)?;
+            let t = track_mut(p, loc.seq, loc.track);
+            let old = std::mem::replace(&mut t.clips[loc.clip].transform, transform);
+            Ok(Inverse(vec![Op::SetClipTransform {
+                clip,
+                transform: old,
+            }]))
+        }
         Op::Split {
             clip,
             at,
@@ -558,6 +572,7 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 duration: sub(end, at)?,
                 speed: c.speed,
                 link: c.link.and(new_link),
+                transform: Box::new(c.transform.split_right(left_len)),
             };
             let undo = restore_geometry(c);
             // Both halves lie inside the original, so they are valid whenever it was; no further checks needed.

@@ -112,6 +112,67 @@
       "link": null
     },
     {
+      "op": "set_clip_transform",
+      "clip": "00000000000000000000000000000065",
+      "transform": {
+        "position_x": {
+          "value": 0.25
+        },
+        "scale_x": {
+          "value": 0.5
+        },
+        "scale_y": {
+          "value": 0.5
+        },
+        "rotation": {
+          "value": 12.5,
+          "keys": [
+            {
+              "t": 0,
+              "v": 0.0,
+              "easing": {
+                "kind": "linear"
+              }
+            },
+            {
+              "t": 1000,
+              "v": 45.0,
+              "easing": {
+                "kind": "hold"
+              }
+            }
+          ]
+        },
+        "anchor_x": {
+          "value": 0.0
+        },
+        "anchor_y": {
+          "value": 0.0
+        },
+        "position_y": {
+          "value": 0.0
+        },
+        "crop_left": {
+          "value": 0.1
+        },
+        "crop_top": {
+          "value": 0.0
+        },
+        "crop_right": {
+          "value": 0.0
+        },
+        "crop_bottom": {
+          "value": 0.0
+        },
+        "opacity": {
+          "value": 0.8
+        },
+        "flip_h": true,
+        "flip_v": false,
+        "fit": "cover"
+      }
+    },
+    {
       "op": "add_track",
       "sequence": "00000000000000000000000000000002",
       "index": 1,

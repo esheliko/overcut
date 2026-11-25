@@ -3,15 +3,16 @@
 
 use crate::ids::{ClipId, LinkId, MediaId, ProjectId, SequenceId, TrackId};
 use crate::time::{Rational, Time};
+use crate::transform::ClipTransform;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 
 /// Version of the document schema. Bump (and add a migration + fixture, M1-005) on any incompatible change.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Project {
     /// The schema this document was written with; readers migrate older versions and refuse newer ones.
     pub schema_version: u32,
@@ -28,7 +29,7 @@ pub struct Resolution {
     pub height: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Sequence {
     pub id: SequenceId,
     pub name: String,
@@ -82,7 +83,7 @@ impl Sequence {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Track {
     pub id: TrackId,
     pub kind: TrackKind,
@@ -106,7 +107,7 @@ pub struct Track {
     pub clips: Vec<Clip>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Clip {
     pub id: ClipId,
     pub media: MediaId,
@@ -123,6 +124,15 @@ pub struct Clip {
     /// Only the editing layer acts on it; evaluation and export ignore it. Absent in files made before linking existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<LinkId>,
+    /// Position, scale, rotation, crop, flip, opacity and fit (M2-003). The identity is the default and is not written.
+    #[serde(default, skip_serializing_if = "transform_is_identity")]
+    pub transform: Box<ClipTransform>,
+}
+
+/// Boxed so a `Clip` (and every `Op` carrying one) stays small: a transform is a dozen animatable numbers.
+#[allow(clippy::borrowed_box)]
+fn transform_is_identity(t: &Box<ClipTransform>) -> bool {
+    t.is_identity()
 }
 
 fn unit_speed() -> Rational {
@@ -318,6 +328,9 @@ impl Project {
         if c.speed.num <= 0 {
             return bad("speed must be positive");
         }
+        if c.transform.validate().is_err() {
+            return bad("transform has a value that is not finite or out of range");
+        }
         if c.start < prev_end {
             return Err(ModelError::Overlap {
                 track: t.id,
@@ -369,6 +382,7 @@ mod tests {
             duration: Time::from_seconds(2).unwrap(),
             speed: unit_speed(),
             link: None,
+            transform: Default::default(),
         };
         let (c1, mut c2) = (clip(&mut ids, 0), clip(&mut ids, 3));
         // linked video + its own audio on the audio track
@@ -392,7 +406,7 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: Project = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
-        assert!(json.contains("\"schema_version\":2"));
+        assert!(json.contains("\"schema_version\":3"));
     }
 
     #[test]
@@ -455,8 +469,8 @@ mod tests {
             p.validate().unwrap_err()
         };
         assert!(matches!(
-            edit(&|p| p.schema_version = 3),
-            ModelError::UnsupportedVersion(3)
+            edit(&|p| p.schema_version = 4),
+            ModelError::UnsupportedVersion(4)
         ));
         assert!(matches!(
             edit(&|p| p.media.clear()),
