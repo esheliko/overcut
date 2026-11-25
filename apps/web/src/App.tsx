@@ -596,7 +596,7 @@ function Editor({ store }: { store: ProjectStore }) {
           e.preventDefault();
           void media.addToTimeline(id, Math.round((store.getState().playhead * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
         }}>
-          <Timeline playing={playing} zoom={zoom} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} />
+          <Timeline playing={playing} zoom={zoom} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onDropMedia={(id, tick) => void media.addToTimeline(id, tick).then((ok) => ok && announce(t("media.added")))} />
         </div>
       </main>
 

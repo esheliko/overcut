@@ -5,7 +5,9 @@ import { onThemeChange } from "../theme/tokens";
 import { DARK, drawTimeline, newOverlay, paletteFromCss, type DrawStats, type Overlay, type Palette } from "./draw";
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
 import { handleAt } from "./hit";
-import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
+import { BIN_DRAG_TYPE } from "../media/sources";
+import { snapDrop, SNAP_PX } from "./arrange";
+import { applySelect, IDLE, longPress, markPreview, sameLayout, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
@@ -39,12 +41,14 @@ type Props = {
   onReady?: (h: CanvasHandle) => void;
   /** Real waveforms and filmstrips; without it the canvas draws placeholders. */
   media?: MediaLayer;
+  /** A media-bin card was dropped on the canvas: put it on the timeline at this tick. */
+  onDropMedia?: (id: string, tick: number) => void;
 };
 
 const TAP_SLOP = 6;
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
-export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onReady, media }: Props) {
+export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onReady, media, onDropMedia }: Props) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ pps: zoom, scrollX: 0, scrollY: 0, width: 300, height: 150 });
@@ -60,7 +64,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const appliedSel = useRef<ReadonlySet<string> | null>(null);
   const resetPreview = () => {
     const o = ui.current;
-    o.ghosts = null; o.trimClip = -1; o.marquee = null;
+    o.ghosts = null; o.trimClip = -1; o.marquee = null; o.guideSec = null;
     const f = flags.current;
     for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
   };
@@ -113,6 +117,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const sceneSeen = useRef<Scene | null>(null);
   useEffect(() => {
     if (sceneSeen.current === scene && appliedSel.current === selected) return; // the canvas itself made this change and already updated the flags
+    // The same layout rebuilt mid-gesture (a thumbnail, a save): keep the drag going instead of dropping it.
+    if (appliedSel.current === selected && sceneSeen.current !== null && sameLayout(sceneSeen.current, scene)) { sceneSeen.current = scene; return; }
     sceneSeen.current = scene;
     flags.current = flagsOf(scene, indicesOf(scene, selected));
     ui.current.selected = flags.current;
@@ -174,7 +180,34 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     l.onFrame(clamp(Math.round(xToTime(view.current, x) * l.fps), 0, l.endFrame));
   };
   const stopFling = () => { cancelAnimationFrame(gesture.current.fling); gesture.current.fling = 0; };
-  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current });
+  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, playhead: Math.round((live.current.frame / live.current.fps) * TICKS_PER_SECOND) });
+  /** Drag from the media bin: a guide line shows where the card will land (snapped), the drop puts it there. */
+  const dropAt = (e: React.DragEvent) => {
+    const l = live.current;
+    const x = e.clientX - canvas.current!.getBoundingClientRect().left;
+    const raw = Math.max(0, xToTime(view.current, x)) * TICKS_PER_SECOND;
+    const ft = TICKS_PER_SECOND / l.fps;
+    return snapDrop(l.scene, raw, Math.round((l.frame / l.fps) * TICKS_PER_SECOND), (SNAP_PX / view.current.pps) * TICKS_PER_SECOND, ft);
+  };
+  const onDragOver = (e: React.DragEvent) => {
+    if (!onDropMedia || !e.dataTransfer.types.includes(BIN_DRAG_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    ui.current.guideSec = dropAt(e).delta / TICKS_PER_SECOND;
+    invalidate();
+  };
+  const onDragLeave = () => { ui.current.guideSec = null; invalidate(); };
+  const onDrop = (e: React.DragEvent) => {
+    const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
+    if (!onDropMedia || !id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const at = Math.round(dropAt(e).delta);
+    ui.current.guideSec = null; invalidate();
+    onDropMedia(id, at);
+  };
+  const hold = useRef(0);
+  const stopHold = () => { clearTimeout(hold.current); hold.current = 0; };
   const pev = (e: React.PointerEvent, p: { x: number; y: number }): PEvent => ({ x: p.x, y: p.y, kind: e.pointerType === "touch" ? "touch" : e.pointerType === "pen" ? "pen" : "mouse", shift: e.shiftKey, additive: e.ctrlKey || e.metaKey });
 
   const setSelection = (next: ReadonlySet<string>) => {
@@ -195,10 +228,11 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
     const o = ui.current;
-    o.ghosts = null; o.trimClip = -1; o.marquee = null;
+    o.ghosts = null; o.trimClip = -1; o.marquee = null; o.guideSec = null;
     markPreview(flags.current, g);
     if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTrack = g.track !== g.from ? g.track : -1;
+      o.guideSec = g.guide != null ? g.guide / TICKS_PER_SECOND : null;
     } else if (g.k === "trim") {
       o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND;
     } else if (g.k === "marquee") o.marquee = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 };
@@ -222,6 +256,15 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     const r = pointerDown(ctxNow(), pev(e, p));
     g.mode = r.g.k === "scrub" ? "scrub" : r.g.k === "pan" ? "pan" : r.g.k === "idle" ? "none" : "edit";
     run(r);
+    stopHold();
+    if (e.pointerType === "touch" && r.g.k === "press" && r.g.then === "pan") {
+      // Press and hold on a clip picks it up (a short buzz where the device has one); dragging then moves it instead of panning.
+      hold.current = window.setTimeout(() => {
+        hold.current = 0;
+        const lp = longPress(ctxNow(), gest.current);
+        if (lp) { run(lp); try { navigator.vibrate?.(12); } catch { /* no haptics */ } }
+      }, 380);
+    }
     c.dataset.pointer = ""; // focus by pointer: no focus frame (keyboard focus shows it, see .tl-canvas:focus-visible)
     c.focus({ preventScroll: true });
   };
@@ -237,6 +280,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     const p = local(e);
     ptr.current.set(e.pointerId, p);
     const g = gesture.current, v = view.current;
+    if (hold.current && Math.hypot(p.x - g.sx, p.y - g.sy) > TAP_SLOP) stopHold();
     if (g.mode === "pinch" && ptr.current.size === 2) {
       const [a, b] = [...ptr.current.values()] as [{ x: number; y: number }, { x: number; y: number }];
       const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
@@ -259,6 +303,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     }
   };
   const onUp = (e: React.PointerEvent) => {
+    stopHold();
     const g = gesture.current;
     ptr.current.delete(e.pointerId);
     if (g.mode === "edit" && ptr.current.size === 0) {
@@ -282,6 +327,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     if (ptr.current.size === 0) g.mode = "none";
   };
   const onCancel = (e: React.PointerEvent) => {
+    stopHold();
     ptr.current.delete(e.pointerId);
     gest.current = IDLE; syncPreview(IDLE);
     if (ptr.current.size === 0) gesture.current.mode = "none";
@@ -360,6 +406,9 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onCancel}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
         onKeyDown={(e) => { if (!isModifierKey(e.key)) delete e.currentTarget.dataset.pointer; onKey(e); }}
         onBlur={(e) => { delete e.currentTarget.dataset.pointer; }}
       />

@@ -36,6 +36,8 @@ type Props = {
   fileOf?: (id: string) => Promise<File | null>;
   /** Ids (comma separated) of the media whose file is readable right now: media that turns up here after being offline is requested again. */
   readyIds?: string;
+  /** A media-bin card was dropped on the timeline canvas: place it at this tick. */
+  onDropMedia?: (id: string, tick: number) => void;
 };
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
@@ -52,7 +54,7 @@ const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 const HistoryDialog = lazy(() => import("./timeline/EditDialogs").then((m) => ({ default: m.HistoryDialog })));
 const TimingDialog = lazy(() => import("./timeline/EditDialogs").then((m) => ({ default: m.TimingDialog })));
 
-export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf, readyIds = "" }: Props) {
+export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf, readyIds = "", onDropMedia }: Props) {
   const { t } = useI18n();
   // The sample project uses synthetic media; imported files are decoded by the engine from the bin's files (placeholders while extracting or offline).
   const fileOfRef = useRef(fileOf);
@@ -281,7 +283,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         onApply={(ops, field, name) => commit(mirrorTrims(scene, ops), say("timeline.say.timed", { field, name }))} /></Suspense>}
       <div className="tl-stage">
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} />
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} onDropMedia={onDropMedia} />
       </div>
     </section>
   );
