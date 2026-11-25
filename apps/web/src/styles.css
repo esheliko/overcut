@@ -500,6 +500,7 @@ h2, p { margin: 0; }
 /* F3 theme menu: the top-bar popover and the phone menu rows; the checked choice has a visible tick, not colour alone. */
 .theme-menu { position: relative; }
 .theme-pop { inset-inline-start: 0; inset-inline-end: auto; min-width: 200px; }
+.top-actions .theme-pop { inset-inline-start: auto; inset-inline-end: 0; } /* the button sits at the right edge of the bar: open the menu leftwards */
 .menu-check { display: inline-block; inline-size: 1.2em; font-weight: 700; }
 .menu-row[aria-checked="true"] { font-weight: 700; }
 /* A narrow Media panel (phone < 360 px, the 320 px laptop column): Filter and sort keeps its icon (and the On badge); its words stay for screen readers and as the tooltip, so Import and the filter fit one row without wrapping */
