@@ -60,7 +60,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const appliedSel = useRef<ReadonlySet<string> | null>(null);
   const resetPreview = () => {
     const o = ui.current;
-    o.ghosts = null; o.trimClip = -1; o.marquee = null;
+    o.ghosts = null; o.trimClip = -1; o.trimRight = -1; o.marquee = null;
     const f = flags.current;
     for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
   };
@@ -194,12 +194,12 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
     const o = ui.current;
-    o.ghosts = null; o.trimClip = -1; o.marquee = null;
+    o.ghosts = null; o.trimClip = -1; o.trimRight = -1; o.marquee = null;
     markPreview(flags.current, g);
     if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTrack = g.track !== g.from ? g.track : -1;
     } else if (g.k === "trim") {
-      o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND;
+      o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND; o.trimRight = g.right ?? -1;
     } else if (g.k === "marquee") o.marquee = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 };
     invalidate();
   };

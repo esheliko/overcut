@@ -58,10 +58,10 @@ export interface Overlay {
   /** Move preview: the clips, the shift in seconds, and the track every ghost sits on (-1 = each clip's own track). */
   ghosts: number[] | null; ghostDSec: number; ghostTrack: number;
   /** Trim preview: clip index (-1 none), which edge, and the new boundary in seconds. */
-  trimClip: number; trimEnd: boolean; trimSec: number;
+  trimClip: number; trimEnd: boolean; trimSec: number; trimRight: number;
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, marquee: null });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, marquee: null });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -183,6 +183,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   if (ui.trimClip >= 0) {
     const i = ui.trimClip;
     ghost(ctx, v, p, scene.clipTrack[i]!, ui.trimEnd ? scene.start[i]! : ui.trimSec, ui.trimEnd ? ui.trimSec : scene.end[i]!, scene.trackKind[scene.clipTrack[i]!] === 1);
+    if (ui.trimRight >= 0) ghost(ctx, v, p, scene.clipTrack[ui.trimRight]!, ui.trimSec, scene.end[ui.trimRight]!, scene.trackKind[scene.clipTrack[ui.trimRight]!] === 1); // a seam: the right clip follows the boundary
   }
 
   // Gutter (sticky) with track labels.

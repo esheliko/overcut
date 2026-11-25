@@ -267,3 +267,32 @@ const tc = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(2).pad
 export function describeClip(scene: Scene, i: number): Say {
   return { key: "timeline.say.clip", values: { name: scene.name[i]!, track: scene.trackName[scene.clipTrack[i]!]!, from: tc(scene.start[i]!), to: tc(scene.end[i]!) } };
 }
+
+/** The seam between clip `l` and the clip `r` that starts where it ends (issue #105). Dragging it moves the boundary: `l` ends at
+ *  the new boundary and `r` starts there, by the same amount. The boundary stays a whole number of frames, `l` and `r` keep at
+ *  least one frame, `r` cannot reveal more source than it has before its start, `l` cannot run past its media, and nothing goes
+ *  before the timeline start. `at` is the current boundary (ticks). */
+export function seamRange(scene: Scene, l: number, r: number): { min: number; max: number; at: number } {
+  const ft = scene.frameTicks, at = scene.tStart[r]!;
+  const numR = scene.speedNum[r]! || 1, denR = scene.speedDen[r]! || 1;
+  const reveal = Math.floor((scene.tSrcIn[r]! * denR) / numR);
+  const numL = scene.speedNum[l]! || 1, denL = scene.speedDen[l]! || 1;
+  const md = scene.mediaDur[l]!;
+  const tail = md > 0 ? scene.tStart[l]! + Math.floor(((md - scene.tSrcIn[l]!) * denL) / numL) : Infinity;
+  const min = Math.max(scene.tStart[l]! + ft, at - reveal, 0);
+  const max = Math.min(tail, scene.tStart[r]! + scene.tDur[r]! - ft);
+  return { min, max, at };
+}
+
+/** The seam boundary closest to `desired` (ticks), inside `seamRange` and on a whole frame. */
+export function seamTarget(scene: Scene, l: number, r: number, desired: number): number {
+  const s = seamRange(scene, l, r);
+  return s.at + snapDelta(desired - s.at, s.min - s.at, s.max - s.at, scene.frameTicks);
+}
+
+/** The ops that move a seam to `value`: the left clip's end and the right clip's start (and their linked partners), in an order
+ *  that never overlaps two clips mid-way: the right side goes first when the seam moves right, the left side first when it moves left. */
+export function seamOps(scene: Scene, l: number, r: number, value: number): Op[] {
+  const left = linkedTrimOps(scene, l, "end", value), right = linkedTrimOps(scene, r, "start", value);
+  return value > scene.tStart[r]! ? [...right, ...left] : [...left, ...right];
+}
