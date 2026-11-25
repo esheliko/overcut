@@ -44,7 +44,7 @@ h2, p { margin: 0; }
 .export-go:active:not(:disabled) { transform: scale(0.97); }
 
 /* Workspace: phone */
-.workspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(150px, 36%) auto; grid-template-areas: "stage" "timeline" "tools"; background: var(--bg); }
+.workspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(240px, 36%) auto; grid-template-areas: "stage" "timeline" "tools"; background: var(--bg); }
 .stage { grid-area: stage; } .timeline { grid-area: timeline; } .tools { grid-area: tools; } .library { grid-area: library; } .inspector { grid-area: inspector; }
 
 .tools { display: flex; gap: 2px; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; background: var(--surface); border-top: 1px solid var(--line); }

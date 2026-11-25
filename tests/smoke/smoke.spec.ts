@@ -310,6 +310,9 @@ for (const p of PROFILES) {
     expect(overlap(timeline, tools)).toBe(false);
     expect(preview.height).toBeGreaterThan(p.h * 0.2); // the preview is never squeezed out
     expect(timeline.height).toBeGreaterThan(100);
+    if (p.name === "phone-portrait" && p.w === 320) { // A5: the track area holds the ruler and two lanes (V1, A1) without clipping
+      expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(30 + 2 * 52);
+    }
     if (p.name === "phone-landscape") { // B3: both toolbar rows share one row, and the track area keeps at least 160 px
       const rows = await page.locator(".tl-bars .tl-group").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
       expect(new Set(rows).size).toBe(1);

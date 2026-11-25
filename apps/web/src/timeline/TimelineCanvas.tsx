@@ -9,7 +9,7 @@ import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, ty
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
-import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
+import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER, LANE, RULER, timeToX, xToTime, zoomAt, zoomKeeping, type View } from "./view";
 
 export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement };
 const CLIP_LIST_MAX = 200;
@@ -126,8 +126,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   useEffect(() => {
     const v = view.current;
     if (Math.abs(v.pps - zoom) < 1e-6) return;
-    const px = timeToX(v, frame / fps);
-    zoomAt(v, zoom, px > GUTTER && px < v.width ? px : GUTTER + (v.width - GUTTER) / 2);
+    zoomKeeping(v, zoom, frame / fps);
     invalidate();
   }, [zoom]);
 
