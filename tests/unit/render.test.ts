@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { TransformValues } from "../../packages/engine-client/src/types";
 import { layerOf, placeLayer, wrapRenderer, type GpuLayer, type RawGpuRenderer } from "../../packages/engine-client/src/render";
 
 /** Records what the wrapper sends to the generated class. */
@@ -71,7 +72,7 @@ test("containScale fits a picture inside the canvas without cropping; layerOf ap
 });
 
 const ident = { opacity: 1, position: [0, 0], scale: [1, 1], rotation: 0, anchor: [0, 0], crop: [0, 0, 0, 0], flip: [false, false], fit: "contain" } as const;
-const props = (over: object) => ({ ...ident, ...over }) as unknown as import("../../packages/engine-client/src/types").TransformValues;
+const props = (over: object) => ({ ...ident, ...over }) as unknown as TransformValues;
 const near = (a: number[], b: number[]) => a.forEach((v, i) => assert.ok(Math.abs(v - b[i]!) < 1e-9, `${a} vs ${b}`));
 
 test("placeLayer: identity centres the picture at the fit size; cover and stretch fill the canvas", () => {
