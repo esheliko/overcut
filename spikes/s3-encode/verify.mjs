@@ -9,7 +9,8 @@ const run = (cmd, args) => new Promise((resolve, reject) => {
   p.on("close", (code) => (code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`${cmd} ${code}: ${err.slice(-500)}`))));
 });
 
-export async function verify(file, seconds, fps = 30) {
+/** `period`: timeline seconds between flashes/clicks (1 for a normal clip, 1 / speed for a sped-up one). */
+export async function verify(file, seconds, fps = 30, period = 1) {
   const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-count_packets", "-show_streams", "-show_format", "-of", "json", file]).toString());
   const v = probe.streams.find((s) => s.codec_type === "video"), a = probe.streams.find((s) => s.codec_type === "audio");
   const head = readFileSync(file).subarray(0, 2_000_000);
@@ -25,14 +26,15 @@ export async function verify(file, seconds, fps = 30) {
   const pcm = await run("ffmpeg", ["-v", "error", "-i", file, "-map", "0:a:0", "-ac", "1", "-ar", "48000", "-f", "f32le", "-"]);
   const f = new Float32Array(pcm.buffer, pcm.byteOffset, Math.floor(pcm.length / 4));
   const SR = 48000, offs = [];
-  const nClicks = Math.floor(seconds);
+  const nClicks = Math.floor(seconds / period + 1e-9);
   for (let k = 0; k < nClicks; k++) {
     // search a window around the nominal click for the first sample above threshold (energy-based, tolerant to codec pre-echo)
-    const lo = Math.max(0, Math.round((k - 0.08 - aStart) * SR)), hi = Math.min(f.length, Math.round((k + 0.08 - aStart) * SR));
+    const at = k * period;
+    const lo = Math.max(0, Math.round((at - 0.08 - aStart) * SR)), hi = Math.min(f.length, Math.round((at + 0.08 - aStart) * SR));
     let on = -1; for (let i = lo; i < hi; i++) if (Math.abs(f[i]) > 0.25) { on = i; break; }
     if (on < 0) { offs.push(null); continue; }
     const tClick = aStart + on / SR;
-    const flash = flashes.reduce((b, t) => (Math.abs(t - k) < Math.abs(b - k) ? t : b), Infinity);
+    const flash = flashes.reduce((b, t) => (Math.abs(t - at) < Math.abs(b - at) ? t : b), Infinity);
     offs.push((tClick - flash) * 1000);
   }
   const ok = offs.filter((x) => x !== null);
@@ -51,4 +53,4 @@ export async function verify(file, seconds, fps = 30) {
     firstOffsetsMs: offs.slice(0, 5).map((x) => x && +x.toFixed(2)), lastOffsetsMs: offs.slice(-5).map((x) => x && +x.toFixed(2)),
   };
 }
-if (process.argv[1] && process.argv[1].endsWith("verify.mjs")) console.log(JSON.stringify(await verify(process.argv[2], +process.argv[3] ?? 300), null, 2));
+if (process.argv[1] && process.argv[1].endsWith("verify.mjs")) console.log(JSON.stringify(await verify(process.argv[2], +process.argv[3] ?? 300, 30, +(process.argv[4] ?? 1)), null, 2));

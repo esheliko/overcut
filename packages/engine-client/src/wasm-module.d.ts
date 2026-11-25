@@ -49,6 +49,8 @@ declare module "@app/wasm-pkg" {
     recovery(): string | undefined;
   }
   export function capabilities(probe_json: string): string;
+  /** Pitch-keeping time stretch by `num/den`; `planar` and the result hold `channels` equal-length channels one after the other. */
+  export function stretch_audio(planar: Float32Array, channels: number, rate: number, num: number, den: number): Float32Array;
   /** A waveform extraction. Mirrors `PeaksJob` in crates/wasm/src/lib.rs. */
   export class PeaksJob {
     constructor(sampleRate: number, channels: number, resume: Uint8Array);

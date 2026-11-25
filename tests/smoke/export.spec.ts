@@ -17,7 +17,7 @@ interface Outcome {
   stats?: { frames: number; durationSeconds: number; speedVsRealtime: number; peakEncodeQueue: number; codecs: string };
   slices?: string[];
 }
-type Run = { seconds: number; realMedia?: { base64: string; name: string }; width?: number; height?: number; settings?: Record<string, unknown>; cancelAfterProgress?: number; fps?: [number, number] };
+type Run = { seconds: number; speed?: [number, number]; realMedia?: { base64: string; name: string }; width?: number; height?: number; settings?: Record<string, unknown>; cancelAfterProgress?: number; fps?: [number, number] };
 
 // Export is engine work in a Worker, not layout: one viewport is enough (the phone project would only repeat it).
 test.beforeEach(async ({ page }, info) => {
@@ -131,3 +131,38 @@ test("export: a real file goes through the production decoder (video and audio) 
   const luma = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", "select=eq(n\\,15),scale=1:1,format=gray", "-frames:v", "1", "-f", "rawvideo", "-"]);
   expect(luma[0] ?? 0).toBeGreaterThan(20);
 });
+
+// M2-026: a sped-up or slowed clip exports at its new length, the click stays on its flash (flash and click are once per SOURCE second,
+// so the pair repeats every 1 / speed timeline seconds), and the pitch of the sound is kept.
+for (const [num, den] of [[2, 1], [1, 2]] as const) {
+  test(`export: a ${num / den}x clip has the right length and its click stays on its flash`, async ({ page }, info) => {
+    let ffmpeg = true;
+    try {
+      execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
+    } catch {
+      ffmpeg = false;
+    }
+    test.skip(!ffmpeg, "ffmpeg is not installed here");
+    const seconds = 6;
+    const r = await run(page, { seconds, speed: [num, den], settings: pinned }, true);
+    expect(r.ok).toBe(true);
+    expect(r.stats?.frames).toBe(seconds * 30);
+    const file = info.outputPath(`speed-${num}-${den}.webm`);
+    writeFileSync(file, Buffer.concat((r.slices ?? []).map((s) => Buffer.from(s, "base64"))));
+    const period = den / num;
+    const out = JSON.parse(execFileSync("node", ["spikes/s3-encode/verify.mjs", file, String(seconds), String(period)], { maxBuffer: 1 << 24 }).toString()) as {
+      decodedVideoFrames: number;
+      expectedVideoFrames: number;
+      flashesFound: number;
+      expectedFlashes: number;
+      clicksMeasured: number;
+      maxAbsOffsetFrames: number;
+    };
+    const length = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString());
+    expect(out.decodedVideoFrames).toBe(out.expectedVideoFrames);
+    expect(length).toBeCloseTo(seconds, 1);
+    expect(out.flashesFound).toBeGreaterThanOrEqual(out.expectedFlashes - 1);
+    expect(out.clicksMeasured).toBeGreaterThanOrEqual(out.expectedFlashes - 1); // an edge click may fall inside the first/last window
+    expect(out.maxAbsOffsetFrames).toBeLessThan(1); // the bar: under one frame
+  });
+}

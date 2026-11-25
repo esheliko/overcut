@@ -11,7 +11,10 @@ import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from 
 import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
 import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { clipboardState } from "./commands/availability";
-import { PALETTE_EVENT } from "./commands/palette";
+import { COMMAND_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
+import { addMarkerPlan, clearRangePlan, loopPlan, rangePlan } from "./timeline/markers";
+import { MarkerMenu, type MarkerAction } from "./timeline/MarkerMenu";
+import { deleteMarkerOp, setMarkerPropsOp } from "@app/engine-client";
 import { hopStep } from "./timeline/arrange";
 import { ToolbarMenu } from "./timeline/ToolbarMenu";
 import { chordLabel } from "./commands/registry";
@@ -120,6 +123,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const heldRef = useRef(held);
   heldRef.current = held;
   clipboardState.copied = held.length > 0;
+  clipboardState.range = scene.range !== null;
   const [tool, setTool] = useState<Tool>("select");
   /** The track last clicked: where a paste lands when no clip is selected. */
   const armed = useRef<string | null>(null);
@@ -131,6 +135,9 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const [dialog, setDialog] = useState<"history" | "timing" | null>(null);
   const [menu, setMenu] = useState<{ target: TrackMenuTarget; anchor: DOMRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const [markerMenu, setMarkerMenu] = useState<{ id: string; anchor: DOMRect } | null>(null);
+  const closeMarkerMenu = useCallback(() => setMarkerMenu(null), []);
+  const openMarkerMenu = useCallback((id: string, anchor: DOMRect) => setMarkerMenu({ id, anchor }), []);
   const closeDialog = useCallback(() => setDialog(null), []); // the native dialog hands focus back to the button that opened it
   const lengthSec = Math.max(endFrame / fps, scene.endSec);
   const lengthRef = useRef(lengthSec);
@@ -293,6 +300,26 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         if (plan.skipped > 0) onNotice(t("timeline.say.pasteSkipped", { count: plan.skipped }));
         break;
       }
+      case "markerEdit": window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: cmd })); break; // the canvas knows where the marker's flag is
+      case "marker": {
+        const plan = addMarkerPlan(sc, tick, newClipId());
+        if (plan.ops.length === 0) { speak(plan.say); onNotice(t(plan.say.key, plan.say.values)); break; }
+        commit(plan.ops, plan.say);
+        break;
+      }
+      case "range": {
+        if (cmd.what === "play") {
+          const r = sc.range ?? { start: 0, end: Math.round(sc.endSec * TICKS_PER_SECOND) };
+          if (r.end <= r.start) break;
+          speak(say("timeline.say.range.playing"));
+          window.dispatchEvent(new CustomEvent(PLAY_RANGE_EVENT, { detail: { start: Math.ceil(r.start / ft), end: Math.floor(r.end / ft), loop: sc.loop } }));
+          break;
+        }
+        const plan = cmd.what === "clear" ? clearRangePlan(sc) : cmd.what === "loop" ? loopPlan(sc) : rangePlan(sc, cmd.what === "in" ? "start" : "end", tick);
+        if (plan.ops.length === 0) { speak(plan.say); onNotice(t(plan.say.key, plan.say.values)); break; }
+        commit(plan.ops, plan.say);
+        break;
+      }
       case "unlink": {
         const ops = unlinkOps(sc, mine);
         if (ops.length === 0) break;
@@ -313,6 +340,10 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
     if (r && r.ops.length === 0) { speak(r.say); onNotice(t(r.say.key, r.say.values)); return; }
     if (r) commit(r.ops, r.say);
   }, [commit, speak, onNotice, t]);
+  const markerAction = useCallback((a: MarkerAction) => {
+    const op = a.a === "rename" ? setMarkerPropsOp(a.id, { name: a.name }) : a.a === "colour" ? setMarkerPropsOp(a.id, { colour: a.colour }) : a.a === "chapter" ? setMarkerPropsOp(a.id, { kind: a.chapter ? "chapter" : "marker" }) : deleteMarkerOp(a.id);
+    commit([op], say(a.a === "delete" ? "timeline.say.marker.deleted" : "timeline.say.marker.edited"));
+  }, [commit]);
   const openMenu = useCallback((target: TrackMenuTarget, anchor: DOMRect) => setMenu({ target, anchor }), []);
 
   // Shortcuts that work anywhere except while typing in a field.
@@ -383,6 +414,13 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
             { id: "addv", section: t("timeline.more.tracks"), disabled: off, label: t("timeline.track.addVideo"), testid: "track-add-video", onSelect: () => trackAction({ a: "add", kind: "video" }) },
             { id: "adda", disabled: off, label: t("timeline.track.addAudio"), testid: "track-add-audio", onSelect: () => trackAction({ a: "add", kind: "audio" }) },
             { id: "topts", label: t("timeline.track.optionsButton"), disabled: off || oneIdx.length === 0, reason: t("timeline.why.select"), testid: "tl-track-options", onSelect: () => openMenu({ kind: "track", track: scene.clipTrack[oneIdx[0]!]! }, bar!) },
+            { id: "mark", section: t("timeline.more.markers"), disabled: off, label: t("timeline.marker.add"), hint: keyHint("marker.add"), testid: "tl-marker-add", onSelect: () => run({ c: "marker" }) },
+            { id: "medit", label: t("timeline.marker.edit"), disabled: off || !scene.markers.some((m) => m.ticks === Math.round((frame * TICKS_PER_SECOND) / FPS)), reason: t("timeline.why.marker"), testid: "tl-marker-edit", onSelect: () => run({ c: "markerEdit" }) },
+            { id: "rin", label: t("timeline.range.in"), disabled: off, hint: keyHint("range.in"), testid: "tl-range-in", onSelect: () => run({ c: "range", what: "in" }) },
+            { id: "rout", label: t("timeline.range.out"), disabled: off, hint: keyHint("range.out"), testid: "tl-range-out", onSelect: () => run({ c: "range", what: "out" }) },
+            { id: "rplay", label: t("timeline.range.play"), disabled: off || scene.clipCount === 0, reason: t("timeline.why.clips"), hint: keyHint("range.play"), testid: "tl-range-play", onSelect: () => run({ c: "range", what: "play" }) },
+            { id: "rloop", label: t("timeline.range.loop"), disabled: off || !scene.range, reason: t("timeline.why.range"), testid: "tl-range-loop", onSelect: () => run({ c: "range", what: "loop" }) },
+            { id: "rclear", label: t("timeline.range.clear"), disabled: off || !scene.range, reason: t("timeline.why.range"), hint: keyHint("range.clear"), testid: "tl-range-clear", onSelect: () => run({ c: "range", what: "clear" }) },
             { id: "zin", section: t("timeline.more.view"), label: t("timeline.zoomIn"), onSelect: () => onZoom(clampPps(zoom * 1.25)) },
             { id: "zout", label: t("timeline.zoomOut"), onSelect: () => onZoom(clampPps(zoom / 1.25)) },
             { id: "fit", label: t("timeline.fit"), hint: "0", testid: "tl-fit-menu", onSelect: fit },
@@ -390,11 +428,12 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
         onApply={(ops, field, name) => commit(mirrorTrims(scene, ops), say("timeline.say.timed", { field, name }))} /></Suspense>}
+      {markerMenu && scene.markers.find((m) => m.id === markerMenu.id) && <MarkerMenu marker={scene.markers.find((m) => m.id === markerMenu.id)!} anchor={markerMenu.anchor} onAct={markerAction} onClose={closeMarkerMenu} />}
       {menu && <TrackMenu scene={scene} target={menu.target} anchor={menu.anchor} onAct={trackAction} onClose={closeMenu} />}
       <div className="tl-stage">
         {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t("timeline.empty")}</p>}
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} tool={tool} onLane={(id) => { armed.current = id; }} />
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} onMarkerMenu={openMarkerMenu} tool={tool} onLane={(id) => { armed.current = id; }} />
       </div>
     </section>
   );

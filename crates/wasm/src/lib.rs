@@ -108,6 +108,16 @@ pub fn capabilities(probe_json: &str) -> Result<String, String> {
     app_core::capabilities_json(probe_json, "web", None)
 }
 
+/// Pitch-keeping time stretch (`app_audio::stretch`, clip speed). `planar`: `channels` equal-length channels one after the other; the result is
+/// laid out the same way with `output_len(len, num, den)` samples per channel.
+#[wasm_bindgen]
+pub fn stretch_audio(planar: &[f32], channels: u32, rate: u32, num: u32, den: u32) -> Vec<f32> {
+    let n = channels.max(1) as usize;
+    let len = planar.len() / n;
+    let chans: Vec<&[f32]> = (0..n).map(|c| &planar[c * len..(c + 1) * len]).collect();
+    app_audio::stretch::stretch(&chans, rate, num, den).concat()
+}
+
 /// A waveform extraction in progress (`app_audio::peaks::PeaksBuilder`). PCM goes in as interleaved i16 chunks.
 #[wasm_bindgen]
 pub struct PeaksJob(Option<app_audio::peaks::PeaksBuilder>);

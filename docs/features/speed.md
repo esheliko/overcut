@@ -31,8 +31,16 @@ the window only shrinks), `TrackLocked`.
 ## Playback and export (M2-026)
 - `evaluate` already reports `speed` on each audio segment and the source time of each video layer; the decode scheduler asks the source
   for those times, never for `t - start + source_in`.
-- Audio is time-stretched (pitch preserved) by a WSOLA time-scale modifier written in `crates/audio` (no third-party code, no GPL). The
-  preview mixer and export call the same function so what you hear is what you export.
+- Audio is time-stretched (pitch preserved) by a WSOLA time-scale modifier written in `crates/audio/src/stretch.rs` (own code, no
+  third-party DSP, so no licence to check against ADR 0004). A clip's whole source window is stretched once to its timeline length
+  (`ClipStretchCache` in `engine-client`, a few clips kept, clips over 5 minutes fall back to plain resampling and shift pitch) and the
+  mixers read it like speed-1 audio: `evaluate` gives each audio segment `clip_source_in`, `clip_source_len` and `clip_offset` for this.
+  Preview and export call the same function, so what you hear is what you export.
+- The stretcher runs in the wasm module on every host, the desktop webview included (as the compositor already does): PCM never crosses
+  IPC, so there is no Tauri command for it.
+- Algorithm: 25 ms Hann frames; slower than 1x the frames are placed 12.5 ms apart in the output, faster they are read 12.5 ms apart (so
+  the windows tile the input and a click never lands on a window edge); each frame slides up to +-10 ms to the position that best matches
+  the natural continuation of the previous one (coarse then fine search), overlapping windows are summed and divided by their sum.
 - Export uses the same evaluation per frame and the same stretcher, so the exported length equals the sequence length and A/V stay in sync.
 - Tests: stretcher output length and pitch (unit); 0.5x and 2x sync on `crates/media/tests/fixtures/flash_click.mp4`; export a 2x clip and
   check duration and sync with ffprobe.
