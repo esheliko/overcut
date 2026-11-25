@@ -64,6 +64,23 @@ export type Gesture =
   | { k: "marker"; id: string; sx: number; orig: number; value: number; moved: boolean; touch: boolean };
 
 export const IDLE: Gesture = { k: "idle" };
+
+/** Edge auto-scroll: how fast (px per second) a drag near an edge scrolls, 0 outside the zone; fastest at the very edge. */
+export const EDGE_ZONE = 48;
+export const EDGE_MAX = 700;
+export const edgeSpeed = (pos: number, lo: number, hi: number): number => {
+  if (pos < lo + EDGE_ZONE) return -EDGE_MAX * Math.min(1, (lo + EDGE_ZONE - pos) / EDGE_ZONE);
+  if (pos > hi - EDGE_ZONE) return EDGE_MAX * Math.min(1, (pos - (hi - EDGE_ZONE)) / EDGE_ZONE);
+  return 0;
+};
+/** The gestures that auto-scroll when dragged near an edge: a clip move, a trim, an edit-tool drag, a marquee, a track-reorder drag. */
+export const scrollsAtEdge = (g: Gesture): boolean => g.k === "move" || g.k === "trim" || g.k === "tool" || g.k === "marquee" || g.k === "tdrag";
+/** The gesture after the view scrolled by (dx, dy) px under a still pointer: its press origin moves the other way, so the drag keeps growing by what was scrolled. */
+export function scrolled(g: Gesture, dx: number, dy: number): Gesture {
+  if (g.k === "move" || g.k === "trim" || g.k === "tool") return { ...g, sx: g.sx - dx };
+  if (g.k === "marquee") return { ...g, x0: g.x0 - dx, y0: g.y0 - dy };
+  return g;
+}
 type R = { g: Gesture; fx: Effects };
 
 /** Paints a gesture onto the selection flags the painter reads (1 = selected, 2 = being moved or trimmed: its body is hidden and a ghost drawn).
