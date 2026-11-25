@@ -10,6 +10,7 @@ import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
 import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
 import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
+import { clipboardState } from "./commands/availability";
 import { PALETTE_EVENT } from "./commands/palette";
 import { hopStep } from "./timeline/arrange";
 import { ToolbarMenu } from "./timeline/ToolbarMenu";
@@ -118,6 +119,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const [held, setHeld] = useState<readonly Held[]>([]);
   const heldRef = useRef(held);
   heldRef.current = held;
+  clipboardState.copied = held.length > 0;
   const [tool, setTool] = useState<Tool>("select");
   /** The track last clicked: where a paste lands when no clip is selected. */
   const armed = useRef<string | null>(null);
@@ -285,7 +287,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         const proj0 = live.current.proj.project;
         const h = heldRef.current;
         if (!proj0 || h.length === 0) { speak(say("timeline.say.nothingToPaste")); onNotice(t("timeline.say.nothingToPaste")); break; }
-        const plan = planPlacement(proj0, h, tick, selectedTrack(proj0, sel) ?? armed.current, newClipId);
+        const plan = planPlacement(proj0, h, tick, selectedTrack(proj0, sel) ?? armed.current, newClipId, true);
         if (plan.ops.length === 0) { const m = say("timeline.say.pasteSkipped", { count: plan.skipped }); speak(m); onNotice(t(m.key, m.values)); break; }
         commit(plan.ops, say("timeline.say.pasted", { count: plan.placed, time: timecode(Math.round((plan.start * FPS) / TICKS_PER_SECOND)) }), () => setSelected(new Set(plan.ops.map((o) => (o.op === "insert_clip" ? o.clip.id : "")))));
         if (plan.skipped > 0) onNotice(t("timeline.say.pasteSkipped", { count: plan.skipped }));
