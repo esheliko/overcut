@@ -766,6 +766,7 @@
   "inspector.prevKey": "Previous keyframe of {name}",
   "inspector.nextKey": "Next keyframe of {name}",
   "inspector.easing": "Easing",
+  "inspector.betweenKeys": "Between keyframes",
   "inspector.easingLabel": "keyframe easing",
   "inspector.ease.linear": "Linear",
   "inspector.ease.ease-in": "Ease in",

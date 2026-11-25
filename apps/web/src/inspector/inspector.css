@@ -31,20 +31,20 @@
 
 /* Keyframes (M2-004 / M2-048): one row per field, diamond + previous / next key, easing picker under a field that sits on a key. */
 .insp { grid-template-columns: 1fr; }
-.insp-field { flex-wrap: wrap; padding: 0 4px 0 10px; gap: 0 4px; }
-.insp-fl { flex: 1 1 140px; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; }
+.insp-field { flex-wrap: wrap; padding: 0 4px 0 10px; gap: 0; }
+.insp-fl { flex: 1 1 0; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; }
 .insp-fl > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.insp-fl input { outline: none; width: 64px; min-height: 44px; border: 0; background: none; color: var(--fg); text-align: end; font: inherit; }
+.insp-fl input { outline: none; width: 56px; min-height: 44px; border: 0; background: none; color: var(--fg); text-align: end; font: inherit; appearance: textfield; -moz-appearance: textfield; }
+.insp-fl input::-webkit-inner-spin-button, .insp-fl input::-webkit-outer-spin-button { appearance: none; margin: 0; }
 .insp-fl em { color: var(--muted); font-style: normal; width: 1.2em; }
-.insp-keys { display: flex; align-items: center; margin-inline-start: auto; }
 .insp-kbtn { width: 44px; min-width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--muted); font-size: 22px; line-height: 1; }
 .insp-kbtn:disabled { opacity: 0.35; }
 .insp-kbtn:focus-visible { outline: 2px solid var(--accent, #4aa3ff); outline-offset: -2px; }
 .insp-field[data-keystate="between"] .insp-diamond { color: var(--accent, #4aa3ff); }
 .insp-field[data-keystate="on"] .insp-diamond { color: var(--accent, #4aa3ff); background: var(--surface-3); }
-.insp-ease { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; min-height: 44px; padding-inline-end: 6px; }
-.insp-ease > span { flex: 1; color: var(--muted); font-size: 13px; }
-.insp-ease select { min-height: 44px; min-width: 130px; border: 0; border-radius: 10px; background: var(--surface-3); color: var(--fg); font: inherit; padding: 0 8px; }
+.insp-sub { flex: 1 1 100%; display: flex; align-items: center; gap: 4px; padding-inline-end: 0; }
+.insp-ease { flex: 1; min-width: 0; min-height: 44px; border: 0; border-radius: 10px; background: var(--surface-3); color: var(--fg); font: inherit; padding: 0 8px; }
+.insp-between { flex: 1; text-align: center; color: var(--muted); font-size: 13px; }
 .insp-more { grid-column: 1 / -1; }
 .insp-more > summary { min-height: 44px; display: flex; align-items: center; padding: 0 10px; border-radius: 10px; background: var(--surface-2); color: var(--fg); cursor: pointer; font-weight: 500; }
 .insp-more > summary:focus-visible { outline: 2px solid var(--accent, #4aa3ff); }

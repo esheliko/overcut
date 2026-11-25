@@ -141,41 +141,40 @@ export function Inspector(): ReactNode {
           />
           <em>{f.unit}</em>
         </label>
-        <span className="insp-keys">
-          {state !== "none" && (
+        <button
+          type="button"
+          className="insp-kbtn insp-diamond"
+          data-testid={`insp-key-${f.key}`}
+          aria-pressed={state === "on"}
+          aria-label={t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name })}
+          disabled={readOnly || !onClip}
+          onClick={() => void store.apply(toggleKeyOps(clip.id, tr, props, rel, tol, DEFAULT_OF[f.key]), undefined, label)}
+        >
+          <Diamond filled={state === "on"} />
+        </button>
+        {state !== "none" && (
+          <div className="insp-sub">
             <button type="button" className="insp-kbtn" data-testid={`insp-prevkey-${f.key}`} aria-label={t("inspector.prevKey", { name })} disabled={neighbourKey(anim, rel, tol, -1) === undefined} onClick={() => step(f, -1)}>‹</button>
-          )}
-          <button
-            type="button"
-            className="insp-kbtn insp-diamond"
-            data-testid={`insp-key-${f.key}`}
-            aria-pressed={state === "on"}
-            aria-label={t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name })}
-            disabled={readOnly || !onClip}
-            onClick={() => void store.apply(toggleKeyOps(clip.id, tr, props, rel, tol, DEFAULT_OF[f.key]), undefined, label)}
-          >
-            <Diamond filled={state === "on"} />
-          </button>
-          {state !== "none" && (
+            {near ? (
+              <select
+                className="insp-ease"
+                aria-label={t("inspector.easing")}
+                data-testid={`insp-ease-${f.key}`}
+                disabled={readOnly}
+                value={easingId(near.easing)}
+                onChange={(e) => {
+                  const pick = EASING_CHOICES.find((c) => c.id === e.currentTarget.value);
+                  if (pick) void store.apply(easingOps(clip.id, tr, props, rel, tol, pick.easing), undefined, t("inspector.easingLabel"));
+                }}
+              >
+                {easingId(near.easing) === "custom" && <option value="custom">{t("inspector.ease.custom")}</option>}
+                {EASING_CHOICES.map((c) => <option key={c.id} value={c.id}>{t(`inspector.ease.${c.id}` as `inspector.ease.${EasingId}`)}</option>)}
+              </select>
+            ) : (
+              <span className="insp-between">{t("inspector.betweenKeys")}</span>
+            )}
             <button type="button" className="insp-kbtn" data-testid={`insp-nextkey-${f.key}`} aria-label={t("inspector.nextKey", { name })} disabled={neighbourKey(anim, rel, tol, 1) === undefined} onClick={() => step(f, 1)}>›</button>
-          )}
-        </span>
-        {near && (
-          <label className="insp-ease">
-            <span>{t("inspector.easing")}</span>
-            <select
-              data-testid={`insp-ease-${f.key}`}
-              disabled={readOnly}
-              value={easingId(near.easing)}
-              onChange={(e) => {
-                const pick = EASING_CHOICES.find((c) => c.id === e.currentTarget.value);
-                if (pick) void store.apply(easingOps(clip.id, tr, props, rel, tol, pick.easing), undefined, t("inspector.easingLabel"));
-              }}
-            >
-              {easingId(near.easing) === "custom" && <option value="custom">{t("inspector.ease.custom")}</option>}
-              {EASING_CHOICES.map((c) => <option key={c.id} value={c.id}>{t(`inspector.ease.${c.id}` as `inspector.ease.${EasingId}`)}</option>)}
-            </select>
-          </label>
+          </div>
         )}
       </div>
     );
