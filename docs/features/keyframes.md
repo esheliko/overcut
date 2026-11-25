@@ -19,9 +19,11 @@
 **Tests.** `crates/timeline/src/tests.rs`: S7 property generator has four new kinds (22 total; undo restores exactly, errors change nothing); `keyframe_ops_set_move_delete_ease_and_undo`; `a_keyframe_drag_is_one_undo_step_and_replays_the_same` (200 moves = one undo, journal replay equals); `evaluate_reports_the_animated_values_at_the_frame`; the per-parameter bench; wire contract (29 ops, Rust and TS). Native = wasm values: `golden_checksum` (ADR 0015) covers evaluation; the ops only change the key list.
 
 ## Inspector UI (M2-048, minimal)
-- Each animatable field in the Video tab gets a diamond button: outlined = not animated, hollow-filled = animated but between keys, filled = a key at the playhead. Pressing it adds (value at the playhead) or removes the key. 44 px target, `aria-pressed`, keyboard operable.
-- Previous / next key buttons jump the playhead to the neighbouring key of that property.
-- Easing picker (Linear, Ease in, Ease out, Ease in-out, Hold) for the key at the playhead (the segment leaving it).
-- Editing a field of an animated property sets or updates the key at the playhead; a field focus session / drag shares one coalescing key (one undo step).
-- Timeline: small diamonds on the selected clip (drawn by a function the timeline calls; the timeline owner wires it).
-- Not in this slice: graph editor, custom bezier, copy/paste keys, anchor and crop fields are keyframable in the engine but may not have diamonds yet.
+- Video tab, most-used fields first: position X/Y, scale, rotation, opacity, then a collapsible "Crop & flip" (crop edges, fit, flip), then Reset.
+- Each animatable field has a 44 px diamond on its row: outlined = not animated, accent outline = animated but between keys, filled = a key at the playhead (within half a frame). Pressing it adds a key holding the current value, or removes the key; removing a property's last key makes it static at that value (no jump). Disabled while the playhead is off the clip.
+- A second line appears once a field is animated: previous / next key buttons (move the playhead to the neighbouring key) and, when the playhead is on a key, the easing picker (Linear, Ease in, Ease out, Ease in-out, Hold; "Custom" is shown for other curves); "Between keyframes" otherwise.
+- Editing a field of an animated property sets or updates the key at the playhead (existing easing kept, new keys linear); a handle drag does the same through `useTransformEdit`. A field focus session / drag is one undo step (one coalescing key). Scale keys both axes together.
+- `valuesOf(transform, relTicks)` evaluates keys at the playhead (TS port of `Animated::eval` for display; the engine renders the frame).
+- Pure helpers: `inspector/keyframeModel.ts` (eval, key state, op builders, `clipKeyTimes` for the timeline's diamonds) and `snapRotation` in `transformModel.ts` (right angles within 3 degrees, Shift = 15 degree steps) for the rotate handle.
+- Tests: `tests/unit/keyframe-model.test.ts`, `tests/smoke/inspector.spec.ts` (diamond, easing, edit, remove at desktop and phone).
+- Not in this slice: graph editor, custom bezier, copy/paste keys, dragging keys on the timeline.
