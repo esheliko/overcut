@@ -39,6 +39,24 @@ export function mixSegment(left: Float32Array, right: Float32Array, seg: Pick<Au
   }
 }
 
+/**
+ * Add a pre-stretched clip (`ClipStretchCache`: pitch kept, index 0 = the clip's first sample) into `left`/`right`: the segment's samples are
+ * `clip[clip_offset ..][0 .. len]`, scaled by `gain`. Mono clips go to both sides. `skip` as in `mixSegment`.
+ */
+export function mixStretched(left: Float32Array, right: Float32Array, seg: Pick<AudioSegment, "out_start" | "len" | "gain" | "clip_offset">, clip: Float32Array[], skip = 0): void {
+  const l = clip[0];
+  const r = clip[1] ?? l;
+  if (!l || !r) return;
+  for (let i = Math.max(0, skip); i < seg.len; i++) {
+    const o = seg.out_start + i;
+    if (o < 0 || o >= left.length) continue;
+    const k = seg.clip_offset + i;
+    if (k >= l.length) break;
+    left[o]! += l[k]! * seg.gain;
+    right[o]! += r[k]! * seg.gain;
+  }
+}
+
 /** Hard limiter so summed tracks clip softly instead of wrapping (full scale is 1.0). */
 export function limit(buf: Float32Array): void {
   for (let i = 0; i < buf.length; i++) {

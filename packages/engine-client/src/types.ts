@@ -413,6 +413,11 @@ export interface AudioSegment {
   source_start: number;
   speed: { num: number; den: number };
   gain: number;
+  /** The clip's first source tick and the source ticks it reads in all: the window the pitch-keeping stretch turns into the clip's length. */
+  clip_source_in: number;
+  clip_source_len: number;
+  /** Samples from the clip's first sample to this segment's first sample (an index into the stretched clip). */
+  clip_offset: number;
 }
 
 export interface FrameDescription {

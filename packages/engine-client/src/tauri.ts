@@ -59,6 +59,7 @@ export function createTauriEngine(): Engine {
       evaluate: (sequence, ticks, samples) => editing.evaluate(sequence, ticks, samples),
       media,
       openRenderer: async (canvas) => (await import("./wasm")).openWasmRenderer(canvas),
+      openStretcher: async () => (await import("./wasm")).openWasmStretcher(),
     }),
     peaks: {
       // PCM crosses IPC as JSON number arrays for now; native hosts will decode and extract in Rust without crossing (follow-up).

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildFrameTable, frameIndexAt, isVariable, startPacket } from "../../packages/engine-client/src/decode/frames";
-import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "../../apps/web/src/preview/audioMix";
+import { limit, mixSegment, mixStretched, sampleAtTicks, sourceSamplesFor } from "../../apps/web/src/preview/audioMix";
 import { canvasBackingSize, displaySize, normalizeRotation } from "../../apps/web/src/preview/layout";
 import { frameAtTicks, frameStartTicks, nominalFps, positionAt, prefetchFrames, rateLabel, shuttle, TICKS_PER_SECOND, timecodeHMS } from "../../apps/web/src/preview/timing";
 
@@ -107,4 +107,16 @@ test("audio mixing: gain, offsets, mono to stereo, speed, trimming and limiting"
   limit(b);
   assert.equal(b[0], 0.5);
   assert.ok(b[1]! < 1 && b[1]! > 0.9 && b[2]! > -1);
+});
+
+test("mixStretched adds the pre-stretched clip from clip_offset, scaled by gain, with skip and mono", () => {
+  const l = new Float32Array(6);
+  const r = new Float32Array(6);
+  mixStretched(l, r, { out_start: 1, len: 4, gain: 0.5, clip_offset: 2 }, [Float32Array.from([0, 0, 2, 4, 6, 8]), Float32Array.from([0, 0, -2, -4, -6, -8])]);
+  assert.deepEqual(Array.from(l), [0, 1, 2, 3, 4, 0]);
+  assert.deepEqual(Array.from(r), [0, -1, -2, -3, -4, 0]);
+  const m = new Float32Array(6);
+  const m2 = new Float32Array(6);
+  mixStretched(m, m2, { out_start: 0, len: 2, gain: 1, clip_offset: 0 }, [Float32Array.from([1, 2])]);
+  assert.deepEqual([Array.from(m), Array.from(m2)], [[1, 2, 0, 0, 0, 0], [1, 2, 0, 0, 0, 0]]);
 });
