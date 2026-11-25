@@ -7,7 +7,7 @@ const FLASH = resolve("crates/media/tests/fixtures/flash_click.mp4");
 test("remap split to Q: Q splits, S no longer does, the choice survives a reload; a clash asks before taking a key", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
   if (phone) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(FLASH);
@@ -50,7 +50,7 @@ test("remap split to Q: Q splits, S no longer does, the choice survives a reload
   await expect(page.locator("#tl-summary")).toContainText("3 clips");
 
   await page.reload();
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await open();
   await expect(page.getByTestId("sc-edit.split")).toContainText("Q");
   await page.getByTestId("shortcuts-preset").selectOption("premiere");
