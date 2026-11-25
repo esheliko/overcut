@@ -526,6 +526,30 @@ fn trim_in_moves_the_source_point_with_the_edge() {
     assert_eq!((c.start, c.source_in, c.duration), (t(23), t(13), t(7)));
 }
 
+/// Issue #106: an imported video clip and its linked sound clip both start at 0; a left-edge drag sends `trim_in` for each.
+/// Both must keep the new start (the engine side of that gesture is exact).
+#[test]
+fn trim_in_on_an_imported_linked_pair_keeps_the_new_start() {
+    let (mut p, mut ids) = base();
+    let (mv, ma) = (p.media[0].id, p.media[1].id);
+    let (v, a) = (clip(&mut ids, mv, 0, 0, 30), clip(&mut ids, ma, 0, 0, 30));
+    let (vi, ai) = (v.id, a.id);
+    p.sequences[0].tracks[0].clips = vec![v];
+    p.sequences[0].tracks[2].clips = vec![a];
+    for clip in [vi, ai] {
+        apply(&mut p, Op::TrimIn { clip, start: t(1) }).unwrap();
+    }
+    for track in [0, 2] {
+        let c = &p.sequences[0].tracks[track].clips[0];
+        assert_eq!(
+            (c.start, c.source_in, c.duration),
+            (t(1), t(1), t(29)),
+            "track {track}"
+        );
+        assert_eq!(c.end(), Some(t(30)), "the end stays where it was");
+    }
+}
+
 #[test]
 fn speed_that_needs_a_fraction_of_a_tick_is_refused_not_rounded() {
     let (mut p, _, a, _) = two_clips();
