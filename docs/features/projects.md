@@ -2,7 +2,7 @@
 
 ## Behaviour
 - Every project on this device is a row: name, last edit, canvas size, clip count. **No thumbnails**: a project that is not open has no rendered frame, so the card draws only its real canvas shape (aspect outline). Facts that are not known yet (a project never edited) are left out, never invented.
-- Actions per row, all visible buttons (touch and keyboard): open, rename, copy (duplicate), delete. Delete always asks first ("cannot be undone"; media files on disk are untouched). Header: New project, Open file… (a `.overcut` becomes its own project; the open one is never replaced).
+- Actions per row: open, plus a "…" menu with rename, duplicate, export, archive/restore, delete (see `project-library.md`). Delete always asks first ("cannot be undone"; media files on disk are untouched). Header: New project, Open file… (a `.overcut` becomes its own project; the open one is never replaced).
 - First screen: the list when there are several projects, the only project when there is one, a new project when there are none (first start). Reachable any time from the app menu → **Projects** (leaves the open project cleanly: journal folded into its file).
 - Menu **New project…** / **Open project…** keep their old meaning (replace the open project, with a version snapshot first, `canvas.md`); the list's buttons add projects instead.
 - Empty state: "No projects yet — start a new project or open a .overcut file."

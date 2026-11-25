@@ -9,8 +9,8 @@ import { useIncoming } from "./incoming";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
 import { Home } from "./Home";
-import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects } from "./projects";
-import { startScreen } from "./projectsView";
+import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects, projectBytes, setArchived } from "./projects";
+import { isArchived, startScreen } from "./projectsView";
 import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
 import { canvasSummary, hasPicture } from "./canvas";
 import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
@@ -458,9 +458,10 @@ function Editor({ store }: { store: ProjectStore }) {
         const items = await (await getRegistry()).list();
         if (!alive) return;
         setLastId(data.current);
-        const screen = startScreen(items.length);
+        const live = items.filter((i) => !isArchived(i)); // archived projects are tucked away: they do not count as "the only project"
+        const screen = startScreen(live.length, items.length - live.length);
         if (screen === "home") setList(items);
-        else if (screen === "editor") { setList(items); openEntry(items.find((i) => i.id === data.current) ?? items[0]!); }
+        else if (screen === "editor") { setList(items); openEntry(live.find((i) => i.id === data.current) ?? live[0]!); }
         else if (screen === "new") {
           const e = await createProject(core, "");
           if (alive) { setList([e]); openEntry(e); }
@@ -520,6 +521,11 @@ function Editor({ store }: { store: ProjectStore }) {
     announce(t("projects.duplicated", { name: copy.name }));
     setToast(t("projects.duplicated", { name: copy.name }));
   });
+  const homeArchive = (e: ProjectEntry, archived: boolean) => void homeTask(async () => { await setArchived(e, archived); await refreshList(); });
+  const homeExport = (e: ProjectEntry) => void homeTask(async () => {
+    const file = await saveProjectBytes(await projectBytes(core!, e), projectFileName(e.name || t("app.untitled")));
+    if (file) { announce(t("projects.exported", { file })); setToast(t("projects.exported", { file })); }
+  });
   const homeDelete = (e: ProjectEntry) => void homeTask(async () => {
     await deleteProject(e);
     if (lastId === e.id) setLastId(null);
@@ -569,7 +575,7 @@ function Editor({ store }: { store: ProjectStore }) {
 
   return (
     <div className={showHome ? "editor home-mode" : "editor"} ref={editorRef} data-profile={profile} data-testid="editor">
-      {showHome ? <Home entries={list} current={lastId} busy={homeBusy} onOpen={(e) => openEntry(e)} onNew={homeNew} onOpenFile={homeOpenFile} onRename={homeRename} onDuplicate={homeDuplicate} onDelete={homeDelete} /> : <>
+      {showHome ? <Home entries={list} current={lastId} busy={homeBusy} onOpen={(e) => openEntry(e)} onNew={homeNew} onOpenFile={homeOpenFile} onRename={homeRename} onDuplicate={homeDuplicate} onArchive={homeArchive} onExport={homeExport} onDelete={homeDelete} /> : <>
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           {!compact && <ThemeMenu pref={themePref} onPick={pickTheme} />}
