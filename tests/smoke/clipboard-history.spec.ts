@@ -68,7 +68,7 @@ test("duplicate, copy and paste, numeric timing and the history panel go through
   await list.getByRole("button", { name: /Original project/ }).click();
   await expect(summary).toContainText("14 clips");
   await page.screenshot({ path: test.info().outputPath("history.png") });
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByTestId("history-dialog")).toHaveCount(0);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);

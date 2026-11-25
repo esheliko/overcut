@@ -352,6 +352,11 @@ h2, p { margin: 0; }
 .install-dialog ol { margin: 0 0 var(--space-3); padding-inline-start: var(--space-5); display: grid; gap: var(--space-2); }
 /* Second toolbar row (TL-02/06): duplicate, copy, cut, paste, timing, history. Six 44 px buttons fit at 320 px. */
 .tl-bar2 { justify-content: flex-start; min-height: 48px; }
+.tl-bar2 .tl-group { flex-wrap: wrap; }
+/* Edit tools (TL-04): a visible toggle row, so touch has what the desktop does with Alt. Five 44 px-high buttons share the width, down to 320 px. */
+.tl-tools { gap: 4px; padding: 4px 6px; min-height: 0; justify-content: stretch; }
+.tl-tool { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 4px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--fg); font: inherit; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-tool.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .tl-stage { --gutter-w: 148px; }
 @media (max-width: 559px), (pointer: coarse) { .tl-stage { --gutter-w: 60px; } }
 .edit-sheet { inline-size: min(380px, calc(100vw - 16px)); max-block-size: min(70dvh, 520px); margin: auto 12px 12px auto; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow); overflow: auto; }

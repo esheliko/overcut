@@ -12,6 +12,7 @@ import { applySelect, IDLE, longPress, markPreview, sameLayout, pointerDown, poi
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
+import type { Tool } from "./ripple";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
 
 export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement };
@@ -46,12 +47,14 @@ type Props = {
   onDropMedia?: (id: string, tick: number) => void;
   /** A track header was tapped (or right-clicked): open its menu. `at` is the header's rectangle in viewport pixels. */
   onTrackMenu?: (track: number, at: DOMRect) => void;
+  /** The edit tool picked in the toolbar (select when absent). */
+  tool?: Tool;
 };
 
 const TAP_SLOP = 6;
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
-export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onReady, media, onDropMedia, onTrackMenu }: Props) {
+export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onReady, media, onDropMedia, onTrackMenu, tool = "select" }: Props) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ pps: zoom, scrollX: 0, scrollY: 0, width: 300, height: 150 });
@@ -59,8 +62,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const palette = useRef<Palette>(DARK);
   const stats = useRef<DrawStats>({ clipsDrawn: 0, tracksDrawn: 0 });
   const raf = useRef(0);
-  const live = useRef({ scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onTrackMenu });
-  live.current = { scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onTrackMenu };
+  const live = useRef({ scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onTrackMenu, tool });
+  live.current = { scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onTrackMenu, tool };
   const ui = useRef<Overlay>(newOverlay());
   const flags = useRef<Uint8Array>(new Uint8Array(0));
   const gest = useRef<Gesture>(IDLE);
@@ -189,7 +192,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     l.onFrame(clamp(Math.round(xToTime(view.current, x) * l.fps), 0, l.endFrame));
   };
   const stopFling = () => { cancelAnimationFrame(gesture.current.fling); gesture.current.fling = 0; };
-  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, playhead: Math.round((live.current.frame / live.current.fps) * TICKS_PER_SECOND) });
+  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, tool: live.current.tool, playhead: Math.round((live.current.frame / live.current.fps) * TICKS_PER_SECOND) });
   /** Drag from the media bin: a guide line shows where the card will land (snapped), the drop puts it there. */
   const dropAt = (e: React.DragEvent) => {
     const l = live.current;
@@ -217,7 +220,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   };
   const hold = useRef(0);
   const stopHold = () => { clearTimeout(hold.current); hold.current = 0; };
-  const pev = (e: React.PointerEvent, p: { x: number; y: number }): PEvent => ({ x: p.x, y: p.y, kind: e.pointerType === "touch" ? "touch" : e.pointerType === "pen" ? "pen" : "mouse", shift: e.shiftKey, additive: e.ctrlKey || e.metaKey });
+  const pev = (e: React.PointerEvent, p: { x: number; y: number }): PEvent => ({ x: p.x, y: p.y, kind: e.pointerType === "touch" ? "touch" : e.pointerType === "pen" ? "pen" : "mouse", shift: e.shiftKey, additive: e.ctrlKey || e.metaKey, alt: e.altKey });
 
   const setSelection = (next: ReadonlySet<string>) => {
     const l = live.current;
@@ -243,13 +246,18 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
     const o = ui.current;
-    o.ghosts = null; o.trimClip = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null;
+    o.ghosts = null; o.ghostLabel = null; o.trimClip = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null;
     markPreview(flags.current, g);
     if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTrack = g.track !== g.from ? g.track : -1;
       o.guideSec = g.guide != null ? g.guide / TICKS_PER_SECOND : null;
     } else if (g.k === "trim") {
       o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND;
+    } else if (g.k === "tool") {
+      const sc = live.current.scene, i = g.clip, d = g.delta / TICKS_PER_SECOND;
+      if (g.tool === "ripple") { o.trimClip = i; o.trimEnd = g.edge === "end"; o.trimSec = (g.edge === "end" ? sc.end[i]! : sc.start[i]!) + d; }
+      else if (g.tool === "roll") o.guideSec = sc.start[g.cuts[0]![1]]! + d;
+      else { o.ghosts = [i]; o.ghostDSec = g.tool === "slide" ? d : 0; o.ghostLabel = t(g.tool === "slide" ? "timeline.tool.slideLabel" : "timeline.tool.slipLabel", { amount: `${d < 0 ? "−" : "+"}${Math.abs(d).toFixed(2)}` }); }
     } else if (g.k === "marquee") o.marquee = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 };
     else if (g.k === "tdrag") o.trackDrag = { from: g.from, to: g.to, y: g.y };
     invalidate();
