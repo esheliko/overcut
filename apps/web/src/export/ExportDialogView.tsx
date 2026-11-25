@@ -129,7 +129,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
     onStart(buildSettings(choice, src, format));
   };
 
-  const fmtName = (id: string) => desktop && id === "webm-vp9" ? t("export.format.webm-vp9.offline") : t(`export.format.${id}`);
+  const fmtName = (id: string, limited = false) => desktop && id === "webm-vp9" ? t("export.format.webm-vp9.offline") : limited && id === "mp4-h264" ? t("export.format.mp4-h264.opus") : t(`export.format.${id}`);
   const fps = src.fps % 1 === 0 ? String(src.fps) : src.fps.toFixed(2);
 
   if (!ready) return <p className="export-note" role="status">{t("export.checking")}</p>;
@@ -173,7 +173,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
           </label>
           <label>{t("export.field.format")}
             <select value={format?.id ?? ""} onChange={(e) => edit({ format: e.target.value as Choice["format"] })} data-testid="export-format">
-              {fmts?.options.map((o) => <option key={o.id} value={o.id}>{fmtName(o.id)}</option>)}
+              {fmts?.options.map((o) => <option key={o.id} value={o.id}>{fmtName(o.id, o.warnings.length > 0)}</option>)}
             </select>
           </label>
           <label>{t("export.field.quality")}
@@ -186,7 +186,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
 
       {format && (
         <p className="export-estimate" data-testid="export-estimate">
-          {t("export.estimate", { size: formatBytes(estimateBytes(choice, src, format), locale), format: fmtName(format.id) })}
+          {t("export.estimate", { size: formatBytes(estimateBytes(choice, src, format), locale), format: fmtName(format.id, format.warnings.length > 0) })}
         </p>
       )}
       {format && choice.capBytes !== undefined && <p className="export-note" data-testid="export-cap-note">{t("export.cap.aims", { cap: formatBytes(choice.capBytes, locale) })}</p>}
