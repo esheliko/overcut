@@ -43,6 +43,8 @@ jobs:
         run: npm test
       - name: Build (WebAssembly engine + web app)
         run: npm run build
+      - name: Undo/redo 10k-sequence gate (turns on when the script lands in main, #175)
+        run: npm run test:e2 --if-present
       - name: Playwright version (the browser cache key)
         id: pwv
         run: echo "v=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
