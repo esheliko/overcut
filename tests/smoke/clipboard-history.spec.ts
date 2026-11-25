@@ -10,34 +10,40 @@ test("duplicate, copy and paste, numeric timing and the history panel go through
   const live = page.locator('[data-announcer="polite"]');
   const canvas = page.getByTestId("timeline-canvas");
   await expect(summary).toContainText("14 clips");
-  for (const id of ["tl-duplicate", "tl-copy", "tl-cut", "tl-timing"]) await expect(page.getByTestId(id)).toBeDisabled(); // nothing selected
-  await expect(page.getByTestId("tl-paste")).toBeDisabled(); // nothing copied
-  await expect(page.getByTestId("tl-history")).toBeEnabled();
+  // The clip tools live in the More menu; a disabled row says why instead of being a silent dead button.
+  const pick = async (id: string) => { await page.getByTestId("tl-more").click(); await page.getByTestId(id).click(); };
+  await page.getByTestId("tl-more").click();
+  for (const id of ["tl-duplicate", "tl-copy", "tl-cut", "tl-timing", "tl-paste"]) await expect(page.getByTestId(id)).toHaveAttribute("aria-disabled", "true"); // nothing selected / nothing copied
+  await expect(page.getByTestId("tl-more-menu")).toContainText("Select a clip first");
+  await expect(page.getByTestId("tl-history")).not.toHaveAttribute("aria-disabled", "true");
   for (const id of ["tl-duplicate", "tl-copy", "tl-cut", "tl-paste", "tl-timing", "tl-history"]) { // 44 px on touch, inside the viewport
     const b = (await page.getByTestId(id).boundingBox())!;
     expect(b.x + b.width).toBeLessThanOrEqual(page.viewportSize()!.width);
     if (phone) { expect(b.width).toBeGreaterThanOrEqual(44); expect(b.height).toBeGreaterThanOrEqual(44); }
   }
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("tl-more-menu")).toHaveCount(0);
 
   const box = (await canvas.boundingBox())!;
   const dg = await gutterShift(page);
   const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + dg + x, box.y + y) : page.mouse.click(box.x + dg + x, box.y + y));
   await at(108, 30 + 26); // select the first clip
 
-  await page.getByTestId("tl-duplicate").click();
+  await pick("tl-duplicate");
   await expect(summary).toContainText("15 clips");
   await expect(live).toContainText("Duplicated 1 clip");
   await expect(page.getByTestId("tl-selected")).toHaveText("1 selected"); // the copy is selected
 
-  await page.getByTestId("tl-copy").click();
+  await pick("tl-copy");
   await expect(live).toContainText("Copied 1 clip");
-  await expect(page.getByTestId("tl-paste")).toBeEnabled();
+  await page.getByTestId("tl-more").click();
+  await expect(page.getByTestId("tl-paste")).not.toHaveAttribute("aria-disabled", "true");
   await page.getByTestId("tl-paste").click();
   await expect(summary).toContainText("16 clips");
   await expect(live).toContainText("Pasted 1 clip");
 
   // Numeric timing: the pasted clip is selected; set its length to 1 second.
-  await page.getByTestId("tl-timing").click();
+  await pick("tl-timing");
   const dialog = page.getByTestId("timing-dialog");
   await expect(dialog).toBeVisible();
   await page.getByTestId("timing-duration").fill("nonsense");
@@ -55,7 +61,7 @@ test("duplicate, copy and paste, numeric timing and the history panel go through
   await expect(dialog).toHaveCount(0);
 
   // History: every step is listed with its name; tapping one goes there.
-  await page.getByTestId("tl-history").click();
+  await pick("tl-history");
   const list = page.getByTestId("history-list");
   await expect(list.getByRole("button")).toHaveText([/Original project/, /Duplicate of 1 clip/, /Paste of 1 clip/, /Timing of /]);
   await expect(list.locator('[aria-current="step"]')).toContainText("Timing of");

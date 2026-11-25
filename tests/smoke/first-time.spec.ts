@@ -39,8 +39,10 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   const fit = page.getByRole("button", { name: "Fit timeline to the window" });
   await expect(fit).toBeVisible();
   if (phone) expect((await fit.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  await page.getByRole("button", { name: "Zoom out" }).click();
-  await page.getByRole("button", { name: "Zoom out" }).click();
+  // Phones keep only Fit in the bar (pinch zooms); Zoom in / out are rows of the More menu.
+  const zoomOut = async () => { if (phone) { await page.getByTestId("tl-more").click(); await page.getByRole("menuitem", { name: "Zoom out" }).click(); } else await page.getByRole("button", { name: "Zoom out" }).click(); };
+  await zoomOut();
+  await zoomOut();
   await expect.poll(pps).toBeLessThan(fitted * 0.7);
   await fit.click();
   await expect.poll(async () => Math.abs((await pps()) - fitted)).toBeLessThan(1);

@@ -240,16 +240,22 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
   await expect(undo).toBeDisabled();
 });
 
-test("the timeline toolbar fits at 320 and 390 px: zoom + stays visible, inside the viewport, 44 px on touch", async ({ page }, info) => {
+test("the timeline toolbar is ONE row that fits at 320 and 390 px: undo, redo, split, delete, tool picker and More inside the viewport, 44 px on touch", async ({ page }, info) => {
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
-    const plus = page.getByRole("button", { name: "Zoom in" });
-    await expect(plus).toBeVisible();
-    const box = (await plus.boundingBox())!;
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(width);
-    if (info.project.name === "phone") { expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44); } // desktop pointers use a 36 px target
+    await expect(page.getByTestId("tl-more")).toBeVisible();
+    const rows = new Set<number>();
+    for (const b of [page.getByRole("button", { name: /^Undo/ }), page.getByRole("button", { name: /^Redo/ }), page.getByRole("button", { name: "Split at playhead" }), page.getByRole("button", { name: /^Delete/ }), page.getByTestId("tl-tool"), page.getByTestId("tl-more")]) {
+      await expect(b).toBeVisible();
+      const box = (await b.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      rows.add(Math.round((box.y + box.height / 2) / 10)); // centres on one line (desktop and touch targets differ in height)
+      if (info.project.name === "phone") { expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44); } // desktop pointers use a 36 px target
+    }
+    expect(rows.size).toBe(1); // one row
+    if (width >= 360) await expect(page.getByTestId("tl-fit")).toBeVisible(); // zoom: pinch, Fit here, +/- in the More menu
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
   }
