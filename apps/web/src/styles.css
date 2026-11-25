@@ -181,7 +181,16 @@ h2, p { margin: 0; }
 }
 /* Phone landscape (short screen on its side): slim tool rail | preview over timeline; the tool panel slides in from the side over the preview */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) {
-  .workspace { grid-template-columns: 72px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(112px, 40%); grid-template-areas: "tools stage" "tools timeline"; gap: 4px; padding: 0 4px 4px; }
+  .workspace { grid-template-columns: 72px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "tools stage" "tools timeline"; gap: 4px; padding: 0 4px 4px; }
+  /* One toolbar row (both rows merged, 44 px tall; scrolls sideways only on very narrow landscape), then a track area of at least 160 px; the preview takes the rest */
+  .tl-bars { display: flex; align-items: center; gap: 0; min-height: 44px; padding: 0 4px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+  .tl-bars .tl-bar { display: contents; }
+  .tl-bars .tl-bar .tl-group { flex: 0 0 auto; }
+  .tl-bars .tl-bar2 .tl-group { order: 1; margin-inline-start: 6px; padding-inline-start: 6px; border-inline-start: 1px solid var(--line-strong); }
+  .tl-bars .zoom { order: 2; margin-inline-start: auto; }
+  .tl-bars .tl-sel { display: none; }
+  .tl-bars .icon-btn { width: 44px; height: 44px; min-width: 44px; } /* touch size on a phone, whatever the pointer media query says */
+  .tl-stage { min-height: 160px; }
   .tools { padding: 4px; }
   .tool { width: 100%; min-width: 0; min-height: 52px; }
   .library:not([data-open="true"]) { display: none; }
