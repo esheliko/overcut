@@ -144,7 +144,7 @@ test("a bin of 10,000 items renders a window of rows and filters quickly", async
 
   await page.getByTestId("bin-kind-all").click();
   await page.getByTestId("bin-sort").selectOption("name");
-  await page.locator(".panel-body").evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await page.getByTestId("panel-tool").locator(".panel-body").evaluate((el) => { el.scrollTop = el.scrollHeight; });
   await expect(items.last()).toContainText("e2e.mp4");
   expect(await items.count()).toBeLessThan(120);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

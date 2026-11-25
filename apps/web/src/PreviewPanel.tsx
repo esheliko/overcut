@@ -9,6 +9,8 @@ import { canvasSummary, ratioLabel } from "./canvas";
 import { canvasBackingSize } from "./preview/layout";
 import { acquirePreviewHost, type PlayerProxy, type PreviewHost } from "./preview/host";
 import { rateLabel, TICKS_PER_SECOND, timecodeHMS, type Rate } from "./preview/timing";
+import { TransformHandles } from "./preview/TransformHandles";
+import { selectedVideoClip, useTransformEdit } from "./inspector/Inspector";
 import { useWorkerMedia } from "./preview/useWorkerMedia";
 import { useProjectStore, useStore } from "./store/projectStore";
 
@@ -39,6 +41,8 @@ interface Props {
   /** Opens the canvas settings (the project's shape, size and frame rate). */
   onCanvas(): void;
   onPlaying(p: boolean): void;
+  /** Upright pixel size of a media item once probed (the transform handles need the picture's shape). */
+  pictureOf?(id: string): { width: number; height: number } | undefined;
 }
 
 /**
@@ -47,11 +51,14 @@ interface Props {
  * The player, the GPU compositor and the decoders live in the preview Worker (`preview/worker.ts`); this component sends it the project, the files and
  * the transport commands, and shows the playhead it reports.
  */
-export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying }: Props) {
+export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying, pictureOf }: Props) {
   const { t } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
   const frame = useProjectStore((s) => s.playhead);
+  const selection = useProjectStore((s) => s.selection);
+  const readOnly = useProjectStore((s) => s.readOnly);
+  const editTransform = useTransformEdit();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<PreviewHost | null>(null);
@@ -162,6 +169,10 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
 
   const p = () => playerRef.current;
   const ar = size.width / size.height;
+  // Handles only while the playhead is on the selected video clip (otherwise there is no picture to grab).
+  const sel = view.has ? selectedVideoClip(project, selection) : null;
+  const nowTicks = (frame * TICKS_PER_SECOND * rate.den) / rate.num;
+  const handled = sel && nowTicks >= sel.start && nowTicks < sel.start + sel.duration ? sel : null;
   const canvasText = canvasSummary(size, rate);
   const badge = rateLabel(playing ? speed : 1);
   const tcNow = timecodeHMS(frame, rate);
@@ -183,6 +194,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
               )}
             </div>
           )}
+          {handled && !readOnly && <TransformHandles clip={handled} canvas={size} picture={pictureOf?.(handled.media)} boxRef={boxRef} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
           {prep !== null && <span className="scrub-prep" role="status" data-testid="scrub-prep">{t("scrub.preparing", { percent: prep })}</span>}
         </div>

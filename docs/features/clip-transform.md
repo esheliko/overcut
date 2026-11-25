@@ -17,3 +17,11 @@
 **Edge cases.** Split: the left half keeps the transform; the right half gets values continued at the cut with later keys re-based (a bezier segment cut in two is approximated by the same easing over the shorter span). Trimming the head does not move keys (ADR 0015). Opacity 0 still produces a layer (the compositor may skip it).
 
 **Tests.** Unit and property tests in `app-model::transform`; `SetClipTransform` in the S7 generator (valid and invalid values: apply then inverse restores, errors change nothing); v3 fixture migration; wire example in `edit-contract.json` (Rust and TS); ABI 2 -> 3 (`VideoLayer` gained `props`).
+
+## Inspector and on-canvas handles (M2)
+- **Where.** The Details panel's Video tab (`apps/web/src/inspector/Inspector.tsx`): docked on wide screens, the tool sheet on phones (the Edit tool). Shown for exactly one selected video clip (its linked sound is ignored); otherwise a hint.
+- **Fields.** Position X/Y (% of the canvas), scale (%, uniform: both axes), rotation (degrees), opacity (%), four crop edges (%), fit (fit / fill / stretch), flip H/V, reset. Every control is at least 44 px tall. Values are clamped in `transformModel.ts` to what the engine accepts (scale 1% to 2000%, opposite crops always leave a picture), so `SetClipTransform` is never refused.
+- **Handles** (`apps/web/src/preview/TransformHandles.tsx`): over the preview while the playhead is on the selected clip. Drag the picture to move, a corner to scale about the pivot, the round handle to rotate (Shift snaps to 15 degrees). Targets are 44 px. The box is the clip's visible (cropped) rectangle, from `placeLayer`; the picture's shape comes from the bin's probed size (the canvas shape until known; rotated media is not accounted for yet).
+- **Undo.** One drag, or one field focus session, shares one coalescing key (`newGestureKey`), so it is one undo step. Flip, fit and reset are their own steps.
+- **Not yet.** Anchor editing, non-uniform scale, keyframes (M2-004), handles for clips whose probe is still pending use the canvas shape.
+- **Tests.** `tests/unit/transform-model.test.ts` (clamps, coalescing key, keyframes kept), `tests/smoke/inspector.spec.ts` (fields, undo, reset, desktop drag = one undo step).

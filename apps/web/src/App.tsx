@@ -16,6 +16,7 @@ import { canvasSummary, hasPicture } from "./canvas";
 import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
 import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
+import { Inspector } from "./inspector/Inspector";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
 import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
@@ -35,7 +36,7 @@ type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; 
 type Tool = { id: string; icon: IconName; soon?: string };
 /** M1 ships Media only. Tools with a `soon` milestone, and the Details panel, are kept in the code for the milestone that builds them but are not shown:
  *  a first-time user must not click into empty promises. Flip `DETAILS_READY` when Details has real controls. */
-const DETAILS_READY = false;
+const DETAILS_READY = true;
 export const shown = (x: Tool): boolean => (x.soon ? false : x.id === "edit" ? DETAILS_READY : true);
 /** CapCut-style tool strip: the left rail on desktop and tablet, the bottom bar on a phone. */
 const TOOLS: Tool[] = [
@@ -111,7 +112,7 @@ function Details() {
         ))}
       </div>
       <div className="panel-body">
-        <EmptyState icon="edit" title={t("details.emptyTitle")} text={t("details.emptyText")} />
+        {tab === "video" ? <Inspector /> : <EmptyState icon="edit" title={t("details.emptyTitle")} text={t("details.emptyText")} />}
       </div>
     </>
   );
@@ -587,7 +588,7 @@ function Editor({ store }: { store: ProjectStore }) {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
         </section>
 
-        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} />
+        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} />
 
         {wide && DETAILS_READY && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 

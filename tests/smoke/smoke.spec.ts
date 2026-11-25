@@ -42,8 +42,8 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
     await expect(page.getByTestId("panel-tool").getByRole("heading", { name: "Media" })).toBeVisible();
   }
   expect(info.project.name).toMatch(/desktop|phone/);
-  // M1 shows only tools that work: no Audio, Text, Captions, Effects... promises.
-  await expect(tools.getByRole("button")).toHaveCount(1);
+  // Only tools that work: Media and Edit (the clip transform, M2); no Audio, Text, Captions, Effects... promises.
+  await expect(tools.getByRole("button")).toHaveCount(info.project.name === "phone" ? 2 : 1); // wide screens dock Details instead of an Edit button
 });
 
 test("transport and timeline: play advances the playhead, the canvas timeline paints", async ({ page }) => {
@@ -282,8 +282,8 @@ const PROFILES = [
   { name: "phone-landscape", w: 844, h: 390, inspector: false, docked: false },
   { name: "tablet", w: 820, h: 1180, inspector: false, docked: true },
   { name: "tablet", w: 1024, h: 768, inspector: false, docked: true },
-  { name: "desktop", w: 1280, h: 800, inspector: false, docked: true },
-  { name: "ultrawide", w: 3440, h: 1440, inspector: false, docked: true },
+  { name: "desktop", w: 1280, h: 800, inspector: true, docked: true },
+  { name: "ultrawide", w: 3440, h: 1440, inspector: true, docked: true },
 ] as const;
 for (const p of PROFILES) {
   test(`layout profile ${p.name} at ${p.w}x${p.h}: panels arranged, no overlap, no horizontal scroll, 44 px touch targets`, async ({ page }, info) => {
