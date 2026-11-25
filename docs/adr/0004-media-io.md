@@ -94,10 +94,12 @@ All 300 (or 60) flashes and clicks were found in every run. The constant 0.31 ms
 | Android Chrome | **H.264 + AAC MP4**, hardware (MediaCodec) | Software VP9/AV1 on a phone is expected to be < 1x; do not default to them. If H.264 fails the probe, offer VP9/WebM with a "slow" warning and a time estimate. |
 | Safari macOS / iOS | **H.264 + AAC MP4** (VideoToolbox) | Expected to be the only supported encode path; VP9/AV1 WebCodecs encode is not assumed. Unmeasured. |
 | Firefox | Whatever the probe reports; default **VP9 + Opus WebM** if H.264 is absent | Unmeasured. |
-| Any browser, no AAC | MP4 with H.264 + **Opus** is spec-valid but poorly supported by phones, TVs and some editors: default to **WebM (VP9 + Opus)** and label MP4/Opus "limited compatibility" | This is exactly the situation in the sandbox. |
+| Any browser, no AAC | MP4 with H.264 + **Opus** where the device encodes H.264, labelled "limited compatibility" (see the amendment below). **WebM (VP9 + Opus) only as the fallback** where H.264 cannot be encoded | Opus in MP4 is spec-valid but poorly supported by some phones, TVs and editors; this is the situation in the sandbox. |
 | Desktop app | Platform hardware H.264/HEVC encoders, openh264 fallback, AV1/VP9/Opus software | Unchanged from the Decision above. |
 
 Always show an estimated time before export (from a short measured trial encode), keep the preset list free of codecs the probe rejected, and keep resolution/bitrate choices in the preset, not in per-codec UI.
+
+*Amendment 2026-11-25 (default export format):* where the device encodes H.264, the default export is **MP4 with H.264** (AAC where the browser or OS can encode it, otherwise Opus, labelled "limited compatibility"). **WebM (VP9 + Opus) is the fallback** for a device that cannot encode H.264, not the default. No new codec is added and nothing is bundled; the probe rules above are unchanged. This amends the defaults table above; the status of this ADR is unchanged.
 
 **Must be confirmed on reference hardware** (S24 Chrome, iPhone 14 Safari, M1 Mac Safari and Chrome, i5 laptop Chrome and Firefox, and a low-end Android as proxy for the worst case). Run `node spikes/s3-encode/run.mjs --hw prefer-hardware ...` or call `window.__start` from `spikes/s3-encode/index.html` per browser:
 1. 1080p30 5 min speed with **hardware** H.264 (and AAC) vs the >= 1x bar; also 1080p60 and 4K to find the ceiling; whether software VP9 ever reaches 1x on a phone.
