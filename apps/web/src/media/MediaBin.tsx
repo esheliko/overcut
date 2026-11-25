@@ -1,10 +1,9 @@
-import type { MediaKind } from "@app/engine-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { Modal } from "../ProjectDialogs";
 import { DEFAULT_FILTER, allTags, viewBin, windowRange, withTag, withoutTag, type BinFilter, type BinMeta, type BinSort } from "./binView";
-import { formatBytes, formatDuration, offlineReason } from "./plan";
+import { formatBytes, formatDuration, iconForKind, offlineReason } from "./plan";
 import { ACCEPT, BIN_DRAG_TYPE, fromFileList, hasHandlePicker, pickWithHandles, type Source } from "./sources";
 import type { BinItem } from "./useMediaBin";
 import { useProjectStore } from "../store/projectStore";
@@ -21,8 +20,6 @@ type Props = {
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
 };
-
-const KIND_ICON: Record<MediaKind, "video" | "audio" | "media"> = { video: "video", audio: "audio", image: "media" };
 
 /** The picker control: Chromium desktop gets persistent handles, everything else the plain input (which opens the camera roll on a phone). */
 export function useImportPicker(onImport: (s: Source[]) => void, testId = "media-input") {
@@ -66,7 +63,7 @@ function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }:
       onDragStart={(e) => { e.dataTransfer.setData(BIN_DRAG_TYPE, item.id); e.dataTransfer.effectAllowed = "copy"; }}
     >
       <span className="bin-thumb" aria-hidden="true">
-        {item.poster ? <img src={item.poster} alt="" draggable={false} /> : <Icon name={KIND_ICON[item.kind]} size={22} />}
+        {item.poster ? <img src={item.poster} alt="" draggable={false} /> : <Icon name={iconForKind(item.kind)} size={22} />}
       </span>
       <span className="bin-text">
         <strong title={item.name}>{item.name}</strong>

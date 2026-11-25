@@ -37,6 +37,9 @@ export function classify(name: string, mime: string): MediaKind | null {
   return null;
 }
 
+/** The bin icon for a media kind. Audio-only files must get the audio icon whatever their container says. */
+export const iconForKind = (kind: MediaKind): "video" | "audio" | "media" => (kind === "audio" ? "audio" : kind === "image" ? "media" : "video");
+
 /** What import learned about a file. */
 export interface Probed {
   kind: MediaKind;
