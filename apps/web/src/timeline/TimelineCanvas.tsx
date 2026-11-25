@@ -8,7 +8,7 @@ import { handleAt, trackAtY } from "./hit";
 import { headerPart } from "./header";
 import { BIN_DRAG_TYPE } from "../media/sources";
 import { snapDrop, SNAP_PX } from "./arrange";
-import { applySelect, IDLE, longPress, markPreview, sameLayout, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
+import { applySelect, edgeSpeed, IDLE, longPress, markPreview, sameLayout, pointerDown, pointerMove, pointerUp, scrolled, scrollsAtEdge, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
 import { COMMAND_EVENT } from "../commands/palette";
@@ -90,6 +90,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     clampScroll(view.current, lengthSec(), l.scene.trackCount);
     c.dataset.pps = view.current.pps.toFixed(1); // test hook: the current zoom
     c.dataset.gutter = String(gut(view.current)); // test hook: width of the track-header column
+    c.dataset.scrollx = String(Math.round(view.current.scrollX)); // test hook: horizontal scroll (edge auto-scroll)
     // Test/diagnostic hook: how much real media has landed (smoke asserts imported clips leave the placeholder state).
     if (media) { c.dataset.waveTiles = String(media.waveforms.stats.tilesRendered); c.dataset.thumbs = String(media.thumbs.stats.generated + media.thumbs.stats.fromCache); }
     drawTimeline(ctx, l.scene, view.current, l.frame / l.fps, dpr.current, palette.current, stats.current, ui.current, media);
@@ -272,6 +273,34 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   };
   const run = (r: { g: Gesture; fx: Effects }) => { gest.current = r.g; syncPreview(r.g); applyFx(r.fx); };
 
+  // Edge auto-scroll: while an edit gesture is held near an edge of the canvas the view scrolls (and the drag follows), faster the closer to the edge.
+  const lastEv = useRef<PEvent | null>(null);
+  const edgeRaf = useRef(0);
+  const edgeStep = (prev: number) => (now: number) => {
+    edgeRaf.current = 0;
+    const ev = lastEv.current, v = view.current;
+    if (!ev || gesture.current.mode !== "edit" || !scrollsAtEdge(gest.current)) return;
+    const dt = Math.min(64, now - prev) / 1000;
+    const sx = edgeSpeed(ev.x, gut(v), v.width), sy = edgeSpeed(ev.y, RULER, v.height);
+    if (sx !== 0 || sy !== 0) {
+      const [x0, y0] = [v.scrollX, v.scrollY];
+      v.scrollX += sx * dt; v.scrollY += sy * dt;
+      clampScroll(v, lengthSec(), live.current.scene.trackCount);
+      const [dx, dy] = [v.scrollX - x0, v.scrollY - y0];
+      if (dx !== 0 || dy !== 0) {
+        gest.current = scrolled(gest.current, dx, dy);
+        run(pointerMove(ctxNow(), gest.current, ev));
+        invalidate();
+      }
+    }
+    if (sx !== 0 || sy !== 0) edgeRaf.current = requestAnimationFrame(edgeStep(now));
+  };
+  const kickEdge = (ev: PEvent) => {
+    lastEv.current = ev;
+    if (!edgeRaf.current && scrollsAtEdge(gest.current) && (edgeSpeed(ev.x, gut(view.current), view.current.width) !== 0 || edgeSpeed(ev.y, RULER, view.current.height) !== 0))
+      edgeRaf.current = requestAnimationFrame(edgeStep(performance.now()));
+  };
+
   const onDown = (e: React.PointerEvent) => {
     if (e.pointerType === "mouse" && e.button !== 0) return; // a right click opens the track menu (contextmenu), it does not press
     stopFling();
@@ -335,8 +364,10 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
       invalidate();
     } else if (g.mode === "scrub") seekAt(p.x);
     else if (g.mode === "edit") {
-      const r = pointerMove(ctxNow(), gest.current, pev(e, p));
+      const pe = pev(e, p);
+      const r = pointerMove(ctxNow(), gest.current, pe);
       run(r);
+      kickEdge(pe);
       if (r.g.k === "pan") { g.mode = "pan"; g.moved = true; g.vx = 0; g.vy = 0; g.lastT = e.timeStamp; }
     }
   };
