@@ -324,28 +324,22 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
           selectClip(j);
           break;
         }
+        case "step": {
+          const to = cmd.to === "start" ? 0 : cmd.to === "end" ? l.endFrame : l.frame + (cmd.frames ?? 0) + (cmd.seconds ?? 0) * l.fps;
+          l.onFrame(clamp(to, 0, l.endFrame));
+          break;
+        }
+        case "zoom": l.onZoom(cmd.how === "fit" ? fitPps(v, lengthSec()) : clampPps(cmd.how === "in" ? v.pps * 1.25 : v.pps / 1.25)); break;
+        case "scroll": {
+          const page = (v.width - GUTTER) * 0.8;
+          if (cmd.how === "pageRight") v.scrollX += page; else if (cmd.how === "pageLeft") v.scrollX -= page;
+          else v.scrollY += cmd.how === "down" ? LANE : -LANE;
+          invalidate();
+          break;
+        }
         default: l.onCommand?.(cmd);
       }
-      return;
     }
-    const big = e.shiftKey ? l.fps : 1;
-    let to: number | null = null;
-    switch (e.key) {
-      case "ArrowRight": to = l.frame + big; break;
-      case "ArrowLeft": to = l.frame - big; break;
-      case "Home": to = 0; break;
-      case "End": to = l.endFrame; break;
-      case "+": case "=": l.onZoom(clampPps(v.pps * 1.25)); break;
-      case "-": case "_": l.onZoom(clampPps(v.pps / 1.25)); break;
-      case "0": l.onZoom(fitPps(v, lengthSec())); break;
-      case "PageDown": v.scrollX += (v.width - GUTTER) * 0.8; invalidate(); break;
-      case "PageUp": v.scrollX -= (v.width - GUTTER) * 0.8; invalidate(); break;
-      case "ArrowDown": v.scrollY += LANE; invalidate(); break;
-      case "ArrowUp": v.scrollY -= LANE; invalidate(); break;
-      default: return;
-    }
-    e.preventDefault();
-    if (to !== null) l.onFrame(clamp(to, 0, l.endFrame));
   };
 
   return (
