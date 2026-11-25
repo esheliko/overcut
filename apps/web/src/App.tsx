@@ -17,6 +17,7 @@ import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
 import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
 import { Inspector } from "./inspector/Inspector";
+import { SpeedSection } from "./inspector/Speed";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
 import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
@@ -118,7 +119,7 @@ function Details() {
         ))}
       </div>
       <div className="panel-body">
-        {tab === "video" ? <Inspector /> : <EmptyState icon="edit" title={t("details.emptyTitle")} text={t("details.emptyText")} />}
+        {tab === "video" ? <Inspector /> : tab === "speed" ? <SpeedSection /> : <EmptyState icon="edit" title={t("details.emptyTitle")} text={t("details.emptyText")} />}
       </div>
     </>
   );
