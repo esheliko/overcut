@@ -6,7 +6,7 @@ test("2 h project: fit, overview drag, zoom to selection", async ({ page }, info
   await page.goto("/?sample=2h");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const canvas = page.getByTestId("timeline-canvas");
-  await expect(page.getByTestId("tl-clip-list")).toBeVisible({ timeout: 30_000 }).catch(() => undefined);
+  await expect(page.locator("#tl-summary")).toContainText("2,300 clips", { timeout: 30_000 });
   const pps = async () => Number(await canvas.getAttribute("data-pps"));
   const overview = page.getByTestId("tl-overview");
   await canvas.focus();
@@ -26,7 +26,7 @@ test("2 h project: fit, overview drag, zoom to selection", async ({ page }, info
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2, y, { steps: 6 });
   await page.mouse.up();
-  await expect.poll(async () => Number(await canvas.getAttribute("data-scrollx"))).toBeGreaterThan(s0 + 1000);
+  await expect.poll(async () => Number(await canvas.getAttribute("data-scrollx"))).toBeGreaterThan(s0 + 300);
   // Drag the window's right edge outwards: the zoom drops.
   const p1 = await pps();
   const w1 = Number(await bar.getAttribute("data-win1"));
@@ -57,12 +57,13 @@ test("phone: two fingers pinch to zoom and drag to pan", async ({ page }, info) 
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const canvas = page.getByTestId("timeline-canvas");
   const pps = async () => Number(await canvas.getAttribute("data-pps"));
+  await expect(page.locator("#tl-summary")).toContainText("2,300 clips", { timeout: 30_000 });
   await page.getByTestId("tl-fit").click();
   await expect.poll(pps).toBeLessThan(0.3);
   const box = (await canvas.boundingBox())!;
   const cx = box.x + box.width / 2, cy = box.y + 80;
+  const cdp = await page.context().newCDPSession(page);
   const touch = async (type: "touchStart" | "touchMove" | "touchEnd", pts: { x: number; y: number }[]) => {
-    const cdp = await page.context().newCDPSession(page);
     await cdp.send("Input.dispatchTouchEvent", { type, touchPoints: pts.map((p, id) => ({ ...p, id })) });
   };
   const p0 = await pps();

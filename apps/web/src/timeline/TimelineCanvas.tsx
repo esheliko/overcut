@@ -93,7 +93,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     if (!c || !ctx) return;
     const l = live.current;
     clampScroll(view.current, lengthSec(), l.scene.trackCount);
-    c.dataset.pps = view.current.pps.toFixed(1); // test hook: the current zoom
+    c.dataset.pps = view.current.pps.toFixed(view.current.pps < 10 ? 3 : 1); // test hook: the current zoom
     c.dataset.gutter = String(gut(view.current)); // test hook: width of the track-header column
     c.dataset.scrollx = String(Math.round(view.current.scrollX)); // test hook: horizontal scroll (edge auto-scroll)
     // Test/diagnostic hook: how much real media has landed (smoke asserts imported clips leave the placeholder state).
