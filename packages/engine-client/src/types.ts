@@ -1,5 +1,5 @@
 import type { ExportApi } from "./export/types";
-import type { Clip, ClipId, ClipTransform, Fit, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, Track, TrackId } from "./model.generated";
+import type { Clip, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, Track, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
 
 export * from "./capabilities";
@@ -219,6 +219,21 @@ export function parseOpenedProject(json: string): OpenedProject {
   return { project: o.project as Project, readOnly: o.read_only, foundVersion: o.found_version, migrated: o.migrated, entries: o.entries.map(String) };
 }
 
+/** The animatable numbers of a clip's transform (mirrors `app_model::TransformProp`). */
+export type TransformProp =
+  | "position_x"
+  | "position_y"
+  | "scale_x"
+  | "scale_y"
+  | "rotation"
+  | "anchor_x"
+  | "anchor_y"
+  | "crop_left"
+  | "crop_top"
+  | "crop_right"
+  | "crop_bottom"
+  | "opacity";
+
 /**
  * One edit (ADR 0006; mirrors `app_timeline::Op`, kept in sync by `schema/edit-contract.json`, which both sides test against).
  * Ops address things by id; ids they create (`clip` in insert_clip, `new_id` in split) come from the caller: 32 lowercase hex chars.
@@ -235,6 +250,13 @@ export type Op =
   | { op: "set_link"; clip: ClipId; link: LinkId | null }
   /** Replace the clip's transform (position, scale, rotation, anchor, crop, flip, opacity, fit). One drag = many of these = one undo step. */
   | { op: "set_clip_transform"; clip: ClipId; transform: ClipTransform }
+  /** Add a keyframe to one animatable property, or replace the key at the same clip-relative time (M2-004, `docs/features/keyframes.md`). */
+  | { op: "set_keyframe"; clip: ClipId; prop: TransformProp; key: Keyframe }
+  /** Move the key at `from` to `to` (refused when another key is there) and optionally give it `value`. A drag = many of these = one undo step. */
+  | { op: "move_keyframe"; clip: ClipId; prop: TransformProp; from: Time; to: Time; value?: number }
+  | { op: "delete_keyframe"; clip: ClipId; prop: TransformProp; t: Time }
+  /** Change the easing of the segment leaving the key at `t`. */
+  | { op: "set_easing"; clip: ClipId; prop: TransformProp; t: Time; easing: Easing }
   | { op: "delete"; clip: ClipId }
   | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
   | { op: "set_media"; media: MediaId; uri: string; hash: string | null }

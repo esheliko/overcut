@@ -171,8 +171,52 @@ enum Step {
         crop: i8,
         flip: bool,
     },
+    /// M2-004: keyframe ops on a small time grid so keys collide, moves find keys and bad values (opacity outside 0..1) are refused.
+    SetKey {
+        clip: usize,
+        prop: usize,
+        t: i8,
+        v: i8,
+        easing: u8,
+    },
+    MoveKey {
+        clip: usize,
+        prop: usize,
+        from: i8,
+        to: i8,
+        v: Option<i8>,
+    },
+    DeleteKey {
+        clip: usize,
+        prop: usize,
+        t: i8,
+    },
+    SetEase {
+        clip: usize,
+        prop: usize,
+        t: i8,
+        easing: u8,
+    },
     Undo,
     Redo,
+}
+
+const PROPS: [app_model::TransformProp; 12] = {
+    use app_model::TransformProp::*;
+    [
+        PositionX, PositionY, ScaleX, ScaleY, Rotation, AnchorX, AnchorY, CropLeft, CropTop,
+        CropRight, CropBottom, Opacity,
+    ]
+};
+
+fn easing_of(n: u8) -> app_model::Easing {
+    match n % 5 {
+        0 => app_model::Easing::Hold,
+        1 => app_model::Easing::Linear,
+        2 => app_model::Easing::EASE_IN,
+        3 => app_model::Easing::EASE_OUT,
+        _ => app_model::Easing::EASE_IN_OUT,
+    }
 }
 
 fn step() -> impl Strategy<Value = Step> {
@@ -198,6 +242,14 @@ fn step() -> impl Strategy<Value = Step> {
         2 => (any::<usize>(), -8..8i8).prop_map(|(clip, delta)| Step::Slide { clip, delta }),
         3 => (any::<usize>(), -8..8i8, -2..8i8, -400..400i16, -2..12i8, -2..12i8, any::<bool>())
             .prop_map(|(clip, pos, scale, rot, opacity, crop, flip)| Step::Transform { clip, pos, scale, rot, opacity, crop, flip }),
+        4 => (0..2usize, 0..3usize, -1..4i8, -4..8i8, any::<u8>())
+            .prop_map(|(clip, prop, t, v, easing)| Step::SetKey { clip, prop, t, v, easing }),
+        2 => (0..2usize, 0..3usize, 0..4i8, 0..4i8, prop::option::of(-2..6i8))
+            .prop_map(|(clip, prop, from, to, v)| Step::MoveKey { clip, prop, from, to, v }),
+        2 => (0..2usize, 0..3usize, 0..4i8)
+            .prop_map(|(clip, prop, t)| Step::DeleteKey { clip, prop, t }),
+        2 => (0..2usize, 0..3usize, 0..4i8, any::<u8>())
+            .prop_map(|(clip, prop, t, easing)| Step::SetEase { clip, prop, t, easing }),
         2 => Just(Step::Undo),
         2 => Just(Step::Redo),
     ]
@@ -412,6 +464,51 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
                 transform: Box::new(x),
             }
         }
+        Step::SetKey {
+            clip,
+            prop,
+            t: kt,
+            v,
+            easing,
+        } => Op::SetKeyframe {
+            clip: pick(clip)?.id,
+            prop: PROPS[prop],
+            key: app_model::Keyframe {
+                t: t(i64::from(kt)),
+                // Opacity must stay in 0..=1, scale > 0: most values are fine, some are refused on purpose.
+                v: f64::from(v) / 4.0,
+                easing: easing_of(easing),
+            },
+        },
+        Step::MoveKey {
+            clip,
+            prop,
+            from,
+            to,
+            v,
+        } => Op::MoveKeyframe {
+            clip: pick(clip)?.id,
+            prop: PROPS[prop],
+            from: t(i64::from(from)),
+            to: t(i64::from(to)),
+            value: v.map(|v| f64::from(v) / 4.0),
+        },
+        Step::DeleteKey { clip, prop, t: kt } => Op::DeleteKeyframe {
+            clip: pick(clip)?.id,
+            prop: PROPS[prop],
+            t: t(i64::from(kt)),
+        },
+        Step::SetEase {
+            clip,
+            prop,
+            t: kt,
+            easing,
+        } => Op::SetEasing {
+            clip: pick(clip)?.id,
+            prop: PROPS[prop],
+            t: t(i64::from(kt)),
+            easing: easing_of(easing),
+        },
         Step::Undo | Step::Redo => return None,
     })
 }
@@ -1092,7 +1189,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        18,
+        22,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -1108,7 +1205,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 25, "one example per Op variant");
+    assert_eq!(ops.len(), 29, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -3174,4 +3271,284 @@ fn split_keeps_the_transform_on_both_halves_and_evaluate_reports_it() {
         assert_eq!(l.opacity, 0.5);
         assert_eq!(l.props.position, [0.25, 0.0]);
     }
+}
+
+// ---- M2-004 keyframe ops (docs/features/keyframes.md) ----
+
+fn key(t: i64, v: f64, easing: app_model::Easing) -> app_model::Keyframe {
+    app_model::Keyframe {
+        t: Time::from_ticks(t),
+        v,
+        easing,
+    }
+}
+
+fn clip_transform(p: &Project, id: ClipId) -> app_model::ClipTransform {
+    all_clips(p)
+        .into_iter()
+        .find(|c| c.id == id)
+        .map(|c| (*c.transform).clone())
+        .unwrap()
+}
+
+#[test]
+fn keyframe_ops_set_move_delete_ease_and_undo() {
+    use app_model::{Easing, TransformProp::Rotation};
+    let (mut p, _tr, a, _b) = two_clips();
+    let before = p.clone();
+    let mut undo = Vec::new();
+    for key in [key(0, 0.0, Easing::Linear), key(2000, 90.0, Easing::Linear)] {
+        let inv = apply(
+            &mut p,
+            Op::SetKeyframe {
+                clip: a,
+                prop: Rotation,
+                key,
+            },
+        )
+        .unwrap();
+        undo.push(inv);
+    }
+    assert_eq!(
+        clip_transform(&p, a).rotation.eval(Time::from_ticks(1000)),
+        45.0
+    );
+    // Replacing a key returns the old one as the inverse.
+    let inv = apply(
+        &mut p,
+        Op::SetKeyframe {
+            clip: a,
+            prop: Rotation,
+            key: key(2000, 180.0, Easing::Hold),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        inv.0,
+        vec![Op::SetKeyframe {
+            clip: a,
+            prop: Rotation,
+            key: key(2000, 90.0, Easing::Linear)
+        }]
+    );
+    apply_all(&mut p, &inv.0).unwrap();
+    // Ease and move.
+    undo.push(
+        apply(
+            &mut p,
+            Op::SetEasing {
+                clip: a,
+                prop: Rotation,
+                t: Time::from_ticks(0),
+                easing: Easing::EASE_IN,
+            },
+        )
+        .unwrap(),
+    );
+    undo.push(
+        apply(
+            &mut p,
+            Op::MoveKeyframe {
+                clip: a,
+                prop: Rotation,
+                from: Time::from_ticks(2000),
+                to: Time::from_ticks(3000),
+                value: Some(30.0),
+            },
+        )
+        .unwrap(),
+    );
+    let x = clip_transform(&p, a);
+    assert_eq!(x.rotation.keys[1].t, Time::from_ticks(3000));
+    assert_eq!(x.rotation.keys[1].v, 30.0);
+    assert_eq!(x.rotation.keys[0].easing, Easing::EASE_IN);
+    // Moving onto another key, deleting or easing a missing key: refused, nothing changes.
+    let snap = p.clone();
+    for bad in [
+        Op::MoveKeyframe {
+            clip: a,
+            prop: Rotation,
+            from: Time::from_ticks(3000),
+            to: Time::from_ticks(0),
+            value: None,
+        },
+        Op::DeleteKeyframe {
+            clip: a,
+            prop: Rotation,
+            t: Time::from_ticks(7),
+        },
+        Op::SetEasing {
+            clip: a,
+            prop: Rotation,
+            t: Time::from_ticks(7),
+            easing: Easing::Linear,
+        },
+        Op::SetKeyframe {
+            clip: a,
+            prop: Rotation,
+            key: key(-1, 0.0, Easing::Linear),
+        },
+        Op::SetKeyframe {
+            clip: a,
+            prop: Rotation,
+            key: key(5, f64::NAN, Easing::Linear),
+        },
+        Op::SetKeyframe {
+            clip: a,
+            prop: app_model::TransformProp::Opacity,
+            key: key(5, 2.0, Easing::Linear),
+        },
+    ] {
+        assert!(apply(&mut p, bad).is_err());
+        assert_eq!(p, snap);
+    }
+    undo.push(
+        apply(
+            &mut p,
+            Op::DeleteKeyframe {
+                clip: a,
+                prop: Rotation,
+                t: Time::from_ticks(3000),
+            },
+        )
+        .unwrap(),
+    );
+    assert_eq!(clip_transform(&p, a).rotation.keys.len(), 1);
+    for inv in undo.iter().rev() {
+        apply_all(&mut p, &inv.0).unwrap();
+    }
+    assert_eq!(
+        p, before,
+        "undoing every step restores the identity transform"
+    );
+}
+
+#[test]
+fn a_keyframe_drag_is_one_undo_step_and_replays_the_same() {
+    use app_model::{Easing, TransformProp::PositionX};
+    let (mut p, _tr, a, _b) = two_clips();
+    let mut h = History::new();
+    h.apply(
+        &mut p,
+        Op::SetKeyframe {
+            clip: a,
+            prop: PositionX,
+            key: key(1000, 0.0, Easing::Linear),
+        },
+        None,
+    )
+    .unwrap();
+    let before_drag = p.clone();
+    // 200 moves of one key (time and value) under one gesture key.
+    let mut at = 1000;
+    for i in 1..=200 {
+        let to = 1000 + i * 3;
+        h.apply(
+            &mut p,
+            Op::MoveKeyframe {
+                clip: a,
+                prop: PositionX,
+                from: Time::from_ticks(at),
+                to: Time::from_ticks(to),
+                value: Some(i as f64 / 100.0),
+            },
+            Some(77),
+        )
+        .unwrap();
+        at = to;
+    }
+    assert_eq!(
+        clip_transform(&p, a).position_x.keys[0].t,
+        Time::from_ticks(1600)
+    );
+    // The journal replays to the same project on a fresh copy.
+    let (mut fresh, _tr2, _a2, _b2) = two_clips();
+    apply_all(&mut fresh, h.journal()).unwrap();
+    assert_eq!(fresh, p, "replaying the journal gives the same document");
+    assert!(h.undo(&mut p).unwrap());
+    assert_eq!(p, before_drag, "one undo reverts the whole drag");
+    assert!(h.redo(&mut p).unwrap());
+    assert_eq!(
+        clip_transform(&p, a).position_x.keys[0].t,
+        Time::from_ticks(1600)
+    );
+}
+
+#[test]
+fn evaluate_reports_the_animated_values_at_the_frame() {
+    use app_model::{Easing, TransformProp::Opacity};
+    let (mut p, mut ids) = base();
+    let m = p.media[2].id; // an image: no length limit, so the clip can be seconds long
+    let c = Clip {
+        duration: Time::from_seconds(4).unwrap(),
+        ..clip(&mut ids, m, 0, 0, 1)
+    };
+    let a = c.id;
+    p.sequences[0].tracks[0].clips = vec![c];
+    for key in [
+        key(0, 0.0, Easing::Linear),
+        key(4 * app_model::TICKS_PER_SECOND, 1.0, Easing::Linear),
+    ] {
+        apply(
+            &mut p,
+            Op::SetKeyframe {
+                clip: a,
+                prop: Opacity,
+                key,
+            },
+        )
+        .unwrap();
+    }
+    let mut out = FrameDescription::default();
+    for (frame, want) in [(0, 0.0f32), (30, 0.25), (60, 0.5), (90, 0.75)] {
+        let at = Time::from_frame_index(frame, Rational::FPS_30).unwrap();
+        evaluate_into(&p.sequences[0], at, 0, &mut out);
+        let l = out.layers.iter().find(|l| l.clip == a).unwrap();
+        assert!(
+            (l.opacity - want).abs() < 1e-6,
+            "frame {frame}: {}",
+            l.opacity
+        );
+    }
+}
+
+/// < 1 us per parameter (ADR 0015, M2-004): all 12 properties with 8 keys each, evaluated at a moving time, in release builds.
+#[test]
+fn evaluating_a_fully_animated_transform_is_under_a_microsecond_per_parameter() {
+    use app_model::{Animated, Easing};
+    let mut x = app_model::ClipTransform::default();
+    let keys = |amp: f64| {
+        let mut a = Animated::constant(0.5);
+        for i in 0..8 {
+            a.set_key(key(
+                i * 1000,
+                0.1 + amp * (i % 3) as f64 * 0.1,
+                Easing::EASE_IN_OUT,
+            ))
+            .unwrap();
+        }
+        a
+    };
+    for (i, prop) in PROPS.iter().enumerate() {
+        *x.prop_mut(*prop) = keys(0.05 * (i % 4) as f64 + 0.05);
+    }
+    x.validate().unwrap();
+    let n = 20_000u64;
+    let started = std::time::Instant::now();
+    let mut sink = 0.0f32;
+    for i in 0..n {
+        let v = x.at(Time::from_ticks((i * 37 % 7000) as i64));
+        sink += v.opacity + v.position[0] + v.rotation;
+    }
+    let per_param = started.elapsed().as_nanos() as f64 / (n as f64 * 12.0);
+    eprintln!("keyframe eval: {per_param:.0} ns per parameter (sink {sink})");
+    let budget = if cfg!(debug_assertions) {
+        20_000.0
+    } else {
+        1_000.0
+    };
+    assert!(
+        per_param < budget,
+        "{per_param} ns per parameter over {budget}"
+    );
 }

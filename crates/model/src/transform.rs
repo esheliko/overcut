@@ -92,6 +92,24 @@ impl Default for ClipTransform {
     }
 }
 
+/// The animatable numbers of a [`ClipTransform`], by name (what a keyframe op addresses; M2-004).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TransformProp {
+    PositionX,
+    PositionY,
+    ScaleX,
+    ScaleY,
+    Rotation,
+    AnchorX,
+    AnchorY,
+    CropLeft,
+    CropTop,
+    CropRight,
+    CropBottom,
+    Opacity,
+}
+
 /// What a transform is not allowed to hold.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransformError {
@@ -104,6 +122,40 @@ pub enum TransformError {
 impl ClipTransform {
     pub fn is_identity(&self) -> bool {
         *self == ClipTransform::default()
+    }
+
+    pub fn prop(&self, p: TransformProp) -> &Animated {
+        match p {
+            TransformProp::PositionX => &self.position_x,
+            TransformProp::PositionY => &self.position_y,
+            TransformProp::ScaleX => &self.scale_x,
+            TransformProp::ScaleY => &self.scale_y,
+            TransformProp::Rotation => &self.rotation,
+            TransformProp::AnchorX => &self.anchor_x,
+            TransformProp::AnchorY => &self.anchor_y,
+            TransformProp::CropLeft => &self.crop_left,
+            TransformProp::CropTop => &self.crop_top,
+            TransformProp::CropRight => &self.crop_right,
+            TransformProp::CropBottom => &self.crop_bottom,
+            TransformProp::Opacity => &self.opacity,
+        }
+    }
+
+    pub fn prop_mut(&mut self, p: TransformProp) -> &mut Animated {
+        match p {
+            TransformProp::PositionX => &mut self.position_x,
+            TransformProp::PositionY => &mut self.position_y,
+            TransformProp::ScaleX => &mut self.scale_x,
+            TransformProp::ScaleY => &mut self.scale_y,
+            TransformProp::Rotation => &mut self.rotation,
+            TransformProp::AnchorX => &mut self.anchor_x,
+            TransformProp::AnchorY => &mut self.anchor_y,
+            TransformProp::CropLeft => &mut self.crop_left,
+            TransformProp::CropTop => &mut self.crop_top,
+            TransformProp::CropRight => &mut self.crop_right,
+            TransformProp::CropBottom => &mut self.crop_bottom,
+            TransformProp::Opacity => &mut self.opacity,
+        }
     }
 
     fn props(&self) -> [&Animated; 12] {

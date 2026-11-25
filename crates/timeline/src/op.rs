@@ -2,8 +2,8 @@
 //! id they create (the host supplies fresh ids), so applying the same op list to the same project is deterministic.
 
 use app_model::{
-    Clip, ClipId, ClipTransform, LinkId, MediaId, MediaRef, Rational, Resolution, SequenceId, Time,
-    Track, TrackId,
+    Clip, ClipId, ClipTransform, Easing, Keyframe, LinkId, MediaId, MediaRef, Rational, Resolution,
+    SequenceId, Time, Track, TrackId, TransformProp,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -63,6 +63,37 @@ pub enum Op {
     SetClipTransform {
         clip: ClipId,
         transform: Box<ClipTransform>,
+    },
+    /// Add a keyframe to one animatable property of a clip's transform, or replace the key at the same clip-relative time (M2-004,
+    /// `docs/features/keyframes.md`). Key times are `>= 0`; values are range-checked like `SetClipTransform` (`BadTransform`).
+    /// Inverse: `SetKeyframe` of the key it replaced, else `DeleteKeyframe`.
+    SetKeyframe {
+        clip: ClipId,
+        prop: TransformProp,
+        key: Keyframe,
+    },
+    /// Move the key at `from` to the time `to` (`KeyframeOccupied` when another key is there) and, when `value` is given, give it that
+    /// value. A drag is many of these under one `History` key = one undo step. Inverse: the move back with the old value.
+    MoveKeyframe {
+        clip: ClipId,
+        prop: TransformProp,
+        from: Time,
+        to: Time,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        value: Option<f64>,
+    },
+    /// Remove the key at `t` (`NoKeyframe` when there is none). Inverse: `SetKeyframe` of that key.
+    DeleteKeyframe {
+        clip: ClipId,
+        prop: TransformProp,
+        t: Time,
+    },
+    /// Change the easing of the segment leaving the key at `t`. Inverse: the old easing.
+    SetEasing {
+        clip: ClipId,
+        prop: TransformProp,
+        t: Time,
+        easing: Easing,
     },
     /// Remove the clip.
     Delete { clip: ClipId },
