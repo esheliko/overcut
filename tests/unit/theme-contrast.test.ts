@@ -54,6 +54,8 @@ const PAIRS: [string, string, number, string][] = [
   ["accent-ink", "accent", 4.5, "primary button label"],
   ["danger", "surface-2", 4.5, "error text in the status chip"],
   ["bg", "fg", 4.5, "play button, toast"],
+  ["bg", "danger", 4.5, "destructive button label (Delete confirm)"],
+  ["fg", "surface-3", 4.5, "media bin Tags button label (its own surface-3 fill)"],
   ["stage-fg", "stage", 4.5, "preview hint text"],
   // non-text (3:1): focus ring, status dots
   ["focus-ring", "bg", 3, "focus ring"],
@@ -113,6 +115,24 @@ test("high-contrast borders are visible (3:1)", () => {
   const bg = parseColor(t.surface!);
   assert.ok(ratio(over(parseColor(t["line-strong"]!), bg), bg) >= 3);
   assert.ok(ratio(over(parseColor(t.line!), bg), bg) >= 3);
+});
+
+/** The media bin's Tags button had no surface of its own (browser chrome, 1.92:1 in dark). Its CSS must paint a fill, a border and the --fg label. */
+test("media bin Tags button paints its own visible surface: surface-3 fill, a border, --fg label", () => {
+  const styles = readFileSync(new URL("../../apps/web/src/styles.css", import.meta.url), "utf8");
+  const m = /\.bin-tag-btn \{([^}]*)\}/.exec(styles);
+  assert.ok(m, "missing .bin-tag-btn rule");
+  const rule = m[1]!;
+  assert.match(rule, /background:\s*var\(--surface-3\)/);
+  assert.match(rule, /border:\s*1px solid var\(--line-strong\)/);
+  assert.match(rule, /color:\s*var\(--fg\)/);
+});
+
+/** Primary (.export-go) buttons are filled with the accent, and the destructive variant with the danger token, in every theme. */
+test("primary and destructive buttons: accent / danger fills with the matching ink, no browser border", () => {
+  const styles = readFileSync(new URL("../../apps/web/src/styles.css", import.meta.url), "utf8");
+  assert.match(styles, /\.export-go \{ background: var\(--accent\); color: var\(--accent-ink\); border: 0; \}/);
+  assert.match(styles, /\.export-go\.export-danger-go \{ background: var\(--danger\); color: var\(--bg\); \}/);
 });
 
 test("all themes define the same colour roles", () => {

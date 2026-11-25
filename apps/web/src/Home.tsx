@@ -102,6 +102,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
           title={t("projects.delete.title", { name: nameOf(deleting) })}
           body={t("projects.delete.body")}
           confirm={t("projects.delete.confirm")}
+          danger
           onClose={() => setDeleting(null)}
           onConfirm={() => { const e = deleting; setDeleting(null); onDelete(e); }}
         />

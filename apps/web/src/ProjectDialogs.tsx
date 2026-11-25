@@ -30,14 +30,14 @@ export function Modal({ title, titleId, testId, onClose, children, role }: { tit
 }
 
 /** "New project" / "Open project": replacing the project asks first when the open one has changes that were never saved to a file. */
-export function ConfirmDialog({ title, body, confirm, onConfirm, onClose, busy }: { title: string; body: string; confirm: string; onConfirm(): void; onClose(): void; busy?: boolean }) {
+export function ConfirmDialog({ title, body, confirm, onConfirm, onClose, busy, danger }: { title: string; body: string; confirm: string; onConfirm(): void; onClose(): void; busy?: boolean; danger?: boolean }) {
   const { t } = useI18n();
   return (
     <Modal title={title} titleId="confirm-title" testId="confirm-dialog" onClose={onClose} role="alertdialog">
       <p className="export-note">{body}</p>
       <div className="export-actions">
         <button className="export-secondary" onClick={onClose} data-testid="confirm-cancel">{t("project.cancel")}</button>
-        <button className="export-go" onClick={onConfirm} disabled={busy} data-testid="confirm-ok">{confirm}</button>
+        <button className={danger ? "export-go export-danger-go" : "export-go"} onClick={onConfirm} disabled={busy} data-testid="confirm-ok">{confirm}</button>
       </div>
     </Modal>
   );

@@ -252,7 +252,7 @@ h2, p { margin: 0; }
 .bin-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; } /* the meta is one line; the whole line is the tooltip */
 .bin-error { color: var(--fg); white-space: normal; overflow-wrap: anywhere; }
 .bin-act { flex: none; min-width: 44px; min-height: 44px; }
-.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border-radius: 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border-radius: 10px; background: var(--surface-3); border: 1px solid var(--line-strong); color: var(--fg); font-size: 12px; font-weight: 600; }
 .bin-on-timeline { color: var(--accent); font-weight: 600; }
 .bin-link { flex: none; min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tl-drop { grid-area: timeline; display: contents; }
@@ -287,6 +287,10 @@ h2, p { margin: 0; }
 .export-fields label { display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--text-sm); min-inline-size: 0; }
 .export-fields select { min-block-size: var(--target); padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--fg); font-size: var(--text-base); min-inline-size: 0; }
 .export-go, .export-secondary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-block-size: 52px; padding: 0 var(--space-5); border-radius: var(--radius); font-weight: 700; font-size: var(--text-md); }
+/* Primary action (New project, Rename OK, Add tag, Confirm OK, Canvas Apply, Versions Save): accent fill, never the browser's raised default. */
+.export-go { background: var(--accent); color: var(--accent-ink); border: 0; }
+/* Destructive confirm (Delete): danger fill with the theme's background as its label colour (contrast pair checked in tests/unit/theme-contrast.test.ts). */
+.export-go.export-danger-go { background: var(--danger); color: var(--bg); }
 .export-go:disabled { opacity: 0.45; cursor: default; }
 .export-secondary { border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); }
 .export-secondary:hover { background: var(--surface-3); }

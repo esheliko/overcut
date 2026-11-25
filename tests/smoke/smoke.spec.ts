@@ -331,3 +331,37 @@ test("holding Shift after selecting a clip does not outline the whole timeline; 
   await page.keyboard.up("Shift");
   await expect(page.getByTestId("tl-selected")).toHaveCount(0); // Shift+click on a selected clip still toggles it off
 });
+
+test("buttons in Canvas, Versions, the media bin and Projects are styled, never the browser default (no outset border)", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/");
+  await expect(page.getByTestId("canvas-open")).toBeEnabled({ timeout: 30_000 });
+  /** Visible buttons in the dialogs, the Projects home, the media bin tag button and every primary button that still has the browser's outset border. */
+  const outset = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>("dialog[open] button, .home button, .bin-tag-btn, .export-go")]
+    .filter((b) => { const s = getComputedStyle(b), r = b.getBoundingClientRect(); return s.visibility !== "hidden" && r.width > 0 && r.height > 0 && s.borderTopStyle === "outset"; })
+    .map((b) => b.textContent?.trim() || b.getAttribute("data-testid") || b.className));
+
+  await page.getByTestId("canvas-open").click();
+  await expect(page.getByTestId("canvas-apply")).toBeVisible();
+  expect(await outset(), "Canvas dialog").toEqual([]);
+  await page.getByTestId("canvas-cancel").click();
+
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("menuitem", { name: "Versions…" }).click();
+  await expect(page.getByTestId("versions-save")).toBeVisible({ timeout: 15_000 });
+  expect(await outset(), "Versions dialog").toEqual([]);
+  await page.keyboard.press("Escape");
+
+  // The media bin's Tags button exists once a media item is in the bin; the tag dialog then has its own primary button.
+  if (await page.getByTestId("bin-tag-edit").count() > 0) {
+    await page.getByTestId("bin-tag-edit").first().click();
+    await expect(page.getByTestId("tag-add")).toBeVisible();
+    expect(await outset(), "media bin tag dialog").toEqual([]);
+    await page.keyboard.press("Escape");
+  }
+
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByTestId("menu-projects").click();
+  await expect(page.getByTestId("projects-new")).toBeVisible();
+  expect(await outset(), "Projects").toEqual([]);
+});
