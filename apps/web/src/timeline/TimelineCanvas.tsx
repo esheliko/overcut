@@ -264,10 +264,10 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
     const o = ui.current;
-    o.ghosts = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
+    o.ghosts = null; o.ghostTracks = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
     markPreview(flags.current, g);
     if (g.k === "move") {
-      o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTrack = g.track !== g.from ? g.track : -1; o.lane = g.track !== g.from ? g.track : -1;
+      o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTracks = g.to; o.lane = g.mv ? g.track : -1;
       o.guideSec = g.guide != null ? g.guide / TICKS_PER_SECOND : null;
     } else if (g.k === "trim") {
       o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND;

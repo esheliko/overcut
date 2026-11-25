@@ -53,3 +53,35 @@ test("dropping a media card on the V2 lane lands on V2 at the pointer", async ({
   await expect(page.locator("#tl-summary")).toContainText("4 clips");
   await expect(onV2(page)).toHaveCount(1);
 });
+
+test("two selected pictures change lane together: both on V2, their sounds stay on A1, one undo puts both back", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "mouse drag");
+  await page.goto("/");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  await page.getByTestId("media-input").setInputFiles(media);
+  await expect(page.locator("#tl-summary")).toContainText("2 tracks, 2 clips", { timeout: 30_000 });
+  // Split the picture and its sound in the middle: two pictures on V1, two sounds on A1.
+  await page.getByTestId("timeline-canvas").focus();
+  for (let i = 0; i < 8; i++) await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("s");
+  await expect(page.locator("#tl-summary")).toContainText("4 clips");
+  await page.getByTestId("tl-more").click();
+  await page.getByTestId("track-add-video").click();
+  await expect(page.locator("#tl-summary")).toContainText("3 tracks");
+  await expect(onV2(page)).toHaveCount(0);
+  const canvas = page.getByTestId("timeline-canvas");
+  await canvas.focus();
+  await page.keyboard.press("Control+a");
+  const box = (await canvas.boundingBox())!;
+  const dg = await gutterShift(page);
+  const x = box.x + dg + 48 + 40;
+  await page.mouse.move(x, box.y + 30 + 52 + 26);
+  await page.mouse.down();
+  await page.mouse.move(x + 10, box.y + 30 + 52 + 10, { steps: 4 });
+  await page.mouse.move(x + 10, box.y + 30 + 26, { steps: 6 });
+  await page.mouse.up();
+  await expect(onV2(page)).toHaveCount(2);
+  await expect(page.getByTestId("tl-clip-list").locator("li", { hasText: "A1" })).toHaveCount(2);
+  await page.keyboard.press("Control+z");
+  await expect(onV2(page)).toHaveCount(0);
+});

@@ -87,37 +87,74 @@ export function moveToTrackOp(scene: Scene, i: number, track: number, delta: num
   return { op: "move", clip: scene.id[i]!, track: scene.trackId[track]!, start: scene.tStart[i]! + delta };
 }
 
-/** Can clip `i` (shifted by `delta`) sit on `track` without overlapping anything there? Kind must match and the track be unlocked. */
-export function fitsOnTrack(scene: Scene, i: number, track: number, delta: number): boolean {
+/** Can clip `i` (shifted by `delta`) sit on `track` without overlapping anything there? Kind must match and the track be unlocked.
+ *  `leaving` are clips that move away in the same edit: they do not count as obstacles. */
+export function fitsOnTrack(scene: Scene, i: number, track: number, delta: number, leaving: readonly number[] = []): boolean {
   if (track < 0 || track >= scene.trackCount || scene.trackLocked[track] || scene.trackKind[track] !== scene.trackKind[scene.clipTrack[i]!]) return false;
   const s = scene.tStart[i]! + delta, e = s + scene.tDur[i]!;
   if (s < 0) return false;
   const lo = scene.trackFirst[track]!, hi = scene.trackFirst[track + 1]!;
   for (let k = firstEndingAfter(scene, lo, hi, (s + 1) / TPS); k < hi && scene.tStart[k]! < e; k++) {
-    if (k !== i && scene.tStart[k]! < e && scene.tStart[k]! + scene.tDur[k]! > s) return false;
+    if (k !== i && scene.tStart[k]! < e && scene.tStart[k]! + scene.tDur[k]! > s && !leaving.includes(k)) return false;
   }
   return true;
 }
 
-/** The one selected clip that can change lane to `track` (the only one of that kind, not already there), or -1. A linked sound stays on its own track while its picture changes lane. */
-export function laneChanger(scene: Scene, sel: readonly number[], track: number): number {
-  const kind = scene.trackKind[track];
-  const same = sel.filter((i) => scene.trackKind[scene.clipTrack[i]!] === kind);
-  return same.length === 1 && scene.clipTrack[same[0]!] !== track ? same[0]! : -1;
+/** Position of row `track` among the rows of its own kind (display order), and the row at position `ord` of `kind` (-1 when there is none). */
+function kindOrdinal(scene: Scene, track: number): number {
+  let n = 0;
+  for (let t = 0; t < track; t++) if (scene.trackKind[t] === scene.trackKind[track]) n++;
+  return n;
+}
+function kindRow(scene: Scene, kind: number, ord: number): number {
+  let n = 0;
+  for (let t = 0; t < scene.trackCount; t++) if (scene.trackKind[t] === kind && n++ === ord) return t;
+  return -1;
 }
 
-/** Moving the selection by about `dx` ticks with clip `m` changing lane to `track`: the shift (whole frames; the other selected clips keep their room), or null when `m` does not fit there. */
-export function laneShift(scene: Scene, sel: readonly number[], flags: Uint8Array, m: number, track: number, dx: number): number | null {
-  const rest = sel.filter((i) => i !== m);
+/** A lane change: the selected clips of one kind (`movers`) and the row each lands on (`dest`, parallel). */
+export interface LaneMove { movers: number[]; dest: number[] }
+
+/** Dragging the selection onto row `track`: every selected clip of that row's kind moves by the same number of lanes of its kind
+ *  (the first of them lands on `track`); all or nothing, so null when any would leave the stack or `track` is where they already are.
+ *  Clips of the other kind (a linked sound) keep their own track. Fit and locks are checked by `laneShift`. */
+export function laneChanger(scene: Scene, sel: readonly number[], track: number): LaneMove | null {
+  const kind = scene.trackKind[track]!;
+  const movers = sel.filter((i) => scene.trackKind[scene.clipTrack[i]!] === kind);
+  if (movers.length === 0) return null;
+  const d = kindOrdinal(scene, track) - kindOrdinal(scene, scene.clipTrack[movers[0]!]!);
+  if (d === 0) return null;
+  const dest: number[] = [];
+  for (const i of movers) {
+    const to = kindRow(scene, kind, kindOrdinal(scene, scene.clipTrack[i]!) + d);
+    if (to < 0) return null;
+    dest.push(to);
+  }
+  return { movers, dest };
+}
+
+/** The row each of `sel` shows on while a lane change is previewed (parallel to `sel`). */
+export function laneTracks(scene: Scene, sel: readonly number[], mv: LaneMove): number[] {
+  return sel.map((i) => { const k = mv.movers.indexOf(i); return k >= 0 ? mv.dest[k]! : scene.clipTrack[i]!; });
+}
+
+/** Moving the selection by about `dx` ticks with the movers changing lane: the shift (whole frames; the other selected clips keep their room), or null when any mover does not fit its new lane. */
+export function laneShift(scene: Scene, sel: readonly number[], flags: Uint8Array, mv: LaneMove, dx: number): number | null {
+  const rest = sel.filter((i) => !mv.movers.includes(i));
   const room = rest.length ? moveRoom(scene, rest, flags) : { left: Infinity, right: Infinity };
-  const d = snapDelta(dx, -Math.min(room.left, scene.tStart[m]!), room.right, scene.frameTicks);
-  return fitsOnTrack(scene, m, track, d) ? d : null;
+  let first = Infinity;
+  for (const m of mv.movers) first = Math.min(first, scene.tStart[m]!);
+  const d = snapDelta(dx, -Math.min(room.left, first), room.right, scene.frameTicks);
+  return mv.movers.every((m, k) => fitsOnTrack(scene, m, mv.dest[k]!, d, mv.movers)) ? d : null;
 }
 
-/** Ops for a lane change: the picture to its new track and time, the rest of the selection shifted in place (one undo step). */
-export function laneOps(scene: Scene, sel: readonly number[], m: number, track: number, delta: number): Op[] {
-  const rest = sel.filter((i) => i !== m);
-  return [...(rest.length ? moveOps(scene, rest, delta) : []), moveToTrackOp(scene, m, track, delta)];
+/** Ops for a lane change: the movers to their new tracks and time, the rest of the selection shifted in place (one undo step).
+ *  Movers go furthest-first in the direction of travel, so a clip never lands on a lane its neighbour has not left yet. */
+export function laneOps(scene: Scene, sel: readonly number[], mv: LaneMove, delta: number): Op[] {
+  const rest = sel.filter((i) => !mv.movers.includes(i));
+  const up = mv.dest[0]! < scene.clipTrack[mv.movers[0]!]!;
+  const order = mv.movers.map((_, k) => k).sort((x, y) => (up ? 1 : -1) * (mv.dest[x]! - mv.dest[y]!));
+  return [...(rest.length ? moveOps(scene, rest, delta) : []), ...order.map((k) => moveToTrackOp(scene, mv.movers[k]!, mv.dest[k]!, delta))];
 }
 
 /** One lane up (`up`: toward the top of the stack) or down for the selection: the picture clips when any are selected (a linked sound keeps its track), else the sound clips.
