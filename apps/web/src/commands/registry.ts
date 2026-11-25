@@ -28,6 +28,10 @@ export type Command =
   | { c: "playhead"; frames: number }
   /** Playhead steps in the timeline: `frames` whole frames, or `seconds` seconds, or jump to the start or end. */
   | { c: "step"; frames?: number; seconds?: number; to?: "start" | "end" }
+  /** Markers (M2-046): add one at the playhead, open the menu of the one at the playhead. */
+  | { c: "marker" } | { c: "markerEdit" }
+  /** The in/out range (M2-046): set in / out at the playhead, clear it, loop it, play it. */
+  | { c: "range"; what: "in" | "out" | "clear" | "loop" | "play" }
   | { c: "zoom"; how: "in" | "out" | "fit" }
   | { c: "scroll"; how: "pageLeft" | "pageRight" | "up" | "down" }
   /** Transport keys, handled by the preview panel. */
@@ -110,6 +114,14 @@ export const COMMANDS: readonly CommandDef[] = [
   D("clip.slideForward", "canvas", ["Mod+Shift+Period"], { c: "slide", frames: 1 }),
   D("clip.rollBack", "canvas", ["Mod+Alt+Comma"], { c: "roll", frames: -1 }),
   D("clip.rollForward", "canvas", ["Mod+Alt+Period"], { c: "roll", frames: 1 }),
+
+  D("marker.add", "global", ["M"], { c: "marker" }),
+  D("marker.edit", "global", [], { c: "markerEdit" }),
+  D("range.in", "global", ["I"], { c: "range", what: "in" }),
+  D("range.out", "global", ["O"], { c: "range", what: "out" }),
+  D("range.play", "global", ["Alt+P"], { c: "range", what: "play" }),
+  D("range.loop", "global", [], { c: "range", what: "loop" }),
+  D("range.clear", "global", ["Alt+X"], { c: "range", what: "clear" }),
 
   D("playhead.back", "canvas", ["Alt+ArrowLeft"], { c: "playhead", frames: -1 }),
   D("playhead.forward", "canvas", ["Alt+ArrowRight"], { c: "playhead", frames: 1 }),

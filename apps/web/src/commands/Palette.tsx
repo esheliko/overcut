@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { rememberFocus } from "../a11y/restoreFocus";
 import { useI18n } from "../i18n";
+import { useProjectStore } from "../store/projectStore";
+import { clipboardState, whyNot } from "./availability";
 import { currentKeymap } from "./keymap";
 import { COMMAND_EVENT, loadRecent, pushRecent, saveRecent, searchCommands } from "./palette";
 import { chordLabel, type CommandDef } from "./registry";
@@ -15,9 +17,13 @@ export function Palette({ onClose }: { onClose(): void }) {
   const [q, setQ] = useState("");
   const [at, setAt] = useState(0);
   const [recent] = useState(loadRecent);
-  const hits = useMemo(() => searchCommands(q, (id) => t(`cmd.${id}`), recent), [q, recent, t]);
+  const canUndo = useProjectStore((s) => s.canUndo), canRedo = useProjectStore((s) => s.canRedo), selected = useProjectStore((s) => s.selection.size);
+  const avail = useMemo(() => ({ canUndo, canRedo, selected, copied: clipboardState.copied, range: clipboardState.range }), [canUndo, canRedo, selected]);
+  const hits = useMemo(() => searchCommands(q, (id) => t(`cmd.${id}`), recent, undefined, (d) => whyNot(d, avail)), [q, recent, t, avail]);
+  const touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches; // no keyboard: the shortcut hints would be noise
   const apple = isApple();
-  useEffect(() => {
+  // Layout effect: the dialog is open (and focused) before the browser paints, so a key pressed right after the rows appear already reaches it.
+  useLayoutEffect(() => {
     const d = dlg.current;
     const back = rememberFocus();
     if (d && !d.open) d.showModal();
@@ -27,6 +33,7 @@ export function Palette({ onClose }: { onClose(): void }) {
   useEffect(() => { list.current?.children[at]?.scrollIntoView?.({ block: "nearest" }); }, [at]);
 
   const run = (d: CommandDef) => {
+    if (whyNot(d, avail)) return; // a disabled row says why instead of doing nothing
     saveRecent(pushRecent(recent, d.id));
     onClose();
     // After the dialog has gone: the canvas runs what it owns and hands the rest to the timeline.
@@ -47,10 +54,10 @@ export function Palette({ onClose }: { onClose(): void }) {
         autoFocus value={q} placeholder={t("palette.placeholder")} aria-label={t("palette.title")} data-testid="palette-input" onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} />
       <ul id="palette-list" ref={list} role="listbox" className="palette-list" aria-label={t("palette.results")}>
         {hits.map((d, i) => (
-          <li key={d.id} id={`pal-${d.id}`} role="option" aria-selected={i === at} className={i === at ? "palette-row on" : "palette-row"} data-testid={`pal-${d.id}`}
+          <li key={d.id} id={`pal-${d.id}`} role="option" aria-selected={i === at} aria-disabled={whyNot(d, avail) ? true : undefined} className={`${i === at ? "palette-row on" : "palette-row"}${whyNot(d, avail) ? " off" : ""}`} data-testid={`pal-${d.id}`}
             onPointerMove={() => setAt(i)} onClick={() => run(d)}>
             <span>{t(`cmd.${d.id}`)}</span>
-            {keyOf(d) && <kbd>{keyOf(d)}</kbd>}
+            {whyNot(d, avail) ? <small className="palette-why">{t(whyNot(d, avail)!)}</small> : !touch && keyOf(d) && <kbd>{keyOf(d)}</kbd>}
           </li>
         ))}
       </ul>

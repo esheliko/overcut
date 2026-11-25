@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import en from "../../apps/web/src/i18n/en.json" with { type: "json" };
+import { whyNot } from "../../apps/web/src/commands/availability";
 import { PALETTE_COMMANDS, RECENT_MAX, pushRecent, searchCommands } from "../../apps/web/src/commands/palette";
 
 const label = (id: string): string => (en as Record<string, string>)[`cmd.${id}`] ?? id;
@@ -31,4 +32,14 @@ test("labels that start with the query come first; recent ones lead with no quer
 test("recents: moved to the front, no duplicates, capped", () => {
   assert.deepEqual(pushRecent(["a", "b", "c"], "b"), ["b", "a", "c"]);
   assert.equal(pushRecent(Array.from({ length: RECENT_MAX }, (_, i) => `x${i}`), "new").length, RECENT_MAX);
+});
+
+test("commands that cannot run now sort below the runnable ones and say why", () => {
+  const a = { canUndo: false, canRedo: true, selected: 0, copied: false, range: false };
+  const r = searchCommands("", label, [], undefined, (d) => whyNot(d, a)).map((d) => d.id);
+  assert.ok(r.indexOf("edit.redo") < r.indexOf("edit.undo"), "redo runs, undo does not");
+  assert.ok(r.indexOf("edit.split") < r.indexOf("edit.delete"));
+  assert.equal(whyNot(PALETTE_COMMANDS.find((d) => d.id === "edit.undo")!, a), "palette.why.undo");
+  assert.equal(whyNot(PALETTE_COMMANDS.find((d) => d.id === "edit.delete")!, { ...a, selected: 2 }), null);
+  for (const k of ["undo", "redo", "select", "paste"]) assert.ok((en as Record<string, string>)[`palette.why.${k}`]);
 });

@@ -129,6 +129,19 @@ test("on a shared edge the pointer's side picks the clip: left of the cut trims 
   assert.deepEqual(at(4.03), { clip: B, edge: "start" });
 });
 
+test("edge auto-scroll: speed grows toward the edge, a drag origin follows the scroll", async () => {
+  const { edgeSpeed, EDGE_ZONE, EDGE_MAX, scrolled, scrollsAtEdge, IDLE } = await import("../../apps/web/src/timeline/interact");
+  assert.equal(edgeSpeed(500, 0, 1000), 0, "middle: still");
+  assert.equal(edgeSpeed(1000, 0, 1000), EDGE_MAX, "at the right edge: full speed");
+  assert.equal(edgeSpeed(0, 0, 1000), -EDGE_MAX, "at the left edge: full speed back");
+  assert.ok(edgeSpeed(1000 - EDGE_ZONE / 2, 0, 1000) > 0 && edgeSpeed(1000 - EDGE_ZONE / 2, 0, 1000) < EDGE_MAX, "half way in: half speed");
+  const g = { k: "marquee" as const, x0: 100, y0: 50, x1: 300, y1: 200 };
+  assert.deepEqual(scrolled(g, 40, 10), { ...g, x0: 60, y0: 40 });
+  assert.equal(scrolled(IDLE, 5, 5), IDLE);
+  assert.equal(scrollsAtEdge(IDLE), false);
+  assert.equal(scrollsAtEdge(g), true);
+});
+
 test("scene.keys: the keyframe times (seconds) of clips that have some, for the timeline's diamonds", () => {
   const p = structuredClone(newProject("x"));
   p.media.push(mediaRef("m1", "v.mp4", "u", video, null));

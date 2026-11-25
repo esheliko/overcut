@@ -52,7 +52,13 @@ export interface Scene {
   linkGroups: Map<string, number[]>;
   /** Clip index -> absolute times (seconds) of its transform keyframes; only clips that have some. */
   keys: Map<number, number[]>;
+  /** Markers in time order (ticks exact, seconds for drawing), and the in/out range (ticks; null = the whole sequence) and whether playback loops it. */
+  markers: SceneMarker[];
+  range: { start: number; end: number } | null;
+  loop: boolean;
 }
+
+export interface SceneMarker { id: string; ticks: number; sec: number; name: string; colour: string | null; chapter: boolean }
 
 export const EMPTY_SCENE: Scene = buildScene(null);
 
@@ -107,6 +113,9 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     link: new Array<string>(total),
     linkGroups: new Map(),
     keys: new Map(),
+    markers: (project?.sequences[sequence]?.markers ?? []).map((m) => ({ id: m.id, ticks: m.time, sec: m.time / TICKS_PER_SECOND, name: m.name ?? "", colour: m.colour ?? null, chapter: m.kind === "chapter" })),
+    range: project?.sequences[sequence]?.range ?? null,
+    loop: project?.sequences[sequence]?.loop_range === true,
   };
   let i = 0;
   tracks.forEach((t, ti) => {

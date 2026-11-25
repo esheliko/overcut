@@ -8,9 +8,10 @@ import { handleAt, trackAtY } from "./hit";
 import { headerPart } from "./header";
 import { BIN_DRAG_TYPE } from "../media/sources";
 import { snapDrop, SNAP_PX } from "./arrange";
-import { applySelect, IDLE, longPress, markPreview, sameLayout, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
+import { applySelect, edgeSpeed, IDLE, longPress, markPreview, sameLayout, pointerDown, pointerMove, pointerUp, scrolled, scrollsAtEdge, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
+import { markerAt } from "./markers";
 import { COMMAND_EVENT } from "../commands/palette";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import type { Tool } from "./ripple";
@@ -50,6 +51,8 @@ type Props = {
   onDropMedia?: (id: string, tick: number, track?: string) => void;
   /** A track header was tapped (or right-clicked): open its menu. `at` is the header's rectangle in viewport pixels. */
   onTrackMenu?: (track: number, at: DOMRect) => void;
+  /** A marker was long-pressed, right-clicked, or tapped while the playhead was on it: open its menu. `at` is its flag's rectangle in viewport pixels. */
+  onMarkerMenu?: (id: string, at: DOMRect) => void;
   /** The edit tool picked in the toolbar (select when absent). */
   tool?: Tool;
   /** A pointer went down on this track (its id): paste targets it. */
@@ -59,7 +62,7 @@ type Props = {
 const TAP_SLOP = 6;
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
-export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onNotice, onReady, media, onDropMedia, onTrackMenu, tool = "select", onLane }: Props) {
+export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onNotice, onReady, media, onDropMedia, onTrackMenu, onMarkerMenu, tool = "select", onLane }: Props) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ pps: zoom, scrollX: 0, scrollY: 0, width: 300, height: 150 });
@@ -67,8 +70,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const palette = useRef<Palette>(DARK);
   const stats = useRef<DrawStats>({ clipsDrawn: 0, tracksDrawn: 0 });
   const raf = useRef(0);
-  const live = useRef({ scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, tool, onLane });
-  live.current = { scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, tool, onLane };
+  const live = useRef({ scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, onMarkerMenu, tool, onLane });
+  live.current = { scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, onMarkerMenu, tool, onLane };
   const ui = useRef<Overlay>(newOverlay());
   const flags = useRef<Uint8Array>(new Uint8Array(0));
   const gest = useRef<Gesture>(IDLE);
@@ -90,6 +93,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     clampScroll(view.current, lengthSec(), l.scene.trackCount);
     c.dataset.pps = view.current.pps.toFixed(1); // test hook: the current zoom
     c.dataset.gutter = String(gut(view.current)); // test hook: width of the track-header column
+    c.dataset.scrollx = String(Math.round(view.current.scrollX)); // test hook: horizontal scroll (edge auto-scroll)
     // Test/diagnostic hook: how much real media has landed (smoke asserts imported clips leave the placeholder state).
     if (media) { c.dataset.waveTiles = String(media.waveforms.stats.tilesRendered); c.dataset.thumbs = String(media.thumbs.stats.generated + media.thumbs.stats.fromCache); }
     drawTimeline(ctx, l.scene, view.current, l.frame / l.fps, dpr.current, palette.current, stats.current, ui.current, media);
@@ -243,18 +247,24 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     const r = canvas.current!.getBoundingClientRect(), v = view.current;
     return new DOMRect(r.left, r.top + RULER + t * LANE - v.scrollY, gut(v), LANE);
   };
+  /** The flag of marker `id` in viewport pixels (menu anchor). */
+  const markerRect = (id: string) => {
+    const r = canvas.current!.getBoundingClientRect(), v = view.current, m = live.current.scene.markers.find((x) => x.id === id);
+    return new DOMRect(r.left + (m ? timeToX(v, m.sec) : gut(v)) - 12, r.top, 24, RULER);
+  };
   const applyFx = (fx: Effects) => {
     const l = live.current;
     if (fx.select) setSelection(applySelect(l.selected, fx.select, l.scene));
     if (fx.seek !== undefined) l.onFrame(clamp(Math.round(fx.seek * l.fps), 0, l.endFrame));
     if (fx.menu !== undefined) l.onTrackMenu?.(fx.menu, headerRect(fx.menu));
+    if (fx.markerMenu !== undefined) l.onMarkerMenu?.(fx.markerMenu, markerRect(fx.markerMenu));
     if (fx.ops) l.onEdit?.(fx.ops, fx.say ?? { key: "timeline.say.edited" });
     else if (fx.say) { l.onAnnounce?.(fx.say); if (fx.visible) l.onNotice?.(fx.say); }
   };
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
     const o = ui.current;
-    o.ghosts = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null;
+    o.ghosts = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
     markPreview(flags.current, g);
     if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTrack = g.track !== g.from ? g.track : -1; o.lane = g.track !== g.from ? g.track : -1;
@@ -271,6 +281,34 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     invalidate();
   };
   const run = (r: { g: Gesture; fx: Effects }) => { gest.current = r.g; syncPreview(r.g); applyFx(r.fx); };
+
+  // Edge auto-scroll: while an edit gesture is held near an edge of the canvas the view scrolls (and the drag follows), faster the closer to the edge.
+  const lastEv = useRef<PEvent | null>(null);
+  const edgeRaf = useRef(0);
+  const edgeStep = (prev: number) => (now: number) => {
+    edgeRaf.current = 0;
+    const ev = lastEv.current, v = view.current;
+    if (!ev || gesture.current.mode !== "edit" || !scrollsAtEdge(gest.current)) return;
+    const dt = Math.min(64, now - prev) / 1000;
+    const sx = edgeSpeed(ev.x, gut(v), v.width), sy = edgeSpeed(ev.y, RULER, v.height);
+    if (sx !== 0 || sy !== 0) {
+      const [x0, y0] = [v.scrollX, v.scrollY];
+      v.scrollX += sx * dt; v.scrollY += sy * dt;
+      clampScroll(v, lengthSec(), live.current.scene.trackCount);
+      const [dx, dy] = [v.scrollX - x0, v.scrollY - y0];
+      if (dx !== 0 || dy !== 0) {
+        gest.current = scrolled(gest.current, dx, dy);
+        run(pointerMove(ctxNow(), gest.current, ev));
+        invalidate();
+      }
+    }
+    if (sx !== 0 || sy !== 0) edgeRaf.current = requestAnimationFrame(edgeStep(now));
+  };
+  const kickEdge = (ev: PEvent) => {
+    lastEv.current = ev;
+    if (!edgeRaf.current && scrollsAtEdge(gest.current) && (edgeSpeed(ev.x, gut(view.current), view.current.width) !== 0 || edgeSpeed(ev.y, RULER, view.current.height) !== 0))
+      edgeRaf.current = requestAnimationFrame(edgeStep(performance.now()));
+  };
 
   const onDown = (e: React.PointerEvent) => {
     if (e.pointerType === "mouse" && e.button !== 0) return; // a right click opens the track menu (contextmenu), it does not press
@@ -335,8 +373,10 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
       invalidate();
     } else if (g.mode === "scrub") seekAt(p.x);
     else if (g.mode === "edit") {
-      const r = pointerMove(ctxNow(), gest.current, pev(e, p));
+      const pe = pev(e, p);
+      const r = pointerMove(ctxNow(), gest.current, pe);
       run(r);
+      kickEdge(pe);
       if (r.g.k === "pan") { g.mode = "pan"; g.moved = true; g.vx = 0; g.vy = 0; g.lastT = e.timeStamp; }
     }
   };
@@ -392,6 +432,11 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
       switch (cmd.c) {
         case "clear": if (l.tool !== "select") { l.onCommand?.({ c: "tool", tool: "select" }); break; } if (l.selected.size) { setSelection(new Set()); l.onAnnounce?.({ key: "timeline.say.cleared" }); } break;
         case "selectAll": setSelection(new Set(l.scene.id)); l.onAnnounce?.({ key: "timeline.say.selectedCount", values: { count: l.scene.clipCount } }); break;
+        case "markerEdit": {
+          const m = l.scene.markers.find((x) => x.ticks === Math.round((l.frame / l.fps) * TICKS_PER_SECOND));
+          if (m) l.onMarkerMenu?.(m.id, markerRect(m.id)); else l.onNotice?.({ key: "timeline.say.marker.none" });
+          break;
+        }
         case "playhead": l.onFrame(clamp(l.frame + cmd.frames, 0, l.endFrame)); break;
         case "pick": {
           const sec = l.frame / l.fps;
@@ -456,6 +501,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         onPointerCancel={onCancel}
         onContextMenu={(e) => {
           const p = local(e), v = view.current, t = trackAtY(live.current.scene, v, p.y);
+          const mi = markerAt(live.current.scene, v, p.x, p.y, false);
+          if (mi >= 0) { e.preventDefault(); const id = live.current.scene.markers[mi]!.id; live.current.onMarkerMenu?.(id, markerRect(id)); return; }
           if (t >= 0 && p.x < gut(v)) { e.preventDefault(); live.current.onTrackMenu?.(t, headerRect(t)); }
         }}
         onDragOver={onDragOver}

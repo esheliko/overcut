@@ -24,8 +24,9 @@ export interface Placement { readonly ops: Op[]; readonly placed: number; readon
  * (never overwrites, never splits the group). `newId` supplies the 32-hex ids of the copies.
  * The SOUND of a pasted video (an audio clip linked to a picture in the same group) does not move the group: it takes the first audio track that is free
  * over its range, or a new audio track, all in the same batch (one undo step).
+ * `otherLane` (paste): when the chosen lane is taken at `at`, the group goes to the first free lane of the same kind AT `at` before it is pushed later.
  */
-export function planPlacement(p: Project, held: readonly Held[], at: number, targetTrack: string | null, newId: () => string): Placement {
+export function planPlacement(p: Project, held: readonly Held[], at: number, targetTrack: string | null, newId: () => string, otherLane = false): Placement {
   const tracks = sequenceOf(p)?.tracks ?? [];
   const byId = new Map(tracks.map((t) => [t.id, t]));
   if (held.length === 0) return { ops: [], placed: 0, skipped: 0, start: at };
@@ -52,6 +53,14 @@ export function planPlacement(p: Project, held: readonly Held[], at: number, tar
   let shift = Math.max(at, 0) - anchor;
   const follower = (i: { track: string; clip: Clip }) => kindOf(i.track) === "audio" && !!i.clip.link && pictureLinks.has(i.clip.link);
   const leads = items.filter((i) => !follower(i));
+  // The lane is taken where the playhead is: use the first free lane of the same kind at that spot, rather than pushing the group later (never to the project's end).
+  const free = (trackId: string, sh: number) => leads.every((it) => byId.get(trackId)!.clips.every((o) => !(o.start < it.clip.start + sh + it.clip.duration && o.start + o.duration > it.clip.start + sh)));
+  const lane = leads[0]?.track;
+  if (otherLane && lane && leads.every((i) => i.track === lane) && !free(lane, shift)) {
+    const kind = byId.get(lane)!.kind;
+    const other = tracks.find((t) => t.kind === kind && !t.locked && t.id !== lane && free(t.id, shift));
+    if (other) for (const it of leads) it.track = other.id;
+  }
   // Slide later until nothing overlaps: a blocker on a destination track pushes the group to just after it. Each pass passes at least one clip, so it ends.
   for (let pass = 0; pass <= tracks.reduce((n, t) => n + t.clips.length, 0) + 1; pass++) {
     let bump = shift;

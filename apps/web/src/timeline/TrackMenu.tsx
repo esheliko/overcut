@@ -25,6 +25,8 @@ export function TrackMenu({ scene, target, anchor, onAct, onClose }: Props) {
   const [draft, setDraft] = useState(track >= 0 ? scene.trackName[track]! : "");
   const [back] = useState(rememberFocus); // the element that opened the menu, remembered once
   const close = () => { onClose(); back(); };
+  const closeRef = useRef(close);
+  closeRef.current = close;
   const act = (a: TrackAction) => { onAct(a); onClose(); back(); };
 
   // Place beside the anchor, kept inside the viewport.
@@ -38,8 +40,11 @@ export function TrackMenu({ scene, target, anchor, onAct, onClose }: Props) {
   useEffect(() => { (box.current?.querySelector<HTMLElement>("input, button:not(:disabled)"))?.focus({ preventScroll: true }); }, [renaming]);
   useEffect(() => {
     const away = (e: Event) => { if (!box.current?.contains(e.target as Node)) onClose(); };
+    // Escape closes the menu wherever focus is (it may still sit on the canvas after a right click or a tap), and focus goes back to where it came from.
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); e.stopPropagation(); closeRef.current(); } };
     document.addEventListener("pointerdown", away, true);
-    return () => document.removeEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", esc, true);
+    return () => { document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc, true); };
   }, [onClose]);
 
   const onKey = (e: KeyboardEvent) => {

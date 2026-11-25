@@ -59,6 +59,20 @@ test("duplicate in the middle of a track slides to the next free slot instead of
   assert.equal(tr(q, 0).clips.length, 5);
 });
 
+test("paste with the copy's own lane taken at the playhead goes to the first free lane of that kind there, not to the project's end", () => {
+  const p = fresh();
+  const c = tr(p, 0).clips[0]!;
+  const held = copyClips(p, new Set([c.id]));
+  const free = (i: number) => tr(p, i).clips.every((o) => !(o.start < c.start + c.duration && o.start + o.duration > c.start));
+  const want = p.sequences[0]!.tracks.findIndex((t, i) => i > 0 && t.kind === tr(p, 0).kind && free(i));
+  const plan = planPlacement(p, held, c.start, tr(p, 0).id, nid, true);
+  const [op] = inserts(plan.ops);
+  if (want >= 0) { assert.equal(op!.track, tr(p, want).id); assert.equal(op!.clip.start, c.start); } else assert.ok(op!.clip.start > c.start);
+  applied(p, plan.ops);
+  // Duplicate keeps its own lane and slides later.
+  assert.equal(inserts(planPlacement(p, held, c.start, null, nid).ops)[0]!.track, tr(p, 0).id);
+});
+
 test("a group keeps its offsets and moves as one", () => {
   const p = fresh();
   const [a, b] = tr(p, 0).clips.slice(0, 2) as [Clip, Clip];
