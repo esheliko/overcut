@@ -306,6 +306,12 @@ for (const p of PROFILES) {
     expect(overlap(timeline, tools)).toBe(false);
     expect(preview.height).toBeGreaterThan(p.h * 0.2); // the preview is never squeezed out
     expect(timeline.height).toBeGreaterThan(100);
+    if (p.name === "phone-landscape") { // B3: both toolbar rows share one row, and the track area keeps at least 160 px
+      const rows = await page.locator(".tl-bars .tl-group").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+      expect(new Set(rows).size).toBe(1);
+      expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(160);
+      for (const b of await page.locator(".tl-bars .icon-btn").all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
     expect(await page.getByTestId("panel-inspector").count()).toBe(p.inspector ? 1 : 0);
     if (p.docked) await expect(page.getByTestId("panel-tool")).toBeVisible();
     else await expect(page.getByTestId("panel-tool")).toBeHidden();

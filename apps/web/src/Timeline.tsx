@@ -248,6 +248,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   useEffect(() => { if (dialog === "timing" && !oneClip) setDialog(null); }, [dialog, oneClip]);
   return (
     <section className="timeline" aria-label={t("timeline.label")} data-testid="panel-timeline">
+      <div className="tl-bars">
       <div className="tl-bar">
         <div className="tl-group" role="toolbar" aria-label={t("timeline.edit")}>
           <button className="icon-btn" aria-label={undoText} title={tip(undoText, KEYS.undo)} disabled={off || !proj.canUndo} onClick={() => run({ c: "undo" })}><Icon name="undo" /></button>
@@ -275,6 +276,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
           <button className="icon-btn" aria-label={t("timeline.timing")} title={t("timeline.timing")} data-testid="tl-timing" aria-haspopup="dialog" disabled={off || !oneClip} onClick={() => setDialog("timing")}><Icon name="timing" /></button>
           <button className="icon-btn" aria-label={t("timeline.history")} title={t("timeline.history")} data-testid="tl-history" aria-haspopup="dialog" disabled={off} onClick={() => setDialog("history")}><Icon name="history" /></button>
         </div>
+      </div>
       </div>
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
