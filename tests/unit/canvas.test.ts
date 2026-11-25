@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SIZE, FPS_CHOICES, SHAPES, adoptedFormat, canvasOp, canvasSummary, choiceOf, fpsLabel, qualityOf, resolutionOf, sameCanvas, shapeOf, sizeOf, frameRateOf } from "../../apps/web/src/canvas";
+import { DEFAULT_SIZE, FPS_CHOICES, SHAPES, adoptedFormat, canvasOp, canvasSummary, choiceOf, fpsLabel, qualityOf, ratioLabel, resolutionOf, sameCanvas, shapeOf, sizeOf, frameRateOf } from "../../apps/web/src/canvas";
 import { importOps } from "../../apps/web/src/media/plan";
 import { nameOfFile, projectFileName } from "../../apps/web/src/projectName";
 import type { Project, Sequence } from "../../packages/engine-client/src/model.generated";
@@ -82,4 +82,18 @@ test("project file names are safe and round-trip", () => {
   assert.equal(projectFileName("x".repeat(200)).length, 80 + ".overcut".length);
   assert.equal(nameOfFile("My film.OVERCUT"), "My film");
   assert.equal(nameOfFile("plain"), "plain");
+});
+
+test("the canvas chip names the ratio (capitalised, never 'custom'), else shows the pixel size", () => {
+  assert.equal(ratioLabel({ width: 160, height: 120 }), "4:3");
+  assert.equal(ratioLabel({ width: 120, height: 160 }), "3:4");
+  assert.equal(ratioLabel({ width: 1920, height: 1080 }), "16:9");
+  assert.equal(ratioLabel({ width: 1080, height: 1920 }), "9:16");
+  assert.equal(ratioLabel({ width: 1080, height: 1080 }), "1:1");
+  assert.equal(ratioLabel({ width: 1080, height: 1350 }), "4:5");
+  assert.equal(ratioLabel({ width: 2520, height: 1080 }), "21:9");
+  assert.equal(ratioLabel({ width: 1000, height: 777 }), "1000×777");
+  assert.equal(ratioLabel({ width: 160, height: 90 }), "16:9");
+  for (const s of SHAPES) assert.equal(ratioLabel(sizeOf(s, 1080)), s.id);
+  for (const r of [{ width: 1000, height: 777 }, { width: 160, height: 120 }]) assert.notEqual(ratioLabel(r), "custom");
 });

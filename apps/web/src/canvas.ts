@@ -39,6 +39,21 @@ export function shapeOf(r: Resolution): string {
   return SHAPES.find((s) => Math.abs(a - s.w / s.h) < 0.004)?.id ?? "custom";
 }
 
+/** Ratios the canvas chip can name: the picker's presets plus the 4:3 and 3:4 common in phone and archive footage. */
+const NAMED_RATIOS: readonly Shape[] = [...SHAPES, { id: "4:3", w: 4, h: 3 }, { id: "3:4", w: 3, h: 4 }];
+
+/** What the canvas chip shows: the named ratio the size matches ("4:3", "16:9"...), else its pixel size ("160×120"). Never "custom". */
+export function ratioLabel(r: Resolution): string {
+  const a = r.width / r.height;
+  let best: Shape | null = null;
+  let bestDiff = Infinity;
+  for (const s of NAMED_RATIOS) {
+    const d = Math.abs(a - s.w / s.h);
+    if (d < bestDiff) { best = s; bestDiff = d; }
+  }
+  return best && bestDiff < 0.004 ? best.id : `${r.width}×${r.height}`;
+}
+
 /** The short-side choice a size matches exactly, else null. */
 export function qualityOf(r: Resolution): number | null {
   const short = Math.min(r.width, r.height);
