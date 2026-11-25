@@ -71,7 +71,9 @@ test("the dialog starts from what the sequence says, including a non-preset size
   assert.deepEqual(c.custom, { width: 1000, height: 777 });
   assert.equal(fpsLabel({ num: 24000, den: 1001 }), "23.976");
   assert.equal(fpsLabel({ num: 30, den: 1 }), "30");
-  assert.equal(canvasSummary(seq.resolution, seq.frame_rate), "1000:777 · 1000 × 777 · 23.976 fps");
+  assert.equal(canvasSummary(seq.resolution, seq.frame_rate), "1000 × 777 · 23.976 fps");
+  assert.equal(canvasSummary({ width: 160, height: 120 }, { num: 30, den: 1 }), "4:3 · 160 × 120 · 30 fps");
+  assert.equal(canvasSummary({ width: 1080, height: 1920 }, { num: 30, den: 1 }), "9:16 · 1080 × 1920 · 30 fps");
   assert.deepEqual([...FPS_CHOICES], [24, 25, 30, 50, 60]);
 });
 

@@ -133,6 +133,8 @@ export function adoptedFormat(seq: Sequence, from: { frame_rate: Rational; resol
 
 /** "9:16 · 1080 × 1920 · 30 fps": the canvas in one line (the preview's button, the announcement after a change). */
 export function canvasSummary(size: Resolution, rate: Rational): string {
-  const shape = shapeOf(size);
-  return `${shape === "custom" ? `${size.width}:${size.height}` : shape} · ${size.width} × ${size.height} · ${fpsLabel(rate)} fps`;
+  const named = ratioLabel(size);
+  // a named ratio leads; a free size reads as its dimensions only (never a colon ratio)
+  const head = named === `${size.width}×${size.height}` ? "" : `${named} · `;
+  return `${head}${size.width} × ${size.height} · ${fpsLabel(rate)} fps`;
 }
