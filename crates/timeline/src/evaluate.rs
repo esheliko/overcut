@@ -85,7 +85,7 @@ fn ceil_sample(t: i64, rate: u32) -> i64 {
 }
 
 /// Evaluates `seq` at `t` and, when `audio_samples > 0`, the audio window `[t, t + audio_samples)` (in sequence samples).
-/// Clears and refills `out`; allocates only if `out` has to grow. Muted tracks are skipped. Never fails: odd input gives an empty description.
+/// Clears and refills `out`; allocates only if `out` has to grow. Tracks that are muted, hidden, or silenced by another track's solo (same kind) are skipped. Never fails: odd input gives an empty description.
 pub fn evaluate_into(seq: &Sequence, t: Time, audio_samples: u32, out: &mut FrameDescription) {
     out.layers.clear();
     out.audio.clear();
@@ -113,7 +113,16 @@ pub fn evaluate_into(seq: &Sequence, t: Time, audio_samples: u32, out: &mut Fram
     };
     let s0 = out.sample;
     let s1 = s0.saturating_add(i64::from(audio_samples));
-    for track in seq.tracks.iter().filter(|tr| !tr.muted) {
+    let solo = [
+        seq.has_solo(TrackKind::Video),
+        seq.has_solo(TrackKind::Audio),
+    ];
+    for track in seq.tracks.iter().filter(|tr| {
+        tr.is_live(match tr.kind {
+            TrackKind::Video => solo[0],
+            TrackKind::Audio => solo[1],
+        })
+    }) {
         match track.kind {
             TrackKind::Video => {
                 // Clips are sorted and non-overlapping: the only candidate is the last one starting at or before `vt`.

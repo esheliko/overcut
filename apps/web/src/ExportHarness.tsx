@@ -11,7 +11,7 @@ export function patternProject(seconds: number, opts: { fps?: [number, number]; 
   return {
     id: hex(1),
     name: "export harness",
-    schema_version: 1,
+    schema_version: 2,
     media: [{ id: hex(2), kind: "video", name: "test pattern", uri: `test:pattern?w=${opts.width ?? 1280}&h=${opts.height ?? 720}` }],
     sequences: [
       {

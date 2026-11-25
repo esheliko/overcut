@@ -110,6 +110,43 @@
       "op": "set_link",
       "clip": "00000000000000000000000000000065",
       "link": null
+    },
+    {
+      "op": "add_track",
+      "sequence": "00000000000000000000000000000002",
+      "index": 1,
+      "track": {
+        "id": "00000000000000000000000000000070",
+        "kind": "video",
+        "name": "V2",
+        "muted": false,
+        "locked": false,
+        "hidden": true,
+        "solo": true,
+        "height": 64,
+        "colour": "#2de2d6",
+        "clips": []
+      }
+    },
+    {
+      "op": "remove_track",
+      "track": "00000000000000000000000000000070"
+    },
+    {
+      "op": "move_track",
+      "track": "00000000000000000000000000000003",
+      "index": 2
+    },
+    {
+      "op": "set_track_props",
+      "track": "00000000000000000000000000000003",
+      "name": "Titles",
+      "muted": true,
+      "solo": false,
+      "locked": false,
+      "hidden": true,
+      "height": null,
+      "colour": "#112233"
     }
   ],
   "outcome": {
