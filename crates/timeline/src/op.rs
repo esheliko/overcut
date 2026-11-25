@@ -2,7 +2,8 @@
 //! id they create (the host supplies fresh ids), so applying the same op list to the same project is deterministic.
 
 use app_model::{
-    Clip, ClipId, LinkId, MediaId, MediaRef, Rational, Resolution, SequenceId, Time, Track, TrackId,
+    Clip, ClipId, ClipTransform, LinkId, MediaId, MediaRef, Rational, Resolution, SequenceId, Time,
+    Track, TrackId,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -29,7 +30,7 @@ pub enum Edge {
 }
 
 /// One edit. `#[non_exhaustive]` + the `op` tag leave room for new variants (with their own inverses), not changes to these.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Op {
@@ -57,6 +58,12 @@ pub enum Op {
     },
     /// Link the clip to others (same id) or, with `None`, let it edit alone (TL-05). Only the editing layer reads links; undoable.
     SetLink { clip: ClipId, link: Option<LinkId> },
+    /// Replace a clip's transform (position, scale, rotation, anchor, crop, flip, opacity, fit; M2-003, `docs/features/clip-transform.md`).
+    /// Checked like a file (`BadTransform`). One drag = many of these under one `History` key = one undo step; the inverse is the old transform.
+    SetClipTransform {
+        clip: ClipId,
+        transform: Box<ClipTransform>,
+    },
     /// Remove the clip.
     Delete { clip: ClipId },
     /// Set a clip's geometry exactly. Used by inverses (restore what a trim or split changed); also a valid edit.
@@ -172,6 +179,6 @@ pub enum Op {
 }
 
 /// Ops that undo an applied op, in the order they must be applied.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Inverse(pub Vec<Op>);

@@ -14,7 +14,7 @@ use crate::op::Op;
 use app_model::Project;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "r", rename_all = "snake_case")]
 pub(crate) enum Record {
     Apply { ops: Vec<Op>, key: Option<u64> },

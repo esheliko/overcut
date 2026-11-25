@@ -1,11 +1,12 @@
 //! S7 property tests. Case count: `PROPTEST_CASES` (default 256 here; the S7 bar of 100k is
 //! `PROPTEST_CASES=100000 cargo test -p app-timeline --release`).
 
+#![allow(clippy::field_reassign_with_default)]
 use crate::apply::MAX_TRACKS;
 use crate::*;
 use app_model::{
-    Clip, ClipId, IdSource, LinkId, MediaId, MediaKind, MediaRef, Project, Rational, Resolution,
-    SeqIds, SequenceId, Time, Track, TrackId, TrackKind,
+    Animated, Clip, ClipId, IdSource, LinkId, MediaId, MediaKind, MediaRef, Project, Rational,
+    Resolution, SeqIds, SequenceId, Time, Track, TrackId, TrackKind,
 };
 use proptest::prelude::*;
 
@@ -72,6 +73,7 @@ fn clip(ids: &mut SeqIds, media: MediaId, start: i64, source_in: i64, dur: i64) 
         duration: t(dur),
         speed: Rational::new(1, 1).unwrap(),
         link: None,
+        transform: Default::default(),
     }
 }
 
@@ -159,6 +161,16 @@ enum Step {
         clip: usize,
         delta: i8,
     },
+    /// M2-003: values may be out of range on purpose (bad ones must error and change nothing).
+    Transform {
+        clip: usize,
+        pos: i8,
+        scale: i8,
+        rot: i16,
+        opacity: i8,
+        crop: i8,
+        flip: bool,
+    },
     Undo,
     Redo,
 }
@@ -184,6 +196,8 @@ fn step() -> impl Strategy<Value = Step> {
         2 => (any::<usize>(), -8..8i8).prop_map(|(clip, delta)| Step::Roll { clip, delta }),
         2 => (any::<usize>(), -8..8i8).prop_map(|(clip, delta)| Step::Slip { clip, delta }),
         2 => (any::<usize>(), -8..8i8).prop_map(|(clip, delta)| Step::Slide { clip, delta }),
+        3 => (any::<usize>(), -8..8i8, -2..8i8, -400..400i16, -2..12i8, -2..12i8, any::<bool>())
+            .prop_map(|(clip, pos, scale, rot, opacity, crop, flip)| Step::Transform { clip, pos, scale, rot, opacity, crop, flip }),
         2 => Just(Step::Undo),
         2 => Just(Step::Redo),
     ]
@@ -377,6 +391,27 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
             clip: pick(clip)?.id,
             delta: t(i64::from(delta)),
         },
+        Step::Transform {
+            clip,
+            pos,
+            scale,
+            rot,
+            opacity,
+            crop,
+            flip,
+        } => {
+            let mut x = app_model::ClipTransform::default();
+            x.position_x = Animated::constant(f64::from(pos) / 4.0);
+            x.scale_x = Animated::constant(f64::from(scale) / 4.0);
+            x.rotation = Animated::constant(f64::from(rot));
+            x.opacity = Animated::constant(f64::from(opacity) / 10.0);
+            x.crop_left = Animated::constant(f64::from(crop) / 10.0);
+            x.flip_h = flip;
+            Op::SetClipTransform {
+                clip: pick(clip)?.id,
+                transform: Box::new(x),
+            }
+        }
         Step::Undo | Step::Redo => return None,
     })
 }
@@ -1057,7 +1092,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        17,
+        18,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -1073,7 +1108,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 24, "one example per Op variant");
+    assert_eq!(ops.len(), 25, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -1363,6 +1398,7 @@ fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
             duration: Time::from_ticks(500),
             speed: Rational::new(1, 1).unwrap(),
             link: None,
+            transform: Default::default(),
         };
         h.apply(&mut p, Op::InsertClip { track: tr, clip: c }, None)
             .unwrap();
@@ -3040,4 +3076,102 @@ fn editor_snap_json_snaps_excluding_dragged_clips_and_rejects_bad_input() {
     assert!(e
         .snap_json(&"0".repeat(32), r#"{"t":0,"tolerance":0}"#)
         .is_err());
+}
+
+// ---- M2-003: clip transform ----
+
+#[test]
+fn set_clip_transform_applies_undoes_and_rejects_bad_values() {
+    let (mut p, _tr, a, _b) = two_clips();
+    let before = p.clone();
+    let mut x = app_model::ClipTransform::default();
+    x.scale_x = Animated::constant(0.5);
+    x.rotation = Animated::constant(90.0);
+    x.crop_left = Animated::constant(0.25);
+    x.flip_v = true;
+    let inv = apply(
+        &mut p,
+        Op::SetClipTransform {
+            clip: a,
+            transform: Box::new(x.clone()),
+        },
+    )
+    .unwrap();
+    let c = p.sequences[0]
+        .tracks
+        .iter()
+        .flat_map(|t| &t.clips)
+        .find(|c| c.id == a)
+        .unwrap();
+    assert_eq!(*c.transform, x);
+    apply_all(&mut p, &inv.0).unwrap();
+    assert_eq!(p, before, "undo restores the identity");
+
+    for bad in [
+        |t: &mut app_model::ClipTransform| t.scale_x = Animated::constant(0.0),
+        |t: &mut app_model::ClipTransform| t.opacity = Animated::constant(1.5),
+        |t: &mut app_model::ClipTransform| t.position_x = Animated::constant(f64::NAN),
+        |t: &mut app_model::ClipTransform| t.crop_top = Animated::constant(1.0),
+    ] {
+        let mut t = app_model::ClipTransform::default();
+        bad(&mut t);
+        assert!(matches!(
+            apply(
+                &mut p,
+                Op::SetClipTransform {
+                    clip: a,
+                    transform: Box::new(t)
+                }
+            ),
+            Err(OpError::BadTransform)
+        ));
+        assert_eq!(p, before, "an error changes nothing");
+    }
+}
+
+#[test]
+fn split_keeps_the_transform_on_both_halves_and_evaluate_reports_it() {
+    let (mut p, _tr, a, _b) = two_clips();
+    let mut x = app_model::ClipTransform::default();
+    x.opacity = Animated::constant(0.5);
+    x.position_x = Animated::constant(0.25);
+    apply(
+        &mut p,
+        Op::SetClipTransform {
+            clip: a,
+            transform: Box::new(x),
+        },
+    )
+    .unwrap();
+    let start = p.sequences[0]
+        .tracks
+        .iter()
+        .flat_map(|t| &t.clips)
+        .find(|c| c.id == a)
+        .unwrap()
+        .start;
+    let new_id: ClipId =
+        serde_json::from_value(serde_json::json!("00000000000000000000000000000999")).unwrap();
+    apply(
+        &mut p,
+        Op::Split {
+            clip: a,
+            at: Time::from_ticks(start.ticks() + 2 * U),
+            new_id,
+            new_link: None,
+        },
+    )
+    .unwrap();
+    let seq = &p.sequences[0];
+    let mut out = FrameDescription::default();
+    for at in [start.ticks(), start.ticks() + 3 * U] {
+        evaluate_into(seq, Time::from_ticks(at), 0, &mut out);
+        let l = out
+            .layers
+            .iter()
+            .find(|l| l.clip == a || l.clip == new_id)
+            .unwrap();
+        assert_eq!(l.opacity, 0.5);
+        assert_eq!(l.props.position, [0.25, 0.0]);
+    }
 }

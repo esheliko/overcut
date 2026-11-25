@@ -136,7 +136,7 @@ function fakeEnv(plan: ReturnType<typeof planExport>, over: { signal?: AbortCont
       video_time: ticks,
       sample: 0,
       audio_samples: n,
-      layers: [{ track: "v", clip: "c", media: "m", source_time: ticks, transform: { center: [0, 0], scale: [1, 1], rotation: 0 }, opacity: 1 }],
+      layers: [{ track: "v", clip: "c", media: "m", source_time: ticks, transform: { center: [0, 0], scale: [1, 1], rotation: 0 }, props: { position: [0, 0], scale: [1, 1], rotation: 0, anchor: [0, 0], crop: [0, 0, 0, 0], opacity: 1, flip: [false, false], fit: "contain" }, opacity: 1 }],
       audio: n ? [{ track: "a", clip: "c", media: "m", out_start: 0, len: n, source_start: ticks, speed: { num: 1, den: 1 }, gain: 1 }] : [],
     }),
     render: async (desc, index) => {

@@ -37,6 +37,25 @@
     "sequences"
   ],
   "$defs": {
+    "Animated": {
+      "type": "object",
+      "properties": {
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Keyframe"
+          }
+        },
+        "value": {
+          "description": "The value when there are no keys.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
     "Clip": {
       "type": "object",
       "properties": {
@@ -76,6 +95,10 @@
         "start": {
           "description": "Where the clip starts on the sequence timeline.",
           "$ref": "#/$defs/Time"
+        },
+        "transform": {
+          "description": "Position, scale, rotation, crop, flip, opacity and fit (M2-003). The identity is the default and is not written.",
+          "$ref": "#/$defs/ClipTransform"
         }
       },
       "required": [
@@ -89,6 +112,209 @@
     "ClipId": {
       "type": "string",
       "pattern": "^[0-9a-f]{32}$"
+    },
+    "ClipTransform": {
+      "description": "Position, scale, rotation, anchor, crop, flip, opacity and fit of one clip. `Default` is the identity.",
+      "type": "object",
+      "properties": {
+        "anchor_x": {
+          "description": "The point rotation, scale and flip pivot on, as an offset from the picture centre in picture widths / heights.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "anchor_y": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "crop_bottom": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "crop_left": {
+          "description": "Fraction of the source picture removed from each edge, `0..1`; `left + right < 1` and `top + bottom < 1`.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "crop_right": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "crop_top": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "fit": {
+          "$ref": "#/$defs/Fit",
+          "default": "contain"
+        },
+        "flip_h": {
+          "type": "boolean",
+          "default": false
+        },
+        "flip_v": {
+          "type": "boolean",
+          "default": false
+        },
+        "opacity": {
+          "description": "`0..=1`.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 1.0
+          }
+        },
+        "position_x": {
+          "description": "Offset of the anchor from the canvas centre, in canvas widths (+ right). 0 = centred.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "position_y": {
+          "description": "Offset in canvas heights (+ down).",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "rotation": {
+          "description": "Degrees clockwise around the anchor.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "scale_x": {
+          "description": "1 = the size `fit` gives. Must be > 0 (flip is separate).",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 1.0
+          }
+        },
+        "scale_y": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 1.0
+          }
+        }
+      }
+    },
+    "Easing": {
+      "oneOf": [
+        {
+          "description": "Keeps this key's value until the next key (a step).",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "hold"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "linear"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "CSS-style `cubic-bezier`; `x1` and `x2` must be in `[0,1]`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "bezier"
+            },
+            "x1": {
+              "type": "number",
+              "format": "double"
+            },
+            "x2": {
+              "type": "number",
+              "format": "double"
+            },
+            "y1": {
+              "type": "number",
+              "format": "double"
+            },
+            "y2": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": [
+            "kind",
+            "x1",
+            "y1",
+            "x2",
+            "y2"
+          ]
+        }
+      ]
+    },
+    "Fit": {
+      "description": "How the picture is first sized into the canvas, before scale applies.",
+      "oneOf": [
+        {
+          "description": "Whole picture visible, bars where the shapes differ (the M1 behaviour).",
+          "type": "string",
+          "const": "contain"
+        },
+        {
+          "description": "Picture covers the canvas, the overflow is cut off.",
+          "type": "string",
+          "const": "cover"
+        },
+        {
+          "description": "Picture is stretched to the canvas shape.",
+          "type": "string",
+          "const": "stretch"
+        }
+      ]
+    },
+    "Keyframe": {
+      "type": "object",
+      "properties": {
+        "easing": {
+          "description": "Shape of the segment from this key to the next (ignored on the last key).",
+          "$ref": "#/$defs/Easing",
+          "default": {
+            "kind": "linear"
+          }
+        },
+        "t": {
+          "description": "Clip-relative time (0 = the clip's first tick on the timeline).",
+          "$ref": "#/$defs/Time"
+        },
+        "v": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "t",
+        "v"
+      ]
     },
     "LinkId": {
       "type": "string",

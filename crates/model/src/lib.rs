@@ -17,6 +17,7 @@ pub mod ids;
 pub mod project;
 pub mod schema;
 pub mod time;
+pub mod transform;
 
 pub use anim::{AnimError, Animated, Easing, Keyframe};
 pub use file::{
@@ -29,3 +30,4 @@ pub use project::{
     TrackKind, MAX_TRACK_HEIGHT, MAX_TRACK_NAME, MIN_TRACK_HEIGHT, SCHEMA_VERSION,
 };
 pub use time::{Rational, Time, TICKS_PER_SECOND};
+pub use transform::{ClipTransform, Fit, TransformError, TransformValues};

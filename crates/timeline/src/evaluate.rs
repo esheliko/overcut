@@ -5,7 +5,10 @@
 //! Source time = `source_in + floor((time - start) * speed)`, exact integer maths in `i128`. Media frame/sample
 //! selection from a source time is the decoder's (`Time::frame_index(media_fps)` = floor).
 
-use app_model::{ClipId, MediaId, Rational, Sequence, Time, TrackId, TrackKind, TICKS_PER_SECOND};
+use app_model::{
+    ClipId, MediaId, Rational, Sequence, Time, TrackId, TrackKind, TransformValues,
+    TICKS_PER_SECOND,
+};
 use serde::Serialize;
 
 /// 2D placement in output pixels, directly usable as `app_render::Layer`'s `center`/`scale`/`rotation`.
@@ -25,7 +28,10 @@ pub struct VideoLayer {
     /// Where in the media to read, in ticks (floor to the media's own frame grid).
     pub source_time: Time,
     pub transform: Transform,
-    /// 0..=1.
+    /// The clip's own placement evaluated at this frame (M2-003): position, scale, rotation, anchor, crop, flip, fit. The compositor
+    /// (M2-024) turns it into a matrix using the media's size; `transform` above is the unmodified canvas-centre placement.
+    pub props: TransformValues,
+    /// 0..=1 (the clip's opacity at this frame).
     pub opacity: f32,
 }
 
@@ -136,13 +142,17 @@ pub fn evaluate_into(seq: &Sequence, t: Time, audio_samples: u32, out: &mut Fram
                 if let Some(source_time) =
                     source_at(c.source_in, vt.ticks() - c.start.ticks(), c.speed)
                 {
+                    let props = c
+                        .transform
+                        .at(Time::from_ticks(vt.ticks() - c.start.ticks()));
                     out.layers.push(VideoLayer {
                         track: track.id,
                         clip: c.id,
                         media: c.media,
                         source_time,
                         transform,
-                        opacity: 1.0,
+                        props,
+                        opacity: props.opacity,
                     });
                 }
             }
@@ -206,6 +216,7 @@ mod tests {
             duration: Time::from_ticks(dur),
             speed,
             link: None,
+            transform: Default::default(),
         }
     }
 

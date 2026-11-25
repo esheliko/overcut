@@ -11,6 +11,8 @@ const doc = (d, indent = "") => (d ? `${indent}/** ${d.replace(/\*\//g, "* /")} 
 
 function type(s) {
   if (s.$ref) return s.$ref.replace("#/$defs/", "");
+  if (s.const !== undefined) return JSON.stringify(s.const);
+  if (s.oneOf) return s.oneOf.map(type).join(" | ");
   if (s.anyOf) return s.anyOf.map(type).join(" | ");
   if (s.enum) return s.enum.map((v) => JSON.stringify(v)).join(" | ");
   if (Array.isArray(s.type)) return s.type.map((t) => type({ ...s, type: t })).join(" | ");

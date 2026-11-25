@@ -1,5 +1,5 @@
 import type { ExportApi } from "./export/types";
-import type { Clip, ClipId, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, Track, TrackId } from "./model.generated";
+import type { Clip, ClipId, ClipTransform, Fit, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, Track, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
 
 export * from "./capabilities";
@@ -233,6 +233,8 @@ export type Op =
   | { op: "move"; clip: ClipId; track: TrackId; start: Time }
   /** Link the clip to others sharing `link`, or with `null` let it edit alone (TL-05). */
   | { op: "set_link"; clip: ClipId; link: LinkId | null }
+  /** Replace the clip's transform (position, scale, rotation, anchor, crop, flip, opacity, fit). One drag = many of these = one undo step. */
+  | { op: "set_clip_transform"; clip: ClipId; transform: ClipTransform }
   | { op: "delete"; clip: ClipId }
   | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
   | { op: "set_media"; media: MediaId; uri: string; hash: string | null }
@@ -344,7 +346,22 @@ export interface VideoLayer {
   /** Source time in ticks (floor to the media's own frame grid). */
   source_time: number;
   transform: Transform;
+  /** The clip's own placement at this frame (units as `ClipTransform`; scale 1 = the size `fit` gives; crop = left, top, right, bottom). */
+  props: TransformValues;
+  /** 0..=1, the clip's opacity at this frame. */
   opacity: number;
+}
+
+export interface TransformValues {
+  position: [number, number];
+  scale: [number, number];
+  /** Degrees clockwise. */
+  rotation: number;
+  anchor: [number, number];
+  crop: [number, number, number, number];
+  opacity: number;
+  flip: [boolean, boolean];
+  fit: Fit;
 }
 
 export interface AudioSegment {
@@ -404,7 +421,7 @@ export interface Recovery {
   validLog: string;
 }
 
-export const EXPECTED_ABI = 2;
+export const EXPECTED_ABI = 3;
 
 export function parseEngineInfo(json: string): EngineInfo {
   const v: unknown = JSON.parse(json);
