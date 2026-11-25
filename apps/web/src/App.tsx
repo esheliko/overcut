@@ -193,7 +193,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
-  const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | { title: string; body: string; confirm: string; run(): Promise<void> }>(null);
+  const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | { title: string; body: string; confirm: string; danger: boolean; run(): Promise<void> }>(null);
   const [locating, setLocating] = useState(false); // after opening a file: offer to reconnect media that is not on this device
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
@@ -341,7 +341,7 @@ function Editor({ store }: { store: ProjectStore }) {
   };
   const confirmThen = (what: "new" | "open", name: string, run: () => Promise<void>) => {
     if (!dirty()) return void run();
-    setDialog({ title: t(`project.${what}.title`), body: t(`project.${what}.body`, { name }), confirm: t(`project.${what}.confirm`), run });
+    setDialog({ title: t(`project.${what}.title`), body: t(`project.${what}.body`, { name }), confirm: t(`project.${what}.confirm`), danger: what === "new", run });
   };
   const onNew = () => {
     if (!core) return;
@@ -593,7 +593,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {dialog === "versions" && persistence.session && <VersionsDialog session={persistence.session} onRestore={restoreVersion} onClose={() => setDialog(null)} />}
       {dialog === "privacy" && <PrivacyDialog onClose={() => setDialog(null)} />}
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
-      {dialog && dialog !== "canvas" && dialog !== "privacy" && dialog !== "versions" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
+      {dialog && dialog !== "canvas" && dialog !== "privacy" && dialog !== "versions" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} danger={dialog.danger} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       </>}
       {refusals.length > 0 && !roomy && (

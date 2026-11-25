@@ -298,6 +298,7 @@ h2, p { margin: 0; }
 .export-footer .export-go { inline-size: 100%; }
 .export-secondary { border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); }
 .export-secondary:hover { background: var(--surface-3); }
+.export-go.confirm-danger { background: var(--danger); color: var(--bg); }
 .export-danger { color: var(--danger); }
 .export-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .export-actions > * { flex: 1 1 140px; }
