@@ -47,6 +47,10 @@ pub enum OpError {
     TooManyTracks,
     /// `AddTrack` / `MoveTrack` position beyond the end of the stack.
     BadTrackIndex,
+    /// `Roll` between clips that are not on one track or do not touch.
+    NotAdjacent,
+    /// `CloseGap` at a time that is on a clip or after the last clip, so there is no gap to close.
+    NotInGap,
     /// A batch step failed; earlier steps were rolled back.
     Batch {
         index: usize,
@@ -64,13 +68,13 @@ impl std::error::Error for OpError {}
 
 /// Where a clip lives. Indices are valid only until the next mutation.
 #[derive(Clone, Copy)]
-struct Loc {
-    seq: usize,
-    track: usize,
-    clip: usize,
+pub(crate) struct Loc {
+    pub(crate) seq: usize,
+    pub(crate) track: usize,
+    pub(crate) clip: usize,
 }
 
-fn find_clip(p: &Project, id: ClipId) -> Option<Loc> {
+pub(crate) fn find_clip(p: &Project, id: ClipId) -> Option<Loc> {
     for (si, s) in p.sequences.iter().enumerate() {
         for (ti, t) in s.tracks.iter().enumerate() {
             if let Some(ci) = t.clips.iter().position(|c| c.id == id) {
@@ -85,7 +89,7 @@ fn find_clip(p: &Project, id: ClipId) -> Option<Loc> {
     None
 }
 
-fn find_track(p: &Project, id: TrackId) -> Option<(usize, usize)> {
+pub(crate) fn find_track(p: &Project, id: TrackId) -> Option<(usize, usize)> {
     p.sequences
         .iter()
         .enumerate()
@@ -105,7 +109,7 @@ fn id_in_use(p: &Project, id: app_model::Id) -> bool {
 }
 
 /// Source ticks a stretch of timeline ticks consumes at `speed` (`None` if it is not a whole number of ticks).
-fn scaled(d: Time, speed: Rational) -> Result<Time, OpError> {
+pub(crate) fn scaled(d: Time, speed: Rational) -> Result<Time, OpError> {
     let n = i128::from(d.ticks()) * i128::from(speed.num);
     let den = i128::from(speed.den);
     if den <= 0 || n % den != 0 {
@@ -116,11 +120,11 @@ fn scaled(d: Time, speed: Rational) -> Result<Time, OpError> {
         .map_err(|_| OpError::OutOfRange)
 }
 
-fn add(a: Time, b: Time) -> Result<Time, OpError> {
+pub(crate) fn add(a: Time, b: Time) -> Result<Time, OpError> {
     a.checked_add(b).ok_or(OpError::OutOfRange)
 }
 
-fn sub(a: Time, b: Time) -> Result<Time, OpError> {
+pub(crate) fn sub(a: Time, b: Time) -> Result<Time, OpError> {
     a.checked_sub(b).ok_or(OpError::OutOfRange)
 }
 
@@ -585,6 +589,12 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
             let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
             set_clip_checked(p, loc, start, source_in, duration)
         }
+        op @ (Op::RippleTrim { .. }
+        | Op::RippleDelete { .. }
+        | Op::CloseGap { .. }
+        | Op::Roll { .. }
+        | Op::Slip { .. }
+        | Op::Slide { .. }) => crate::ripple::apply_compound(p, op),
         Op::Move { clip, track, start } => {
             let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
             let (dsi, dti) = find_track(p, track).ok_or(OpError::UnknownTrack(track))?;

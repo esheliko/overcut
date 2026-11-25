@@ -132,6 +132,33 @@ enum Step {
         hidden: Option<bool>,
         height: Option<Option<u32>>,
     },
+    RippleTrim {
+        clip: usize,
+        out: bool,
+        delta: i8,
+        all: bool,
+    },
+    RippleDelete {
+        clip: usize,
+        all: bool,
+    },
+    CloseGap {
+        track: usize,
+        at: u8,
+        all: bool,
+    },
+    Roll {
+        clip: usize,
+        delta: i8,
+    },
+    Slip {
+        clip: usize,
+        delta: i8,
+    },
+    Slide {
+        clip: usize,
+        delta: i8,
+    },
     Undo,
     Redo,
 }
@@ -151,6 +178,12 @@ fn step() -> impl Strategy<Value = Step> {
         1 => (any::<usize>(), any::<usize>()).prop_map(|(track, index)| Step::MoveTrack { track, index }),
         2 => (any::<usize>(), any::<Option<bool>>(), any::<Option<bool>>(), any::<Option<bool>>(), any::<Option<bool>>(), prop::option::of(prop::option::of(0..450u32)))
             .prop_map(|(track, muted, solo, locked, hidden, height)| Step::TrackProps { track, muted, solo, locked, hidden, height }),
+        2 => (any::<usize>(), any::<bool>(), -8..8i8, any::<bool>()).prop_map(|(clip, out, delta, all)| Step::RippleTrim { clip, out, delta, all }),
+        1 => (any::<usize>(), any::<bool>()).prop_map(|(clip, all)| Step::RippleDelete { clip, all }),
+        1 => (0..4usize, 0..70u8, any::<bool>()).prop_map(|(track, at, all)| Step::CloseGap { track, at, all }),
+        2 => (any::<usize>(), -8..8i8).prop_map(|(clip, delta)| Step::Roll { clip, delta }),
+        2 => (any::<usize>(), -8..8i8).prop_map(|(clip, delta)| Step::Slip { clip, delta }),
+        2 => (any::<usize>(), -8..8i8).prop_map(|(clip, delta)| Step::Slide { clip, delta }),
         2 => Just(Step::Undo),
         2 => Just(Step::Redo),
     ]
@@ -302,6 +335,47 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
             hidden,
             height,
             colour: None,
+        },
+        Step::RippleTrim {
+            clip,
+            out,
+            delta,
+            all,
+        } => Op::RippleTrim {
+            clip: pick(clip)?.id,
+            edge: if out { Edge::Out } else { Edge::In },
+            delta: t(i64::from(delta)),
+            all_tracks: all,
+        },
+        Step::RippleDelete { clip, all } => Op::RippleDelete {
+            clip: pick(clip)?.id,
+            all_tracks: all,
+        },
+        Step::CloseGap { track, at, all } => Op::CloseGap {
+            track: tracks[track % tracks.len()].id,
+            at: t(i64::from(at)),
+            all_tracks: all,
+        },
+        Step::Roll { clip, delta } => {
+            let l = pick(clip)?;
+            let end = l.end().unwrap();
+            let r = tracks
+                .iter()
+                .flat_map(|tr| &tr.clips)
+                .find(|c| c.start == end && c.id != l.id)?;
+            Op::Roll {
+                left: l.id,
+                right: r.id,
+                to: Time::from_ticks(end.ticks() + i64::from(delta) * U),
+            }
+        }
+        Step::Slip { clip, delta } => Op::Slip {
+            clip: pick(clip)?.id,
+            delta: t(i64::from(delta)),
+        },
+        Step::Slide { clip, delta } => Op::Slide {
+            clip: pick(clip)?.id,
+            delta: t(i64::from(delta)),
         },
         Step::Undo | Step::Redo => return None,
     })
@@ -983,7 +1057,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        11,
+        17,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -999,7 +1073,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 18, "one example per Op variant");
+    assert_eq!(ops.len(), 24, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -2381,4 +2455,554 @@ fn evaluate_honours_hide_mute_and_solo_per_kind() {
     )
     .unwrap();
     assert_eq!(layers(&p), vec![v2, v1]);
+}
+
+// ---- M2-005: ripple, gap close, roll, slip, slide ----
+
+/// Three touching 10-unit clips on V1 at 0, 10, 20 (media 0, 100 units long), plus one clip on V2 at 15..25.
+fn row() -> (Project, TrackId, TrackId, [ClipId; 3], ClipId) {
+    let (mut p, mut ids) = base();
+    let (v1, v2) = (p.sequences[0].tracks[0].id, p.sequences[0].tracks[1].id);
+    let m = p.media[0].id;
+    let cs = [
+        clip(&mut ids, m, 0, 10, 10),
+        clip(&mut ids, m, 10, 30, 10),
+        clip(&mut ids, m, 20, 50, 10),
+    ];
+    let other = clip(&mut ids, m, 15, 0, 10);
+    let ids3 = [cs[0].id, cs[1].id, cs[2].id];
+    let oid = other.id;
+    p.sequences[0].tracks[0].clips = cs.to_vec();
+    p.sequences[0].tracks[1].clips = vec![other];
+    p.validate().unwrap();
+    (p, v1, v2, ids3, oid)
+}
+
+fn geom(p: &Project, id: ClipId) -> (i64, i64, i64) {
+    let c = all_clips(p).into_iter().find(|c| c.id == id).unwrap();
+    (
+        c.start.ticks() / U,
+        c.source_in.ticks() / U,
+        c.duration.ticks() / U,
+    )
+}
+
+/// Applies, checks the project is valid and that the inverse restores it exactly.
+fn do_undo(p: &mut Project, op: Op) -> Project {
+    let before = p.clone();
+    let inv = apply(p, op).unwrap();
+    p.validate().unwrap();
+    let after = p.clone();
+    apply_all(p, &inv.0).unwrap();
+    assert_eq!(*p, before);
+    after
+}
+
+#[test]
+fn ripple_trim_out_shifts_what_follows_on_its_own_track_only() {
+    let (mut p, _, _, [a, b, c], o) = row();
+    let after = do_undo(
+        &mut p,
+        Op::RippleTrim {
+            clip: a,
+            edge: Edge::Out,
+            delta: t(-4),
+            all_tracks: false,
+        },
+    );
+    assert_eq!(geom(&after, a), (0, 10, 6));
+    assert_eq!(geom(&after, b), (6, 30, 10));
+    assert_eq!(geom(&after, c), (16, 50, 10));
+    assert_eq!(geom(&after, o), (15, 0, 10), "other track untouched");
+    // Lengthen: make room first.
+    let after = do_undo(
+        &mut p,
+        Op::RippleTrim {
+            clip: a,
+            edge: Edge::Out,
+            delta: t(5),
+            all_tracks: false,
+        },
+    );
+    assert_eq!(geom(&after, a), (0, 10, 15));
+    assert_eq!(geom(&after, c), (25, 50, 10));
+}
+
+#[test]
+fn ripple_trim_in_keeps_the_start_and_moves_the_source() {
+    let (mut p, _, _, [a, b, c], _) = row();
+    let after = do_undo(
+        &mut p,
+        Op::RippleTrim {
+            clip: b,
+            edge: Edge::In,
+            delta: t(3),
+            all_tracks: false,
+        },
+    );
+    assert_eq!(geom(&after, b), (10, 33, 7));
+    assert_eq!(geom(&after, c), (17, 50, 10));
+    assert_eq!(geom(&after, a), (0, 10, 10));
+    // Opening the head reveals earlier source and pushes the rest later.
+    let after = do_undo(
+        &mut p,
+        Op::RippleTrim {
+            clip: b,
+            edge: Edge::In,
+            delta: t(-2),
+            all_tracks: false,
+        },
+    );
+    assert_eq!(geom(&after, b), (10, 28, 12));
+    assert_eq!(geom(&after, c), (22, 50, 10));
+}
+
+#[test]
+fn ripple_all_tracks_shifts_other_unlocked_tracks_and_skips_locked_ones() {
+    let (mut p, _, v2, [a, _, _], o) = row();
+    let after = do_undo(
+        &mut p,
+        Op::RippleDelete {
+            clip: a,
+            all_tracks: true,
+        },
+    );
+    assert_eq!(
+        geom(&after, o),
+        (5, 0, 10),
+        "start 15 >= end of a: moved by 10"
+    );
+    // Lock V2: it stays put.
+    apply(
+        &mut p,
+        Op::SetTrackProps {
+            track: v2,
+            name: None,
+            muted: None,
+            solo: None,
+            locked: Some(true),
+            hidden: None,
+            height: None,
+            colour: None,
+        },
+    )
+    .unwrap();
+    let after = do_undo(
+        &mut p,
+        Op::RippleDelete {
+            clip: a,
+            all_tracks: true,
+        },
+    );
+    assert_eq!(geom(&after, o), (15, 0, 10));
+}
+
+#[test]
+fn ripple_that_would_overlap_is_refused_whole() {
+    // V2 has a clip straddling the ripple point (5..25) and one after it; closing up would run the later one into it.
+    let (mut p, _, v2, [a, _, _], _) = row();
+    let m = p.media[0].id;
+    let mut ids = SeqIds::default();
+    for _ in 0..5000 {
+        ids.next_id();
+    }
+    p.sequences[0].tracks[1].clips = vec![clip(&mut ids, m, 5, 0, 20), clip(&mut ids, m, 26, 0, 3)];
+    let _ = v2;
+    let before = p.clone();
+    let r = apply(
+        &mut p,
+        Op::RippleDelete {
+            clip: a,
+            all_tracks: true,
+        },
+    );
+    assert!(matches!(r, Err(OpError::Overlap { .. })), "{r:?}");
+    assert_eq!(p, before);
+}
+
+#[test]
+fn ripple_edges_at_zero_and_at_the_source_limits() {
+    let (mut p, _, _, [a, b, _], _) = row();
+    // a's source starts at 10: opening its head by 10 reaches source 0, 11 is before the file.
+    let r = apply(
+        &mut p,
+        Op::RippleTrim {
+            clip: a,
+            edge: Edge::In,
+            delta: t(-11),
+            all_tracks: false,
+        },
+    );
+    assert_eq!(r, Err(OpError::OutOfRange));
+    do_undo(
+        &mut p,
+        Op::RippleTrim {
+            clip: a,
+            edge: Edge::In,
+            delta: t(-10),
+            all_tracks: false,
+        },
+    );
+    // Trimming away the whole clip is refused; the media is 100 long so b can open its tail to 100 - 30 = 70... b ends at source 40.
+    assert_eq!(
+        apply(
+            &mut p,
+            Op::RippleTrim {
+                clip: b,
+                edge: Edge::Out,
+                delta: t(-10),
+                all_tracks: false,
+            }
+        ),
+        Err(OpError::EmptyClip)
+    );
+    assert_eq!(
+        apply(
+            &mut p,
+            Op::RippleTrim {
+                clip: b,
+                edge: Edge::Out,
+                delta: t(61),
+                all_tracks: false,
+            }
+        ),
+        Err(OpError::BeyondMedia)
+    );
+}
+
+#[test]
+fn ripple_delete_and_close_gap_pull_everything_left() {
+    let (mut p, v1, _, [a, b, c], _) = row();
+    let after = do_undo(
+        &mut p,
+        Op::RippleDelete {
+            clip: b,
+            all_tracks: false,
+        },
+    );
+    assert_eq!(geom(&after, a), (0, 10, 10));
+    assert_eq!(geom(&after, c), (10, 50, 10));
+    apply(
+        &mut p,
+        Op::RippleDelete {
+            clip: b,
+            all_tracks: false,
+        },
+    )
+    .unwrap();
+    // Leave a gap 10..14 by moving c, then close it from a point inside it.
+    apply(
+        &mut p,
+        Op::Move {
+            clip: c,
+            track: v1,
+            start: t(24),
+        },
+    )
+    .unwrap();
+    for at in [10, 12, 23] {
+        let after = do_undo(
+            &mut p,
+            Op::CloseGap {
+                track: v1,
+                at: t(at),
+                all_tracks: false,
+            },
+        );
+        assert_eq!(geom(&after, c), (10, 50, 10), "gap 10..24 closes");
+    }
+    // The gap between a and b is 0 long (touching): `at` on a clip is not a gap.
+    for at in [5, 25] {
+        assert_eq!(
+            apply(
+                &mut p,
+                Op::CloseGap {
+                    track: v1,
+                    at: t(at),
+                    all_tracks: false
+                }
+            ),
+            Err(OpError::NotInGap)
+        );
+    }
+}
+
+#[test]
+fn close_gap_before_the_first_clip_and_after_the_last_is_nothing() {
+    let (mut p, v1, _, [a, b, c], _) = row();
+    apply(&mut p, Op::Delete { clip: a }).unwrap();
+    apply(&mut p, Op::Delete { clip: c }).unwrap();
+    let after = do_undo(
+        &mut p,
+        Op::CloseGap {
+            track: v1,
+            at: t(2),
+            all_tracks: false,
+        },
+    );
+    assert_eq!(geom(&after, b), (0, 30, 10));
+    assert_eq!(
+        apply(
+            &mut p,
+            Op::CloseGap {
+                track: v1,
+                at: t(25),
+                all_tracks: false
+            }
+        ),
+        Err(OpError::NotInGap)
+    );
+}
+
+#[test]
+fn roll_moves_the_cut_and_keeps_total_length() {
+    let (mut p, _, _, [a, b, c], _) = row();
+    for to in [7, 14, 19] {
+        let after = do_undo(
+            &mut p,
+            Op::Roll {
+                left: a,
+                right: b,
+                to: t(to),
+            },
+        );
+        assert_eq!(geom(&after, a), (0, 10, to));
+        assert_eq!(geom(&after, b), (to, 30 + (to - 10), 20 - to));
+        assert_eq!(geom(&after, c), (20, 50, 10));
+    }
+    // To the far ends: an empty side is refused; a non-touching or reversed pair is not adjacent.
+    for to in [0, 20, -1, 25] {
+        assert!(apply(
+            &mut p,
+            Op::Roll {
+                left: a,
+                right: b,
+                to: t(to)
+            }
+        )
+        .is_err());
+    }
+    assert_eq!(
+        apply(
+            &mut p,
+            Op::Roll {
+                left: a,
+                right: c,
+                to: t(5)
+            }
+        ),
+        Err(OpError::NotAdjacent)
+    );
+    assert_eq!(
+        apply(
+            &mut p,
+            Op::Roll {
+                left: b,
+                right: a,
+                to: t(5)
+            }
+        ),
+        Err(OpError::NotAdjacent)
+    );
+}
+
+#[test]
+fn slip_changes_the_source_window_only_and_respects_the_file() {
+    let (mut p, _, _, [a, b, _], _) = row();
+    let after = do_undo(
+        &mut p,
+        Op::Slip {
+            clip: b,
+            delta: t(5),
+        },
+    );
+    assert_eq!(geom(&after, b), (10, 35, 10));
+    let after = do_undo(
+        &mut p,
+        Op::Slip {
+            clip: a,
+            delta: t(-10),
+        },
+    );
+    assert_eq!(geom(&after, a), (0, 0, 10));
+    assert_eq!(
+        apply(
+            &mut p,
+            Op::Slip {
+                clip: a,
+                delta: t(-11)
+            }
+        ),
+        Err(OpError::OutOfRange)
+    );
+    // c reads source 50..60 of 100: slip to the very end is fine, one more is not (b: 30..40).
+    assert_eq!(
+        apply(
+            &mut p,
+            Op::Slip {
+                clip: b,
+                delta: t(61)
+            }
+        ),
+        Err(OpError::BeyondMedia)
+    );
+    do_undo(
+        &mut p,
+        Op::Slip {
+            clip: b,
+            delta: t(60),
+        },
+    );
+}
+
+#[test]
+fn slide_moves_the_clip_and_its_touching_neighbours_give_and_take() {
+    let (mut p, _, _, [a, b, c], _) = row();
+    let after = do_undo(
+        &mut p,
+        Op::Slide {
+            clip: b,
+            delta: t(4),
+        },
+    );
+    assert_eq!(geom(&after, a), (0, 10, 14));
+    assert_eq!(geom(&after, b), (14, 30, 10));
+    assert_eq!(geom(&after, c), (24, 54, 6));
+    let after = do_undo(
+        &mut p,
+        Op::Slide {
+            clip: b,
+            delta: t(-3),
+        },
+    );
+    assert_eq!(geom(&after, a), (0, 10, 7));
+    assert_eq!(geom(&after, b), (7, 30, 10));
+    assert_eq!(geom(&after, c), (17, 47, 13));
+    // Sliding past a neighbour's whole length, or the first clip into 0, is refused.
+    assert_eq!(
+        apply(
+            &mut p,
+            Op::Slide {
+                clip: b,
+                delta: t(10)
+            }
+        ),
+        Err(OpError::EmptyClip)
+    );
+    assert!(apply(
+        &mut p,
+        Op::Slide {
+            clip: a,
+            delta: t(-1)
+        }
+    )
+    .is_err());
+}
+
+#[test]
+fn slide_leaves_a_non_touching_neighbour_alone_and_never_overruns_it() {
+    let (mut p, _, _, [a, b, c], _) = row();
+    // Open a 2-unit gap before c by trimming b's tail.
+    apply(
+        &mut p,
+        Op::TrimOut {
+            clip: b,
+            end: t(18),
+        },
+    )
+    .unwrap();
+    let after = do_undo(
+        &mut p,
+        Op::Slide {
+            clip: b,
+            delta: t(2),
+        },
+    );
+    assert_eq!(geom(&after, b), (12, 30, 8));
+    assert_eq!(geom(&after, a), (0, 10, 12));
+    assert_eq!(
+        geom(&after, c),
+        (20, 50, 10),
+        "gap absorbed it, c untouched"
+    );
+    assert!(matches!(
+        apply(
+            &mut p,
+            Op::Slide {
+                clip: b,
+                delta: t(3)
+            }
+        ),
+        Err(OpError::Overlap { .. })
+    ));
+}
+
+#[test]
+fn compound_ops_refuse_a_locked_track_and_unknown_ids() {
+    let (mut p, v1, _, [a, b, _], _) = row();
+    apply(
+        &mut p,
+        Op::SetTrackProps {
+            track: v1,
+            name: None,
+            muted: None,
+            solo: None,
+            locked: Some(true),
+            hidden: None,
+            height: None,
+            colour: None,
+        },
+    )
+    .unwrap();
+    let before = p.clone();
+    for op in [
+        Op::RippleDelete {
+            clip: a,
+            all_tracks: true,
+        },
+        Op::RippleTrim {
+            clip: a,
+            edge: Edge::Out,
+            delta: t(-1),
+            all_tracks: false,
+        },
+        Op::CloseGap {
+            track: v1,
+            at: t(0),
+            all_tracks: false,
+        },
+        Op::Roll {
+            left: a,
+            right: b,
+            to: t(5),
+        },
+        Op::Slip {
+            clip: a,
+            delta: t(1),
+        },
+        Op::Slide {
+            clip: b,
+            delta: t(1),
+        },
+    ] {
+        assert!(
+            matches!(
+                apply(&mut p, op.clone()),
+                Err(OpError::TrackLocked(_)) | Err(OpError::NotInGap)
+            ),
+            "{op:?}"
+        );
+        assert_eq!(p, before);
+    }
+    let ghost = ClipId::new(&mut SeqIds::default());
+    assert!(matches!(
+        apply(
+            &mut p,
+            Op::RippleDelete {
+                clip: ghost,
+                all_tracks: false
+            }
+        ),
+        Err(OpError::UnknownClip(_))
+    ));
 }

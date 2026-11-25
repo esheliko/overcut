@@ -249,7 +249,23 @@ export type Op =
   /** Move a track to stack position `index` (in the order after it is lifted out; `tracks.length - 1` = top). */
   | { op: "move_track"; track: TrackId; index: number }
   /** Change track properties; fields left out stay as they are (`TrackProps`). Valid on a locked track. */
-  | ({ op: "set_track_props"; track: TrackId } & TrackProps);
+  | ({ op: "set_track_props"; track: TrackId } & TrackProps)
+  /**
+   * Ripple trim (TL-04): move one edge of the clip by `delta` ticks (positive = later) and shift everything that starts at/after its old end by the
+   * length change. `in` keeps the start and moves `source_in`. `all_tracks`: also shift the other UNLOCKED tracks (sync); locked tracks never move.
+   * An edit that would overlap anything, run past the media or empty the clip is refused whole.
+   */
+  | { op: "ripple_trim"; clip: ClipId; edge: "in" | "out"; delta: Time; all_tracks?: boolean }
+  /** Delete the clip and pull everything after it earlier by its length (`all_tracks` as in `ripple_trim`). */
+  | { op: "ripple_delete"; clip: ClipId; all_tracks?: boolean }
+  /** Close the empty gap on `track` that contains `at` (also the gap before the first clip). Refused (`NotInGap`) when `at` is on a clip or after the last one. */
+  | { op: "close_gap"; track: TrackId; at: Time; all_tracks?: boolean }
+  /** Roll: move the cut between two touching clips of a track (`left` ends where `right` starts) to `to`. Refused (`NotAdjacent`) otherwise. */
+  | { op: "roll"; left: ClipId; right: ClipId; to: Time }
+  /** Slip: shift the clip's source window by `delta` SOURCE ticks; position and length stay. */
+  | { op: "slip"; clip: ClipId; delta: Time }
+  /** Slide: move the clip by `delta` ticks; neighbours that touch it give/take the difference at their adjacent edge. */
+  | { op: "slide"; clip: ClipId; delta: Time };
 
 /**
  * A track patch (`set_track_props`): leave a field out to keep it. `height` / `colour`: a value sets it, `null` resets to the default.

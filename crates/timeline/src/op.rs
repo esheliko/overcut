@@ -16,8 +16,19 @@ where
     Option::<T>::deserialize(d).map(Some)
 }
 
-/// One edit. `#[non_exhaustive]` + the `op` tag leave room for M2 ripple / roll / slip / slide, which are new variants
-/// (with their own inverses), not changes to these.
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// Which edge of a clip a ripple trim moves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Edge {
+    In,
+    Out,
+}
+
+/// One edit. `#[non_exhaustive]` + the `op` tag leave room for new variants (with their own inverses), not changes to these.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 #[non_exhaustive]
@@ -122,6 +133,42 @@ pub enum Op {
         size_fixed: bool,
         rate_fixed: bool,
     },
+    /// Ripple trim (TL-04): move one `edge` of `clip` by `delta` timeline ticks (positive = the edge moves later) and shift everything that
+    /// starts at or after the clip's old end by the length change, so no gap opens or closes around it. `In` keeps the clip's start and moves
+    /// its `source_in`; `Out` keeps its start and changes its length. `all_tracks`: also shift the clips after that point on every other
+    /// unlocked track of the sequence (sync); otherwise only the clip's own track.
+    RippleTrim {
+        clip: ClipId,
+        edge: Edge,
+        delta: Time,
+        #[serde(default, skip_serializing_if = "is_false")]
+        all_tracks: bool,
+    },
+    /// Delete `clip` and close the hole: clips that start at or after its end move earlier by its length (see `RippleTrim` for `all_tracks`).
+    RippleDelete {
+        clip: ClipId,
+        #[serde(default, skip_serializing_if = "is_false")]
+        all_tracks: bool,
+    },
+    /// Close the empty gap on `track` that contains time `at` (between two clips, or between 0 and the first clip): everything after it
+    /// moves earlier by the gap length. `NotInGap` when `at` is on a clip or after the last one.
+    CloseGap {
+        track: TrackId,
+        at: Time,
+        #[serde(default, skip_serializing_if = "is_false")]
+        all_tracks: bool,
+    },
+    /// Roll: move the cut between two touching clips of one track (`left` ends where `right` starts) to `to`; total length is unchanged.
+    Roll {
+        left: ClipId,
+        right: ClipId,
+        to: Time,
+    },
+    /// Slip: show a different part of the source through the same window. `source_in` moves by `delta` source ticks; start and length stay.
+    Slip { clip: ClipId, delta: Time },
+    /// Slide: move `clip` by `delta` timeline ticks; a neighbour that touches it gives or takes the difference at its adjacent edge, so the
+    /// total length of the three clips is unchanged. A neighbour that does not touch is left alone (and must not be overrun).
+    Slide { clip: ClipId, delta: Time },
 }
 
 /// Ops that undo an applied op, in the order they must be applied.
