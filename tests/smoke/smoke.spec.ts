@@ -27,10 +27,11 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
   await expect(page.getByTestId("panel-preview")).toBeVisible();
   await expect(page.getByTestId("panel-timeline")).toBeVisible();
   const tools = page.getByRole("navigation", { name: "Tools" });
-  await expect(tools).toBeVisible();
-  const box = await tools.getByRole("button", { name: "Media" }).boundingBox();
-  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44); // touch target
   if (phone) {
+    await expect(tools).toBeVisible();
+    const box = (await tools.getByRole("button", { name: "Media" }).boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44); // touch target
+    expect(box.width).toBeGreaterThan((page.viewportSize()?.width ?? 0) * 0.8); // the one tool is a full-width bar button, not a lone tab in the corner
     await expect(page.getByTestId("panel-tool")).toBeHidden();
     await tools.getByRole("button", { name: "Media" }).click();
     await expect(page.getByTestId("panel-tool")).toBeVisible();
@@ -39,10 +40,11 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
   } else {
     await expect(page.getByTestId("panel-tool")).toBeVisible();
     await expect(page.getByTestId("panel-tool").getByRole("heading", { name: "Media" })).toBeVisible();
+    await expect(tools).toHaveCount(0); // one tool and its panel always open: no rail to switch anything
   }
   expect(info.project.name).toMatch(/desktop|phone/);
   // M1 shows only tools that work: no Audio, Text, Captions, Effects... promises.
-  await expect(tools.getByRole("button")).toHaveCount(1);
+  if (phone) await expect(tools.getByRole("button")).toHaveCount(1);
 });
 
 test("transport and timeline: play advances the playhead, the canvas timeline paints", async ({ page }) => {
@@ -152,8 +154,8 @@ test("language and direction: the page declares lang and dir, and a right-to-lef
   await expect(page.locator("html")).toHaveAttribute("lang", "en-XB");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   if ((page.viewportSize()?.width ?? 0) >= 720) {
-    // the tool rail moves to the right edge; the preview is on its left
-    const rail = (await page.getByRole("navigation").first().boundingBox())!;
+    // the Media panel moves to the right edge; the preview is on its left
+    const rail = (await page.getByTestId("panel-tool").boundingBox())!;
     const stage = (await page.getByTestId("panel-preview").boundingBox())!;
     expect(rail.x).toBeGreaterThan(stage.x);
   }
@@ -292,7 +294,9 @@ for (const p of PROFILES) {
     const box = async (id: string) => (await page.getByTestId(id).boundingBox())!;
     const preview = await box("panel-preview");
     const timeline = await box("panel-timeline");
-    const tools = (await page.getByRole("navigation", { name: "Tools" }).boundingBox())!;
+    // docked layouts with one tool have no rail (its panel is always open); phones keep the bar or the side rail
+    if (p.docked) await expect(page.getByRole("navigation", { name: "Tools" })).toHaveCount(0);
+    const tools = p.docked ? await box("panel-tool") : (await page.getByRole("navigation", { name: "Tools" }).boundingBox())!;
     for (const b of [preview, timeline, tools]) {
       expect(b.width).toBeGreaterThan(40);
       expect(b.height).toBeGreaterThan(40);

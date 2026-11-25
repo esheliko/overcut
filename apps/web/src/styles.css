@@ -53,6 +53,8 @@ h2, p { margin: 0; }
 .tool:hover { color: var(--fg); }
 .tool[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .tool[aria-pressed="true"] span { color: var(--fg); }
+/* Phone portrait with one tool (Media, in M1): the bottom bar is one full-width button, icon and label side by side, not a lone tab in the corner */
+@container editor (max-width: 719px) and (min-height: 501px) { .tools > .tool:only-child { flex: 1 1 auto; flex-direction: row; gap: var(--space-2); color: var(--fg); font-size: var(--text-base); font-weight: 600; } }
 
 /* Tool panel: a bottom sheet on a phone */
 .library { display: none; flex-direction: column; min-height: 0; background: var(--surface); }
@@ -163,21 +165,28 @@ h2, p { margin: 0; }
   .library, .library[data-open="true"] { display: flex; position: static; height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: none; animation: none; }
   .library::before, .library[data-open="true"]::before, .sheet-close { display: none; }
   .toast { bottom: 24px; }
+  /* One tool (Media) and its panel always open: no rail, its column goes to the panels */
+  .workspace[data-rail="none"] { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
 }
 /* Tablet in portrait (820 px wide): the Media panel stacks above the preview, full width, so each card has room for its name, meta on one line and its buttons. The tool rail stays on the left; the timeline keeps the bottom. */
 @container editor (min-width: 720px) and (max-width: 1099px) and (orientation: portrait) {
   .workspace { grid-template-rows: minmax(300px, 0.9fr) minmax(260px, 1fr) clamp(200px, 30%, 320px); grid-template-columns: 84px minmax(0, 1fr); grid-template-areas: "tools library" "tools stage" "timeline timeline"; }
+  .workspace[data-rail="none"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "library" "stage" "timeline"; }
 }
 /* Laptop and desktop: details panel on the right */
 @container editor (min-width: 1100px) {
   .workspace { grid-template-columns: 84px 320px minmax(0, 1fr) 300px; grid-template-areas: "tools library stage inspector" "timeline timeline timeline timeline"; }
   .workspace[data-inspector="false"] { grid-template-columns: 84px 320px minmax(0, 1fr); grid-template-areas: "tools library stage" "timeline timeline timeline"; }
+  .workspace[data-rail="none"] { grid-template-columns: 320px minmax(0, 1fr) 300px; grid-template-areas: "library stage inspector" "timeline timeline timeline"; }
+  .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: 320px minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
   .inspector { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 }
 /* Ultrawide (>= 1900 px and at least 2:1): wider side panels, the timeline gets the extra width and more height */
 @container editor (min-width: 1900px) and (min-aspect-ratio: 2/1) {
   .workspace { grid-template-columns: 96px 360px minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr) clamp(240px, 42%, 460px); gap: 8px; padding: 0 8px 8px; }
   .workspace[data-inspector="false"] { grid-template-columns: 96px 360px minmax(0, 1fr); }
+  .workspace[data-rail="none"] { grid-template-columns: 360px minmax(0, 1fr) 380px; }
+  .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: 360px minmax(0, 1fr); }
 }
 /* Phone landscape (short screen on its side): slim tool rail | preview over timeline; the tool panel slides in from the side over the preview */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) {
