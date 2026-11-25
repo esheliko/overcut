@@ -38,6 +38,10 @@ h2, p { margin: 0; }
 .primary { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: filter var(--dur-fast), transform var(--dur-instant); }
 .primary:hover { filter: brightness(1.08); }
 .primary:active { transform: scale(0.97); }
+/* The same filled accent look for every main action that only has `.export-go` (Projects "New project", dialog OK / Apply / Save, Add tag): without it they fell back to the browser's grey button with a raised border. */
+.export-go { border: 0; background: var(--accent); color: var(--accent-ink); transition: filter var(--dur-fast), transform var(--dur-instant); }
+.export-go:hover:not(:disabled) { filter: brightness(1.08); }
+.export-go:active:not(:disabled) { transform: scale(0.97); }
 
 /* Workspace: phone */
 .workspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(150px, 36%) auto; grid-template-areas: "stage" "timeline" "tools"; background: var(--bg); }
@@ -252,7 +256,8 @@ h2, p { margin: 0; }
 .bin-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; } /* the meta is one line; the whole line is the tooltip */
 .bin-error { color: var(--fg); white-space: normal; overflow-wrap: anywhere; }
 .bin-act { flex: none; min-width: 44px; min-height: 44px; }
-.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border-radius: 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: none; color: var(--fg); font-size: 12px; font-weight: 600; }
+.bin-tag-btn:hover { background: var(--surface-3); }
 .bin-on-timeline { color: var(--accent); font-weight: 600; }
 .bin-link { flex: none; min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tl-drop { grid-area: timeline; display: contents; }
@@ -288,6 +293,9 @@ h2, p { margin: 0; }
 .export-fields select { min-block-size: var(--target); padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--fg); font-size: var(--text-base); min-inline-size: 0; }
 .export-go, .export-secondary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-block-size: 52px; padding: 0 var(--space-5); border-radius: var(--radius); font-weight: 700; font-size: var(--text-md); }
 .export-go:disabled { opacity: 0.45; cursor: default; }
+/* The setup's Export button stays on screen while the settings scroll (phone 320x640 included); opaque, so the scrolled fields pass under it. */
+.export-footer { position: sticky; inset-block-end: 0; z-index: 1; margin-inline: calc(var(--space-5) * -1); margin-block-start: auto; padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)); border-block-start: 1px solid var(--line); background: var(--surface); }
+.export-footer .export-go { inline-size: 100%; }
 .export-secondary { border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); }
 .export-secondary:hover { background: var(--surface-3); }
 .export-go.confirm-danger { background: var(--danger); color: var(--bg); }
@@ -318,7 +326,8 @@ h2, p { margin: 0; }
 /* accent picker (menu) and install how-to */
 .menu-accent { padding: 6px 12px 8px; }
 .menu-accent-title { display: block; padding-block: 4px; color: var(--muted); font-size: var(--text-sm); }
-.menu-accent-row { display: flex; flex-wrap: wrap; gap: 2px; margin-inline: -8px; }
+/* F4: a fixed 4-column grid (there are 7 accents, so 4 + 3) instead of a wrap that left the 7th swatch alone. */
+.menu-accent-row { display: grid; grid-template-columns: repeat(4, 44px); gap: 2px; margin-inline: -8px; }
 .swatch { display: grid; place-items: center; inline-size: 44px; block-size: 44px; padding: 0; border: 0; border-radius: var(--radius-full); background: none; }
 .swatch-dot { inline-size: 24px; block-size: 24px; border-radius: var(--radius-full); border: 2px solid var(--line-strong); box-sizing: border-box; }
 .swatch[data-checked="true"] .swatch-dot { border-color: var(--fg); box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--fg); }
@@ -350,6 +359,8 @@ h2, p { margin: 0; }
 
 /* Network activity (XT-06) */
 .pj-dialog:has([data-testid="network-log"]) { inline-size: min(720px, calc(100vw - 24px)); }
+.net-details { margin-block: 12px; }
+.net-details > summary { display: inline-flex; align-items: center; min-block-size: 44px; font-weight: 600; color: var(--accent); cursor: pointer; }
 .net-scroll { max-block-size: 40dvh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
 .net-table { inline-size: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .net-table th, .net-table td { padding: 6px 10px; text-align: start; border-block-end: 1px solid var(--line); white-space: nowrap; }
@@ -446,3 +457,8 @@ h2, p { margin: 0; }
 .crash-actions button { min-height: 44px; padding: 0 18px; border-radius: 10px; font-weight: 700; }
 .crash-muted { color: var(--muted); font-size: 13px; }
 .crash-report { width: 100%; min-height: 120px; box-sizing: border-box; font: 12px/1.4 ui-monospace, monospace; }
+/* F3 theme menu: the top-bar popover and the phone menu rows; the checked choice has a visible tick, not colour alone. */
+.theme-menu { position: relative; }
+.theme-pop { inset-inline-start: 0; inset-inline-end: auto; min-width: 200px; }
+.menu-check { display: inline-block; inline-size: 1.2em; font-weight: 700; }
+.menu-row[aria-checked="true"] { font-weight: 700; }

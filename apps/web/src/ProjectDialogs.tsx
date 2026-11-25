@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FPS_CHOICES, QUALITIES, SHAPES, canvasOp, choiceOf, fpsLabel, frameRateOf, resolutionOf, sameCanvas, type CanvasChoice } from "./canvas";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
+import { useReturnFocus } from "./a11y/returnFocus";
 import { NetworkLog } from "./privacy/NetworkLog";
 
 /** A modal `<dialog>` that closes on Esc and starts focused on its title. Shared by the canvas settings and the confirmations. */
@@ -10,6 +11,7 @@ export function Modal({ title, titleId, testId, onClose, children, role }: { tit
   const { t } = useI18n();
   const ref = useRef<HTMLDialogElement>(null);
   const head = useRef<HTMLHeadingElement>(null);
+  useReturnFocus();
   useEffect(() => {
     const d = ref.current;
     if (d && !d.open) d.showModal();
