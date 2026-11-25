@@ -36,6 +36,7 @@ function fakeEngine() {
     project: async () => ({ edits: [...edits] }) as unknown as Project,
     journal: async () => "",
     evaluate: async () => { throw new Error("not used"); },
+    snap: async () => { throw new Error("not used"); },
     takeLog: async () => {
       const p = pending;
       pending = "";

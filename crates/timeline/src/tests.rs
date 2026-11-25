@@ -3006,3 +3006,38 @@ fn compound_ops_refuse_a_locked_track_and_unknown_ids() {
         Err(OpError::UnknownClip(_))
     ));
 }
+
+#[test]
+fn editor_snap_json_snaps_excluding_dragged_clips_and_rejects_bad_input() {
+    let (p, _, _, [a, b, _], _) = row();
+    let e = Editor::from_project(p);
+    let seq = e.project().sequences[0].id.to_string();
+    let q = |v: serde_json::Value| {
+        e.snap_json(&seq, &v.to_string())
+            .map(|s| serde_json::from_str::<serde_json::Value>(&s).unwrap())
+    };
+    // 10_100 ticks: the cut between a and b is at 10 * U = 10_000; tolerance 200 reaches it.
+    let r = q(serde_json::json!({"t": 10_100, "tolerance": 200})).unwrap();
+    assert_eq!(
+        (r["time"].as_i64(), r["delta"].as_i64()),
+        (Some(10_000), Some(-100))
+    );
+    assert_eq!(r["hit"]["kind"], "clip_edge");
+    // Excluding both clips that own that edge leaves only the other tracks' edges (15 * U): nothing near.
+    let r = q(serde_json::json!({"t": 10_100, "tolerance": 200, "exclude": [a, b]})).unwrap();
+    assert!(r["hit"].is_null() && r["delta"] == 0);
+    // The playhead and markers are targets; a span snaps by its end.
+    let r = q(serde_json::json!({"t": 3_000, "tolerance": 100, "playhead": 3_050})).unwrap();
+    assert_eq!(r["hit"]["kind"], "playhead");
+    let r = q(serde_json::json!({"t": 7_900, "tolerance": 200, "span": 2_000, "markers": [9_950]}))
+        .unwrap();
+    assert_eq!(
+        (r["time"].as_i64(), r["hit"]["kind"].as_str()),
+        (Some(7_950), Some("marker"))
+    );
+    assert!(q(serde_json::json!({"tolerance": 1})).is_err());
+    assert!(e.snap_json("nope", "{}").is_err());
+    assert!(e
+        .snap_json(&"0".repeat(32), r#"{"t":0,"tolerance":0}"#)
+        .is_err());
+}
