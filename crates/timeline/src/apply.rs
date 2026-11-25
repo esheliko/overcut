@@ -24,6 +24,10 @@ pub enum OpError {
     BadTags,
     /// `SetClipTransform` (or an inserted clip) with a non-finite value, a scale <= 0, or opacity / crop out of range.
     BadTransform,
+    /// `DeleteKeyframe` / `MoveKeyframe` / `SetEasing` at a time that holds no key.
+    NoKeyframe,
+    /// `MoveKeyframe` onto a time that already holds another key.
+    KeyframeOccupied,
     /// The id of a new clip is already used by something in the document.
     IdInUse(String),
     TrackLocked(TrackId),
@@ -190,6 +194,22 @@ fn unlocked(t: &Track) -> Result<(), OpError> {
     } else {
         Ok(())
     }
+}
+
+/// Finds the clip for a keyframe op, checks the track is unlocked and the key time is `>= 0`, and returns a copy of its transform to edit
+/// (the edit is validated before it is written back, so an error changes nothing; a transform is a few hundred bytes).
+fn key_target(
+    p: &Project,
+    clip: ClipId,
+    t: Time,
+) -> Result<(Loc, app_model::ClipTransform), OpError> {
+    let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
+    unlocked(&p.sequences[loc.seq].tracks[loc.track])?;
+    if t.ticks() < 0 {
+        return Err(OpError::OutOfRange);
+    }
+    let x = (*p.sequences[loc.seq].tracks[loc.track].clips[loc.clip].transform).clone();
+    Ok((loc, x))
 }
 
 fn track_mut(p: &mut Project, seq: usize, track: usize) -> &mut Track {
@@ -544,6 +564,96 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
             Ok(Inverse(vec![Op::SetClipTransform {
                 clip,
                 transform: old,
+            }]))
+        }
+        Op::SetKeyframe { clip, prop, key } => {
+            let (loc, mut x) = key_target(p, clip, key.t)?;
+            let old = x
+                .prop_mut(prop)
+                .set_key(key)
+                .map_err(|_| OpError::BadTransform)?;
+            x.validate().map_err(|_| OpError::BadTransform)?;
+            *track_mut(p, loc.seq, loc.track).clips[loc.clip].transform = x;
+            Ok(Inverse(vec![match old {
+                Some(old) => Op::SetKeyframe {
+                    clip,
+                    prop,
+                    key: old,
+                },
+                None => Op::DeleteKeyframe {
+                    clip,
+                    prop,
+                    t: key.t,
+                },
+            }]))
+        }
+        Op::MoveKeyframe {
+            clip,
+            prop,
+            from,
+            to,
+            value,
+        } => {
+            let (loc, mut x) = key_target(p, clip, to)?;
+            let a = x.prop_mut(prop);
+            let i = a
+                .keys
+                .binary_search_by(|k| k.t.cmp(&from))
+                .map_err(|_| OpError::NoKeyframe)?;
+            if from != to && a.keys.binary_search_by(|k| k.t.cmp(&to)).is_ok() {
+                return Err(OpError::KeyframeOccupied);
+            }
+            let old = a.keys.remove(i);
+            let new = app_model::Keyframe {
+                t: to,
+                v: value.unwrap_or(old.v),
+                ..old
+            };
+            a.set_key(new).map_err(|_| OpError::BadTransform)?;
+            x.validate().map_err(|_| OpError::BadTransform)?;
+            *track_mut(p, loc.seq, loc.track).clips[loc.clip].transform = x;
+            Ok(Inverse(vec![Op::MoveKeyframe {
+                clip,
+                prop,
+                from: to,
+                to: from,
+                value: Some(old.v),
+            }]))
+        }
+        Op::DeleteKeyframe { clip, prop, t } => {
+            let (loc, mut x) = key_target(p, clip, t)?;
+            let old = x
+                .prop_mut(prop)
+                .remove_key(t)
+                .map_err(|_| OpError::NoKeyframe)?;
+            x.validate().map_err(|_| OpError::BadTransform)?;
+            *track_mut(p, loc.seq, loc.track).clips[loc.clip].transform = x;
+            Ok(Inverse(vec![Op::SetKeyframe {
+                clip,
+                prop,
+                key: old,
+            }]))
+        }
+        Op::SetEasing {
+            clip,
+            prop,
+            t,
+            easing,
+        } => {
+            let (loc, mut x) = key_target(p, clip, t)?;
+            let a = x.prop_mut(prop);
+            let i = a
+                .keys
+                .binary_search_by(|k| k.t.cmp(&t))
+                .map_err(|_| OpError::NoKeyframe)?;
+            let old = std::mem::replace(&mut a.keys[i].easing, easing);
+            x.validate().map_err(|_| OpError::BadTransform)?;
+            *track_mut(p, loc.seq, loc.track).clips[loc.clip].transform = x;
+            Ok(Inverse(vec![Op::SetEasing {
+                clip,
+                prop,
+                t,
+                easing: old,
             }]))
         }
         Op::Split {
