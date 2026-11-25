@@ -514,3 +514,15 @@ h2, p { margin: 0; }
 .menu-check { display: inline-block; inline-size: 1.2em; font-weight: 700; }
 .menu-row[aria-checked="true"] { font-weight: 700; }
 @media (max-width: 480px) { .tl-track-options, .tl-add-narrow { display: none; } } /* phones: tap a track header for its menu */
+
+/* Command palette (M2-041): a centred card on wide screens, full width under the top on phones. */
+.palette { inline-size: min(560px, calc(100vw - 16px)); max-block-size: min(70dvh, 520px); margin: 12vh auto auto; padding: 8px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); color: var(--fg); box-shadow: var(--shadow); overflow: hidden; }
+.palette[open] { display: flex; flex-direction: column; gap: 6px; }
+.palette::backdrop { background: color-mix(in srgb, var(--bg) 60%, transparent); }
+.palette-input { min-height: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2, var(--surface)); color: var(--fg); font: inherit; font-size: 16px; }
+.palette-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; }
+.palette-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 8px; cursor: pointer; }
+.palette-row.on { background: var(--surface-3); }
+.palette-row kbd { color: var(--muted); font: inherit; font-size: 12px; white-space: nowrap; }
+.palette-empty { margin: 0; padding: 12px; color: var(--muted); }
+@media (max-width: 480px) { .palette { margin-block-start: 8px; } .palette-btn { display: none; } }
