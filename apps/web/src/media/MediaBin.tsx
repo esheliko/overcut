@@ -20,6 +20,8 @@ type Props = {
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
+  /** One file picker for every offline item (matched by name): offered when two or more are offline. */
+  onRelinkAll?: () => void;
 };
 
 const KIND_ICON: Record<MediaKind, "video" | "audio" | "media"> = { video: "video", audio: "audio", image: "media" };
@@ -146,7 +148,7 @@ function TagsDialog({ item, tags, onTags, onClose }: { item: BinItem; tags: read
 }
 
 /** Media tool panel body: the big empty-state target, then the list of imported media with "+" to add each to the timeline. */
-export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove, onRelink }: Props) {
+export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove, onRelink, onRelinkAll }: Props) {
   const { t } = useI18n();
   const { open, field } = useImportPicker(onImport);
   const project = useProjectStore((s) => s.project);
@@ -179,6 +181,9 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
     <div className="bin">
       {field}
       <button className="primary bin-import" onClick={open} data-testid="import-more"><Icon name="plus" size={18} /><span>{t("media.import")}</span></button>
+      {onRelinkAll && items.filter((i) => i.status === "offline").length >= 2 && (
+        <button className="bin-filter-toggle bin-relink-all" onClick={onRelinkAll} data-testid="relink-all"><Icon name="upload" size={18} /><span>{t("media.relinkAll", { count: items.filter((i) => i.status === "offline").length })}</span></button>
+      )}
       <button
         className="bin-filter-toggle"
         aria-expanded={filterOpen}
