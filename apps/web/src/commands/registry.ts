@@ -11,6 +11,8 @@ export type Command =
   | { c: "rippleDelete" } | { c: "closeGap" }
   /** Pick the edit tool (the toolbar's), or edit the selection by whole frames: slip the source window, slide between neighbours, roll its end cut. */
   | { c: "tool"; tool: "select" | "ripple" | "roll" | "slip" | "slide" }
+  /** Move the selection one lane up or down (same kind of track). */
+  | { c: "lane"; dir: "up" | "down" }
   | { c: "slip"; frames: number } | { c: "slide"; frames: number } | { c: "roll"; frames: number }
   | { c: "go"; dir: "left" | "right" | "up" | "down" }
   /** Move the selection by whole frames. */
@@ -88,6 +90,8 @@ export const COMMANDS: readonly CommandDef[] = [
   D("clip.trimStartBack", "canvas", ["Alt+Shift+Comma"], { c: "trimBy", edge: "start", frames: -1 }),
   D("clip.trimStartForward", "canvas", ["Alt+Shift+Period"], { c: "trimBy", edge: "start", frames: 1 }),
 
+  D("clip.laneUp", "canvas", ["Alt+ArrowUp"], { c: "lane", dir: "up" }),
+  D("clip.laneDown", "canvas", ["Alt+ArrowDown"], { c: "lane", dir: "down" }),
   D("clip.slipBack", "canvas", ["Mod+Comma"], { c: "slip", frames: -1 }),
   D("clip.slipForward", "canvas", ["Mod+Period"], { c: "slip", frames: 1 }),
   D("clip.slideBack", "canvas", ["Mod+Shift+Comma"], { c: "slide", frames: -1 }),

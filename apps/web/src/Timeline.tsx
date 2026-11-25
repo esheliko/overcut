@@ -8,7 +8,7 @@ import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
-import { clampN, closeStartGap, deleteOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
+import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
 import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { sampleProject } from "./timeline/fixture";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
@@ -40,7 +40,7 @@ type Props = {
   /** Ids (comma separated) of the media whose file is readable right now: media that turns up here after being offline is requested again. */
   readyIds?: string;
   /** A media-bin card was dropped on the timeline canvas: place it at this tick. */
-  onDropMedia?: (id: string, tick: number) => void;
+  onDropMedia?: (id: string, tick: number, track?: string) => void;
 };
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
@@ -50,7 +50,7 @@ const KEYS = { rippleDel: "Shift+Del", closeGap: "Ctrl+Del", undo: "Ctrl+Z", red
 const LABELS: Record<string, string> = { "timeline.say.split": "timeline.label.split", "timeline.say.deleted": "timeline.label.deleted", "timeline.say.moved": "timeline.label.moved",
   "timeline.say.nudged": "timeline.label.nudged", "timeline.say.trimmed": "timeline.label.trimmed", "timeline.say.duplicated": "timeline.label.duplicated",
   "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed",
-  "timeline.say.rippled": "timeline.label.rippled", "timeline.say.rolled": "timeline.label.rolled", "timeline.say.slipped": "timeline.label.slipped", "timeline.say.slid": "timeline.label.slid",
+  "timeline.say.laneMoved": "timeline.label.laneMoved", "timeline.say.rippled": "timeline.label.rippled", "timeline.say.rolled": "timeline.label.rolled", "timeline.say.slipped": "timeline.label.slipped", "timeline.say.slid": "timeline.label.slid",
   "timeline.say.rippleDeleted": "timeline.label.rippleDeleted", "timeline.say.gapClosed": "timeline.label.gapClosed",
   "timeline.say.track.added": "timeline.label.track.added", "timeline.say.track.removed": "timeline.label.track.removed", "timeline.say.track.moved": "timeline.label.track.edited", "timeline.say.track.renamed": "timeline.label.track.edited",
   ...Object.fromEntries(TRACK_SAY_KEYS.map((k) => [k, "timeline.label.track.edited"])) };
@@ -112,6 +112,8 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const heldRef = useRef(held);
   heldRef.current = held;
   const [tool, setTool] = useState<Tool>("select");
+  /** The track last clicked: where a paste lands when no clip is selected. */
+  const armed = useRef<string | null>(null);
   const [dialog, setDialog] = useState<"history" | "timing" | null>(null);
   const [menu, setMenu] = useState<{ target: TrackMenuTarget; anchor: DOMRect } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -191,6 +193,13 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         commit(ops, say("timeline.say.gapClosed", { count: ops.length }));
         break;
       }
+      case "lane": {
+        if (mine.length === 0) { speak(locked ?? say("timeline.say.selectFirst")); break; }
+        const step = laneStepOps(sc, mine, cmd.dir);
+        if (!step) { const m = say("timeline.say.noLane"); speak(m); onNotice(t(m.key)); break; }
+        commit(step.ops, say("timeline.say.laneMoved", { track: sc.trackName[step.track]! }));
+        break;
+      }
       case "tool": setTool(cmd.tool); speak(say("timeline.say.tool", { tool: cmd.tool })); break;
       case "slip": case "slide": case "roll": {
         const reps = groupReps(sc, mine);
@@ -249,7 +258,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         const proj0 = live.current.proj.project;
         const h = heldRef.current;
         if (!proj0 || h.length === 0) { speak(say("timeline.say.nothingToPaste")); onNotice(t("timeline.say.nothingToPaste")); break; }
-        const plan = planPlacement(proj0, h, tick, selectedTrack(proj0, sel), newClipId);
+        const plan = planPlacement(proj0, h, tick, selectedTrack(proj0, sel) ?? armed.current, newClipId);
         if (plan.ops.length === 0) { const m = say("timeline.say.pasteSkipped", { count: plan.skipped }); speak(m); onNotice(t(m.key, m.values)); break; }
         commit(plan.ops, say("timeline.say.pasted", { count: plan.placed, time: timecode(Math.round((plan.start * FPS) / TICKS_PER_SECOND)) }), () => setSelected(new Set(plan.ops.map((o) => (o.op === "insert_clip" ? o.clip.id : "")))));
         if (plan.skipped > 0) onNotice(t("timeline.say.pasteSkipped", { count: plan.skipped }));
@@ -351,7 +360,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       <div className="tl-stage">
         {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t("timeline.empty")}</p>}
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} tool={tool} />
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} tool={tool} onLane={(id) => { armed.current = id; }} />
       </div>
     </section>
   );

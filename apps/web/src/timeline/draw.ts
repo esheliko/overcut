@@ -62,13 +62,15 @@ export interface Overlay {
   trimClip: number; trimEnd: boolean; trimSec: number;
   /** Text on the move ghost instead of the clip name (slip / slide show their amount). */
   ghostLabel: string | null;
+  /** Lane (row index, -1 none) a dragged clip or media card would land on: tinted. */
+  lane: number;
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Where a drag snapped or will drop (seconds): a thin guide line across the tracks. Null = none. */
   guideSec: number | null;
   /** Reordering tracks: the row being carried, the row it would land on, and the pointer y. Null = none. */
   trackDrag: { from: number; to: number; y: number } | null;
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, ghostLabel: null, marquee: null, guideSec: null, trackDrag: null });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, ghostLabel: null, lane: -1, marquee: null, guideSec: null, trackDrag: null });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -184,9 +186,14 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   }
 
   // Drag and trim previews (drawn under the sticky gutter and ruler).
+  if (ui.lane >= 0 && ui.lane < scene.trackCount) {
+    const ly = RULER + ui.lane * LANE - v.scrollY;
+    ctx.save(); ctx.globalAlpha = 0.14; ctx.fillStyle = p.accent; ctx.fillRect(gut(v), ly, v.width - gut(v), LANE - 1); ctx.restore();
+  }
   if (ui.ghosts !== null) {
     for (const i of ui.ghosts) {
-      const tr = ui.ghostTrack >= 0 ? ui.ghostTrack : scene.clipTrack[i]!;
+      // Only the clip of the target lane's kind changes lane (its linked sound stays on its own track).
+      const tr = ui.ghostTrack >= 0 && scene.trackKind[scene.clipTrack[i]!] === scene.trackKind[ui.ghostTrack] ? ui.ghostTrack : scene.clipTrack[i]!;
       ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, scene.trackKind[tr] === 1, ui.ghostLabel ?? scene.name[i]);
     }
   }

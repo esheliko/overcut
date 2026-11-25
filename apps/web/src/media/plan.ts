@@ -3,7 +3,7 @@
  * which edit ops put it on the timeline. Unit tests: tests/unit/media-plan.test.ts. Behaviour: docs/features/media-bin.md.
  */
 import { adoptedFormat } from "../canvas";
-import type { Clip, MediaKind, MediaRef, Op, Project, Rational, Resolution } from "@app/engine-client";
+import type { Clip, MediaKind, MediaRef, Op, Project, Rational, Resolution, Track } from "@app/engine-client";
 
 /** Ticks per second (ADR 0010). */
 export const TICKS = 705_600_000;
@@ -93,10 +93,18 @@ export function importOps(p: Project, ref: MediaRef, probed: Probed): Op[] {
 }
 
 /** Where a clip of `length` should start: at `want` if both tracks are free there, else after everything already on the timeline. */
-export function placeAt(p: Project, want: number, length: number): number {
-  const tracks = p.sequences[0]?.tracks ?? [];
+export function placeAt(p: Project, want: number, length: number, only?: readonly string[]): number {
+  const tracks = (p.sequences[0]?.tracks ?? []).filter((t) => !only || only.includes(t.id));
   const free = tracks.every((t) => t.clips.every((c) => want + length <= c.start || c.start + c.duration <= want));
   return free ? Math.max(0, want) : timelineEnd(p);
+}
+
+/** The tracks a media item goes on: the first unlocked video and audio track, except that `target` (a dropped-on lane) takes the slot of its own kind. */
+export function destTracks(p: Project, media: MediaRef, target?: string): { vt: Track | undefined; at: Track | undefined } {
+  const tracks = p.sequences[0]?.tracks ?? [];
+  const aim = tracks.find((t) => t.id === target && !t.locked);
+  const pick = (kind: Track["kind"]) => (aim && aim.kind === kind && (kind === "audio" || media.kind !== "audio") ? aim : tracks.find((t) => t.kind === kind && !t.locked));
+  return { vt: pick("video"), at: pick("audio") };
 }
 
 /**
@@ -104,10 +112,8 @@ export function placeAt(p: Project, want: number, length: number): number {
  * a matching clip on the first audio track; audio goes on the audio track; a still gets `STILL_SECONDS`. One array = one undo step.
  * Returns `null` when the sequence has no suitable track.
  */
-export function insertOps(p: Project, media: MediaRef, probed: Probed, start: number, ids: () => string = newId): Op[] | null {
-  const tracks = p.sequences[0]?.tracks ?? [];
-  const vt = tracks.find((t) => t.kind === "video" && !t.locked);
-  const at = tracks.find((t) => t.kind === "audio" && !t.locked);
+export function insertOps(p: Project, media: MediaRef, probed: Probed, start: number, ids: () => string = newId, target?: string): Op[] | null {
+  const { vt, at } = destTracks(p, media, target);
   const duration = media.kind === "image" ? STILL_SECONDS * TICKS : media.duration ?? 0;
   if (duration <= 0) return null;
   const link = ids(); // the picture and the sound of one video import are linked: they select, move, trim and cut together
