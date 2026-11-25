@@ -179,7 +179,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   if (ui.ghosts !== null) {
     for (const i of ui.ghosts) {
       const tr = ui.ghostTrack >= 0 ? ui.ghostTrack : scene.clipTrack[i]!;
-      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, scene.trackKind[tr] === 1);
+      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, scene.trackKind[tr] === 1, scene.name[i]);
     }
   }
   if (ui.trimClip >= 0) {
@@ -274,7 +274,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
 }
 
 /** A translucent copy of a clip at its previewed position. */
-function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number, startSec: number, endSec: number, audio: boolean) {
+function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number, startSec: number, endSec: number, audio: boolean, name = "") {
   const x = timeToX(v, startSec), w = Math.max(2, (endSec - startSec) * v.pps - 1);
   if (x + w < GUTTER || x > v.width) return;
   const y = RULER + track * LANE - v.scrollY;
@@ -285,4 +285,13 @@ function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number
   ctx.strokeStyle = p.accent;
   ctx.lineWidth = 2;
   ctx.strokeRect(x + 1, y + 4, w - 2, LANE - 9);
+  // The name rides along on a dark pill (same as the clip labels), so what is being carried stays readable.
+  const tx = Math.max(x, GUTTER) + 6, room = x + w - tx - 6;
+  if (name && room > 24) {
+    ctx.font = FONT_CLIP; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillStyle = LABEL_SCRIM;
+    ctx.fillRect(tx - 4, y + 7, Math.min(room, nameWidth(ctx, name)) + 8, 15);
+    ctx.fillStyle = LABEL_FG;
+    ctx.fillText(name, tx, y + 9, room);
+  }
 }

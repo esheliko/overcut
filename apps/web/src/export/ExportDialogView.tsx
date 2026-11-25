@@ -1,9 +1,11 @@
 /** The export dialog itself (settings, progress, done, failed). Loaded on first use so it stays out of the first-load JavaScript. */
+import { rememberFocus } from "../a11y/restoreFocus";
 import { h264Percent, parseH264Failure, probeExportFormats, type DesktopCodecs, type ExportFormats, type H264FailureCode, type H264Progress } from "@app/engine-client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
+import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
@@ -39,11 +41,13 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
   const head = useRef<HTMLHeadingElement>(null);
   const running = state.phase === "running";
   const lastSettings = useRef<ReturnType<typeof buildSettings> | null>(null);
+  useReturnFocus();
 
   useEffect(() => {
     const d = ref.current;
+    const back = rememberFocus();
     if (d && !d.open) d.showModal();
-    return () => d?.close();
+    return () => { d?.close(); back(); };
   }, []);
   // A new view (progress, done, error, back to settings) starts at its heading, so a screen reader reads where it is.
   useEffect(() => { head.current?.focus({ preventScroll: true }); }, [state.phase]);
@@ -189,7 +193,9 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
       {format && presetWarnings(preset, choice, src, format, locale).map((w) => <p key={w.key} className="export-note" role="status" data-testid={w.key === "export.warn.cap" ? "export-cap-warning" : "export-duration-warning"}>{t(w.key, w.values)}</p>)}
       {format?.warnings.map((w) => <p key={w} className="export-note" data-testid="export-warning">{t("export.warn.limited")}</p>)}
       {format && formatNote(format, fmts?.options ?? []) && <p className="export-note" data-testid="export-format-note">{t(formatNote(format, fmts?.options ?? [])!)}</p>}
-      <button className="primary export-go" style={{ position: "sticky", insetBlockEnd: 8, boxShadow: "0 0 0 8px var(--surface)" }} onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
+      <div className="export-footer">
+        <button className="primary export-go" onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
+      </div>
     </>
   );
 }

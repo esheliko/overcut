@@ -20,6 +20,8 @@ type Props = {
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
+  /** One file picker for every offline item (matched by name): offered when two or more are offline. */
+  onRelinkAll?: () => void;
 };
 
 const KIND_ICON: Record<MediaKind, "video" | "audio" | "media"> = { video: "video", audio: "audio", image: "media" };
@@ -76,10 +78,10 @@ function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }:
         {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
         {item.status === "offline" && <span role="alert">{t(offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
         {item.status === "unsupported" && <span role="alert" className="bin-error">{item.message}</span>}
+        {item.status === "offline" && <button className="bin-link" style={{ alignSelf: "flex-start", marginBlockStart: 4 }} onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       </span>
       {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span>{t("media.tags.editShort")}</span></button>}
       {ready && !onTimeline && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
-      {item.status === "offline" && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       {item.status === "unsupported" && <button className="icon-btn bin-act" aria-label={t("media.dismiss", { name: item.name })} onClick={() => onRemove(item.id)}><Icon name="close" size={18} /></button>}
     </li>
   );
@@ -146,7 +148,7 @@ function TagsDialog({ item, tags, onTags, onClose }: { item: BinItem; tags: read
 }
 
 /** Media tool panel body: the big empty-state target, then the list of imported media with "+" to add each to the timeline. */
-export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove, onRelink }: Props) {
+export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove, onRelink, onRelinkAll }: Props) {
   const { t } = useI18n();
   const { open, field } = useImportPicker(onImport);
   const project = useProjectStore((s) => s.project);
@@ -179,6 +181,9 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
     <div className="bin">
       {field}
       <button className="primary bin-import" onClick={open} data-testid="import-more"><Icon name="plus" size={18} /><span>{t("media.import")}</span></button>
+      {onRelinkAll && items.filter((i) => i.status === "offline").length >= 2 && (
+        <button className="bin-filter-toggle bin-relink-all" onClick={onRelinkAll} data-testid="relink-all"><Icon name="upload" size={18} /><span>{t("media.relinkAll", { count: items.filter((i) => i.status === "offline").length })}</span></button>
+      )}
       <button
         className="bin-filter-toggle"
         aria-expanded={filterOpen}
