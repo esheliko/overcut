@@ -18,7 +18,8 @@ import { PreviewPanel, sequenceView } from "./PreviewPanel";
 import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
-import { applyTheme, loadPref, nextPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
+import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
+import { ThemeMenu } from "./ThemeMenu";
 import { ExportControl } from "./export/ExportDialog";
 import { ShortcutsDialog } from "./commands/ShortcutsDialog";
 import { VersionsDialog, useAutoSnapshots } from "./Versions";
@@ -117,10 +118,13 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, save, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void } }) {
+function AppMenu({ compact, theme, status, save, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; status: ReactNode; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // A row that opens a dialog: focus goes to the menu button first, so the dialog returns focus there when it closes (the row itself is gone by then).
+  const opening = (run: () => void) => () => { trigger.current?.focus({ preventScroll: true }); setOpen(false); run(); };
   // Desktop app: where projects are saved. The open project stays where it is; the new folder is used from the next start.
   const chooseFolder = async () => {
     try {
@@ -140,30 +144,33 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
   }, [open]);
   return (
     <div className="menu" ref={ref}>
-      <button className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
+      <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
       {open && (
         <div className="menu-pop" role="menu">
           {compact && (
             <>
-              <button className="menu-row" role="menuitem" onClick={theme.cycle} data-testid="theme-toggle"><Icon name="theme" size={20} /><span>{t("theme.change", { theme: theme.name })}</span></button>
+              {/* Small phones: the theme choices are listed here (F3), not cycled. */}
+              {THEME_PREFS.map((p) => (
+                <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref ? "✓" : ""}</span><span>{t(`theme.${p}`)}</span></button>
+              ))}
               <div className="menu-row menu-status" role="presentation">{status}</div>
               {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
               <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
             </>
           )}
           <div className="menu-group" role="presentation">{t("menu.group.project")}</div>
-          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={() => { setOpen(false); project.onProjects(); }}>{t("menu.projects")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={() => { setOpen(false); project.onNew(); }}>{t("menu.new")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={() => { setOpen(false); project.onOpen(); }}>{t("menu.openProject")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={() => { setOpen(false); project.onSave(); }}>{t("menu.saveProject")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}>{t("menu.projects")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}>{t("menu.new")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={opening(project.onOpen)}>{t("menu.openProject")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}>{t("menu.saveProject")}</button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
-          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={() => { setOpen(false); project.onVersions(); }}>{t("menu.versions")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}>{t("menu.versions")}</button>
           <div className="menu-group" role="presentation">{t("menu.group.view")}</div>
           <AccentPicker />
           <ScrubPrepItem />
           <div className="menu-group" role="presentation">{t("menu.group.help")}</div>
-          <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={() => { setOpen(false); project.onShortcuts(); }}>{t("menu.shortcuts")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={() => { setOpen(false); project.onPrivacy(); }}>{t("menu.privacy")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={opening(project.onShortcuts)}>{t("menu.shortcuts")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={opening(project.onPrivacy)}>{t("menu.privacy")}</button>
           <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
         </div>
@@ -197,8 +204,8 @@ function Editor({ store }: { store: ProjectStore }) {
   const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
   const [refusals, setRefusals] = useState<string[]>([]); // phone: files refused in an import, kept on screen until dismissed (the Media sheet closes after a successful one)
-  const cycleTheme = () => {
-    const next = nextPref(themePref);
+  // F3: the theme is picked from a small menu (System, Dark, Light, High contrast), not cycled.
+  const pickTheme = (next: ThemePref) => {
     savePref(next);
     setThemePref(next);
     const theme = applyTheme(next);
@@ -543,7 +550,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {showHome ? <Home entries={list} current={lastId} busy={homeBusy} onOpen={(e) => openEntry(e)} onNew={homeNew} onOpenFile={homeOpenFile} onRename={homeRename} onDuplicate={homeDuplicate} onDelete={homeDelete} /> : <>
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
-          {!compact && <button className="icon-btn" aria-label={t("theme.change", { theme: themeName })} title={themeName} onClick={cycleTheme} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>}
+          {!compact && <ThemeMenu pref={themePref} onPick={pickTheme} />}
         </div>
         <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
@@ -559,7 +566,7 @@ function Editor({ store }: { store: ProjectStore }) {
             <span className="chip-text">{t(`save.state.${saveState}`)}</span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
+          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts") }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
         </div>
       </header>
 

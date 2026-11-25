@@ -133,3 +133,23 @@ test("platform presets: picking Discord aims under its cap, labels the figure a 
   await expect(page.getByTestId("export-cap-note")).toHaveCount(0); // custom: no cap claim
   expect(await noOverflow(page)).toBeLessThanOrEqual(0);
 });
+
+test("E2: on a 320x640 phone the Export button is on screen without scrolling the dialog, and nothing overflows", async ({ page }) => {
+  await ready(page);
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.getByTestId("export-open").click();
+  const dialog = page.getByTestId("export-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("export-go")).toBeVisible();
+  const go = (await page.getByTestId("export-go").boundingBox())!;
+  expect(go.height).toBeGreaterThanOrEqual(44);
+  expect(go.y + go.height).toBeLessThanOrEqual(640); // sticky footer: visible at rest, not below the fold
+  expect(go.x).toBeGreaterThanOrEqual(0);
+  expect(go.x + go.width).toBeLessThanOrEqual(320);
+  expect(await noOverflow(page)).toBeLessThanOrEqual(0);
+  // the settings above still scroll, and the footer stays on screen at the end of them
+  await dialog.evaluate((d) => { d.scrollTop = d.scrollHeight; });
+  const end = (await page.getByTestId("export-go").boundingBox())!;
+  expect(end.y + end.height).toBeLessThanOrEqual(640);
+  await expect(page.getByTestId("export-go")).toBeEnabled();
+});
