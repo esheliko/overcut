@@ -2,7 +2,8 @@
 .insp-empty { margin: 0; padding: 16px; color: var(--muted); }
 .insp-field { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border-radius: 10px; background: var(--surface-2); }
 .insp-field > span { flex: 1; color: var(--muted); font-size: 13px; }
-.insp-field input { width: 64px; min-height: 44px; border: 0; background: none; color: var(--fg); text-align: end; font: inherit; }
+.insp-field:focus-within { box-shadow: 0 0 0 2px var(--accent, #4aa3ff); }
+.insp-field input { outline: none; width: 64px; min-height: 44px; border: 0; background: none; color: var(--fg); text-align: end; font: inherit; }
 .insp-field em { color: var(--muted); font-style: normal; width: 1.2em; }
 .insp-row { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
 .insp-row button { flex: 1 1 0; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--surface-2); color: var(--fg); font-weight: 500; }
