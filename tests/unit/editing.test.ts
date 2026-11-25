@@ -33,7 +33,7 @@ function fake(over: Partial<RawEditing> = {}) {
 }
 
 test("the contract holds one example of every op the Op type allows", () => {
-  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["add_media", "add_track", "delete", "insert_clip", "move", "move_track", "remove_media", "remove_track", "set_canvas", "set_clip", "set_link", "set_media", "set_media_tags", "set_sequence_format", "set_track_props", "split", "trim_in", "trim_out"]);
+  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["add_media", "add_track", "close_gap", "delete", "insert_clip", "move", "move_track", "remove_media", "remove_track", "ripple_delete", "ripple_trim", "roll", "set_canvas", "set_clip", "set_link", "set_media", "set_media_tags", "set_sequence_format", "set_track_props", "slide", "slip", "split", "trim_in", "trim_out"]);
 });
 
 test("a single op and a list go over as JSON (a list is one undo step); the coalesce key rides along", async () => {
