@@ -137,6 +137,11 @@ h2, p { margin: 0; }
   .chip-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .primary span { display: inline; }
 }
+/* Narrower than ~900 px of editor width (tablets in portrait, small laptops split with a panel) the save chip keeps only its dot, as phones do, so "Saved on…" never cuts mid-word. The text stays for screen readers. */
+@container editor (max-width: 899px) {
+  .save-state { padding: 8px; }
+  .save-state .chip-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
 @media (min-width: 480px) { .tc-total { display: inline; } }
 /* Small phones (<480 px): logo | project name (takes the rest, ellipsis, tap to rename) | Export | "..."; theme toggle and engine status are in the menu. */
 @media (max-width: 479px) {
