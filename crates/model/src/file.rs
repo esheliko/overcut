@@ -92,7 +92,7 @@ pub type Migration = fn(Value) -> Result<Value, FileError>;
 /// `MIGRATIONS[n - 1]` upgrades version `n` to `n + 1`. Its length must be `SCHEMA_VERSION - 1` (tested).
 /// A format change = bump `SCHEMA_VERSION`, append one function here, and check in `fixtures/project.v<new>.json`
 /// (keep every older fixture: the tests migrate each of them to current).
-pub const MIGRATIONS: &[Migration] = &[v1_to_v2, v2_to_v3];
+pub const MIGRATIONS: &[Migration] = &[v1_to_v2, v2_to_v3, v3_to_v4];
 
 /// 1 -> 2 (M2-002): tracks gained `hidden`, `solo`, `height` and `colour`, all optional with the M1 behaviour as default, so the
 /// document needs no rewriting beyond the version. Bumping the version keeps older apps from opening (and flattening) files that use them.
@@ -105,6 +105,13 @@ fn v1_to_v2(mut doc: Value) -> Result<Value, FileError> {
 /// must not open and flatten a file whose clips carry one.
 fn v2_to_v3(mut doc: Value) -> Result<Value, FileError> {
     doc["schema_version"] = Value::from(3);
+    Ok(doc)
+}
+
+/// 3 -> 4 (M2-007): sequences gained `markers`, `range` and `loop_range`, all optional (none / none / false when absent, not written
+/// when empty), so only the version changes; older apps must not open and flatten a file that carries them.
+fn v3_to_v4(mut doc: Value) -> Result<Value, FileError> {
+    doc["schema_version"] = Value::from(4);
     Ok(doc)
 }
 

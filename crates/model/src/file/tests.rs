@@ -83,7 +83,7 @@ fn newer_schema_opens_read_only_and_refuses_to_write() {
     let mut f = ProjectFile::read(&bytes).unwrap();
     assert!(f.read_only());
     assert_eq!(f.found_version(), SCHEMA_VERSION + 1);
-    assert_eq!(f.project().name, "Fixture v3");
+    assert_eq!(f.project().name, "Fixture v4");
     assert_eq!(f.write().unwrap_err().code(), "read_only");
     assert_eq!(f.project_mut().unwrap_err().code(), "read_only");
     assert_eq!(
@@ -217,7 +217,7 @@ fn save_bytes_creates_and_updates() {
     let json = String::from_utf8(fixture(SCHEMA_VERSION)).unwrap();
     let fresh = save_bytes(&json, &[]).unwrap();
     let opened: Value = serde_json::from_str(&open_json(&fresh).unwrap()).unwrap();
-    assert_eq!(opened["project"]["name"], "Fixture v3");
+    assert_eq!(opened["project"]["name"], "Fixture v4");
     assert_eq!(opened["read_only"], false);
     assert_eq!(opened["migrated"], false);
     assert!(save_bytes("{", &[]).is_err());

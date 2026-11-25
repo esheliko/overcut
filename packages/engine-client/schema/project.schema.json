@@ -320,6 +320,48 @@
       "type": "string",
       "pattern": "^[0-9a-f]{32}$"
     },
+    "Marker": {
+      "description": "A point on the sequence's timeline (ticks, `>= 0`) with a name and an optional colour.",
+      "type": "object",
+      "properties": {
+        "colour": {
+          "description": "`#rrggbb`; `None` = the default colour.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/MarkerId"
+        },
+        "kind": {
+          "$ref": "#/$defs/MarkerKind"
+        },
+        "name": {
+          "description": "0-120 characters, no surrounding spaces. Empty is allowed (an unnamed marker).",
+          "type": "string"
+        },
+        "time": {
+          "$ref": "#/$defs/Time"
+        }
+      },
+      "required": [
+        "id",
+        "time"
+      ]
+    },
+    "MarkerId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "MarkerKind": {
+      "description": "A plain marker (a flag on the ruler) or a chapter (also exported as a chapter mark).",
+      "type": "string",
+      "enum": [
+        "marker",
+        "chapter"
+      ]
+    },
     "MediaId": {
       "type": "string",
       "pattern": "^[0-9a-f]{32}$"
@@ -434,8 +476,30 @@
         "id": {
           "$ref": "#/$defs/SequenceId"
         },
+        "loop_range": {
+          "description": "True while playback loops over `range` (needs a range). Absent = false.",
+          "type": "boolean"
+        },
+        "markers": {
+          "description": "Markers and chapters (TL-07, M2-007, `docs/features/markers.md`), ordered by time then id. Absent in older files = none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Marker"
+          }
+        },
         "name": {
           "type": "string"
+        },
+        "range": {
+          "description": "The in/out range (render range, loop range). `None` = the whole sequence. Absent in older files = none.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "rate_fixed": {
           "description": "Same for `frame_rate`: true once the user picked a frame rate; while false the first picture imported sets it.",
@@ -478,6 +542,22 @@
       "description": "A point in time or a duration, in ticks. Serialized as a plain integer.",
       "type": "integer",
       "format": "int64"
+    },
+    "TimeRange": {
+      "description": "A half-open stretch of the timeline: `start <= t < end`, `0 <= start < end`.",
+      "type": "object",
+      "properties": {
+        "end": {
+          "$ref": "#/$defs/Time"
+        },
+        "start": {
+          "$ref": "#/$defs/Time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ]
     },
     "Track": {
       "type": "object",

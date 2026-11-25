@@ -101,7 +101,7 @@ The 4x CPU throttle approximates a phone but is not one; a throttled-container n
 - **Microbenchmarks** for render graph, DSP and cache follow with those modules; add them to `tests/perf/run.mjs` and `metrics.mjs` in the PR that adds the module.
 
 ## E2 gate: editing ops (M2-011, measured 2026-11-25 in the container, 4-core Xeon 2.3 GHz, release)
-- **Property run** (`npm run test:e2` = `PROPTEST_CASES=10000 cargo test -p app-timeline --release`): all 29 op kinds in the S7 generator, 10,000 random sequences each for the two properties, 0 failures. Whole `app-timeline` suite 3.7 s wall; 100,000 cases (the S7 bar) 33 s, 0 failures.
+- **Property run** (`npm run test:e2` = `PROPTEST_CASES=10000 cargo test -p app-timeline --release`): all 34 op kinds in the S7 (29 at the time of the first run; the five marker ops of M2-007 joined later) generator, 10,000 random sequences each for the two properties, 0 failures. Whole `app-timeline` suite 3.7 s wall; 100,000 cases (the S7 bar) 33 s, 0 failures.
 - **Op bench** (`cargo run --release -p app-timeline --example bench`, JSON keys `mix_20x250_*` and `mix_20x1000_*`; `BENCH_KINDS=1` prints each op kind): the compound edit mix (move, trim, split, ripple trim incl. all-tracks, slip, slide, transform, delete, each undone after) on 20 tracks.
   | Project | mean per op | worst op | budget |
   |---|---|---|---|

@@ -80,8 +80,8 @@ pub fn snap_span(start: Time, len: Time, targets: &[Target], tolerance: Time) ->
     }
 }
 
-/// Targets of a sequence: both edges of every clip (except the ones in `exclude`, e.g. the clips being dragged), the playhead and the
-/// caller's markers.
+/// Targets of a sequence: both edges of every clip (except the ones in `exclude`, e.g. the clips being dragged), the playhead, the
+/// sequence's own markers and chapters (M2-007) and any extra `markers` the caller passes (times only).
 pub fn targets_of(
     seq: &Sequence,
     exclude: &[ClipId],
@@ -95,10 +95,16 @@ pub fn targets_of(
             kind: TargetKind::Playhead,
         });
     }
-    out.extend(markers.iter().map(|&time| Target {
-        time,
-        kind: TargetKind::Marker,
-    }));
+    out.extend(
+        markers
+            .iter()
+            .copied()
+            .chain(seq.markers.iter().map(|m| m.time))
+            .map(|time| Target {
+                time,
+                kind: TargetKind::Marker,
+            }),
+    );
     for c in seq
         .tracks
         .iter()
@@ -237,6 +243,26 @@ mod tests {
         assert_eq!(ts.len(), 2 + 2 * 5);
         assert_eq!(ts[0].kind, TargetKind::Playhead);
         assert_eq!(ts[1].kind, TargetKind::Marker);
+    }
+
+    #[test]
+    fn the_sequences_own_markers_are_targets() {
+        let mut seq = big(1, 1);
+        let mut ids = SeqIds::default();
+        seq.markers.push(app_model::Marker {
+            id: app_model::MarkerId::new(&mut ids),
+            time: tk(40),
+            kind: app_model::MarkerKind::Chapter,
+            name: "c".into(),
+            colour: None,
+        });
+        let ts = targets_of(&seq, &[], None, &[]);
+        assert_eq!(ts.len(), 1 + 2);
+        let s = snap(tk(41), &ts, tk(2));
+        assert_eq!(
+            s.hit.map(|h| (h.time, h.kind)),
+            Some((tk(40), TargetKind::Marker))
+        );
     }
 
     /// 20 tracks x 1000 clips (40k edges): building the targets and snapping must stay under 1 ms per snap (budget in `docs/PERFORMANCE.md`).

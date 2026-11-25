@@ -78,6 +78,22 @@ export interface Keyframe {
 
 export type LinkId = string;
 
+/** A point on the sequence's timeline (ticks, `>= 0`) with a name and an optional colour. */
+export interface Marker {
+  /** `#rrggbb`; `None` = the default colour. */
+  colour?: string | null;
+  id: MarkerId;
+  kind?: MarkerKind;
+  /** 0-120 characters, no surrounding spaces. Empty is allowed (an unnamed marker). */
+  name?: string;
+  time: Time;
+}
+
+export type MarkerId = string;
+
+/** A plain marker (a flag on the ruler) or a chapter (also exported as a chapter mark). */
+export type MarkerKind = "marker" | "chapter";
+
 export type MediaId = string;
 
 export type MediaKind = "video" | "audio" | "image";
@@ -123,7 +139,13 @@ export interface Resolution {
 export interface Sequence {
   frame_rate: Rational;
   id: SequenceId;
+  /** True while playback loops over `range` (needs a range). Absent = false. */
+  loop_range?: boolean;
+  /** Markers and chapters (TL-07, M2-007, `docs/features/markers.md`), ordered by time then id. Absent in older files = none. */
+  markers?: Marker[];
   name: string;
+  /** The in/out range (render range, loop range). `None` = the whole sequence. Absent in older files = none. */
+  range?: TimeRange | null;
   /** Same for `frame_rate`: true once the user picked a frame rate; while false the first picture imported sets it. */
   rate_fixed?: boolean;
   resolution: Resolution;
@@ -139,6 +161,12 @@ export type SequenceId = string;
 
 /** A point in time or a duration, in ticks. Serialized as a plain integer. */
 export type Time = number;
+
+/** A half-open stretch of the timeline: `start <= t < end`, `0 <= start < end`. */
+export interface TimeRange {
+  end: Time;
+  start: Time;
+}
 
 export interface Track {
   /** Sorted by `start`, never overlapping (see [`Project::validate`]). */

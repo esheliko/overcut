@@ -24,10 +24,13 @@ pub use file::{
     fingerprint, fingerprint_size, open_json, save_bytes, FileError, ProjectFile,
     FINGERPRINT_WINDOW,
 };
-pub use ids::{ClipId, Id, IdSource, LinkId, MediaId, ProjectId, SeqIds, SequenceId, TrackId};
+pub use ids::{
+    ClipId, Id, IdSource, LinkId, MarkerId, MediaId, ProjectId, SeqIds, SequenceId, TrackId,
+};
 pub use project::{
-    is_track_colour, Clip, MediaKind, MediaRef, ModelError, Project, Resolution, Sequence, Track,
-    TrackKind, MAX_TRACK_HEIGHT, MAX_TRACK_NAME, MIN_TRACK_HEIGHT, SCHEMA_VERSION,
+    is_track_colour, marker_props_ok, Clip, Marker, MarkerKind, MediaKind, MediaRef, ModelError,
+    Project, Resolution, Sequence, TimeRange, Track, TrackKind, MAX_MARKERS, MAX_MARKER_NAME,
+    MAX_TRACK_HEIGHT, MAX_TRACK_NAME, MIN_TRACK_HEIGHT, SCHEMA_VERSION,
 };
 pub use time::{Rational, Time, TICKS_PER_SECOND};
 pub use transform::{ClipTransform, Fit, TransformError, TransformProp, TransformValues};

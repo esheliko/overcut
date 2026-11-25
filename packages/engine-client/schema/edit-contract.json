@@ -280,6 +280,42 @@
       "op": "slide",
       "clip": "00000000000000000000000000000010",
       "delta": 4000
+    },
+    {
+      "op": "add_marker",
+      "sequence": "00000000000000000000000000000002",
+      "marker": {
+        "id": "00000000000000000000000000000030",
+        "time": 24000,
+        "kind": "chapter",
+        "name": "Intro",
+        "colour": "#2de2d6"
+      }
+    },
+    {
+      "op": "move_marker",
+      "marker": "00000000000000000000000000000030",
+      "time": 48000
+    },
+    {
+      "op": "set_marker_props",
+      "marker": "00000000000000000000000000000030",
+      "name": "Part one",
+      "kind": "marker",
+      "colour": null
+    },
+    {
+      "op": "delete_marker",
+      "marker": "00000000000000000000000000000030"
+    },
+    {
+      "op": "set_range",
+      "sequence": "00000000000000000000000000000002",
+      "range": {
+        "start": 12000,
+        "end": 96000
+      },
+      "looping": true
     }
   ],
   "outcome": {
