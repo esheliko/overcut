@@ -15,6 +15,14 @@ test("New project copy matches the code: a snapshot is kept in Versions before t
   assert.match(read("apps/web/src/App.tsx"), /replaceWith\(await core\.saveProject\(newProject\(t\("app\.untitled"\)\)\), "before-new"\)/);
 });
 
+test("without a persistence session there is no Versions snapshot, so the copy must not promise one", () => {
+  // Storage unavailable: App.tsx replaceWith skips the snapshot (no session), so the unsaved copy is the true one.
+  const fallback = copy["project.new.bodyUnsaved"] ?? "";
+  assert.match(fallback, /are lost/);
+  assert.doesNotMatch(fallback, /Versions/);
+  assert.match(read("apps/web/src/App.tsx"), /what === "new" && !persistence\.session \? "project\.new\.bodyUnsaved" : `project\.\$\{what\}\.body`/);
+});
+
 test("the New project confirm button uses the danger style; other confirms keep the safe one", () => {
   const app = read("apps/web/src/App.tsx");
   assert.match(app, /danger: what === "new"/);

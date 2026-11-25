@@ -341,7 +341,7 @@ function Editor({ store }: { store: ProjectStore }) {
   };
   const confirmThen = (what: "new" | "open", name: string, run: () => Promise<void>) => {
     if (!dirty()) return void run();
-    setDialog({ title: t(`project.${what}.title`), body: t(`project.${what}.body`, { name }), confirm: t(`project.${what}.confirm`), danger: what === "new", run });
+    setDialog({ title: t(`project.${what}.title`), body: t(what === "new" && !persistence.session ? "project.new.bodyUnsaved" : `project.${what}.body`, { name }), confirm: t(`project.${what}.confirm`), danger: what === "new", run });
   };
   const onNew = () => {
     if (!core) return;
