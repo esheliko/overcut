@@ -21,7 +21,7 @@ const accentFilled = (page: Page, testId: string) => page.getByTestId(testId).ev
   return getComputedStyle(b).backgroundColor === accent;
 });
 
-test("no button falls back to the browser's grey style; main actions are accent-filled", async ({ page }) => {
+test("no button falls back to the browser's grey style; main actions are accent-filled (editor, tag dialog, Canvas, Versions, Projects)", async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
@@ -33,12 +33,24 @@ test("no button falls back to the browser's grey style; main actions are accent-
   if (phone && !(await page.getByTestId("bin-tag-edit").first().isVisible())) await mediaTab.click(); // the sheet closes after an import on a phone
   await expect(page.getByTestId("bin-tag-edit").first()).toBeVisible();
   expect(await browserChrome(page)).toEqual([]); // editor, media bin (Tags) included
+  await page.getByTestId("bin-tag-edit").first().click();
+  await expect(page.getByTestId("tag-add")).toBeVisible();
+  expect(await browserChrome(page)).toEqual([]); // the tag dialog and its Add button
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("tag-add")).toHaveCount(0);
   if (phone) await page.getByRole("button", { name: "Close" }).first().click();
 
   await page.getByTestId("canvas-open").click();
   await expect(page.getByTestId("canvas-apply")).toBeVisible();
   expect(await browserChrome(page)).toEqual([]);
   expect(await accentFilled(page, "canvas-apply")).toBe(true);
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("menuitem", { name: "Versions…" }).click();
+  await expect(page.getByTestId("versions-save")).toBeVisible({ timeout: 15_000 });
+  expect(await browserChrome(page)).toEqual([]);
+  expect(await accentFilled(page, "versions-save")).toBe(true);
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Menu" }).click();
