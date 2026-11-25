@@ -32,7 +32,7 @@ export type Command =
   | { c: "marker" } | { c: "markerEdit" }
   /** The in/out range (M2-046): set in / out at the playhead, clear it, loop it, play it. */
   | { c: "range"; what: "in" | "out" | "clear" | "loop" | "play" }
-  | { c: "zoom"; how: "in" | "out" | "fit" }
+  | { c: "zoom"; how: "in" | "out" | "fit" | "selection" }
   | { c: "scroll"; how: "pageLeft" | "pageRight" | "up" | "down" }
   /** Transport keys, handled by the preview panel. */
   | { c: "play" } | { c: "shuttle"; key: "J" | "K" | "L" } | { c: "seek"; frames: number } | { c: "seek"; to: "start" | "end" };
@@ -136,6 +136,7 @@ export const COMMANDS: readonly CommandDef[] = [
   D("view.zoomIn", "canvas", ["+", "="], { c: "zoom", how: "in" }),
   D("view.zoomOut", "canvas", ["-", "_"], { c: "zoom", how: "out" }),
   D("view.zoomFit", "canvas", ["0"], { c: "zoom", how: "fit" }),
+  D("view.zoomSelection", "canvas", ["Shift+Z"], { c: "zoom", how: "selection" }),
   D("view.pageRight", "canvas", ["PageDown"], { c: "scroll", how: "pageRight" }),
   D("view.pageLeft", "canvas", ["PageUp"], { c: "scroll", how: "pageLeft" }),
   D("view.tracksDown", "canvas", ["ArrowDown"], { c: "scroll", how: "down" }, { when: "noSelection" }),

@@ -2,7 +2,7 @@ import { acquireProjectLock, newProject, openProjectSession, openProjectStorage,
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { reportSaveStatus } from "./errorScreen/crash";
 import { useI18n } from "./i18n";
-import { sampleProject } from "./timeline/fixture";
+import { longSampleProject, sampleProject } from "./timeline/fixture";
 
 type Hook = { session: ProjectSession; kill(): void; storageKind: string };
 
@@ -28,7 +28,8 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
     let current: ProjectSession | undefined;
     let terminate: (() => void) | undefined;
     const e2e = new URLSearchParams(location.search).has("e2e"); // test hook: exposes the session as window.__overcut
-    const sample = new URLSearchParams(location.search).has("sample");
+    const sampleParam = new URLSearchParams(location.search).get("sample");
+    const sample = sampleParam !== null; // `?sample=2h` is a two-hour project (zoom and overview tests)
     void (async () => {
       try {
         release = await acquireProjectLock(projectId);
@@ -39,7 +40,7 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
         const opened = await openProjectSession(engine, storage, {
           createProject: () => {
             // A new project is empty: the first import fills it (M1-032). `?sample` (tests, demos) starts with sample clips instead.
-            const p = sample ? { ...sampleProject(), name: "Untitled project" } : newProject("Untitled project");
+            const p = sample ? { ...(sampleParam === "2h" ? longSampleProject() : sampleProject()), name: "Untitled project" } : newProject("Untitled project");
             if (e2e) p.media.push({ id: "00000000000000000000000000000e2e", kind: "video", name: "e2e.mp4", uri: "media/e2e.mp4", hash: null, duration: 600 * 705_600_000 });
             return p;
           },
