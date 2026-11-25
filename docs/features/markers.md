@@ -23,3 +23,9 @@ Markers are not clip edits: they can be added, moved and deleted on locked track
 
 ## Test plan
 `crates/model` (`markers_and_range_are_checked_and_written_only_when_used`, the v4 fixture migration), `crates/timeline/src/tests.rs` (`marker_ops_keep_order_*`, `a_marker_drag_is_one_undo_step_*`, `markers_are_snap_targets_*`, the five ops in the S7 generator, wire contract), `tests/unit/editing.test.ts` (helpers equal the contract examples).
+
+## Timeline UI (M2-046)
+- **Add**: `M` or More > Add marker puts a marker on the playhead's frame (none if one is already there). **Ruler**: a flag (a diamond for a chapter) in the marker's colour, a thin line through the lanes, the name beside it when zoomed in.
+- **Use**: tap or click jumps to it; dragging moves it by whole frames (one op on release = one undo step); tapping the marker the playhead already sits on, a long press, a right click, or More > Edit marker opens its menu (rename, 8 colours + default, chapter, delete; all 44 px). Grab zone 44 px on touch, 22 px with a mouse.
+- **Range**: `I` / `O` set the in / out point at the playhead (the other end stays; no range yet = 0 / the end of the clips); the ruler shows a band, the lanes outside it are dimmed. More > Loop range toggles `loop_range`; `Alt+X` clears. **Play range** (`Alt+P`, More): the preview plays from in to out and stops, or loops; with no range it plays the whole sequence. The preview owns the player, so the timeline asks with `PLAY_RANGE_EVENT` (`commands/palette.ts`, handled in `PreviewPanel.tsx`).
+- Everything is in the command registry (`marker.*`, `range.*`), the palette and the shortcuts dialog. Tests: `tests/unit/timeline-markers.test.ts`, `tests/smoke/markers.spec.ts`.

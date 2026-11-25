@@ -35,7 +35,7 @@ test("recents: moved to the front, no duplicates, capped", () => {
 });
 
 test("commands that cannot run now sort below the runnable ones and say why", () => {
-  const a = { canUndo: false, canRedo: true, selected: 0, copied: false };
+  const a = { canUndo: false, canRedo: true, selected: 0, copied: false, range: false };
   const r = searchCommands("", label, [], undefined, (d) => whyNot(d, a)).map((d) => d.id);
   assert.ok(r.indexOf("edit.redo") < r.indexOf("edit.undo"), "redo runs, undo does not");
   assert.ok(r.indexOf("edit.split") < r.indexOf("edit.delete"));

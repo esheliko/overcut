@@ -6,6 +6,7 @@ import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, lan
 import { hopOps, planHop, snapMove, SNAP_PX } from "./arrange";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart, type HeaderPart } from "./header";
+import { frameTick, markerAt, moveMarkerPlan } from "./markers";
 import { reorderTrack, rowAt, toggleTrack } from "./tracks";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
 import { cutAt, rippleRange, rippleTrimOps, rollCuts, rollOps, rollRangeAll, slideOps, slideRange, slipOps, slipRange, snapTo, type Range, type Tool } from "./ripple";
@@ -34,6 +35,8 @@ export interface Effects {
   visible?: boolean;
   /** Open the menu of this track (row index); the canvas knows where its header is. */
   menu?: number;
+  /** Open the menu of the marker with this id (the canvas knows where its flag is). */
+  markerMenu?: string;
   /** Spoken/visible description of what happened. */
   say?: Say;
 }
@@ -56,7 +59,9 @@ export type Gesture =
   /** Pointer is down on a track header: a tap on a switch flips it, a tap elsewhere opens the menu, a drag of the name (mouse) or a long press (touch) reorders. */
   | { k: "hdr"; track: number; part: HeaderPart; sx: number; sy: number; touch: boolean }
   /** Reordering tracks: row `from` is being carried to row `to` (same kind only), pointer at y. */
-  | { k: "tdrag"; from: number; to: number; y: number };
+  | { k: "tdrag"; from: number; to: number; y: number }
+  /** Pointer is down on a marker's flag: a tap jumps to it (a second tap, or a long press, opens its menu), a drag moves it. `value` is the dragged tick. */
+  | { k: "marker"; id: string; sx: number; orig: number; value: number; moved: boolean; touch: boolean };
 
 export const IDLE: Gesture = { k: "idle" };
 type R = { g: Gesture; fx: Effects };
@@ -110,7 +115,11 @@ function toolDown(c: Ctx, e: PEvent): R | null {
 export function pointerDown(c: Ctx, e: PEvent): R {
   const { scene, view } = c;
   const touch = e.kind === "touch";
-  if (e.y < RULER) return e.x >= gut(view) ? { g: { k: "scrub" }, fx: { seek: xToTime(view, e.x) } } : { g: IDLE, fx: NONE };
+  if (e.y < RULER) {
+    const mi = markerAt(scene, view, e.x, e.y, touch);
+    if (mi >= 0) { const m = scene.markers[mi]!; return { g: { k: "marker", id: m.id, sx: e.x, orig: m.ticks, value: m.ticks, moved: false, touch }, fx: NONE }; }
+    return e.x >= gut(view) ? { g: { k: "scrub" }, fx: { seek: xToTime(view, e.x) } } : { g: IDLE, fx: NONE };
+  }
   const tl = toolDown(c, e);
   if (tl) return tl;
   const hd = handleAt(scene, view, c.selFlags, e.x, e.y, touch);
@@ -144,6 +153,10 @@ export function pointerDown(c: Ctx, e: PEvent): R {
 export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
   const { scene, view } = c;
   switch (g.k) {
+    case "marker": {
+      if (!g.moved && Math.abs(e.x - g.sx) <= SLOP) return { g, fx: NONE };
+      return { g: { ...g, moved: true, value: frameTick(scene, Math.max(0, xToTime(view, e.x)) * TPS) }, fx: NONE };
+    }
     case "press": {
       if (Math.hypot(e.x - g.sx, e.y - g.sy) <= SLOP) return { g, fx: NONE };
       if (g.then === "pan") return { g: { k: "pan" }, fx: NONE };
@@ -201,6 +214,7 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
 
 /** A touch that rests on an unselected clip (it did not move for a moment) picks the clip up: it selects and the next drag moves it instead of panning. */
 export function longPress(c: Ctx, g: Gesture): R | null {
+  if (g.k === "marker" && !g.moved) return { g: IDLE, fx: { markerMenu: g.id } };
   if (g.k === "hdr" && g.touch) return { g: { k: "tdrag", from: g.track, to: g.track, y: g.sy }, fx: { say: { key: "timeline.say.track.lifted", values: { name: c.scene.trackName[g.track]! } } } };
   if (g.k !== "press" || g.tapClip < 0 || g.then !== "pan") return null;
   const i = g.tapClip;
@@ -211,6 +225,13 @@ export function longPress(c: Ctx, g: Gesture): R | null {
 export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
   const { scene, view } = c;
   switch (g.k) {
+    case "marker": {
+      const m = scene.markers.find((x) => x.id === g.id);
+      if (!m) return { g: IDLE, fx: NONE };
+      if (g.moved) return g.value === g.orig ? { g: IDLE, fx: NONE } : { g: IDLE, fx: moveMarkerPlan(scene, g.id, g.value) };
+      // A tap jumps to the marker; tapping the one the playhead already sits on opens its menu.
+      return { g: IDLE, fx: c.playhead === m.ticks ? { markerMenu: g.id } : { seek: m.sec } };
+    }
     case "press": {
       if (g.tapClip >= 0) {
         const id = scene.id[g.tapClip]!;

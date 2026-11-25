@@ -1,7 +1,7 @@
 /** Canvas painter for the timeline. `drawTimeline` allocates nothing per frame: typed arrays and constants only,
  *  one fillStyle per track pass (no paths: software rasterizers are slow on thousands of sub-rects), ruler labels cached by second. Only clips intersecting the viewport are touched (binary search per visible track). */
 import { readColors } from "../theme/tokens";
-import { firstEndingAfter, type Scene } from "./scene";
+import { firstEndingAfter, TICKS_PER_SECOND, type Scene } from "./scene";
 import { gut, LANE, RULER, tickStep, timeToX, type View } from "./view";
 import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
 import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
@@ -69,8 +69,10 @@ export interface Overlay {
   guideSec: number | null;
   /** Reordering tracks: the row being carried, the row it would land on, and the pointer y. Null = none. */
   trackDrag: { from: number; to: number; y: number } | null;
+  /** A marker being dragged along the ruler: its id and where it would land (seconds). */
+  markerDrag: { id: string; sec: number } | null;
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, ghostLabel: null, lane: -1, marquee: null, guideSec: null, trackDrag: null });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, ghostLabel: null, lane: -1, marquee: null, guideSec: null, trackDrag: null, markerDrag: null });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -297,6 +299,36 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.min(m.x0, m.x1) + 0.5, Math.min(m.y0, m.y1) + 0.5, Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
   }
+
+  // In/out range and markers (M2-046): outside the range the lanes are dimmed, the ruler carries the range band and each marker's flag (a diamond for a chapter).
+  ctx.save();
+  ctx.beginPath(); ctx.rect(gut(v), 0, W - gut(v), H); ctx.clip();
+  if (scene.range) {
+    const rx0 = timeToX(v, scene.range.start / TICKS_PER_SECOND), rx1 = timeToX(v, scene.range.end / TICKS_PER_SECOND);
+    ctx.fillStyle = p.bg; ctx.globalAlpha = 0.5;
+    ctx.fillRect(gut(v), RULER, Math.max(0, rx0 - gut(v)), H - RULER);
+    ctx.fillRect(Math.max(rx1, gut(v)), RULER, Math.max(0, W - Math.max(rx1, gut(v))), H - RULER);
+    ctx.fillStyle = p.accent; ctx.globalAlpha = scene.loop ? 0.6 : 0.4;
+    ctx.fillRect(rx0, RULER - 9, rx1 - rx0, 7);
+    ctx.globalAlpha = 1;
+    ctx.fillRect(rx0 - 1, 0, 2, RULER); ctx.fillRect(rx1 - 1, 0, 2, RULER);
+    if (scene.loop) { ctx.strokeStyle = p.accent; ctx.setLineDash([4, 3]); ctx.strokeRect(rx0 + 0.5, RULER - 8.5, Math.max(0, rx1 - rx0 - 1), 6); ctx.setLineDash([]); }
+  }
+  for (const m of scene.markers) {
+    const dragged = ui.markerDrag?.id === m.id;
+    const x = Math.round(timeToX(v, dragged ? ui.markerDrag!.sec : m.sec)) + 0.5;
+    if (x < gut(v) - 12 || x > W + 12) continue;
+    const col = m.colour ?? p.accent;
+    ctx.fillStyle = col; ctx.strokeStyle = col;
+    ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.moveTo(x, RULER); ctx.lineTo(x, H); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, RULER); ctx.stroke(); ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (m.chapter) { ctx.moveTo(x, 12); ctx.lineTo(x + 6, 18); ctx.lineTo(x, 24); ctx.lineTo(x - 6, 18); }
+    else { ctx.moveTo(x, 11); ctx.lineTo(x + 11, 15.5); ctx.lineTo(x, 20); }
+    ctx.closePath(); ctx.fill();
+    if (m.name && v.pps >= 20) { ctx.fillStyle = p.fg; ctx.textBaseline = "top"; ctx.textAlign = "left"; ctx.font = FONT; ctx.fillText(m.name.length > 14 ? `${m.name.slice(0, 13)}…` : m.name, x + (m.chapter ? 9 : 14), 13); }
+  }
+  ctx.restore();
 
   // Playhead.
   const px = timeToX(v, playheadSec);

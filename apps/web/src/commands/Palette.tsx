@@ -18,7 +18,7 @@ export function Palette({ onClose }: { onClose(): void }) {
   const [at, setAt] = useState(0);
   const [recent] = useState(loadRecent);
   const canUndo = useProjectStore((s) => s.canUndo), canRedo = useProjectStore((s) => s.canRedo), selected = useProjectStore((s) => s.selection.size);
-  const avail = useMemo(() => ({ canUndo, canRedo, selected, copied: clipboardState.copied }), [canUndo, canRedo, selected]);
+  const avail = useMemo(() => ({ canUndo, canRedo, selected, copied: clipboardState.copied, range: clipboardState.range }), [canUndo, canRedo, selected]);
   const hits = useMemo(() => searchCommands(q, (id) => t(`cmd.${id}`), recent, undefined, (d) => whyNot(d, avail)), [q, recent, t, avail]);
   const touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches; // no keyboard: the shortcut hints would be noise
   const apple = isApple();
