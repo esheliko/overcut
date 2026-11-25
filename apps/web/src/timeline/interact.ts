@@ -2,7 +2,7 @@
  *  The canvas owns pointers, panning and drawing; the owner of the engine applies `Effects.ops` (via `Engine.editing`) and the selection.
  *  Touch rules: a tap selects; a drag on an unselected clip pans; a drag on an already selected clip moves it; handles of a selected clip are 44 px targets. */
 import type { Op } from "@app/engine-client";
-import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, laneShift, laneTracks, type LaneMove, type Say, inRect, linkedTrimOps, moveOps, moveRoom, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
+import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, lanePlan, type LanePlan, type LaneMove, type Say, inRect, linkedTrimOps, moveOps, moveRoom, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { hopOps, planHop, snapMove, SNAP_PX } from "./arrange";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart, type HeaderPart } from "./header";
@@ -49,7 +49,7 @@ export type Gesture =
   | { k: "pan" }
   /** Pointer is down but has not moved far enough to know what it is: a tap, or a drag that becomes `then`. */
   | { k: "press"; sx: number; sy: number; then: "move" | "pan" | "marquee" | "none"; tapClip: number; collapse: boolean; clearOnTap: boolean }
-  | { k: "move"; sx: number; sel: number[]; room: { left: number; right: number }; delta: number; track: number; from: number; mv: LaneMove | null; to: number[] | null;
+  | { k: "move"; sx: number; sel: number[]; room: { left: number; right: number }; delta: number; track: number; from: number; mv: LaneMove | null; to: number[] | null; plan?: LanePlan | null;
       /** Clips jumped over (reorder): > 0 to the right, < 0 to the left. */ hop?: number;
       /** Tick the selection snapped to or landed against: the painter draws a guide line there. */ guide?: number | null }
   | { k: "trim"; sx: number; clip: number; edge: Edge; orig: number; value: number }
@@ -194,8 +194,8 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
       if (t >= 0) {
         const mv = laneChanger(scene, g.sel, t);
         if (mv) {
-          const free = laneShift(scene, g.sel, c.selFlags, mv, dx);
-          if (free !== null) return { g: { ...g, delta: free, track: t, mv, to: laneTracks(scene, g.sel, mv), hop: 0, guide: null }, fx: NONE };
+          const plan = lanePlan(scene, g.sel, c.selFlags, mv, dx);
+          if (plan !== null) return { g: { ...g, delta: plan.delta, track: t, mv, plan, to: plan.to, hop: 0, guide: null }, fx: NONE };
         }
       }
       // Past a neighbour's middle the selection jumps over it (reorder); otherwise it slides, pulled onto edges and the playhead.
@@ -257,9 +257,9 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "move": {
       if (g.delta === 0 && !g.mv) return { g: IDLE, fx: NONE };
-      if (g.hop) return { g: IDLE, fx: { ops: hopOps(scene, g.sel, g.hop), say: { key: "timeline.say.moved", values: { count: g.sel.length, name: scene.name[g.sel[0]!]! } } } };
-      const ops = g.mv ? laneOps(scene, g.sel, g.mv, g.delta) : moveOps(scene, g.sel, g.delta);
-      const n = g.sel.length;
+      if (g.hop) return { g: IDLE, fx: { ops: hopOps(scene, g.sel, g.hop), say: { key: "timeline.say.moved", values: { count: groupReps(scene, g.sel).length, name: scene.name[g.sel[0]!]! } } } };
+      const ops = g.mv ? laneOps(scene, g.sel, g.mv, g.delta, g.plan ?? undefined) : moveOps(scene, g.sel, g.delta);
+      const n = groupReps(scene, g.sel).length;
       return { g: IDLE, fx: { ops, say: { key: "timeline.say.moved", values: { count: n, name: scene.name[g.sel[0]!]! } } } };
     }
     case "trim": {

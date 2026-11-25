@@ -173,7 +173,7 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
       <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
       {open && (
         <div className="menu-pop" role="menu">
-          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><span>{t("palette.open")}</span><kbd className="menu-hint">{paletteKey()}</kbd></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><span>{t("palette.open")}</span>{!compact && <kbd className="menu-hint">{paletteKey()}</kbd>}</button>
           {compact && (
             <>
               {/* Small phones: the theme choices are listed here (F3), not cycled. */}
@@ -516,7 +516,9 @@ function Editor({ store }: { store: ProjectStore }) {
     let opened;
     try { opened = await core!.openProject(file.bytes); } catch (e) { return fail("project.open.failed", e); }
     if (opened.readOnly) return setToast(t("project.open.newer"));
-    const label = nameOfFile(file.name) || opened.project.name;
+    let label = nameOfFile(file.name) || opened.project.name;
+    const taken = new Set((await (await getRegistry()).list()).map((x) => x.name));
+    for (let n = 2, base = label; taken.has(label); n++) label = `${base} (${n})`; // a clashing name becomes "Name (2)"
     const e = await createProject(core!, label, file.bytes);
     await refreshList();
     openEntry(e, true);

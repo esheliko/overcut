@@ -232,7 +232,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       const i = ui.ghosts[n]!;
       // A lane change gives each ghost its own row (clips of the other kind, like a linked sound, stay on their track).
       const tr = ui.ghostTracks !== null ? ui.ghostTracks[n]! : scene.clipTrack[i]!;
-      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, scene.trackKind[tr] === 1, ui.ghostLabel ?? scene.name[i]);
+      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, tr >= scene.trackCount || scene.trackKind[tr] === 1, ui.ghostLabel ?? scene.name[i]);
     }
   }
   if (ui.trimClip >= 0) {

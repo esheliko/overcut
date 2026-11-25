@@ -1,7 +1,8 @@
 /** Pure editing logic for the canvas timeline (M1-034): limits, snapping to whole frames, and the `Op`s to send to `Engine.editing`.
  *  Never mutates anything: the UI computes what to ask for, the engine decides and owns the project (ADR 0006).
  *  Times are integer ticks here (Float64 holds them exactly); the canvas converts to seconds for drawing only. */
-import type { Op } from "@app/engine-client";
+import { addTrackOp, newTrack, type Op } from "@app/engine-client";
+import { newId } from "../media/plan";
 import { firstEndingAfter, TICKS_PER_SECOND as TPS, type Scene } from "./scene";
 
 export const clampN = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
@@ -148,13 +149,69 @@ export function laneShift(scene: Scene, sel: readonly number[], flags: Uint8Arra
   return mv.movers.every((m, k) => fitsOnTrack(scene, m, mv.dest[k]!, d, mv.movers)) ? d : null;
 }
 
+/** Where a lane change lands, all of it: the shift, the row of every selected clip (parallel to `sel`; a row >= `scene.trackCount` is a NEW audio track) and how many new audio tracks it needs. */
+export interface LanePlan { delta: number; to: number[]; fresh: number }
+
+/** Like `laneShift`, but a linked SOUND does not hold the picture back: the picture lands at the dropped time and each sound goes to its own track when it is free
+ *  there, else the first unlocked audio track that is, else a new one (A2 ...): the same rule as a drop from the bin (`soundLane.ts`). Null when a picture does not fit. */
+export function lanePlan(scene: Scene, sel: readonly number[], flags: Uint8Array, mv: LaneMove, dx: number): LanePlan | null {
+  const rest = sel.filter((i) => !mv.movers.includes(i));
+  const sounds = scene.trackKind[mv.dest[0]!] === 0 && rest.every((i) => scene.trackKind[scene.clipTrack[i]!] === 1);
+  if (!sounds) {
+    const d = laneShift(scene, sel, flags, mv, dx);
+    return d === null ? null : { delta: d, to: laneTracks(scene, sel, mv), fresh: 0 };
+  }
+  let first = Infinity;
+  for (const i of sel) first = Math.min(first, scene.tStart[i]!);
+  const delta = snapDelta(dx, -first, Infinity, scene.frameTicks);
+  if (!mv.movers.every((m, k) => fitsOnTrack(scene, m, mv.dest[k]!, delta, mv.movers))) return null;
+  const held = new Map<number, { s: number; e: number }[]>();
+  const free = (row: number, s: number, e: number): boolean => {
+    if (row < scene.trackCount) {
+      if (scene.trackLocked[row]) return false;
+      for (let k = scene.trackFirst[row]!; k < scene.trackFirst[row + 1]!; k++) {
+        if (flags[k]) continue; // selected clips are all on the move
+        if (scene.tStart[k]! < e && scene.tStart[k]! + scene.tDur[k]! > s) return false;
+      }
+    }
+    return !(held.get(row) ?? []).some((h) => h.s < e && h.e > s);
+  };
+  const audioRows: number[] = [];
+  for (let t = 0; t < scene.trackCount; t++) if (scene.trackKind[t] === 1) audioRows.push(t);
+  let fresh = 0;
+  const to = sel.map((i) => { const k = mv.movers.indexOf(i); return k >= 0 ? mv.dest[k]! : scene.clipTrack[i]!; });
+  const order = rest.map((i) => sel.indexOf(i)).sort((a, b) => scene.tStart[sel[a]!]! - scene.tStart[sel[b]!]!);
+  for (const n of order) {
+    const i = sel[n]!, s = scene.tStart[i]! + delta, e = s + scene.tDur[i]!;
+    const rows = [scene.clipTrack[i]!, ...audioRows, ...Array.from({ length: fresh }, (_, f) => scene.trackCount + f)];
+    let row = rows.find((r) => free(r, s, e));
+    if (row === undefined) row = scene.trackCount + fresh++;
+    to[n] = row;
+    held.set(row, [...(held.get(row) ?? []), { s, e }]);
+  }
+  return { delta, to, fresh };
+}
+
 /** Ops for a lane change: the movers to their new tracks and time, the rest of the selection shifted in place (one undo step).
  *  Movers go furthest-first in the direction of travel, so a clip never lands on a lane its neighbour has not left yet. */
-export function laneOps(scene: Scene, sel: readonly number[], mv: LaneMove, delta: number): Op[] {
+export function laneOps(scene: Scene, sel: readonly number[], mv: LaneMove, delta: number, plan?: LanePlan, ids: () => string = newId): Op[] {
   const rest = sel.filter((i) => !mv.movers.includes(i));
   const up = mv.dest[0]! < scene.clipTrack[mv.movers[0]!]!;
   const order = mv.movers.map((_, k) => k).sort((x, y) => (up ? 1 : -1) * (mv.dest[x]! - mv.dest[y]!));
-  return [...(rest.length ? moveOps(scene, rest, delta) : []), ...order.map((k) => moveToTrackOp(scene, mv.movers[k]!, mv.dest[k]!, delta))];
+  const lane = [...order.map((k) => moveToTrackOp(scene, mv.movers[k]!, mv.dest[k]!, delta))];
+  if (!plan || (plan.fresh === 0 && rest.every((i) => plan.to[sel.indexOf(i)] === scene.clipTrack[i]))) return [...(rest.length ? moveOps(scene, rest, delta) : []), ...lane];
+  const made: string[] = [], ops: Op[] = [];
+  let audio = 0;
+  for (let t = 0; t < scene.trackCount; t++) if (scene.trackKind[t] === 1) audio++;
+  for (let f = 0; f < plan.fresh; f++) {
+    made.push(ids());
+    ops.push(addTrackOp(scene.sequenceId, newTrack(made[f]!, "audio", `A${audio + f + 1}`), scene.trackCount + f));
+  }
+  const sounds = (delta > 0 ? [...rest].reverse() : rest).map((i) => {
+    const row = plan.to[sel.indexOf(i)]!;
+    return { op: "move" as const, clip: scene.id[i]!, track: row >= scene.trackCount ? made[row - scene.trackCount]! : scene.trackId[row]!, start: scene.tStart[i]! + delta };
+  });
+  return [...ops, ...sounds, ...lane];
 }
 
 /** One lane up (`up`: toward the top of the stack) or down for the selection: the picture clips when any are selected (a linked sound keeps its track), else the sound clips.
