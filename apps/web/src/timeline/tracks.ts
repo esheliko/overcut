@@ -16,13 +16,15 @@ const SAY: Record<Toggle, [string, string]> = {
   mute: ["timeline.say.track.mute.on", "timeline.say.track.mute.off"], solo: ["timeline.say.track.solo.on", "timeline.say.track.solo.off"],
   lock: ["timeline.say.track.lock.on", "timeline.say.track.lock.off"], hide: ["timeline.say.track.hide.on", "timeline.say.track.hide.off"],
 };
-export const TRACK_SAY_KEYS: readonly string[] = Object.values(SAY).flat();
+export const TRACK_SAY_KEYS: readonly string[] = [...Object.values(SAY).flat(), "timeline.say.track.audioOnly"];
 const FIELD = { mute: "muted", solo: "solo", lock: "locked", hide: "hidden" } as const;
 
 export const isOn = (scene: Scene, t: number, p: Toggle): boolean => STATE[p](scene, t);
 
 /** Flip one of the four switches of row `t`. */
 export function toggleTrack(scene: Scene, t: number, p: Toggle): { ops: Op[]; say: Say } {
+  // Video tracks have no mute or solo (their sound is on the linked audio track): say so, change nothing. (One that already carries the flag may still clear it.)
+  if ((p === "mute" || p === "solo") && scene.trackKind[t] === 0 && !STATE[p](scene, t)) return { ops: [], say: { key: "timeline.say.track.audioOnly", values: { name: scene.trackName[t]! } } };
   const on = !STATE[p](scene, t);
   return { ops: [setTrackPropsOp(scene.trackId[t]!, { [FIELD[p]]: on })], say: { key: SAY[p][on ? 0 : 1], values: { name: scene.trackName[t]! } } };
 }

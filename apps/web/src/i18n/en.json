@@ -712,6 +712,7 @@
   "timeline.say.track.mute.off": "Unmuted {name}",
   "timeline.say.track.solo.on": "Soloed {name}",
   "timeline.say.track.solo.off": "Solo off for {name}",
+  "timeline.say.track.audioOnly": "Mute and solo are for audio tracks: the sound of a video clip is on its linked audio track ({name})",
   "timeline.say.track.lock.on": "Locked {name}",
   "timeline.say.track.lock.off": "Unlocked {name}",
   "timeline.say.track.hide.on": "Hid {name}",

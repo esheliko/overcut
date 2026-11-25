@@ -221,6 +221,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         const row = mine.length ? sc.clipTrack[mine[0]!]! : sc.trackId.indexOf(armed.current ?? "");
         if (row < 0) { const m = say("timeline.say.noTrack"); speak(m); onNotice(t(m.key)); break; }
         const r = toggleTrack(sc, row, cmd.part);
+        if (r.ops.length === 0) { speak(r.say); onNotice(t(r.say.key, r.say.values)); break; }
         commit(r.ops, r.say);
         break;
       }
@@ -305,8 +306,9 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       : a.a === "remove" ? removeTrack(sc, a.track)
       : a.a === "move" ? reorderTrack(sc, a.track, a.to)
       : addTrack(sc, a.kind, newClipId());
+    if (r && r.ops.length === 0) { speak(r.say); onNotice(t(r.say.key, r.say.values)); return; }
     if (r) commit(r.ops, r.say);
-  }, [commit]);
+  }, [commit, speak, onNotice, t]);
   const openMenu = useCallback((target: TrackMenuTarget, anchor: DOMRect) => setMenu({ target, anchor }), []);
 
   // Shortcuts that work anywhere except while typing in a field.
