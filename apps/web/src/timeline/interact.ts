@@ -2,7 +2,7 @@
  *  The canvas owns pointers, panning and drawing; the owner of the engine applies `Effects.ops` (via `Engine.editing`) and the selection.
  *  Touch rules: a tap selects; a drag on an unselected clip pans; a drag on an already selected clip moves it; handles of a selected clip are 44 px targets. */
 import type { Op } from "@app/engine-client";
-import { clampN, describeClip, expandLinks, groupReps, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
+import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, laneShift, type Say, inRect, linkedTrimOps, moveOps, moveRoom, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { hopOps, planHop, snapMove, SNAP_PX } from "./arrange";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart, type HeaderPart } from "./header";
@@ -156,11 +156,12 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
       const dx = ((e.x - g.sx) / view.pps) * TPS;
       let delta = snapDelta(dx, -g.room.left, g.room.right, scene.frameTicks);
       let track = g.from;
-      if (g.sel.length === 1) {
-        const t = trackAtY(scene, view, e.y);
-        if (t >= 0 && t !== g.from) {
-          const free = snapDelta(dx, -scene.tStart[g.sel[0]!]!, Infinity, scene.frameTicks);
-          if (fitsOnTrack(scene, g.sel[0]!, t, free)) { track = t; delta = free; }
+      const t = trackAtY(scene, view, e.y);
+      if (t >= 0) {
+        const m = laneChanger(scene, g.sel, t);
+        if (m >= 0) {
+          const free = laneShift(scene, g.sel, c.selFlags, m, t, dx);
+          if (free !== null) { track = t; delta = free; }
         }
       }
       if (track !== g.from) return { g: { ...g, delta, track, hop: 0, guide: null }, fx: NONE };
@@ -216,7 +217,7 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     case "move": {
       if (g.delta === 0 && g.track === g.from) return { g: IDLE, fx: NONE };
       if (g.hop) return { g: IDLE, fx: { ops: hopOps(scene, g.sel, g.hop), say: { key: "timeline.say.moved", values: { count: g.sel.length, name: scene.name[g.sel[0]!]! } } } };
-      const ops = g.track !== g.from ? [moveToTrackOp(scene, g.sel[0]!, g.track, g.delta)] : moveOps(scene, g.sel, g.delta);
+      const ops = g.track !== g.from ? laneOps(scene, g.sel, laneChanger(scene, g.sel, g.track), g.track, g.delta) : moveOps(scene, g.sel, g.delta);
       const n = g.sel.length;
       return { g: IDLE, fx: { ops, say: { key: "timeline.say.moved", values: { count: n, name: scene.name[g.sel[0]!]! } } } };
     }

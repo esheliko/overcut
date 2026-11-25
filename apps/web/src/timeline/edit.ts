@@ -99,6 +99,42 @@ export function fitsOnTrack(scene: Scene, i: number, track: number, delta: numbe
   return true;
 }
 
+/** The one selected clip that can change lane to `track` (the only one of that kind, not already there), or -1. A linked sound stays on its own track while its picture changes lane. */
+export function laneChanger(scene: Scene, sel: readonly number[], track: number): number {
+  const kind = scene.trackKind[track];
+  const same = sel.filter((i) => scene.trackKind[scene.clipTrack[i]!] === kind);
+  return same.length === 1 && scene.clipTrack[same[0]!] !== track ? same[0]! : -1;
+}
+
+/** Moving the selection by about `dx` ticks with clip `m` changing lane to `track`: the shift (whole frames; the other selected clips keep their room), or null when `m` does not fit there. */
+export function laneShift(scene: Scene, sel: readonly number[], flags: Uint8Array, m: number, track: number, dx: number): number | null {
+  const rest = sel.filter((i) => i !== m);
+  const room = rest.length ? moveRoom(scene, rest, flags) : { left: Infinity, right: Infinity };
+  const d = snapDelta(dx, -Math.min(room.left, scene.tStart[m]!), room.right, scene.frameTicks);
+  return fitsOnTrack(scene, m, track, d) ? d : null;
+}
+
+/** Ops for a lane change: the picture to its new track and time, the rest of the selection shifted in place (one undo step). */
+export function laneOps(scene: Scene, sel: readonly number[], m: number, track: number, delta: number): Op[] {
+  const rest = sel.filter((i) => i !== m);
+  return [...(rest.length ? moveOps(scene, rest, delta) : []), moveToTrackOp(scene, m, track, delta)];
+}
+
+/** One lane up (`up`: toward the top of the stack) or down for the selection: the picture clips when any are selected (a linked sound keeps its track), else the sound clips.
+ *  They must all sit on one track and fit unchanged at their times on the nearest unlocked lane of the same kind; null when there is no such lane or no room. */
+export function laneStepOps(scene: Scene, sel: readonly number[], dir: "up" | "down"): { ops: Op[]; track: number } | null {
+  const video = sel.filter((i) => scene.trackKind[scene.clipTrack[i]!] === 0);
+  const movers = video.length ? video : sel;
+  if (movers.length === 0 || new Set(movers.map((i) => scene.clipTrack[i]!)).size !== 1) return null;
+  const from = scene.clipTrack[movers[0]!]!, kind = scene.trackKind[from];
+  let to = from + (dir === "up" ? -1 : 1);
+  while (to >= 0 && to < scene.trackCount && (scene.trackKind[to] !== kind || scene.trackLocked[to])) to += dir === "up" ? -1 : 1;
+  if (to < 0 || to >= scene.trackCount) return null;
+  if (!movers.every((i) => fitsOnTrack(scene, i, to, 0))) return null;
+  // Several clips moving together must not collide with each other either (they were on one track, so they did not overlap and still do not).
+  return { ops: movers.map((i) => moveToTrackOp(scene, i, to, 0)), track: to };
+}
+
 export type Edge = "start" | "end";
 
 /** Allowed range (ticks) of the boundary being trimmed: neighbours, source media, and at least one frame left. */

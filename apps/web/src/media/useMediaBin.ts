@@ -1,7 +1,7 @@
 import { MediaDecodeError, fingerprintFile, fingerprintSize, newProject, type Editing, type Engine, type MediaKind, type Op, type Project } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { probeFile } from "./probe";
-import { STILL_SECONDS, TICKS, classify, sentence, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
+import { STILL_SECONDS, TICKS, classify, destTracks, sentence, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
 import { loadHandle, pathOf, saveHandle, type Source } from "./sources";
 import { useProjectStore, useStore } from "../store/projectStore";
 
@@ -131,12 +131,15 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
   }, [engine]);
 
   /** Ops for putting a media item on the timeline: `at` ticks, or after the last clip when that spot is taken. */
-  const timelineOps = useCallback(async (cur: Project, id: string, start: number | "end"): Promise<Op[] | null> => {
+  const timelineOps = useCallback(async (cur: Project, id: string, start: number | "end", track?: string): Promise<Op[] | null> => {
     const ref = cur.media.find((m) => m.id === id);
     const l = ref && (await fileFor(id, ref.uri, ref.kind));
     if (!ref || !l) return null;
     const len = ref.kind === "image" ? STILL_SECONDS * TICKS : ref.duration ?? 0;
-    return insertOps(cur, ref, l.probed, start === "end" ? timelineEnd(cur) : placeAt(cur, start, len));
+    // Dropped on a lane: free space is judged on the tracks the clip will really use (a drop on V2 must not be pushed to the end because V1 is busy there).
+    const { vt, at } = destTracks(cur, ref, track);
+    const used = (ref.kind === "audio" ? [at] : ref.kind === "video" ? [vt, at] : [vt]).flatMap((t) => (t ? [t.id] : []));
+    return insertOps(cur, ref, l.probed, start === "end" ? timelineEnd(cur) : placeAt(cur, start, len, track ? used : undefined), undefined, track);
   }, [fileFor]);
 
   const importSources = useCallback(async (sources: Source[]): Promise<void> => {
@@ -196,10 +199,10 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
 
   importRef.current = importSources;
 
-  const addToTimeline = useCallback((id: string, start: number | "end" = "end"): Promise<boolean> => {
+  const addToTimeline = useCallback((id: string, start: number | "end" = "end", track?: string): Promise<boolean> => {
     if (!ed) return Promise.resolve(false);
     return enqueue(async () => {
-      const ops = await timelineOps(store.getState().project ?? (await ed.project()), id, start);
+      const ops = await timelineOps(store.getState().project ?? (await ed.project()), id, start, track);
       if (!ops) return false;
       await store.apply(ops);
       return true;
