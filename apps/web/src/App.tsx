@@ -151,14 +151,17 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
               <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
             </>
           )}
-          <AccentPicker />
-          <ScrubPrepItem />
+          <div className="menu-group" role="presentation">{t("menu.group.project")}</div>
           <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={() => { setOpen(false); project.onProjects(); }}>{t("menu.projects")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={() => { setOpen(false); project.onNew(); }}>{t("menu.new")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={() => { setOpen(false); project.onOpen(); }}>{t("menu.openProject")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={() => { setOpen(false); project.onSave(); }}>{t("menu.saveProject")}</button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
           <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={() => { setOpen(false); project.onVersions(); }}>{t("menu.versions")}</button>
+          <div className="menu-group" role="presentation">{t("menu.group.view")}</div>
+          <AccentPicker />
+          <ScrubPrepItem />
+          <div className="menu-group" role="presentation">{t("menu.group.help")}</div>
           <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={() => { setOpen(false); project.onShortcuts(); }}>{t("menu.shortcuts")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={() => { setOpen(false); project.onPrivacy(); }}>{t("menu.privacy")}</button>
           <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
@@ -229,6 +232,18 @@ function Editor({ store }: { store: ProjectStore }) {
   // A recovered session already has undo history (the replayed edits); "undo recovery" (epoch > 0) starts a fresh one.
   const replayed = useRef(0);
   replayed.current = persistence.recovered?.replayed ?? 0;
+  // "?" opens the keyboard shortcuts anywhere in the editor except while typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "?" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      e.preventDefault();
+      setDialog((d) => d ?? "shortcuts");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   useEffect(() => { void store.attach(editing, { canUndo: persistence.epoch === 0 && replayed.current > 0 }); }, [store, editing, persistence.epoch]); // epoch: undo recovery replaced the project
   const project = useProjectStore((s) => s.project);
 
