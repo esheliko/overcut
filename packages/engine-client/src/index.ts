@@ -14,7 +14,7 @@ export { cleanupStaleExports, opfsStorage, type ExportStorage } from "./export/s
 export { registerMediaResolver, type MediaResolver, type OpenedMedia, type MediaVideo, type MediaAudio, type DrawableFrame } from "./export/media";
 export { containScale, fitScale, layerOf, placeLayer, renderExportFrame, type GpuLayer, type GpuRenderer, type LayerSource, type RendererInfo } from "./render";
 export type { Evaluator };
-export { addTrackOp, createEditing, moveTrackOp, newTrack, parseEditOutcome, removeTrackOp, setTrackPropsOp, type RawEditing } from "./editing";
+export { addMarkerOp, addTrackOp, createEditing, deleteMarkerOp, moveMarkerOp, moveTrackOp, newMarker, newTrack, parseEditOutcome, removeTrackOp, setMarkerPropsOp, setRangeOp, setTrackPropsOp, type RawEditing } from "./editing";
 export { probeHost } from "./probe";
 
 /** True inside a Tauri shell (desktop or mobile app), false in a plain browser. */

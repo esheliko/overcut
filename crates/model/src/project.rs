@@ -1,7 +1,7 @@
 //! The project document: `Project -> Sequence -> Track -> Clip`, plus the media it references.
 //! Plain data. It is changed only by ops (ADR 0006, `app-timeline`), never directly by the UI.
 
-use crate::ids::{ClipId, LinkId, MediaId, ProjectId, SequenceId, TrackId};
+use crate::ids::{ClipId, LinkId, MarkerId, MediaId, ProjectId, SequenceId, TrackId};
 use crate::time::{Rational, Time};
 use crate::transform::ClipTransform;
 use schemars::JsonSchema;
@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::fmt;
 
 /// Version of the document schema. Bump (and add a migration + fixture, M1-005) on any incompatible change.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Project {
@@ -45,6 +45,63 @@ pub struct Sequence {
     pub sample_rate: u32,
     /// Bottom-to-top for video (later tracks draw over earlier ones). Any number of tracks of either kind.
     pub tracks: Vec<Track>,
+    /// Markers and chapters (TL-07, M2-007, `docs/features/markers.md`), ordered by time then id. Absent in older files = none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markers: Vec<Marker>,
+    /// The in/out range (render range, loop range). `None` = the whole sequence. Absent in older files = none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TimeRange>,
+    /// True while playback loops over `range` (needs a range). Absent = false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub loop_range: bool,
+}
+
+/// Most markers one sequence may hold, and the longest marker name (characters).
+pub const MAX_MARKERS: usize = 10_000;
+pub const MAX_MARKER_NAME: usize = 120;
+
+/// A plain marker (a flag on the ruler) or a chapter (also exported as a chapter mark).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkerKind {
+    #[default]
+    Marker,
+    Chapter,
+}
+
+impl MarkerKind {
+    fn is_marker(&self) -> bool {
+        *self == MarkerKind::Marker
+    }
+}
+
+/// A point on the sequence's timeline (ticks, `>= 0`) with a name and an optional colour.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Marker {
+    pub id: MarkerId,
+    pub time: Time,
+    #[serde(default, skip_serializing_if = "MarkerKind::is_marker")]
+    pub kind: MarkerKind,
+    /// 0-120 characters, no surrounding spaces. Empty is allowed (an unnamed marker).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// `#rrggbb`; `None` = the default colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+}
+
+/// A half-open stretch of the timeline: `start <= t < end`, `0 <= start < end`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct TimeRange {
+    pub start: Time,
+    pub end: Time,
+}
+
+/// Name and colour rules shared by validation and the `AddMarker` / `SetMarkerProps` ops.
+pub fn marker_props_ok(name: &str, colour: Option<&str>) -> bool {
+    name.trim() == name
+        && name.chars().count() <= MAX_MARKER_NAME
+        && colour.is_none_or(is_track_colour)
 }
 
 fn is_false(b: &bool) -> bool {
@@ -248,6 +305,9 @@ impl Project {
                 rate_fixed: false,
                 sample_rate: 48_000,
                 tracks: vec![video, audio],
+                markers: Vec::new(),
+                range: None,
+                loop_range: false,
             }],
         }
     }
@@ -279,6 +339,7 @@ impl Project {
                     why: "frame rate, sample rate and size must be positive",
                 });
             }
+            self.validate_markers(s)?;
             for t in &s.tracks {
                 unique(t.id.0)?;
                 if t.height
@@ -305,6 +366,40 @@ impl Project {
                     })?;
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn validate_markers(&self, s: &Sequence) -> Result<(), ModelError> {
+        let bad = |why| {
+            Err(ModelError::BadSequence {
+                sequence: s.id,
+                why,
+            })
+        };
+        if s.markers.len() > MAX_MARKERS {
+            return bad("too many markers");
+        }
+        for w in s.markers.windows(2) {
+            if (w[0].time, w[0].id) >= (w[1].time, w[1].id) {
+                return bad("markers must be ordered by time then id");
+            }
+        }
+        for m in &s.markers {
+            if m.time < Time::ZERO {
+                return bad("marker time must not be negative");
+            }
+            if !marker_props_ok(&m.name, m.colour.as_deref()) {
+                return bad("marker name or colour is invalid");
+            }
+        }
+        if let Some(r) = s.range {
+            if r.start < Time::ZERO || r.end <= r.start {
+                return bad("range must satisfy 0 <= start < end");
+            }
+        }
+        if s.loop_range && s.range.is_none() {
+            return bad("loop_range needs a range");
         }
         Ok(())
     }
@@ -406,7 +501,7 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: Project = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
-        assert!(json.contains("\"schema_version\":3"));
+        assert!(json.contains("\"schema_version\":4"));
     }
 
     #[test]
@@ -469,8 +564,8 @@ mod tests {
             p.validate().unwrap_err()
         };
         assert!(matches!(
-            edit(&|p| p.schema_version = 4),
-            ModelError::UnsupportedVersion(4)
+            edit(&|p| p.schema_version = 5),
+            ModelError::UnsupportedVersion(5)
         ));
         assert!(matches!(
             edit(&|p| p.media.clear()),
@@ -503,5 +598,48 @@ mod tests {
         let mut p = sample();
         p.sequences[0].tracks[0].clips[1].start = Time::from_seconds(2).unwrap();
         p.validate().unwrap();
+    }
+
+    #[test]
+    fn markers_and_range_are_checked_and_written_only_when_used() {
+        let mut p = sample();
+        assert!(!serde_json::to_string(&p).unwrap().contains("markers"));
+        let mut ids = crate::SeqIds::default();
+        let mk = |ids: &mut crate::SeqIds, t: i64| Marker {
+            id: MarkerId::new(ids),
+            time: Time::from_ticks(t),
+            kind: MarkerKind::Marker,
+            name: String::new(),
+            colour: None,
+        };
+        let (a, b) = (mk(&mut ids, 5), mk(&mut ids, 9));
+        p.sequences[0].markers = vec![a.clone(), b.clone()];
+        p.validate().unwrap();
+        let back: Project = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
+        let bad = |f: &dyn Fn(&mut Sequence)| {
+            let mut q = p.clone();
+            f(&mut q.sequences[0]);
+            q.validate().unwrap_err()
+        };
+        bad(&|s| s.markers.reverse());
+        bad(&|s| s.markers[0].time = Time::from_ticks(-1));
+        bad(&|s| s.markers[0].name = " x".into());
+        bad(&|s| s.markers[0].colour = Some("red".into()));
+        bad(&|s| s.markers.push(a.clone()));
+        bad(&|s| {
+            s.range = Some(TimeRange {
+                start: Time::from_ticks(4),
+                end: Time::from_ticks(4),
+            })
+        });
+        bad(&|s| s.loop_range = true);
+        let mut q = p.clone();
+        q.sequences[0].range = Some(TimeRange {
+            start: Time::ZERO,
+            end: Time::from_ticks(8),
+        });
+        q.sequences[0].loop_range = true;
+        q.validate().unwrap();
     }
 }

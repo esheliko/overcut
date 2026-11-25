@@ -2,8 +2,8 @@
 //! id they create (the host supplies fresh ids), so applying the same op list to the same project is deterministic.
 
 use app_model::{
-    Clip, ClipId, ClipTransform, Easing, Keyframe, LinkId, MediaId, MediaRef, Rational, Resolution,
-    SequenceId, Time, Track, TrackId, TransformProp,
+    Clip, ClipId, ClipTransform, Easing, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId,
+    MediaRef, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId, TransformProp,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -141,6 +141,38 @@ pub enum Op {
             deserialize_with = "set_or_clear"
         )]
         colour: Option<Option<String>>,
+    },
+    /// Add a marker or chapter to a sequence (TL-07, M2-007, `docs/features/markers.md`). The marker's id must be new; time `>= 0`; name and
+    /// colour as `marker_props_ok`; at most `MAX_MARKERS`. Inverse: `DeleteMarker`.
+    AddMarker {
+        sequence: SequenceId,
+        marker: Marker,
+    },
+    /// Move a marker to `time` (`>= 0`). A drag is many of these under one `History` key = one undo step. Inverse: the move back.
+    MoveMarker { marker: MarkerId, time: Time },
+    /// Patch a marker's name, kind and colour; fields left out stay (`colour`: a value sets it, `null` resets it). Inverse: the old values.
+    SetMarkerProps {
+        marker: MarkerId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<MarkerKind>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "set_or_clear"
+        )]
+        colour: Option<Option<String>>,
+    },
+    /// Remove a marker. Inverse: `AddMarker` of it.
+    DeleteMarker { marker: MarkerId },
+    /// Set the sequence's in/out range and whether playback loops over it; `range: null` clears the range (and `looping` must then be
+    /// false, else `BadRange`). The range needs `0 <= start < end`. Inverse: the old range and flag.
+    SetRange {
+        sequence: SequenceId,
+        range: Option<TimeRange>,
+        #[serde(default, skip_serializing_if = "is_false")]
+        looping: bool,
     },
     /// Set where a media file is found and its content fingerprint (`b3-64k:...`, `docs/features/project-file.md`).
     /// Used by import (record the fingerprint) and relink (the file moved); clips are untouched.

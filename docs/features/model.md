@@ -5,7 +5,7 @@
 The M1 shape (one video + one audio track) is `Project::new`; tracks are a generic `Vec<Track>` with a `TrackKind`, so more tracks need no format change.
 
 ## Data model
-- `schema_version: u32` on `Project` (`SCHEMA_VERSION = 2`). Readers migrate older and refuse newer (M1-005 owns the migrations and fixtures; `v1 -> v2` is M2-002: tracks gained the fields below). Unknown fields from newer writers are preserved by the file layer (`docs/features/project-file.md`).
+- `schema_version: u32` on `Project` (`SCHEMA_VERSION = 4`; `v3 -> v4` is M2-007: sequences gained `markers`, `range`, `loop_range`, see `docs/features/markers.md`). Readers migrate older and refuse newer (M1-005 owns the migrations and fixtures; `v1 -> v2` is M2-002: tracks gained the fields below). Unknown fields from newer writers are preserved by the file layer (`docs/features/project-file.md`).
 - **Ids**: 128-bit, typed (`ProjectId`, `SequenceId`, `TrackId`, `ClipId`, `MediaId`), serialized as 32 lowercase hex chars (a string, JS-safe). Unique across the whole document. The model never generates randomness: the host supplies an `IdSource` (`SeqIds` for tests/replay). Ops address things by id, never by index (mergeable, ADR 0006).
 - **Time**: `Time` is integer ticks (ADR 0010; JSON integer, exact in JS up to ~147 days); `frame_rate` and `speed` are `Rational`.
 - `Clip { id, media, start (timeline), source_in (in media), duration (timeline), speed }`; source length consumed = `duration * speed`.

@@ -230,6 +230,32 @@ enum Step {
         size_fixed: bool,
         rate_fixed: bool,
     },
+    /// M2-007: markers on a small time grid so several share a time (order by id) and bad names/colours/times are refused.
+    AddMarker {
+        time: i8,
+        chapter: bool,
+        name: u8,
+        colour: Option<u8>,
+    },
+    MoveMarker {
+        n: usize,
+        time: i8,
+    },
+    MarkerProps {
+        n: usize,
+        name: Option<u8>,
+        chapter: Option<bool>,
+        colour: Option<Option<u8>>,
+    },
+    DeleteMarker {
+        n: usize,
+    },
+    SetRange {
+        start: i8,
+        end: i8,
+        none: bool,
+        looping: bool,
+    },
     Undo,
     Redo,
 }
@@ -290,6 +316,14 @@ fn step() -> impl Strategy<Value = Step> {
         1 => (any::<usize>(), prop::collection::vec(0..5u8, 0..4)).prop_map(|(n, tags)| Step::SetMediaTags { n, tags }),
         1 => (0..4u8, 0..4u8).prop_map(|(fps, w)| Step::SetFormat { fps, w }),
         1 => (0..4u8, 0..4u8, any::<bool>(), any::<bool>()).prop_map(|(fps, w, size_fixed, rate_fixed)| Step::SetCanvas { fps, w, size_fixed, rate_fixed }),
+        3 => (-1..40i8, any::<bool>(), 0..4u8, prop::option::of(0..4u8))
+            .prop_map(|(time, chapter, name, colour)| Step::AddMarker { time, chapter, name, colour }),
+        2 => (any::<usize>(), -1..40i8).prop_map(|(n, time)| Step::MoveMarker { n, time }),
+        2 => (any::<usize>(), prop::option::of(0..4u8), prop::option::of(any::<bool>()), prop::option::of(prop::option::of(0..4u8)))
+            .prop_map(|(n, name, chapter, colour)| Step::MarkerProps { n, name, chapter, colour }),
+        1 => any::<usize>().prop_map(|n| Step::DeleteMarker { n }),
+        2 => (-1..30i8, -1..30i8, any::<bool>(), any::<bool>())
+            .prop_map(|(start, end, none, looping)| Step::SetRange { start, end, none, looping }),
         2 => Just(Step::Undo),
         2 => Just(Step::Redo),
     ]
@@ -301,6 +335,11 @@ fn all_clips(p: &Project) -> Vec<&Clip> {
         .flat_map(|s| &s.tracks)
         .flat_map(|t| &t.clips)
         .collect()
+}
+
+fn marker_at(p: &Project, n: usize) -> Option<app_model::MarkerId> {
+    let ms = &p.sequences[0].markers;
+    (!ms.is_empty()).then(|| ms[n % ms.len()].id)
 }
 
 /// Turns a step into an op for the current state (`None` for undo/redo or when there is nothing to address).
@@ -598,6 +637,79 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
             },
             size_fixed,
             rate_fixed,
+        },
+        Step::AddMarker {
+            time,
+            chapter,
+            name,
+            colour,
+        } => Op::AddMarker {
+            sequence: p.sequences[0].id,
+            marker: app_model::Marker {
+                id: app_model::MarkerId::new(ids),
+                time: t(i64::from(time)),
+                kind: if chapter {
+                    app_model::MarkerKind::Chapter
+                } else {
+                    app_model::MarkerKind::Marker
+                },
+                // 0 = an unnamed marker; 3 = a name with surrounding space, which must be refused
+                name: match name {
+                    0 => String::new(),
+                    3 => " bad ".into(),
+                    n => format!("m{n}"),
+                },
+                colour: colour.map(|c| {
+                    if c == 3 {
+                        "red".to_string()
+                    } else {
+                        format!("#00000{c}")
+                    }
+                }),
+            },
+        },
+        Step::MoveMarker { n, time } => Op::MoveMarker {
+            marker: marker_at(p, n)?,
+            time: t(i64::from(time)),
+        },
+        Step::MarkerProps {
+            n,
+            name,
+            chapter,
+            colour,
+        } => Op::SetMarkerProps {
+            marker: marker_at(p, n)?,
+            name: name.map(|n| {
+                if n == 3 {
+                    " bad ".into()
+                } else {
+                    format!("n{n}")
+                }
+            }),
+            kind: chapter.map(|c| {
+                if c {
+                    app_model::MarkerKind::Chapter
+                } else {
+                    app_model::MarkerKind::Marker
+                }
+            }),
+            colour: colour.map(|c| c.map(|c| format!("#00000{c}"))),
+        },
+        Step::DeleteMarker { n } => Op::DeleteMarker {
+            marker: marker_at(p, n)?,
+        },
+        Step::SetRange {
+            start,
+            end,
+            none,
+            looping,
+        } => Op::SetRange {
+            sequence: p.sequences[0].id,
+            range: (!none).then(|| app_model::TimeRange {
+                start: t(i64::from(start)),
+                end: t(i64::from(end)),
+            }),
+            looping,
         },
         Step::Undo | Step::Redo => return None,
     })
@@ -1308,7 +1420,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        29,
+        34,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -1324,7 +1436,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 29, "one example per Op variant");
+    assert_eq!(ops.len(), 34, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -3689,5 +3801,283 @@ fn evaluating_a_fully_animated_transform_is_under_a_microsecond_per_parameter() 
     assert!(
         per_param < budget,
         "{per_param} ns per parameter over {budget}"
+    );
+}
+
+// ---- M2-007: markers, chapters, range ----
+
+fn marker(
+    ids: &mut SeqIds,
+    time: i64,
+    kind: app_model::MarkerKind,
+    name: &str,
+) -> app_model::Marker {
+    app_model::Marker {
+        id: app_model::MarkerId::new(ids),
+        time: t(time),
+        kind,
+        name: name.into(),
+        colour: None,
+    }
+}
+
+#[test]
+fn marker_ops_keep_order_refuse_bad_input_and_undo_exactly() {
+    use app_model::MarkerKind::{Chapter, Marker as Plain};
+    let (mut p, mut ids) = base();
+    let seq = p.sequences[0].id;
+    let (a, b, c) = (
+        marker(&mut ids, 20, Plain, "b"),
+        marker(&mut ids, 10, Chapter, "intro"),
+        marker(&mut ids, 10, Plain, ""),
+    );
+    let mut h = History::new();
+    for m in [&a, &b, &c] {
+        h.apply(
+            &mut p,
+            Op::AddMarker {
+                sequence: seq,
+                marker: m.clone(),
+            },
+            None,
+        )
+        .unwrap();
+    }
+    let order = |p: &Project| {
+        p.sequences[0]
+            .markers
+            .iter()
+            .map(|m| m.id)
+            .collect::<Vec<_>>()
+    };
+    // by time, then by id (b was created before c)
+    assert_eq!(order(&p), vec![b.id, c.id, a.id]);
+    p.validate().unwrap();
+
+    // refusals change nothing
+    let before = p.clone();
+    let bad = |op: Op| {
+        let mut q = before.clone();
+        let e = apply(&mut q, op).unwrap_err();
+        assert_eq!(q, before);
+        e
+    };
+    let dup = Op::AddMarker {
+        sequence: seq,
+        marker: a.clone(),
+    };
+    assert!(matches!(bad(dup), OpError::IdInUse(_)));
+    let neg = marker(&mut ids, -1, Plain, "");
+    assert_eq!(
+        bad(Op::AddMarker {
+            sequence: seq,
+            marker: neg
+        }),
+        OpError::BadMarker
+    );
+    let spaced = marker(&mut ids, 3, Plain, " x");
+    assert_eq!(
+        bad(Op::AddMarker {
+            sequence: seq,
+            marker: spaced
+        }),
+        OpError::BadMarker
+    );
+    let mut coloured = marker(&mut ids, 3, Plain, "");
+    coloured.colour = Some("red".into());
+    assert_eq!(
+        bad(Op::AddMarker {
+            sequence: seq,
+            marker: coloured
+        }),
+        OpError::BadMarker
+    );
+    let unknown = app_model::MarkerId::new(&mut ids);
+    assert_eq!(
+        bad(Op::MoveMarker {
+            marker: unknown,
+            time: t(1)
+        }),
+        OpError::UnknownMarker(unknown)
+    );
+    assert_eq!(
+        bad(Op::MoveMarker {
+            marker: a.id,
+            time: t(-5)
+        }),
+        OpError::BadMarker
+    );
+    assert_eq!(
+        bad(Op::DeleteMarker { marker: unknown }),
+        OpError::UnknownMarker(unknown)
+    );
+    let nowhere = SequenceId::new(&mut ids);
+    let m = marker(&mut ids, 1, Plain, "");
+    assert_eq!(
+        bad(Op::AddMarker {
+            sequence: nowhere,
+            marker: m
+        }),
+        OpError::UnknownSequence(nowhere)
+    );
+
+    // move re-sorts; props patch and reset; delete; each undoes to the exact earlier state
+    let s1 = p.clone();
+    h.apply(
+        &mut p,
+        Op::MoveMarker {
+            marker: a.id,
+            time: t(5),
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(order(&p), vec![a.id, b.id, c.id]);
+    let s2 = p.clone();
+    h.apply(
+        &mut p,
+        Op::SetMarkerProps {
+            marker: c.id,
+            name: Some("beat".into()),
+            kind: Some(Chapter),
+            colour: Some(Some("#ff0000".into())),
+        },
+        None,
+    )
+    .unwrap();
+    let m = &p.sequences[0].markers[2];
+    assert_eq!(
+        (m.name.as_str(), m.kind, m.colour.as_deref()),
+        ("beat", Chapter, Some("#ff0000"))
+    );
+    let s3 = p.clone();
+    h.apply(
+        &mut p,
+        Op::SetMarkerProps {
+            marker: c.id,
+            name: None,
+            kind: None,
+            colour: Some(None),
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(p.sequences[0].markers[2].colour, None);
+    let s4 = p.clone();
+    h.apply(&mut p, Op::DeleteMarker { marker: b.id }, None)
+        .unwrap();
+    assert_eq!(p.sequences[0].markers.len(), 2);
+    for want in [&s4, &s3, &s2, &s1] {
+        assert!(h.undo(&mut p).unwrap());
+        assert_eq!(&p, want);
+    }
+}
+
+#[test]
+fn a_marker_drag_is_one_undo_step_and_range_ops_validate_and_undo() {
+    use app_model::{MarkerKind::Marker as Plain, TimeRange};
+    let (mut p, mut ids) = base();
+    let seq = p.sequences[0].id;
+    let m = marker(&mut ids, 4, Plain, "");
+    let mut h = History::new();
+    h.apply(
+        &mut p,
+        Op::AddMarker {
+            sequence: seq,
+            marker: m.clone(),
+        },
+        None,
+    )
+    .unwrap();
+    let dragged = p.clone();
+    for i in 0..50 {
+        h.apply(
+            &mut p,
+            Op::MoveMarker {
+                marker: m.id,
+                time: t(5 + i),
+            },
+            Some(7),
+        )
+        .unwrap();
+    }
+    assert_eq!(p.sequences[0].markers[0].time, t(54));
+    assert!(h.undo(&mut p).unwrap()); // the whole drag
+    assert_eq!(p, dragged);
+    assert!(h.redo(&mut p).unwrap());
+    assert_eq!(p.sequences[0].markers[0].time, t(54));
+
+    // range: set, loop, clear; bad ranges and looping without a range are refused
+    let r = TimeRange {
+        start: t(2),
+        end: t(9),
+    };
+    let set = |range, looping| Op::SetRange {
+        sequence: seq,
+        range,
+        looping,
+    };
+    let before = p.clone();
+    h.apply(&mut p, set(Some(r), true), None).unwrap();
+    assert_eq!(
+        (p.sequences[0].range, p.sequences[0].loop_range),
+        (Some(r), true)
+    );
+    p.validate().unwrap();
+    for bad in [
+        set(
+            Some(TimeRange {
+                start: t(3),
+                end: t(3),
+            }),
+            false,
+        ),
+        set(
+            Some(TimeRange {
+                start: t(-1),
+                end: t(3),
+            }),
+            false,
+        ),
+        set(None, true),
+    ] {
+        let mut q = p.clone();
+        assert_eq!(apply(&mut q, bad).unwrap_err(), OpError::BadRange);
+        assert_eq!(q, p);
+    }
+    h.apply(&mut p, set(None, false), None).unwrap();
+    assert_eq!(p.sequences[0].range, None);
+    assert!(h.undo(&mut p).unwrap());
+    assert_eq!(p.sequences[0].range, Some(r));
+    assert!(h.undo(&mut p).unwrap());
+    assert_eq!(p, before);
+}
+
+#[test]
+fn markers_are_snap_targets_without_the_caller_passing_them() {
+    use app_model::MarkerKind::Chapter;
+    let (mut p, mut ids) = base();
+    let seq = p.sequences[0].id;
+    apply(
+        &mut p,
+        Op::AddMarker {
+            sequence: seq,
+            marker: marker(&mut ids, 30, Chapter, "c"),
+        },
+    )
+    .unwrap();
+    let e = Editor::from_project(p);
+    let s = e.project().sequences[0].id.to_string();
+    let r: serde_json::Value = serde_json::from_str(
+        &e.snap_json(
+            &s,
+            &serde_json::json!({"t": 30_400, "tolerance": 500}).to_string(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        (r["time"].as_i64(), r["hit"]["kind"].as_str()),
+        (Some(30_000), Some("marker"))
     );
 }

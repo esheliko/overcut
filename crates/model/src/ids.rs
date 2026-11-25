@@ -119,6 +119,10 @@ typed_id!(
     MediaId
 );
 typed_id!(
+    /// Id of a [`crate::Marker`].
+    MarkerId
+);
+typed_id!(
     /// Id shared by the clips that move and trim together (a video clip and the sound of the same import): `Clip::link`.
     LinkId
 );

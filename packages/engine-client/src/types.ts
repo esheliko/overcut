@@ -1,5 +1,5 @@
 import type { ExportApi } from "./export/types";
-import type { Clip, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, Track, TrackId } from "./model.generated";
+import type { Clip, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
 
 export * from "./capabilities";
@@ -258,6 +258,15 @@ export type Op =
   /** Change the easing of the segment leaving the key at `t`. */
   | { op: "set_easing"; clip: ClipId; prop: TransformProp; t: Time; easing: Easing }
   | { op: "delete"; clip: ClipId }
+  /** Add a marker or chapter (TL-07, M2-007, `docs/features/markers.md`). The marker's id is the caller's; time >= 0; name 0-120 chars without surrounding spaces; colour `#rrggbb`. */
+  | { op: "add_marker"; sequence: SequenceId; marker: Marker }
+  /** Move a marker (time >= 0). A drag = many of these under one coalesce key = one undo step. */
+  | { op: "move_marker"; marker: MarkerId; time: Time }
+  /** Patch a marker; fields left out stay. `colour`: a value sets it, `null` resets it. */
+  | { op: "set_marker_props"; marker: MarkerId; name?: string; kind?: MarkerKind; colour?: string | null }
+  | { op: "delete_marker"; marker: MarkerId }
+  /** Set the in/out range and whether playback loops over it; `range: null` clears it (`looping` must then be false). Needs 0 <= start < end. */
+  | { op: "set_range"; sequence: SequenceId; range: TimeRange | null; looping?: boolean }
   | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
   | { op: "set_media"; media: MediaId; uri: string; hash: string | null }
   | { op: "set_media_tags"; media: MediaId; tags: string[] }
@@ -443,7 +452,7 @@ export interface Recovery {
   validLog: string;
 }
 
-export const EXPECTED_ABI = 3;
+export const EXPECTED_ABI = 4;
 
 export function parseEngineInfo(json: string): EngineInfo {
   const v: unknown = JSON.parse(json);

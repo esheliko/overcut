@@ -5,7 +5,7 @@
 - **Targets**: `playhead`, `marker` and `clip_edge` (both edges of every clip on every track, including locked and hidden ones). Ties: nearer wins, then playhead > marker > clip edge, then the earlier time. Tolerance < 0 or no target in range: no snap (`hit: null`, `time = t`).
 - **Span** (`snap_span`): for a clip being dragged, either its start or its end may snap; the edge that moves less wins (start on a tie); the answer is the new START and the length is kept.
 - **Magnetic mode** is the caller's switch: the UI calls `snap` while snapping is on (and while the user holds no override key) and skips it otherwise; the engine has no state for it. The tolerance is the UI's (a few pixels converted to ticks at the current zoom).
-- **Markers**: the project has no marker list yet, so the caller passes marker times in the query; when markers land in the model the engine will add them itself.
+- **Markers**: the sequence's own markers and chapters (`docs/features/markers.md`) are targets automatically; the query's optional `markers` list adds extra times.
 - Locked tracks are targets too (you may align to them), but snapping never edits anything: the result is only a time.
 
 ## Engine surface

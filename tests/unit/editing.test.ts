@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { addTrackOp, createEditing, moveTrackOp, parseEditOutcome, removeTrackOp, setTrackPropsOp, type RawEditing } from "../../packages/engine-client/src/editing";
+import { addMarkerOp, addTrackOp, createEditing, deleteMarkerOp, moveMarkerOp, moveTrackOp, newMarker, setMarkerPropsOp, setRangeOp, parseEditOutcome, removeTrackOp, setTrackPropsOp, type RawEditing } from "../../packages/engine-client/src/editing";
 import type { Op } from "../../packages/engine-client/src/types";
 import type { Project } from "../../packages/engine-client/src/model.generated";
 
@@ -34,7 +34,7 @@ function fake(over: Partial<RawEditing> = {}) {
 }
 
 test("the contract holds one example of every op the Op type allows", () => {
-  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["add_media", "add_track", "close_gap", "delete", "delete_keyframe", "insert_clip", "move", "move_keyframe", "move_track", "remove_media", "remove_track", "ripple_delete", "ripple_trim", "roll", "set_canvas", "set_clip", "set_clip_transform", "set_easing", "set_keyframe", "set_link", "set_media", "set_media_tags", "set_sequence_format", "set_track_props", "slide", "slip", "split", "trim_in", "trim_out"]);
+  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["add_marker", "add_media", "add_track", "close_gap", "delete", "delete_keyframe", "delete_marker", "insert_clip", "move", "move_keyframe", "move_marker", "move_track", "remove_media", "remove_track", "ripple_delete", "ripple_trim", "roll", "set_canvas", "set_clip", "set_clip_transform", "set_easing", "set_keyframe", "set_link", "set_marker_props", "set_media", "set_media_tags", "set_range", "set_sequence_format", "set_track_props", "slide", "slip", "split", "trim_in", "trim_out"]);
 });
 
 test("a single op and a list go over as JSON (a list is one undo step); the coalesce key rides along", async () => {
@@ -126,4 +126,20 @@ test("snap sends the query as JSON, parses the answer and rejects non-integer or
   await assert.rejects(editing.snap("seq", { t: 1.5, tolerance: 10 }));
   await assert.rejects(editing.snap("seq", { t: 1, tolerance: -1 }));
   assert.equal(calls.length, 1);
+});
+
+test("marker and range helpers build exactly the contract's ops", () => {
+  const byOp = (name: string) => contract.ops.find((o) => o.op === name) as Op;
+  const add = byOp("add_marker") as Extract<Op, { op: "add_marker" }>;
+  assert.deepEqual(addMarkerOp(add.sequence, newMarker(add.marker.id, add.marker.time, { kind: "chapter", name: "Intro", colour: "#2de2d6" })), add);
+  const mv = byOp("move_marker") as Extract<Op, { op: "move_marker" }>;
+  assert.deepEqual(moveMarkerOp(mv.marker, mv.time), mv);
+  const props = byOp("set_marker_props") as Extract<Op, { op: "set_marker_props" }>;
+  assert.deepEqual(setMarkerPropsOp(props.marker, { name: "Part one", kind: "marker", colour: null }), props);
+  assert.equal(JSON.stringify(setMarkerPropsOp(props.marker, { colour: null })), `{"op":"set_marker_props","marker":"${props.marker}","colour":null}`);
+  const del = byOp("delete_marker") as Extract<Op, { op: "delete_marker" }>;
+  assert.deepEqual(deleteMarkerOp(del.marker), del);
+  const range = byOp("set_range") as Extract<Op, { op: "set_range" }>;
+  assert.deepEqual(setRangeOp(range.sequence, range.range, true), range);
+  assert.equal(JSON.stringify(setRangeOp(range.sequence, null)), `{"op":"set_range","sequence":"${range.sequence}","range":null}`);
 });
