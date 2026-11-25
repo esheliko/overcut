@@ -19,12 +19,13 @@ const matches = (label: string, q: string): boolean => {
 
 /** Commands matching `query`, best first. Empty query: recently used first (most recent first), then the rest in registry order.
  *  With a query: labels that start with it, then the other matches; recent ones lead inside each group. */
-export function searchCommands(query: string, label: (id: string) => string, recent: readonly string[], all: readonly CommandDef[] = PALETTE_COMMANDS): CommandDef[] {
+export function searchCommands(query: string, label: (id: string) => string, recent: readonly string[], all: readonly CommandDef[] = PALETTE_COMMANDS, unavailable?: (d: CommandDef) => unknown): CommandDef[] {
   const q = query.trim();
   const rank = (d: CommandDef) => { const i = recent.indexOf(d.id); return i < 0 ? recent.length : i; };
   const base = all.map((d, order) => ({ d, order, name: label(d.id) })).filter((x) => matches(x.name, q));
   const starts = (x: { name: string }) => (q && x.name.toLowerCase().startsWith(q.toLowerCase()) ? 0 : 1);
-  base.sort((a, b) => (q ? starts(a) - starts(b) : 0) || rank(a.d) - rank(b.d) || a.order - b.order);
+  const off = (d: CommandDef) => (unavailable?.(d) ? 1 : 0); // commands that cannot run now sort below the runnable ones
+  base.sort((a, b) => off(a.d) - off(b.d) || (q ? starts(a) - starts(b) : 0) || rank(a.d) - rank(b.d) || a.order - b.order);
   return base.map((x) => x.d);
 }
 

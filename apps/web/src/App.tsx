@@ -104,7 +104,8 @@ function Library({ tool, bin }: { tool: Tool; bin: BinProps }) {
   );
 }
 
-const DETAIL_TABS = ["video", "audio", "speed", "animation", "adjust"] as const;
+/** Only tabs with real content. Animation lives inline in Video (keyframes); Audio, Speed and Adjust come back when they are built (add the id here). */
+const DETAIL_TABS = ["video"] as const;
 function Details() {
   const { t, dir } = useI18n();
   const [tab, setTab] = useState<(typeof DETAIL_TABS)[number]>("video");
@@ -112,11 +113,14 @@ function Details() {
   return (
     <>
       <header className="panel-head"><h2>{t("details.title")}</h2></header>
-      <div className="segmented" role="tablist" aria-label={t("details.tabs")}>
-        {DETAIL_TABS.map((id, i) => (
-          <button key={id} role="tab" aria-selected={tab === id} {...roving.itemProps(i)} onClick={() => setTab(id)}>{t(`details.tab.${id}`)}</button>
-        ))}
-      </div>
+      {/* One tab is no choice: a plain heading above is enough, the tab bar returns with the second tab. */}
+      {DETAIL_TABS.length > 1 && (
+        <div className="segmented" role="tablist" aria-label={t("details.tabs")}>
+          {DETAIL_TABS.map((id, i) => (
+            <button key={id} role="tab" aria-selected={tab === id} {...roving.itemProps(i)} onClick={() => setTab(id)}>{t(`details.tab.${id}`)}</button>
+          ))}
+        </div>
+      )}
       <div className="panel-body">
         {tab === "video" ? <Inspector /> : <EmptyState icon="edit" title={t("details.emptyTitle")} text={t("details.emptyText")} />}
       </div>
@@ -165,6 +169,7 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
       <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
       {open && (
         <div className="menu-pop" role="menu">
+          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><span>{t("palette.open")}</span><kbd className="menu-hint">{paletteKey()}</kbd></button>
           {compact && (
             <>
               {/* Small phones: the theme choices are listed here (F3), not cycled. */}
@@ -176,7 +181,6 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
               <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
             </>
           )}
-          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><span>{t("palette.open")}</span><kbd className="menu-hint">{paletteKey()}</kbd></button>
           <div className="menu-group" role="presentation">{t("menu.group.project")}</div>
           <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}>{t("menu.projects")}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}>{t("menu.new")}</button>
@@ -249,7 +253,7 @@ function Editor({ store }: { store: ProjectStore }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2600);
+    const t = setTimeout(() => setToast(null), Math.min(7000, Math.max(2600, 1800 + 55 * toast.length))); // long messages stay long enough to read
     return () => clearTimeout(t);
   }, [toast]);
 
