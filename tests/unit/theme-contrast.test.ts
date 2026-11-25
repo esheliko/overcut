@@ -97,6 +97,29 @@ for (const [theme, tokens] of COMBOS) {
   });
 }
 
+/** A disabled toolbar icon is `--fg` at the `.icon-btn:disabled` opacity (styles.css). It must still read against the bars: 3:1, the non-text bar. */
+const DISABLED_ICON_OPACITY = Number(/\.icon-btn:disabled\s*\{\s*opacity:\s*([\d.]+)/.exec(readFileSync(new URL("../../apps/web/src/styles.css", import.meta.url), "utf8"))?.[1] ?? NaN);
+for (const [theme, tokens] of COMBOS) {
+  test(`theme ${theme}: a disabled toolbar icon still reads on the bars (3:1)`, () => {
+    assert.ok(DISABLED_ICON_OPACITY >= 0.5, `.icon-btn:disabled opacity ${DISABLED_ICON_OPACITY} is below 0.5`);
+    const get = (name: string): RGBA => {
+      let v = tokens[name]!;
+      const ref = /^var\(--([\w-]+)\)$/.exec(v);
+      if (ref) v = tokens[ref[1]!]!;
+      return parseColor(v);
+    };
+    const fg = get("fg");
+    const icon: RGBA = [fg[0], fg[1], fg[2], DISABLED_ICON_OPACITY];
+    const fails: string[] = [];
+    for (const bg of ["surface", "surface-2", "surface-3"]) {
+      const back = over(get(bg), [0, 0, 0, 1]);
+      const r = ratio(over(icon, back), back);
+      if (r < 3) fails.push(`disabled icon on --${bg}: ${r.toFixed(2)} < 3`);
+    }
+    assert.deepEqual(fails, []);
+  });
+}
+
 test("every accent overrides all four accent roles in every theme (no half-set accent)", () => {
   for (const th of Object.values(SELECTOR)) for (const a of ACCENT_NAMES.slice(1)) {
     const o = block(`${th}[data-accent="${a}"]`);
