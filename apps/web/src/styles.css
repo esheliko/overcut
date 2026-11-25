@@ -275,6 +275,9 @@ h2, p { margin: 0; }
 .bin-none { color: var(--muted); text-align: center; padding: 16px 0; }
 .bin-card { display: flex; align-items: center; gap: 10px; padding: 6px 8px; min-height: 56px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); cursor: grab; }
 .bin-card[data-status="unsupported"], .bin-card[data-status="offline"] { cursor: default; border-color: var(--danger, var(--line-strong)); }
+/* An offline card has a message and two actions: they wrap onto their own line so the name keeps its width (320 px desktop panel). Normal cards are unchanged. */
+.bin-card[data-status="offline"] { flex-wrap: wrap; }
+.bin-card[data-status="offline"] .bin-text { flex: 1 1 140px; }
 .bin-thumb { flex: none; display: grid; place-items: center; width: 64px; height: 36px; border-radius: 8px; overflow: hidden; background: var(--surface-3); color: var(--muted); }
 .bin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .bin-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
