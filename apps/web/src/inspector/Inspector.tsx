@@ -1,8 +1,9 @@
 import { useRef, type ReactNode } from "react";
-import type { Clip, ClipTransform, Fit, Project } from "@app/engine-client";
+import type { Clip, ClipTransform, Fit, Op, Project } from "@app/engine-client";
 import { useI18n } from "../i18n";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { isIdentity, newGestureKey, setField, setFit, toggleFlip, valuesOf, RESET, rangeOf, type NumKey } from "./transformModel";
+import { EASING_CHOICES, PROPS_OF, easingId, easingOps, keyNear, keyState, neighbourKey, relativeTicks, setKeyOps, ticksPerFrame, ticksToFrame, toggleKeyOps, type EasingId } from "./keyframeModel";
 import "./inspector.css";
 
 /** The one selected video clip, or null (nothing, several, or an audio clip). */
@@ -22,13 +23,34 @@ export function selectedVideoClip(project: Project | null, selection: ReadonlySe
   return found;
 }
 
-/** Sends `set_clip_transform` for `clip`; edits that share a `key` are one undo step. */
+/**
+ * Sends the edit of a whole transform for `clip` (`set_clip_transform`); edits that share a `key` are one undo step. A number that changed
+ * on an animated property is not written as its static value but as a keyframe at the playhead (so a handle drag or field edit on an
+ * animated clip updates the key there, M2-004).
+ */
 export function useTransformEdit() {
   const store = useStore();
   const { t } = useI18n();
-  return (clip: string, next: ClipTransform, key?: number) => void store.apply({ op: "set_clip_transform", clip, transform: next }, key, t("inspector.undoLabel"));
+  return (clip: string, next: ClipTransform, key?: number) => {
+    const s = store.getState();
+    const c = selectedVideoClip(s.project, new Set([clip]));
+    const rate = s.project?.sequences[0]?.frame_rate;
+    const cur = c?.transform;
+    const animated = c && rate && cur ? NUM_KEYS.filter((k) => cur[k]?.keys?.length && next[k]?.value !== cur[k]?.value) : [];
+    if (!c || !rate || animated.length === 0) return void store.apply({ op: "set_clip_transform", clip, transform: next }, key, t("inspector.undoLabel"));
+    const rel = relativeTicks(c, s.playhead, rate);
+    const keyed: ClipTransform = { ...next };
+    const ops: Op[] = [];
+    for (const k of animated) {
+      keyed[k] = cur![k];
+      ops.push(...setKeyOps(clip, cur, [k], rel, next[k]!.value, ticksPerFrame(rate) / 2));
+    }
+    const rest = JSON.stringify(keyed) !== JSON.stringify(cur);
+    void store.apply(rest ? [{ op: "set_clip_transform", clip, transform: keyed }, ...ops] : ops, key, t("inspector.undoLabel"));
+  };
 }
 
+const NUM_KEYS: NumKey[] = ["position_x", "position_y", "scale_x", "scale_y", "rotation", "opacity", "crop_left", "crop_top", "crop_right", "crop_bottom"];
 const PCT = 100;
 interface FieldDef { key: NumKey; label: string; unit: "%" | "°"; mul: number; step: number }
 const FIELDS: FieldDef[] = [
@@ -37,6 +59,8 @@ const FIELDS: FieldDef[] = [
   { key: "scale_x", label: "inspector.scale", unit: "%", mul: PCT, step: 5 },
   { key: "rotation", label: "inspector.rotation", unit: "°", mul: 1, step: 1 },
   { key: "opacity", label: "inspector.opacity", unit: "%", mul: PCT, step: 5 },
+];
+const CROPS: FieldDef[] = [
   { key: "crop_left", label: "inspector.cropLeft", unit: "%", mul: PCT, step: 1 },
   { key: "crop_top", label: "inspector.cropTop", unit: "%", mul: PCT, step: 1 },
   { key: "crop_right", label: "inspector.cropRight", unit: "%", mul: PCT, step: 1 },
@@ -44,58 +68,140 @@ const FIELDS: FieldDef[] = [
 ];
 const FITS: Fit[] = ["contain", "cover", "stretch"];
 
-/** Transform of the selected clip: numeric fields, fit, flip, reset. Every field editing session (focus to blur) is one undo step. */
+/** One diamond outline / filled; `state` decides which (the colour and the aria state say the same in words). */
+function Diamond({ filled }: { filled: boolean }): ReactNode {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+      <path d="M12 3 21 12 12 21 3 12Z" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Transform of the selected clip: numeric fields with keyframe controls, then crop / flip / fit, reset. Every field editing session (focus to blur) is one undo step. */
 export function Inspector(): ReactNode {
   const { t } = useI18n();
+  const store = useStore();
   const project = useProjectStore((s) => s.project);
   const selection = useProjectStore((s) => s.selection);
   const readOnly = useProjectStore((s) => s.readOnly);
+  const playhead = useProjectStore((s) => s.playhead);
   const edit = useTransformEdit();
   const key = useRef<number | undefined>(undefined);
   const clip = selectedVideoClip(project, selection);
-  if (!clip) return <p className="insp-empty">{t("inspector.none")}</p>;
+  if (!clip || !project) return <p className="insp-empty">{t("inspector.none")}</p>;
+  const rate = project.sequences[0]!.frame_rate;
   const tr = clip.transform;
-  const v = valuesOf(tr);
-  const set = (k: NumKey, value: number) => {
+  const rel = relativeTicks(clip, playhead, rate);
+  const tol = ticksPerFrame(rate) / 2;
+  const onClip = rel >= 0 && rel < clip.duration;
+  const v = valuesOf(tr, rel);
+  const gesture = () => key.current ?? (key.current = newGestureKey());
+  const label = t("inspector.undoLabel");
+  const set = (f: FieldDef, value: number) => {
+    const props = PROPS_OF[f.key]!;
+    if (tr?.[props[0]!]?.keys?.length) {
+      // An animated property: the edit sets (or updates) the key at the playhead.
+      const [lo, hi] = rangeOf(f.key, v);
+      const clamped = Math.min(hi, Math.max(lo, value));
+      void store.apply(setKeyOps(clip.id, tr, props, rel, clamped, tol), gesture(), label);
+      return;
+    }
     // Scale is uniform here: both axes move together (the handles also scale uniformly).
-    let next = setField(tr, k, value);
-    if (k === "scale_x") next = setField(next, "scale_y", value);
-    edit(clip.id, next, key.current ?? (key.current = newGestureKey()));
+    let next = setField(tr, f.key, value);
+    if (f.key === "scale_x") next = setField(next, "scale_y", value);
+    edit(clip.id, next, gesture());
+  };
+  const step = (f: FieldDef, dir: -1 | 1) => {
+    const to = neighbourKey(tr?.[PROPS_OF[f.key]![0]!], rel, tol, dir);
+    if (to !== undefined) store.setPlayhead(Math.max(0, ticksToFrame(clip.start + to, rate)));
+  };
+  const field = (f: FieldDef) => {
+    const props = PROPS_OF[f.key]!;
+    const anim = tr?.[props[0]!];
+    const state = keyState(anim, rel, tol);
+    const near = keyNear(anim, rel, tol);
+    const [lo, hi] = rangeOf(f.key, v);
+    const name = t(f.label);
+    return (
+      <div key={f.key} className="insp-field" data-keystate={state}>
+        <label className="insp-fl">
+          <span>{name}</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            disabled={readOnly}
+            data-testid={`insp-${f.key}`}
+            step={f.step}
+            min={lo * f.mul}
+            max={hi * f.mul}
+            value={Math.round(v[f.key] * f.mul * 100) / 100}
+            onFocus={() => (key.current = newGestureKey())}
+            onBlur={() => (key.current = undefined)}
+            onChange={(e) => e.currentTarget.value !== "" && set(f, Number(e.currentTarget.value) / f.mul)}
+          />
+          <em>{f.unit}</em>
+        </label>
+        <button
+          type="button"
+          className="insp-kbtn insp-diamond"
+          data-testid={`insp-key-${f.key}`}
+          aria-pressed={state === "on"}
+          aria-label={t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name })}
+          disabled={readOnly || !onClip}
+          onClick={() => void store.apply(toggleKeyOps(clip.id, tr, props, rel, tol, DEFAULT_OF[f.key]), undefined, label)}
+        >
+          <Diamond filled={state === "on"} />
+        </button>
+        {state !== "none" && (
+          <div className="insp-sub">
+            <button type="button" className="insp-kbtn" data-testid={`insp-prevkey-${f.key}`} aria-label={t("inspector.prevKey", { name })} disabled={neighbourKey(anim, rel, tol, -1) === undefined} onClick={() => step(f, -1)}>‹</button>
+            {near ? (
+              <select
+                className="insp-ease"
+                aria-label={t("inspector.easing")}
+                data-testid={`insp-ease-${f.key}`}
+                disabled={readOnly}
+                value={easingId(near.easing)}
+                onChange={(e) => {
+                  const pick = EASING_CHOICES.find((c) => c.id === e.currentTarget.value);
+                  if (pick) void store.apply(easingOps(clip.id, tr, props, rel, tol, pick.easing), undefined, t("inspector.easingLabel"));
+                }}
+              >
+                {easingId(near.easing) === "custom" && <option value="custom">{t("inspector.ease.custom")}</option>}
+                {EASING_CHOICES.map((c) => <option key={c.id} value={c.id}>{t(`inspector.ease.${c.id}` as `inspector.ease.${EasingId}`)}</option>)}
+              </select>
+            ) : (
+              <span className="insp-between">{t("inspector.betweenKeys")}</span>
+            )}
+            <button type="button" className="insp-kbtn" data-testid={`insp-nextkey-${f.key}`} aria-label={t("inspector.nextKey", { name })} disabled={neighbourKey(anim, rel, tol, 1) === undefined} onClick={() => step(f, 1)}>›</button>
+          </div>
+        )}
+      </div>
+    );
   };
   return (
     <div className="insp" data-testid="inspector-fields">
-      {FIELDS.map((f) => {
-        const [lo, hi] = rangeOf(f.key, v);
-        return (
-          <label key={f.key} className="insp-field">
-            <span>{t(f.label)}</span>
-            <input
-              type="number"
-              inputMode="decimal"
-              disabled={readOnly}
-              data-testid={`insp-${f.key}`}
-              step={f.step}
-              min={lo * f.mul}
-              max={hi * f.mul}
-              value={Math.round(v[f.key] * f.mul * 100) / 100}
-              onFocus={() => (key.current = newGestureKey())}
-              onBlur={() => (key.current = undefined)}
-              onChange={(e) => e.currentTarget.value !== "" && set(f.key, Number(e.currentTarget.value) / f.mul)}
-            />
-            <em>{f.unit}</em>
-          </label>
-        );
-      })}
-      <div className="insp-row" role="group" aria-label={t("inspector.fit")}>
-        {FITS.map((f) => (
-          <button key={f} aria-pressed={(tr?.fit ?? "contain") === f} disabled={readOnly} onClick={() => edit(clip.id, setFit(tr, f))} data-testid={`insp-fit-${f}`}>{t(`inspector.fit.${f}`)}</button>
-        ))}
-      </div>
+      {FIELDS.map(field)}
+      <details className="insp-more">
+        <summary data-testid="insp-more">{t("inspector.more")}</summary>
+        <div className="insp-more-body">
+          {CROPS.map(field)}
+          <div className="insp-row" role="group" aria-label={t("inspector.fit")}>
+            {FITS.map((f) => (
+              <button key={f} aria-pressed={(tr?.fit ?? "contain") === f} disabled={readOnly} onClick={() => edit(clip.id, setFit(tr, f))} data-testid={`insp-fit-${f}`}>{t(`inspector.fit.${f}`)}</button>
+            ))}
+          </div>
+          <div className="insp-row">
+            <button aria-pressed={!!tr?.flip_h} disabled={readOnly} onClick={() => edit(clip.id, toggleFlip(tr, "h"))} data-testid="insp-flip-h">{t("inspector.flipH")}</button>
+            <button aria-pressed={!!tr?.flip_v} disabled={readOnly} onClick={() => edit(clip.id, toggleFlip(tr, "v"))} data-testid="insp-flip-v">{t("inspector.flipV")}</button>
+          </div>
+        </div>
+      </details>
       <div className="insp-row">
-        <button aria-pressed={!!tr?.flip_h} disabled={readOnly} onClick={() => edit(clip.id, toggleFlip(tr, "h"))} data-testid="insp-flip-h">{t("inspector.flipH")}</button>
-        <button aria-pressed={!!tr?.flip_v} disabled={readOnly} onClick={() => edit(clip.id, toggleFlip(tr, "v"))} data-testid="insp-flip-v">{t("inspector.flipV")}</button>
         <button disabled={readOnly || isIdentity(tr)} onClick={() => edit(clip.id, RESET)} data-testid="insp-reset">{t("inspector.reset")}</button>
       </div>
     </div>
   );
 }
+
+const DEFAULT_OF: Record<NumKey, number> = { position_x: 0, position_y: 0, scale_x: 1, scale_y: 1, rotation: 0, opacity: 1, crop_left: 0, crop_top: 0, crop_right: 0, crop_bottom: 0 };

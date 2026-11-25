@@ -770,5 +770,19 @@
   "inspector.fit.stretch": "Stretch",
   "inspector.flipH": "Flip horizontal",
   "inspector.flipV": "Flip vertical",
-  "inspector.reset": "Reset"
+  "inspector.reset": "Reset",
+  "inspector.more": "Crop & flip",
+  "inspector.addKey": "Add keyframe for {name}",
+  "inspector.removeKey": "Remove keyframe for {name}",
+  "inspector.prevKey": "Previous keyframe of {name}",
+  "inspector.nextKey": "Next keyframe of {name}",
+  "inspector.easing": "Easing",
+  "inspector.betweenKeys": "Between keyframes",
+  "inspector.easingLabel": "keyframe easing",
+  "inspector.ease.linear": "Linear",
+  "inspector.ease.ease-in": "Ease in",
+  "inspector.ease.ease-out": "Ease out",
+  "inspector.ease.ease-in-out": "Ease in-out",
+  "inspector.ease.hold": "Hold",
+  "inspector.ease.custom": "Custom"
 }

@@ -4,6 +4,7 @@
  * drag or one field-editing session a single undo step.
  */
 import type { Animated, ClipTransform, Fit } from "@app/engine-client";
+import { evalAnimated } from "./keyframeModel";
 
 export type NumKey = "position_x" | "position_y" | "scale_x" | "scale_y" | "rotation" | "opacity" | "crop_left" | "crop_top" | "crop_right" | "crop_bottom";
 
@@ -12,11 +13,13 @@ export type Values = Record<NumKey, number>;
 
 export const DEFAULTS: Values = { position_x: 0, position_y: 0, scale_x: 1, scale_y: 1, rotation: 0, opacity: 1, crop_left: 0, crop_top: 0, crop_right: 0, crop_bottom: 0 };
 
-const num = (a: Animated | undefined, d: number): number => (a && Number.isFinite(a.value) ? a.value : d);
+const num = (a: Animated | undefined, d: number, rel: number | undefined): number =>
+  rel !== undefined ? evalAnimated(a, d, rel) : a && Number.isFinite(a.value) ? a.value : d;
 
-export function valuesOf(t: ClipTransform | undefined): Values {
+/** The editable numbers; with `rel` (clip-relative ticks at the playhead) animated properties are evaluated there, else the static value. */
+export function valuesOf(t: ClipTransform | undefined, rel?: number): Values {
   const out = { ...DEFAULTS };
-  if (t) for (const k of Object.keys(DEFAULTS) as NumKey[]) out[k] = num(t[k], DEFAULTS[k]);
+  if (t) for (const k of Object.keys(DEFAULTS) as NumKey[]) out[k] = num(t[k], DEFAULTS[k], rel);
   return out;
 }
 
@@ -76,6 +79,7 @@ export const RESET: ClipTransform = {};
 
 export function isIdentity(t: ClipTransform | undefined): boolean {
   if (!t) return true;
+  if ((Object.keys(DEFAULTS) as NumKey[]).some((k) => t[k]?.keys?.length)) return false;
   const v = valuesOf(t);
   return (Object.keys(DEFAULTS) as NumKey[]).every((k) => v[k] === DEFAULTS[k]) && !t.flip_h && !t.flip_v && (t.fit ?? "contain") === "contain" && !t.anchor_x?.value && !t.anchor_y?.value;
 }
@@ -85,4 +89,15 @@ let gesture = 0x4000_0000;
 export function newGestureKey(): number {
   gesture = gesture >= 0x7fff_ffff ? 0x4000_0000 : gesture + 1;
   return gesture;
+}
+
+/**
+ * Rotation while dragging the rotate handle: Shift snaps to 15-degree steps, otherwise to a right angle (0, 90, 180, 270, ...) when within
+ * 3 degrees of one. Pure; the handle (preview/TransformHandles) calls it with the raw angle in degrees.
+ */
+export function snapRotation(deg: number, shift: boolean): number {
+  if (!Number.isFinite(deg)) return deg;
+  if (shift) return Math.round(deg / 15) * 15 || 0;
+  const near = Math.round(deg / 90) * 90 || 0; // `|| 0` keeps -0 out
+  return Math.abs(deg - near) <= 3 ? near : deg;
 }
