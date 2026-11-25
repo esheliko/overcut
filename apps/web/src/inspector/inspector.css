@@ -22,3 +22,9 @@
 
 /* The handles' 44 px hit areas can poke past the canvas edge: never let them widen the page. */
 .stage-view { overflow: clip; }
+
+/* While a clip is being transformed: the frame is outlined and everything outside it is dimmed, so a layer dragged off-canvas shows where the picture ends.
+   The handles (z-index 3) stay above the dim; the stage clips both, so nothing reaches outside the preview panel. */
+.canvas.framed { outline: 1.5px solid var(--line-strong); outline-offset: 0; }
+.canvas.framed::after { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; border-radius: inherit; box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--stage) 58%, transparent); }
+.stage { overflow: clip; }
