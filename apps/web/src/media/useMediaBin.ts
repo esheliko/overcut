@@ -181,7 +181,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
             const place = insertOps(withRef, ref, res.probed, timelineEnd(cur));
             if (place) { ops.push(...place); added++; }
           }
-          patch(id, { status: "ready", durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
+          patch(id, { status: "ready", kind: res.probed.kind, durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
           await store.apply(ops, undefined, t.importLabel(s.file.name));
           imported++;
         } catch (e) {

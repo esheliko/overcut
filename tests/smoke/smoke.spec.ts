@@ -28,10 +28,11 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
   await expect(page.getByTestId("panel-preview")).toBeVisible();
   await expect(page.getByTestId("panel-timeline")).toBeVisible();
   const tools = page.getByRole("navigation", { name: "Tools" });
-  await expect(tools).toBeVisible();
-  const box = await tools.getByRole("button", { name: "Media" }).boundingBox();
-  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44); // touch target
   if (phone) {
+    await expect(tools).toBeVisible();
+    const box = (await tools.getByRole("button", { name: "Media" }).boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(44); // touch target
+    expect((await tools.boundingBox())!.width).toBeGreaterThan((page.viewportSize()?.width ?? 0) * 0.8); // the tools (Media, Edit) fill the bar, not lone tabs in the corner
     await expect(page.getByTestId("panel-tool")).toBeHidden();
     await tools.getByRole("button", { name: "Media" }).click();
     await expect(page.getByTestId("panel-tool")).toBeVisible();
@@ -40,10 +41,11 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
   } else {
     await expect(page.getByTestId("panel-tool")).toBeVisible();
     await expect(page.getByTestId("panel-tool").getByRole("heading", { name: "Media" })).toBeVisible();
+    await expect(tools).toHaveCount(0); // one tool and its panel always open: no rail to switch anything
   }
   expect(info.project.name).toMatch(/desktop|phone/);
   // Only tools that work: Media and Edit (the clip transform, M2); no Audio, Text, Captions, Effects... promises.
-  await expect(tools.getByRole("button")).toHaveCount(info.project.name === "phone" ? 2 : 1); // wide screens dock Details instead of an Edit button
+  await expect(tools.getByRole("button")).toHaveCount(phone ? 2 : 0); // wide screens dock Details and Media, so there is no rail at all
 });
 
 test("transport and timeline: play advances the playhead, the canvas timeline paints", async ({ page }) => {
@@ -153,8 +155,8 @@ test("language and direction: the page declares lang and dir, and a right-to-lef
   await expect(page.locator("html")).toHaveAttribute("lang", "en-XB");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   if ((page.viewportSize()?.width ?? 0) >= 720) {
-    // the tool rail moves to the right edge; the preview is on its left
-    const rail = (await page.getByRole("navigation").first().boundingBox())!;
+    // the Media panel moves to the right edge; the preview is on its left
+    const rail = (await page.getByTestId("panel-tool").boundingBox())!;
     const stage = (await page.getByTestId("panel-preview").boundingBox())!;
     expect(rail.x).toBeGreaterThan(stage.x);
   }
@@ -281,6 +283,27 @@ test("top bar on a small phone: project name truncates but stays editable, Expor
   }
 });
 
+// The project name typed before the project has finished opening must not be reset to the default when the open lands (it was: the open overwrote the field).
+test("project name typed before the project opens is not reset when it opens", async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((done) => (release = done));
+  // Hold the storage workers (the projects list and the project itself) until the test lets them go: a slow device, as in the field.
+  await page.route(/worker[^/]*\.js(\?.*)?$/, async (route) => { await gate; await route.continue(); });
+  await page.goto("/");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  const name = page.getByLabel("Project name");
+  await expect(name).toBeVisible();
+  await name.click();
+  await page.keyboard.type("A long name typed before the project has opened");
+  const shown = await name.inputValue();
+  release();
+  await expect(page.getByTestId("save-state")).not.toHaveAttribute("data-state", "opening", { timeout: 30_000 });
+  await expect(name).toHaveValue(shown); // the open must not change what the field shows
+  await name.fill("My trip");
+  await name.blur();
+  await expect(name).toHaveValue("My trip");
+});
+
 // M1-030: one deliberate layout per form-factor profile (docs/features/editor-layouts.md). The test sets its own viewport, so it runs once.
 const PROFILES = [
   { name: "phone-portrait", w: 390, h: 844, inspector: false, docked: false },
@@ -300,7 +323,9 @@ for (const p of PROFILES) {
     const box = async (id: string) => (await page.getByTestId(id).boundingBox())!;
     const preview = await box("panel-preview");
     const timeline = await box("panel-timeline");
-    const tools = (await page.getByRole("navigation", { name: "Tools" }).boundingBox())!;
+    // docked layouts with one tool have no rail (its panel is always open); phones keep the bar or the side rail
+    if (p.inspector) await expect(page.getByRole("navigation", { name: "Tools" })).toHaveCount(0); // Media and Details both docked: nothing to switch. A tablet keeps its rail for the Edit sheet
+    const tools = p.inspector ? await box("panel-tool") : (await page.getByRole("navigation", { name: "Tools" }).boundingBox())!;
     for (const b of [preview, timeline, tools]) {
       expect(b.width).toBeGreaterThan(40);
       expect(b.height).toBeGreaterThan(40);
@@ -314,6 +339,20 @@ for (const p of PROFILES) {
     expect(overlap(timeline, tools)).toBe(false);
     expect(preview.height).toBeGreaterThan(p.h * 0.2); // the preview is never squeezed out
     expect(timeline.height).toBeGreaterThan(100);
+    if (p.name === "desktop" || p.name === "ultrawide") { // P3: the timeline toolbar is one row from 1100 px up (M2: edit group with the tool and More pickers, then zoom)
+      expect(await page.locator('[data-testid="tl-bar"]').count()).toBe(1);
+      const tops = await page.locator('[data-testid="tl-bar"] > *').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+      expect(tops.length).toBeGreaterThanOrEqual(2); // the edit group and the zoom
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(12); // all on one row
+      expect(await page.locator('[data-testid="tl-bar"] .zoom').count()).toBe(1);
+    }
+    if (p.name === "phone-portrait" && p.w === 320) { // A5: the track area holds the ruler and two lanes (V1, A1) without clipping
+      expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(30 + 2 * 52);
+    }
+    if (p.name === "phone-landscape") { // B3: one toolbar row, and the track area keeps at least 160 px
+      expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(160);
+      for (const b of await page.locator('[data-testid="tl-bar"] .icon-btn').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
     expect(await page.getByTestId("panel-inspector").count()).toBe(p.inspector ? 1 : 0);
     if (p.docked) await expect(page.getByTestId("panel-tool")).toBeVisible();
     else await expect(page.getByTestId("panel-tool")).toBeHidden();

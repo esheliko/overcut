@@ -225,7 +225,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
   const [name, setName] = useState<string | null>(null); // null = the localized default name
-  const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | "shortcuts" | { title: string; body: string; confirm: string; run(): Promise<void> }>(null);
+  const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | "shortcuts" | { title: string; body: string; confirm: string; danger: boolean; run(): Promise<void> }>(null);
   const [locating, setLocating] = useState(false); // after opening a file: offer to reconnect media that is not on this device
   const [playing, setPlaying] = useState(false);
   const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
@@ -388,7 +388,7 @@ function Editor({ store }: { store: ProjectStore }) {
   };
   const confirmThen = (what: "new" | "open", name: string, run: () => Promise<void>) => {
     if (!dirty()) return void run();
-    setDialog({ title: t(`project.${what}.title`), body: t(`project.${what}.body`, { name }), confirm: t(`project.${what}.confirm`), run });
+    setDialog({ title: t(`project.${what}.title`), body: t(`project.${what}.body`, { name }), confirm: t(`project.${what}.confirm`), danger: what === "new", run });
   };
   const onNew = () => {
     if (!core) return;
@@ -574,6 +574,8 @@ function Editor({ store }: { store: ProjectStore }) {
   const active = TOOLS.find((x) => x.id === activeId && shown(x)) ?? TOOLS[0]!;
   const activeLabel = t(`tool.${active.id}.label`);
   const rail = TOOLS.filter((x) => shown(x) && !(wide && x.id === "edit"));
+  /** Tablet and up dock the tool panel open, so a rail with a single tool (Media, in M1) switches nothing: it is left out and its column goes to the panels. */
+  const railHidden = roomy && rail.length === 1;
   const themeName = t(`theme.${themePref}`);
   const engineText = engine.status === "loading" ? t("engine.starting")
     : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
@@ -590,7 +592,7 @@ function Editor({ store }: { store: ProjectStore }) {
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           {!compact && <ThemeMenu pref={themePref} onPick={pickTheme} />}
         </div>
-        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
+        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} readOnly={openId === null} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
           {engine.status === "error"
             ? <span className="chip" data-testid="engine" data-state="error">
@@ -609,15 +611,15 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
       </header>
 
-      <main className="workspace" data-inspector={wide && DETAILS_READY}>
-        <nav className="tools" aria-label={t("tools.nav")}>
+      <main className="workspace" data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined}>
+        {!railHidden && <nav className="tools" aria-label={t("tools.nav")}>
           {rail.map((x) => (
             <button key={x.id} className="tool" aria-pressed={activeId === x.id && (roomy || sheet)} onClick={() => pick(x.id)}>
               <Icon name={x.icon} size={24} />
               <span>{t(`tool.${x.id}.label`)}</span>
             </button>
           ))}
-        </nav>
+        </nav>}
 
         <section className="library" data-open={sheet} aria-label={activeLabel} data-testid="panel-tool">
           <button className="sheet-close icon-btn" aria-label={t("panel.close")} onClick={() => setSheet(false)}><Icon name="close" size={18} /></button>
@@ -651,7 +653,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
       {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
       {palette && <Palette onClose={() => setPalette(false)} />}
-      {dialog && typeof dialog === "object" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
+      {dialog && typeof dialog === "object" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} danger={dialog.danger} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       </>}
       {refusals.length > 0 && !roomy && (

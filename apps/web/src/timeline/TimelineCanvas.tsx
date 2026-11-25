@@ -15,7 +15,7 @@ import { markerAt } from "./markers";
 import { COMMAND_EVENT } from "../commands/palette";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import type { Tool } from "./ripple";
-import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
+import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, xToTime, zoomAt, zoomKeeping, type View } from "./view";
 
 export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement };
 const CLIP_LIST_MAX = 200;
@@ -153,8 +153,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   useEffect(() => {
     const v = view.current;
     if (Math.abs(v.pps - zoom) < 1e-6) return;
-    const px = timeToX(v, frame / fps);
-    zoomAt(v, zoom, px > gut(v) && px < v.width ? px : gut(v) + (v.width - gut(v)) / 2);
+    zoomKeeping(v, zoom, frame / fps);
     invalidate();
   }, [zoom]);
 
