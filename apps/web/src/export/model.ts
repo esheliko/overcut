@@ -271,7 +271,7 @@ export function presetHint(id: PresetId, src: Source, locale?: string): { key: s
     case "small": return { key: short < 720 ? "export.preset.small.capped" : "export.preset.small.hint", values: { size } };
     case "vertical": return { key: needsBars(id, src) ? "export.preset.vertical.bars" : "export.preset.vertical.hint", values: { size } };
     case "facebook": return { key: short < 1080 ? "export.preset.facebook.capped" : "export.preset.facebook.hint", values: { size } };
-    case "x": return { key: short < 1080 ? "export.preset.x.capped" : "export.preset.x.hint", values: { size } };
+    case "x": return { key: short < 1080 ? "export.preset.x.capped" : "export.preset.x.hint", values: { size, cap: formatBytes(PLATFORMS[id]!.capBytes!, locale) } };
     case "whatsapp":
     case "discord": return { key: "export.preset.capped.hint", values: { size, cap: formatBytes(PLATFORMS[id]!.capBytes!, locale) } };
   }
