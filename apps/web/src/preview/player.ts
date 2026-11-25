@@ -5,8 +5,8 @@
  * the layers to the compositor. A frame that cannot be ready in time is skipped, never waited for.
  * Everything platform-specific (clock, audio output, renderer, media) is injected, so the logic runs under fake clocks in unit tests.
  */
-import { layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle } from "@app/engine-client";
-import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "./audioMix";
+import { ClipStretchCache, layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle, type Stretcher } from "@app/engine-client";
+import { limit, mixSegment, mixStretched, sampleAtTicks, sourceSamplesFor } from "./audioMix";
 import type { RenderLayer, Renderer } from "./renderer";
 import { FrameCache, type Thumb } from "./scrubCache";
 import { frameAtTicks, frameStartTicks, positionAt, prefetchFrames, shuttle, TICKS_PER_SECOND, type Anchor, type Rate } from "./timing";
@@ -32,6 +32,8 @@ export interface PlayerDeps {
   /** Timeline length in ticks. */
   endTicks: number;
   evaluate(ticks: number, audioSamples: number): Promise<FrameDescription>;
+  /** Pitch-keeping stretch for clips whose speed is not 1 (the wasm `stretch_audio`); without it they are resampled (pitch shifts). */
+  stretch?: Stretcher;
   media(id: string): MediaHandle | undefined;
   renderer: Renderer;
   /** Audio output; without it the player runs against `fallbackClock` and is silent. */
@@ -623,10 +625,35 @@ export class Player {
     }
   }
 
+  private stretched?: ClipStretchCache;
+
+  /** Whole clips stretched once and kept (a few at a time); built on first use, rate = the audio output's. */
+  private stretchCache(rate: number): ClipStretchCache | undefined {
+    const stretch = this.d.stretch;
+    if (!stretch) return undefined;
+    return (this.stretched ??= new ClipStretchCache(rate, stretch, async (id, start, count) => {
+      const m = this.d.media(id);
+      const ch = m?.info.audio?.channels ?? 0;
+      const planar = [new Float32Array(count), new Float32Array(count)];
+      if (!m || !ch) return planar;
+      const pcm = await m.audio(start, count);
+      const frames = Math.min(count, Math.floor(pcm.length / ch));
+      for (let i = 0; i < frames; i++) {
+        planar[0]![i] = pcm[i * ch]!;
+        planar[1]![i] = pcm[i * ch + (ch > 1 ? 1 : 0)]!;
+      }
+      return planar;
+    }));
+  }
+
   private async mixOne(left: Float32Array, right: Float32Array, seg: AudioSegment, skip: number): Promise<void> {
     const media = this.d.media(seg.media);
     const ch = media?.info.audio?.channels;
     if (!media || !ch) return;
+    if (seg.speed.num !== seg.speed.den) {
+      const clip = await this.stretchCache(media.audioRate)?.get(seg);
+      if (clip) return mixStretched(left, right, seg, clip, skip);
+    }
     const start = sampleAtTicks(seg.source_start, media.audioRate);
     const src = await media.audio(start, sourceSamplesFor(seg));
     mixSegment(left, right, seg, src, ch, skip);

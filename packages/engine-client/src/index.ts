@@ -8,6 +8,7 @@ export { createExportApi, exportNotYet, type ExportHost, type WorkerLike } from 
 import type { WorkerLike } from "./export/job";
 import type { GpuRenderer } from "./render";
 import type { Evaluator } from "./wasm";
+import type { Stretcher } from "./audio-stretch";
 export { probeExportFormats, type ExportFormatId, type ExportFormatOption, type ExportFormats } from "./export/options";
 export { defaultVideoBitrate } from "./export/presets";
 export { cleanupStaleExports, opfsStorage, type ExportStorage } from "./export/storage";
@@ -42,6 +43,11 @@ export async function openMediaApi(): Promise<MediaApi> {
 export async function openEvaluator(projectJson: string): Promise<Evaluator> {
   return (await import("./wasm")).openWasmEvaluator(projectJson);
 }
+/** The pitch-keeping audio stretcher for clip speed (`docs/features/speed.md`). Browser and desktop webview (same wasm module). */
+export async function openStretcher(): Promise<Stretcher> {
+  return (await import("./wasm")).openWasmStretcher();
+}
+export { ClipStretchCache, MAX_STRETCH_SECONDS, type ReadPlanar, type Stretcher } from "./audio-stretch";
 export * from "./model.generated";
 export { codecName } from "./decode/errors";
 export { FINGERPRINT_WINDOW, fingerprintFile, fingerprintSize, relinkMedia, type Candidate, type RelinkResult, type Sliceable } from "./media";

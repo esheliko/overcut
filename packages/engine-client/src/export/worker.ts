@@ -1,5 +1,6 @@
 import type { FrameDescription, MediaApi } from "../types";
 import type { GpuRenderer } from "../render";
+import type { Stretcher } from "../audio-stretch";
 import { runExport } from "./pipeline";
 import { opfsStorage, type ExportStorage } from "./storage";
 import { ExportError, type FromWorker, type ToWorker } from "./types";
@@ -12,7 +13,7 @@ export interface WorkerScope {
 }
 
 /** Loads the engine inside the worker and opens the snapshotted project (the wasm backend's `openWasmEvaluator`; tests pass a fake). */
-export type OpenEvaluator = (projectJson: string) => Promise<{ evaluate(sequence: string, ticks: number, samples: number): FrameDescription; media: MediaApi; free(): void }>;
+export type OpenEvaluator = (projectJson: string) => Promise<{ evaluate(sequence: string, ticks: number, samples: number): FrameDescription; stretch?: Stretcher; media: MediaApi; free(): void }>;
 
 /** Creates the GPU compositor on the export's own `OffscreenCanvas` (the wasm backend's `openWasmRenderer`). */
 export type OpenRenderer = (canvas: OffscreenCanvas) => Promise<GpuRenderer>;
@@ -32,7 +33,7 @@ export function serveExportWorker(scope: WorkerScope, openEvaluator: OpenEvaluat
     let web: Awaited<ReturnType<typeof createWebEnv>> | undefined;
     try {
       engine = await openEvaluator(JSON.stringify(msg.project));
-      web = await createWebEnv({ jobId, project: msg.project, settings: msg.settings, signal: ctl.signal, storage, evaluate: engine.evaluate, media: engine.media, openRenderer });
+      web = await createWebEnv({ jobId, project: msg.project, settings: msg.settings, signal: ctl.signal, storage, evaluate: engine.evaluate, stretch: engine.stretch, media: engine.media, openRenderer });
       const r = await runExport(web.env, ctl.signal, (progress) => scope.postMessage({ type: "progress", jobId, progress }));
       const seconds = (web.plan.totalFrames * web.plan.fpsDen) / web.plan.fpsNum;
       scope.postMessage({

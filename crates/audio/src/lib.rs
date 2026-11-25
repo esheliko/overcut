@@ -8,3 +8,4 @@
 //! Status: waveform peaks (`peaks`, M1-013). Playback clock arrives with M1, the mixer with M3.
 
 pub mod peaks;
+pub mod stretch;

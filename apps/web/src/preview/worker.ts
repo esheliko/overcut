@@ -156,6 +156,7 @@ function startPlayer(c: PreviewConfig): void {
     endTicks: c.endTicks,
     sequence: c.sequence,
     evaluate: async (ticks, n) => (ev && cfg?.sequence ? ev.evaluate(cfg.sequence, ticks, n) : idleDescription(ticks, n)),
+    stretch: (planar, rate, num, den) => (ev?.stretch ? ev.stretch(planar, rate, num, den) : planar),
     media: (id) => handles.get(id),
     upload: uploadSource,
     standIn: (id, seconds) => thumbs.nearest(id, seconds),
