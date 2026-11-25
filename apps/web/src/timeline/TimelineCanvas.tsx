@@ -39,6 +39,8 @@ type Props = {
   /** Keyboard edit commands the canvas cannot do alone (need the playhead or the engine). */
   onCommand?: (c: Command) => void;
   onAnnounce?: (say: Say) => void;
+  /** A short visible message (status line), for refusals that must be seen. */
+  onNotice?: (say: Say) => void;
   /** Dev/benchmark hook: receives the live view and draw function. */
   onReady?: (h: CanvasHandle) => void;
   /** Real waveforms and filmstrips; without it the canvas draws placeholders. */
@@ -56,7 +58,7 @@ type Props = {
 const TAP_SLOP = 6;
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
-export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onReady, media, onDropMedia, onTrackMenu, tool = "select", onLane }: Props) {
+export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onNotice, onReady, media, onDropMedia, onTrackMenu, tool = "select", onLane }: Props) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ pps: zoom, scrollX: 0, scrollY: 0, width: 300, height: 150 });
@@ -64,8 +66,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const palette = useRef<Palette>(DARK);
   const stats = useRef<DrawStats>({ clipsDrawn: 0, tracksDrawn: 0 });
   const raf = useRef(0);
-  const live = useRef({ scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onTrackMenu, tool, onLane });
-  live.current = { scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onTrackMenu, tool, onLane };
+  const live = useRef({ scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, tool, onLane });
+  live.current = { scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, tool, onLane };
   const ui = useRef<Overlay>(newOverlay());
   const flags = useRef<Uint8Array>(new Uint8Array(0));
   const gest = useRef<Gesture>(IDLE);
@@ -246,7 +248,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     if (fx.seek !== undefined) l.onFrame(clamp(Math.round(fx.seek * l.fps), 0, l.endFrame));
     if (fx.menu !== undefined) l.onTrackMenu?.(fx.menu, headerRect(fx.menu));
     if (fx.ops) l.onEdit?.(fx.ops, fx.say ?? { key: "timeline.say.edited" });
-    else if (fx.say) l.onAnnounce?.(fx.say);
+    else if (fx.say) { l.onAnnounce?.(fx.say); if (fx.visible) l.onNotice?.(fx.say); }
   };
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {

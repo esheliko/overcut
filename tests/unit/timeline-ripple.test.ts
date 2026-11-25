@@ -105,3 +105,17 @@ test("the toolbar tool does the same without a key; with the select tool and no 
   assert.equal(pointerDown(ctx("roll"), ev(8)).g.k !== "tool", true, "no touching clip on b's right edge falls back to the normal press");
   assert.notEqual(pointerDown(ctx(), ev(2)).g.k, "tool");
 });
+
+test("a fresh import has no spare footage: Alt-drag slip / roll say why, visibly, instead of doing nothing", () => {
+  const p = structuredClone(newProject("x"));
+  p.media.push(mediaRef("m1", "v.mp4", "u", video, null));
+  // Two touching clips that use ALL of their media (20 s each, source 0-20), like two fresh imports side by side.
+  p.sequences[0]!.tracks[0]!.clips.push(clip("a", 0, 0, 20), clip("b", 20, 0, 20));
+  const fresh = buildScene(p);
+  const c: Ctx = { scene: fresh, view, selected: new Set(), selFlags: flagsOf(fresh, []) };
+  const slip = pointerDown(c, ev(5, { alt: true }));
+  assert.equal(slip.g.k, "idle");
+  assert.deepEqual(slip.fx.say, { key: "timeline.say.noRoom.slip" });
+  assert.equal(slip.fx.visible, true);
+  assert.equal(pointerDown(c, ev(20, { alt: true })).fx.say?.key, "timeline.say.noRoom.roll"); // the cut between them
+});
