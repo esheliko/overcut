@@ -1,10 +1,9 @@
-import type { MediaKind } from "@app/engine-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { Modal } from "../ProjectDialogs";
 import { DEFAULT_FILTER, allTags, viewBin, windowRange, withTag, withoutTag, type BinFilter, type BinMeta, type BinSort } from "./binView";
-import { formatBytes, formatDuration, offlineReason } from "./plan";
+import { formatBytes, formatDuration, iconForKind, offlineReason } from "./plan";
 import { ACCEPT, BIN_DRAG_TYPE, fromFileList, hasHandlePicker, pickWithHandles, type Source } from "./sources";
 import type { BinItem } from "./useMediaBin";
 import { useProjectStore } from "../store/projectStore";
@@ -23,8 +22,6 @@ type Props = {
   /** One file picker for every offline item (matched by name): offered when two or more are offline. */
   onRelinkAll?: () => void;
 };
-
-const KIND_ICON: Record<MediaKind, "video" | "audio" | "media"> = { video: "video", audio: "audio", image: "media" };
 
 /** The picker control: Chromium desktop gets persistent handles, everything else the plain input (which opens the camera roll on a phone). */
 export function useImportPicker(onImport: (s: Source[]) => void, testId = "media-input") {
@@ -68,13 +65,18 @@ function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }:
       onDragStart={(e) => { e.dataTransfer.setData(BIN_DRAG_TYPE, item.id); e.dataTransfer.effectAllowed = "copy"; }}
     >
       <span className="bin-thumb" aria-hidden="true">
-        {item.poster ? <img src={item.poster} alt="" draggable={false} /> : <Icon name={KIND_ICON[item.kind]} size={22} />}
+        {item.poster ? <img src={item.poster} alt="" draggable={false} /> : <Icon name={iconForKind(item.kind)} size={22} />}
       </span>
       <span className="bin-text">
         <strong title={item.name}>{item.name}</strong>
         {item.status === "probing" && <span role="status">{t("media.reading")}</span>}
-        {ready && <span className="bin-meta" title={meta}>{meta}</span>}
-        {ready && onTimeline && <span className="bin-on-timeline" data-testid="bin-on-timeline">{t("media.onTimeline")}</span>}
+        {ready && (
+          <span className="bin-line">
+            {/* "On the timeline" is a check mark in the meta line (its words stay for screen readers and as the tooltip): one line less per card */}
+            {onTimeline && <span className="bin-on-timeline" data-testid="bin-on-timeline" title={t("media.onTimeline")}><Icon name="check" size={14} aria-hidden="true" /><span className="sr-only">{t("media.onTimeline")}</span></span>}
+            <span className="bin-meta" title={meta}>{meta}</span>
+          </span>
+        )}
         {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
         {item.status === "offline" && <span role="alert">{t(offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
         {item.status === "unsupported" && <span role="alert" className="bin-error">{item.message}</span>}
@@ -87,7 +89,7 @@ function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }:
   );
 }
 
-const ROW = 72; // card (64) + gap (8): fixed in the windowed list
+const ROW = 62; // card (56) + gap (6): fixed in the windowed list
 const WINDOW_FROM = 100; // longer lists render only the rows in view
 
 /** Long lists (a 10k-item bin): only the rows near the viewport exist in the DOM; the panel body scrolls. */
@@ -180,12 +182,15 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
   return (
     <div className="bin">
       {field}
+      {/* Import and Filter and sort share one row, so the media starts higher in the panel */}
+      <div className="bin-bar">
       <button className="primary bin-import" onClick={open} data-testid="import-more"><Icon name="plus" size={18} /><span>{t("media.import")}</span></button>
       {onRelinkAll && items.filter((i) => i.status === "offline").length >= 2 && (
         <button className="bin-filter-toggle bin-relink-all" onClick={onRelinkAll} data-testid="relink-all"><Icon name="upload" size={18} /><span>{t("media.relinkAll", { count: items.filter((i) => i.status === "offline").length })}</span></button>
       )}
       <button
         className="bin-filter-toggle"
+        title={t("media.filterSort")}
         aria-expanded={filterOpen}
         aria-controls="bin-filter-panel"
         onClick={() => setFilterOpen((o) => !o)}
@@ -195,6 +200,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
         <span>{t("media.filterSort")}</span>
         {filtersOn && <span className="bin-on" data-testid="bin-filter-on">{t("media.filterOn")}</span>}
       </button>
+      </div>
       {filterOpen && (
         <div id="bin-filter-panel" className="bin-filters" role="group" aria-label={t("media.filterSort")} data-testid="bin-filter-panel">
           <div className="bin-kinds">
@@ -217,7 +223,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
           </div>
         </div>
       )}
-      <p className="bin-count" role="status" data-testid="bin-count">{t("media.count", { shown: settled.length, total: meta.size })}</p>
+      <p className="bin-count" role="status" data-testid="bin-count" data-quiet={!query && !filtersOn}>{t("media.count", { shown: settled.length, total: meta.size })}</p>
       {shown.length === 0 ? <p className="bin-none">{query ? t("media.noMatch", { query }) : t("media.noFilterMatch")}</p> : (
         <>
           {pending.length > 0 && <ul className="bin-list" aria-label={t("media.list")}>{pending.map(card)}</ul>}

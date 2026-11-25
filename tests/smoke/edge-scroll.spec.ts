@@ -7,6 +7,7 @@ test("mouse: a drag held at the left edge scrolls the timeline back", async ({ p
   await page.goto("/?sample");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const canvas = page.getByTestId("timeline-canvas");
+  await page.getByRole("slider", { name: "Playhead position" }).press("End"); // the playhead stays in view when zooming (M1), so it sits at the end for the zoomed view to scroll
   await canvas.focus();
   for (let i = 0; i < 3; i++) await page.keyboard.press("+"); // zoomed in: the content is wider than the canvas
   await expect.poll(async () => Number(await canvas.getAttribute("data-scrollx"))).toBeGreaterThan(100);

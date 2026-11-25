@@ -152,6 +152,14 @@ export const audioBitrate = (audio: "aac" | "opus"): number => (audio === "aac" 
  * A plain-words note for the dialog when the file is WebM only because this device cannot make MP4 (ADR 0004: H.264 is the default wherever
  * it encodes). Null otherwise, including when the person picked WebM on purpose. Pure; the copy key lives in en.json.
  */
+/** The format's name in the dialog (a message key). An MP4 that could only get Opus sound on this device (no AAC encoder) does not claim to work everywhere. */
+export function formatLabelKey(f: Pick<ExportFormatOption, "id" | "audioCodec">, desktop = false): string {
+  if (desktop && f.id === "webm-vp9") return "export.format.webm-vp9.offline";
+  if (f.id === "mp4-h264" && f.audioCodec === "opus") return "export.format.mp4-h264.opus";
+  return FORMAT_KEY[f.id];
+}
+const FORMAT_KEY: Record<ExportFormatId, string> = { "mp4-h264": "export.format.mp4-h264", "webm-vp9": "export.format.webm-vp9", "webm-av1": "export.format.webm-av1" };
+
 export function formatNote(f: ExportFormatOption, options: readonly ExportFormatOption[]): "export.format.noMp4" | null {
   if (f.container !== "webm" || options.length === 0) return null;
   return options.some((o) => o.id === "mp4-h264") ? null : "export.format.noMp4";
@@ -271,7 +279,7 @@ export function presetHint(id: PresetId, src: Source, locale?: string): { key: s
     case "small": return { key: short < 720 ? "export.preset.small.capped" : "export.preset.small.hint", values: { size } };
     case "vertical": return { key: needsBars(id, src) ? "export.preset.vertical.bars" : "export.preset.vertical.hint", values: { size } };
     case "facebook": return { key: short < 1080 ? "export.preset.facebook.capped" : "export.preset.facebook.hint", values: { size } };
-    case "x": return { key: short < 1080 ? "export.preset.x.capped" : "export.preset.x.hint", values: { size } };
+    case "x": return { key: short < 1080 ? "export.preset.x.capped" : "export.preset.x.hint", values: { size, cap: formatBytes(PLATFORMS[id]!.capBytes!, locale) } };
     case "whatsapp":
     case "discord": return { key: "export.preset.capped.hint", values: { size, cap: formatBytes(PLATFORMS[id]!.capBytes!, locale) } };
   }

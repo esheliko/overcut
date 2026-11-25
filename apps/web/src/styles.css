@@ -12,7 +12,7 @@ h2, p { margin: 0; }
 .icon-btn { display: inline-grid; place-items: center; width: var(--target); height: var(--target); min-width: var(--target); padding: 0; background: none; border: 0; border-radius: 10px; color: var(--fg); transition: background var(--dur-fast); }
 .icon-btn:hover { background: var(--surface-3); }
 .icon-btn:active { transform: scale(0.94); }
-.icon-btn:disabled { opacity: 0.35; cursor: default; }
+.icon-btn:disabled { opacity: 0.5; cursor: default; }
 .icon-btn:disabled:hover { background: none; }
 .tl-sel { margin-left: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 
@@ -22,7 +22,7 @@ h2, p { margin: 0; }
 .topbar { display: grid; grid-template-columns: 1fr minmax(0, auto) 1fr; align-items: center; gap: 8px; padding: 0 10px; min-width: 0; }
 .brand { display: flex; align-items: center; gap: 8px; letter-spacing: 0.01em; min-width: 0; }
 .logo { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); }
-.project-name { width: min(46vw, 260px); height: 36px; padding: 0 12px; text-align: center; font-weight: 600; background: transparent; border: 1px solid transparent; border-radius: 10px; text-overflow: ellipsis; }
+.project-name { width: min(46vw, 260px); height: var(--target); padding: 0 12px; text-align: center; font-weight: 600; background: transparent; border: 1px solid transparent; border-radius: 10px; text-overflow: ellipsis; }
 .project-name:hover { background: var(--surface-2); }
 .project-name:focus { background: var(--surface-2); border-color: var(--line-strong); outline: none; }
 .top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
@@ -35,20 +35,26 @@ h2, p { margin: 0; }
 .save-state[data-state="saved"] .dot { background: var(--ok); }
 .save-row .dot[data-state="saved"] { background: var(--ok); }
 .save-row .dot[data-state="error"] { background: var(--danger); }
-.primary { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: filter var(--dur-fast), transform var(--dur-instant); }
+.primary { display: inline-flex; align-items: center; gap: 6px; height: max(var(--target), 38px); padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: filter var(--dur-fast), transform var(--dur-instant); }
 .primary:hover { filter: brightness(1.08); }
 .primary:active { transform: scale(0.97); }
+/* The same filled accent look for every main action that only has `.export-go` (Projects "New project", dialog OK / Apply / Save, Add tag): without it they fell back to the browser's grey button with a raised border. */
+.export-go { border: 0; background: var(--accent); color: var(--accent-ink); transition: filter var(--dur-fast), transform var(--dur-instant); }
+.export-go:hover:not(:disabled) { filter: brightness(1.08); }
+.export-go:active:not(:disabled) { transform: scale(0.97); }
 
 /* Workspace: phone */
-.workspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(150px, 36%) auto; grid-template-areas: "stage" "timeline" "tools"; background: var(--bg); }
+.workspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(240px, 36%) auto; grid-template-areas: "stage" "timeline" "tools"; background: var(--bg); }
 .stage { grid-area: stage; } .timeline { grid-area: timeline; } .tools { grid-area: tools; } .library { grid-area: library; } .inspector { grid-area: inspector; }
 
 .tools { display: flex; gap: 2px; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; background: var(--surface); border-top: 1px solid var(--line); }
 .tools::-webkit-scrollbar { display: none; }
-.tool { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 66px; min-height: 56px; padding: 6px 8px; background: none; border: 0; border-radius: 12px; color: var(--muted); font-size: 11px; font-weight: 500; transition: color var(--dur-fast), background var(--dur-fast); }
+.tool { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 66px; min-height: 56px; padding: 6px 8px; background: none; border: 0; border-radius: 12px; color: var(--muted); font-size: var(--text-xs); font-weight: 500; transition: color var(--dur-fast), background var(--dur-fast); }
 .tool:hover { color: var(--fg); }
 .tool[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .tool[aria-pressed="true"] span { color: var(--fg); }
+/* Phone portrait with one tool (Media, in M1): the bottom bar is one full-width button, icon and label side by side, not a lone tab in the corner */
+@container editor (max-width: 719px) and (min-height: 501px) { .tools > .tool:only-child { flex: 1 1 auto; flex-direction: row; gap: var(--space-2); color: var(--fg); font-size: var(--text-base); font-weight: 600; } }
 
 /* Tool panel: a bottom sheet on a phone */
 .library { display: none; flex-direction: column; min-height: 0; background: var(--surface); }
@@ -59,8 +65,8 @@ h2, p { margin: 0; }
 
 .panel-head { display: flex; align-items: center; gap: 10px; padding: 8px 16px 4px; }
 .panel-head h2 { font-size: 15px; font-weight: 700; }
-.pill { padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; }
-.search { display: flex; align-items: center; gap: 8px; margin: 8px 16px; padding: 0 12px; height: 40px; border-radius: 10px; background: var(--surface-2); color: var(--muted); }
+.pill { padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: var(--text-xs); font-weight: 600; }
+.search { display: flex; align-items: center; gap: 8px; margin: 8px 16px; padding: 0 12px; height: max(40px, var(--target)); border-radius: 10px; background: var(--surface-2); color: var(--muted); }
 .search input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: none; color: var(--fg); }
 .search input::placeholder { color: var(--muted); }
 .search:focus-within { box-shadow: 0 0 0 2px var(--accent); }
@@ -148,6 +154,11 @@ h2, p { margin: 0; }
   .primary span { display: inline; }
 }
 @media (max-width: 1100px) { .project-name { width: min(26vw, 170px); } .topbar { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.7fr); } } /* tablet: the right side (saved status, Export, menu) gets the room, not the name */
+/* Narrower than ~900 px of editor width (tablets in portrait, small laptops split with a panel) the save chip keeps only its dot, as phones do, so "Saved on…" never cuts mid-word. The text stays for screen readers. */
+@container editor (max-width: 899px) {
+  .save-state { padding: 8px; }
+  .save-state .chip-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
 @media (min-width: 480px) { .tc-total { display: inline; } }
 /* Small phones (<480 px): logo | project name (takes the rest, ellipsis, tap to rename) | Export | "..."; theme toggle and engine status are in the menu. */
 @media (max-width: 479px) {
@@ -176,25 +187,37 @@ h2, p { margin: 0; }
   .library, .library[data-open="true"] { display: flex; position: static; height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: none; animation: none; }
   .library::before, .library[data-open="true"]::before, .sheet-close { display: none; }
   .toast { bottom: 24px; }
+  /* One tool (Media) and its panel always open: no rail, its column goes to the panels */
+  .workspace[data-rail="none"] { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
 }
 /* Tablet in portrait (820 px wide): the Media panel stacks above the preview, full width, so each card has room for its name, meta on one line and its buttons. The tool rail stays on the left; the timeline keeps the bottom. */
 @container editor (min-width: 720px) and (max-width: 1099px) and (orientation: portrait) {
   .workspace { grid-template-rows: minmax(300px, 0.9fr) minmax(260px, 1fr) clamp(200px, 30%, 320px); grid-template-columns: 84px minmax(0, 1fr); grid-template-areas: "tools library" "tools stage" "timeline timeline"; }
+  .workspace[data-rail="none"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "library" "stage" "timeline"; }
 }
 /* Laptop and desktop: details panel on the right */
 @container editor (min-width: 1100px) {
   .workspace { grid-template-columns: 84px 320px minmax(0, 1fr) 300px; grid-template-areas: "tools library stage inspector" "timeline timeline timeline timeline"; }
   .workspace[data-inspector="false"] { grid-template-columns: 84px 320px minmax(0, 1fr); grid-template-areas: "tools library stage" "timeline timeline timeline"; }
+  .workspace[data-rail="none"] { grid-template-columns: 320px minmax(0, 1fr) 300px; grid-template-areas: "library stage inspector" "timeline timeline timeline"; }
+  .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: 320px minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
   .inspector { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 }
 /* Ultrawide (>= 1900 px and at least 2:1): wider side panels, the timeline gets the extra width and more height */
 @container editor (min-width: 1900px) and (min-aspect-ratio: 2/1) {
   .workspace { grid-template-columns: 96px 360px minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr) clamp(240px, 42%, 460px); gap: 8px; padding: 0 8px 8px; }
   .workspace[data-inspector="false"] { grid-template-columns: 96px 360px minmax(0, 1fr); }
+  .workspace[data-rail="none"] { grid-template-columns: 360px minmax(0, 1fr) 380px; }
+  .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: 360px minmax(0, 1fr); }
 }
 /* Phone landscape (short screen on its side): slim tool rail | preview over timeline; the tool panel slides in from the side over the preview */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) {
-  .workspace { grid-template-columns: 72px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(112px, 40%); grid-template-areas: "tools stage" "tools timeline"; gap: 4px; padding: 0 4px 4px; }
+  .workspace { grid-template-columns: 72px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "tools stage" "tools timeline"; gap: 4px; padding: 0 4px 4px; }
+  /* One toolbar row, 44 px tall (scrolls sideways only on very narrow landscape), then a track area of at least 160 px; the preview takes the rest */
+  .tl-bar { min-height: 44px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; }
+  .tl-bar .tl-sel { display: none; }
+  .tl-bar .icon-btn { width: 44px; height: 44px; min-width: 44px; } /* touch size on a phone, whatever the pointer media query says */
+  .tl-stage { min-height: 160px; }
   .tools { padding: 4px; }
   .tool { width: 100%; min-width: 0; min-height: 52px; }
   .library:not([data-open="true"]) { display: none; }
@@ -260,21 +283,31 @@ h2, p { margin: 0; }
 /* Media bin (M1-032) */
 .dropzone-big { min-height: 220px; cursor: pointer; border-width: 2px; }
 .dropzone-big strong { font-size: 18px; }
-.bin { display: flex; flex-direction: column; gap: 10px; min-width: 0; align-content: start; }
+.bin { container: bin / inline-size; display: flex; flex-direction: column; gap: 8px; min-width: 0; align-content: start; }
 .bin-import { align-self: stretch; justify-content: center; min-height: 44px; }
-.bin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .bin-none { color: var(--muted); text-align: center; padding: 16px 0; }
-.bin-card { display: flex; align-items: center; gap: 10px; padding: 8px; min-height: 64px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); cursor: grab; }
+.bin-card { display: flex; align-items: center; gap: 10px; padding: 6px 8px; min-height: 56px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); cursor: grab; }
 .bin-card[data-status="unsupported"], .bin-card[data-status="offline"] { cursor: default; border-color: var(--danger, var(--line-strong)); }
-.bin-thumb { flex: none; display: grid; place-items: center; width: 72px; height: 48px; border-radius: 8px; overflow: hidden; background: var(--surface-3); color: var(--muted); }
+/* An offline card has a message and two actions: they wrap onto their own line so the name keeps its width (320 px desktop panel). Normal cards are unchanged. */
+.bin-card[data-status="offline"] { flex-wrap: wrap; }
+.bin-card[data-status="offline"] .bin-text { flex: 1 1 140px; }
+.bin-thumb { flex: none; display: grid; place-items: center; width: 64px; height: 36px; border-radius: 8px; overflow: hidden; background: var(--surface-3); color: var(--muted); }
 .bin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .bin-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
 .bin-text strong { color: var(--fg); font-size: 13px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } /* the name wraps (at most a few lines); the full name is also the tooltip */
 .bin-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; } /* the meta is one line; the whole line is the tooltip */
 .bin-error { color: var(--fg); white-space: normal; overflow-wrap: anywhere; }
 .bin-act { flex: none; min-width: 44px; min-height: 44px; }
-.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border-radius: 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
-.bin-on-timeline { color: var(--accent); font-weight: 600; }
+.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: none; color: var(--fg); font-size: 12px; font-weight: 600; }
+.bin-tag-btn:hover { background: var(--surface-3); }
+/* Compact bin: Import and Filter and sort on one row; the "N of M shown" line only while a search or filter is on; "On the timeline" is a check mark in the meta line */
+.bin-bar { display: flex; gap: var(--space-2); min-inline-size: 0; }
+.bin-bar > .bin-import { flex: 1 1 auto; min-inline-size: 0; white-space: nowrap; }
+.bin-bar > .bin-filter-toggle { flex: 0 0 auto; inline-size: auto; min-inline-size: 44px; white-space: nowrap; }
+.bin-count[data-quiet="true"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.bin-line { display: flex; align-items: center; gap: 6px; min-inline-size: 0; }
+.bin-on-timeline { flex: none; display: inline-grid; place-items: center; inline-size: 18px; block-size: 18px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
 .bin-link { flex: none; min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tl-drop { grid-area: timeline; display: contents; }
 .tl-drop[data-over="true"] > .timeline { outline: 2px dashed var(--accent); outline-offset: -3px; }
@@ -314,6 +347,7 @@ h2, p { margin: 0; }
 .export-footer .export-go { inline-size: 100%; }
 .export-secondary { border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); }
 .export-secondary:hover { background: var(--surface-3); }
+.export-go.confirm-danger { background: var(--danger); color: var(--bg); }
 .export-danger { color: var(--danger); }
 .export-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .export-actions > * { flex: 1 1 140px; }
@@ -382,7 +416,7 @@ h2, p { margin: 0; }
 .history-row[data-state="undone"] { color: var(--muted); }
 .history-row[data-state="now"] { background: var(--accent-soft); font-weight: 600; }
 .history-label { overflow-wrap: anywhere; }
-.history-tag { flex: none; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.history-tag { flex: none; font-size: var(--text-xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .timing-fields { display: grid; gap: 8px; padding: 0 16px 8px; }
 .timing-row { display: grid; grid-template-columns: 4.5em 1fr auto; align-items: center; gap: 8px; }
 .timing-row input { min-height: var(--target); min-width: 0; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface-2); color: var(--fg); font: inherit; font-variant-numeric: tabular-nums; }
@@ -424,7 +458,7 @@ h2, p { margin: 0; }
 .bin-tags { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
 .bin-virtual { position: relative; }
 .bin-fixed { will-change: transform; }
-.bin-fixed > .bin-card { block-size: 64px; box-sizing: border-box; }
+.bin-fixed > .bin-card { block-size: 56px; box-sizing: border-box; }
 .tag-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; list-style: none; }
 .tag-chips li { display: inline-flex; align-items: center; gap: var(--space-1); padding-inline-start: var(--space-3); border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .tag-chips li.export-note { background: none; padding: 0; }
@@ -454,7 +488,7 @@ h2, p { margin: 0; }
 /* Laptop and desktop (the Media panel is 320 px): a smaller thumbnail and gap leave the name room beside the Tags label and the "+". */
 @container editor (min-width: 1100px) {
   .bin-card { gap: 8px; }
-  .bin-thumb { width: 56px; height: 40px; }
+  .bin-thumb { width: 56px; height: 32px; }
 }
 
 /* ---- projects list (PM-06) ---- */
@@ -529,3 +563,7 @@ h2, p { margin: 0; }
 .marker-swatches .swatch[aria-checked="true"] { background: var(--surface-3); outline: 2px solid var(--accent); outline-offset: -2px; }
 .swatch-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line-strong); }
 .swatch-dot.default { background: var(--accent); }
+/* A narrow Media panel (phone < 360 px, the 320 px laptop column): Filter and sort keeps its icon (and the On badge); its words stay for screen readers and as the tooltip, so Import and the filter fit one row without wrapping */
+@container bin (max-width: 340px) { .bin-filter-toggle > span:nth-child(2) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
+/* Touch screens (kept last so it wins over per-component field sizes): fields are at least 16 px so iOS Safari does not zoom the page on focus (it never zooms back); the zoom slider gets a 44 px tall hit area. */
+@media (pointer: coarse) { :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"]), select, textarea) { font-size: max(16px, 1em); } .zoom input { block-size: 44px; } }

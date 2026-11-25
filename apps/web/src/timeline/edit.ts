@@ -234,24 +234,24 @@ export function mirrorTrims(scene: Scene, ops: Op[]): Op[] {
 /** Ops that let the selected clips edit alone (`set_link` null), one per linked clip; empty when none is linked. */
 export const unlinkOps = (scene: Scene, sel: readonly number[]): Op[] => sel.filter((i) => scene.link[i]).map((i) => ({ op: "set_link" as const, clip: scene.id[i]!, link: null }));
 
-/** Deleting or start-trimming the first thing in the project would leave an empty stretch before everything else, and the export would
- *  start with black and silence. For an edit made only of delete / trim ops that moved the project's first start later, append moves
- *  that slide every remaining clip left by that amount (same undo step). Anything else, or a locked track in the way: `ops` unchanged. */
+/** Deleting the first thing in the project would leave an empty stretch before everything else, and the export would start with
+ *  black and silence. For an edit made only of delete / trim-end ops that moved the project's first start later, append moves that
+ *  slide every remaining clip left by that amount (same undo step). A start trim (`trim_in`) is never closed: the user moved that
+ *  edge on purpose, and sliding the clips back would undo it (issue #106). Anything else, or a locked track in the way: `ops` unchanged. */
 export function closeStartGap(scene: Scene, ops: Op[]): Op[] {
   const n = scene.clipCount;
-  if (n === 0 || !ops.some((o) => o.op === "delete" || o.op === "trim_in")) return ops;
+  if (n === 0 || !ops.some((o) => o.op === "delete")) return ops;
   const index = new Map<string, number>();
   for (let i = 0; i < n; i++) index.set(scene.id[i]!, i);
   const start = Array.from(scene.tStart.subarray(0, n)), gone = new Set<number>();
   let first = Infinity, touched = false;
   for (let i = 0; i < n; i++) first = Math.min(first, start[i]!);
   for (const o of ops) {
-    if (o.op !== "delete" && o.op !== "trim_in" && o.op !== "trim_out") return ops;
+    if (o.op !== "delete" && o.op !== "trim_out") return ops;
     const i = index.get(o.clip);
     if (i === undefined) return ops;
     if (o.op === "delete") gone.add(i);
-    else if (o.op === "trim_in") start[i] = o.start;
-    if (o.op !== "trim_out" && scene.tStart[i]! === first) touched = true;
+    if (o.op === "delete" && scene.tStart[i]! === first) touched = true;
   }
   const rest = [...Array(n).keys()].filter((i) => !gone.has(i));
   if (!touched || rest.length === 0) return ops;
