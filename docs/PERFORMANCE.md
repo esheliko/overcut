@@ -100,6 +100,15 @@ The 4x CPU throttle approximates a phone but is not one; a throttled-container n
 - **Frame-time instrumentation** is compiled in (preview stats: presented, dropped, late); a debug overlay is still to come.
 - **Microbenchmarks** for render graph, DSP and cache follow with those modules; add them to `tests/perf/run.mjs` and `metrics.mjs` in the PR that adds the module.
 
+## E2 gate: editing ops (M2-011, measured 2026-11-25 in the container, 4-core Xeon 2.3 GHz, release)
+- **Property run** (`npm run test:e2` = `PROPTEST_CASES=10000 cargo test -p app-timeline --release`): all 29 op kinds in the S7 generator, 10,000 random sequences each for the two properties, 0 failures. Whole `app-timeline` suite 3.7 s wall; 100,000 cases (the S7 bar) 33 s, 0 failures.
+- **Op bench** (`cargo run --release -p app-timeline --example bench`, JSON keys `mix_20x250_*` and `mix_20x1000_*`; `BENCH_KINDS=1` prints each op kind): the compound edit mix (move, trim, split, ripple trim incl. all-tracks, slip, slide, transform, delete, each undone after) on 20 tracks.
+  | Project | mean per op | worst op | budget |
+  |---|---|---|---|
+  | 20 tracks x 250 = 5k clips | 0.016 ms | 0.76 ms (all-tracks ripple trim from the start) | <= 2 ms |
+  | 20 tracks x 1000 = 20k clips (stress) | 0.22 ms | 12.9 ms (same ripple, moves 20k clips) | none (4x the budget size) |
+  Single-clip ops stay under 0.2 ms even at 20k clips. Before this gate a ripple over n clips was O(n^2) (each step prepended its inverse): 3.3 ms worst at 5k and 35 ms at 20k. What is left is one linear `find_clip` per shifted clip; an id index is the next lever if a UI test needs it.
+
 ## Design rules that keep it fast
 1. Nothing heavy on the UI thread; engine in a Worker (web) / dedicated threads (native).
 2. GPU-resident frames end to end where the platform allows; avoid CPU readbacks except at export.

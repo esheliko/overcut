@@ -152,8 +152,13 @@ pub enum Op {
     /// Replace a media item's tags (the media bin's labels, `docs/features/media-bin.md`). Tags are trimmed, non-empty, unique, at most
     /// `MAX_TAGS` of at most `MAX_TAG_LEN` characters each, else `BadTags`. Undoable; clips are untouched.
     SetMediaTags { media: MediaId, tags: Vec<String> },
-    /// Add a source file to the project's media list (import). Its id must be new; clips are untouched.
-    AddMedia { media: MediaRef },
+    /// Add a source file to the project's media list (import). Its id must be new; clips are untouched. `index`: where in the list
+    /// (clamped to the end); absent = append. The inverse of `RemoveMedia` sets it so undo restores the bin order.
+    AddMedia {
+        media: MediaRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        index: Option<usize>,
+    },
     /// Remove a media entry that no clip uses (the inverse of `AddMedia`).
     RemoveMedia { media: MediaId },
     /// Set a sequence's frame rate and size (the first import adopts its clip's; also a valid edit).

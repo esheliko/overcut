@@ -316,7 +316,7 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
             };
             Ok(Inverse(vec![old]))
         }
-        Op::AddMedia { media } => {
+        Op::AddMedia { media, index } => {
             if media.uri.is_empty()
                 || media
                     .hash
@@ -329,7 +329,8 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 return Err(OpError::IdInUse(media.id.to_string()));
             }
             let id = media.id;
-            p.media.push(media);
+            let at = index.map_or(p.media.len(), |i| i.min(p.media.len()));
+            p.media.insert(at, media);
             Ok(Inverse(vec![Op::RemoveMedia { media: id }]))
         }
         Op::RemoveMedia { media } => {
@@ -347,7 +348,10 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 return Err(OpError::MediaInUse(media));
             }
             let removed = p.media.remove(i);
-            Ok(Inverse(vec![Op::AddMedia { media: removed }]))
+            Ok(Inverse(vec![Op::AddMedia {
+                media: removed,
+                index: Some(i),
+            }]))
         }
         Op::SetSequenceFormat {
             sequence,
@@ -787,10 +791,12 @@ pub fn apply_all(p: &mut Project, ops: &[Op]) -> Result<Inverse, OpError> {
     for (index, op) in ops.iter().enumerate() {
         match apply(p, op.clone()) {
             Ok(Inverse(inv)) => {
-                // Latest inverse first, so applying the list in order walks the edits backwards.
-                undo.splice(0..0, inv);
+                // Latest inverse first, so applying the list in order walks the edits backwards. Appended reversed and flipped once
+                // at the end: prepending each step (`splice(0..0, ..)`) made a ripple over n clips O(n^2).
+                undo.extend(inv.into_iter().rev());
             }
             Err(cause) => {
+                undo.reverse();
                 for u in undo {
                     // An inverse always fits the state it was recorded from; failure here would be an engine bug.
                     apply(p, u).expect("inverse of an applied op must apply");
@@ -802,5 +808,6 @@ pub fn apply_all(p: &mut Project, ops: &[Op]) -> Result<Inverse, OpError> {
             }
         }
     }
+    undo.reverse();
     Ok(Inverse(undo))
 }
