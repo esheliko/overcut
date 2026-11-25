@@ -85,10 +85,16 @@ test("a chosen preset is remembered, and Advanced shows a live size", async ({ p
 test("cancel really cancels and returns to the settings; the editor is read-only meanwhile", async ({ page }) => {
   test.setTimeout(120_000);
   await ready(page);
-  // About 8 s of footage, so the export is still running when we reach for Cancel.
+  // About 8 s of footage, so the export is still running when we reach for Cancel: three more copies of the clip, each added with its own "+"
+  // (a clip already on the timeline has no "+", so the same card cannot be added three times).
+  await page.getByTestId("media-input").setInputFiles([resolve(FIX, "vp9_opus.webm"), resolve(FIX, "vp9_opus.webm"), resolve(FIX, "vp9_opus.webm")]);
+  await expect(page.locator('[data-testid=bin-item][data-status="ready"]')).toHaveCount(4, { timeout: 30_000 }); // the one that was added and the three new copies
   const add = page.getByRole("button", { name: "Add vp9_opus.webm to the timeline" });
-  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); // the sheet closed itself after the import
-  for (let i = 0; i < 3; i++) await add.first().click();
+  for (let i = 0; i < 3; i++) {
+    // the phone sheet closes itself after an import and after each add: reopen it only when the next "+" is hidden
+    if ((page.viewportSize()?.width ?? 0) < 720 && !(await add.first().isVisible())) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+    await add.first().click();
+  }
   await page.getByTestId("export-open").click();
   await page.getByTestId("export-go").click();
   const dialog = page.getByTestId("export-dialog");
