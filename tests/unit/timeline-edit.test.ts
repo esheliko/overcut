@@ -13,6 +13,8 @@ const project = fixtureProject({ tracks: 4, clipsPerTrack: 6 });
 project.media[0]!.duration = 30 * TICKS_PER_SECOND;
 // Clip 1 has 10 s of source before it, so its start can be trimmed outwards.
 project.sequences[0]!.tracks[0]!.clips[1]!.source_in = 10 * TICKS_PER_SECOND;
+// Rows are shown video tracks first (highest on top), then audio: stack [A1, A2, V2, V1] shows as V1, V2, A1, A2.
+{ const tk = project.sequences[0]!.tracks; project.sequences[0]!.tracks = [tk[1]!, tk[3]!, tk[2]!, tk[0]!]; }
 const scene = buildScene(project);
 const FT = scene.frameTicks;
 const view = (o: Partial<View> = {}): View => ({ pps: 40, scrollX: 0, scrollY: 0, width: 900, height: 400, ...o });
@@ -53,12 +55,12 @@ test("move ops are ordered so no step overlaps a clip that has not moved yet", (
 test("a clip fits another track of the same kind only where it does not overlap, never a locked or other-kind track", () => {
   const last = scene.trackFirst[1]! - 1; // last clip of track 0, nothing after it
   assert.equal(fitsOnTrack(scene, last, 0, 0), true);
-  assert.equal(fitsOnTrack(scene, 0, 1, 0), false, "audio track");
-  assert.equal(fitsOnTrack(scene, 0, 2, 0), false, "overlaps clips already on track 2 at the same time");
-  assert.equal(fitsOnTrack(scene, 0, 2, 100 * TICKS_PER_SECOND), true);
+  assert.equal(fitsOnTrack(scene, 0, 2, 0), false, "audio track");
+  assert.equal(fitsOnTrack(scene, 0, 1, 0), false, "overlaps clips already on the other video track at the same time");
+  assert.equal(fitsOnTrack(scene, 0, 1, 100 * TICKS_PER_SECOND), true);
   assert.equal(fitsOnTrack(scene, 0, 0, -1), false, "before 0");
   const locked = buildScene({ ...project, sequences: [{ ...project.sequences[0]!, tracks: project.sequences[0]!.tracks.map((t, i) => (i === 2 ? { ...t, locked: true } : t)) }] });
-  assert.equal(fitsOnTrack(locked, 0, 2, 100 * TICKS_PER_SECOND), false);
+  assert.equal(fitsOnTrack(locked, 0, 1, 100 * TICKS_PER_SECOND), false);
 });
 
 test("trim ranges: neighbours, source length, speed, and one frame minimum", () => {

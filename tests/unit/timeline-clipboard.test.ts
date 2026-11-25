@@ -108,7 +108,7 @@ test("paste at a time before 0 starts at 0 and never overlaps what is there", ()
 test("numeric timing becomes one trim op, validated against the allowed range", () => {
   const p = fresh();
   const scene = buildScene(p);
-  const i = 1; // second clip of the first track: free space before and after
+  const i = scene.trackFirst[1]! + 1; // second clip of the first model track (row 1 once video rows are shown top-down): free space before and after
   const c = tr(p, 0).clips[1]!;
   const ft = scene.frameTicks;
   const sr = trimRange(scene, i, "start"), er = trimRange(scene, i, "end");

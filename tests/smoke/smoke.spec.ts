@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gutterShift } from "./timeline-geometry";
 const UNDO = /^Undo( (?!recovery).+)?$/, REDO = /^Redo( .+)?$/; // the label names the step ("Undo import of clip.mp4")
 
 test("the app loads and the WebAssembly engine answers", async ({ page }) => {
@@ -176,7 +177,8 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
 
   // Sample layout at the default zoom (40 px/s): gutter 48 px, ruler 30 px, lane 52 px; the first video clip spans x 48..168.
   const box = (await canvas.boundingBox())!;
-  const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + x, box.y + y) : page.mouse.click(box.x + x, box.y + y));
+  const dg = await gutterShift(page);
+  const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + dg + x, box.y + y) : page.mouse.click(box.x + dg + x, box.y + y));
   await at(108, 30 + 26); // select the first clip
   await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
   await expect(live).toContainText("Clip 1");
@@ -206,16 +208,16 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
 
   if (phone) return; // pointer drags and the keyboard are exercised on desktop; touch rules are covered by the unit tests
   // Drag the clip 1 s later (one undo step), trim its end by 1 s with the handle, then undo both.
-  await page.mouse.move(box.x + 108, box.y + 56);
+  await page.mouse.move(box.x + dg + 108, box.y + 56);
   await page.mouse.down();
-  await page.mouse.move(box.x + 130, box.y + 56, { steps: 4 });
-  await page.mouse.move(box.x + 148, box.y + 56, { steps: 4 });
+  await page.mouse.move(box.x + dg + 130, box.y + 56, { steps: 4 });
+  await page.mouse.move(box.x + dg + 148, box.y + 56, { steps: 4 });
   await page.mouse.up();
   await expect(live).toContainText("Moved");
   await expect(undo).toBeEnabled();
-  await page.mouse.move(box.x + 206, box.y + 56); // its end handle (clip now spans 88..208)
+  await page.mouse.move(box.x + dg + 206, box.y + 56); // its end handle (clip now spans 88..208)
   await page.mouse.down();
-  await page.mouse.move(box.x + 166, box.y + 56, { steps: 6 });
+  await page.mouse.move(box.x + dg + 166, box.y + 56, { steps: 6 });
   await page.mouse.up();
   await expect(live).toContainText("Trimmed end");
   await page.keyboard.press("Control+z");
@@ -330,12 +332,13 @@ test("holding Shift after selecting a clip does not outline the whole timeline; 
   await page.goto("/?sample");
   await expect(page.locator("#tl-summary")).toContainText("2 tracks, 14 clips");
   const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
+  const dg = await gutterShift(page);
   const stageFrame = () => page.evaluate(() => getComputedStyle(document.querySelector(".tl-stage")!, "::after").boxShadow);
-  await page.mouse.click(box.x + 108, box.y + 26 + 26); // the first clip, as in the editing test
+  await page.mouse.click(box.x + dg + 108, box.y + 26 + 26); // the first clip, as in the editing test
   await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
   await page.keyboard.down("Shift");
   expect(await stageFrame()).toBe("none"); // the keyboard focus frame must not appear for a bare modifier
-  await page.mouse.click(box.x + 108, box.y + 26 + 26);
+  await page.mouse.click(box.x + dg + 108, box.y + 26 + 26);
   await page.keyboard.up("Shift");
   await expect(page.getByTestId("tl-selected")).toHaveCount(0); // Shift+click on a selected clip still toggles it off
 });

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { gutterShift } from "./timeline-geometry";
 
 /** Fixes for what a first-time user trips over (docs/M1-STATUS.md section 4): import, split, undo, tool rail, fit, canvas. Needs a build with the engine. */
 const FLASH = resolve("crates/media/tests/fixtures/flash_click.mp4"); // 3 s, 30 fps, picture + sound
@@ -34,7 +35,7 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   await expect.poll(pps).toBeGreaterThan(before * 1.5); // 3 s over the whole width, not 40 px per second
   const fitted = await pps();
   const box = (await canvas.boundingBox())!;
-  expect(Math.abs(fitted - (box.width - 48 - 96) / 3)).toBeLessThan(1);
+  expect(Math.abs(fitted - (box.width - 48 - (await gutterShift(page)) - 96) / 3)).toBeLessThan(1);
   const fit = page.getByRole("button", { name: "Fit timeline to the window" });
   await expect(fit).toBeVisible();
   if (phone) expect((await fit.boundingBox())!.height).toBeGreaterThanOrEqual(44);

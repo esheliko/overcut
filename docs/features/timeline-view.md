@@ -68,3 +68,9 @@ Unit (`tests/unit/timeline-edit.test.ts`): snapping, move room, op order, track 
 - **Startup**: the export dialog (`export/ExportDialogView.tsx`) is a lazy chunk, warmed on hover/focus of the Export button; first-load JS 126 -> 121 KB gzip (the i18n catalogue is now its own chunk). All JS incl. the engine worker is ~275 KB gzip and is dominated by the worker (130 KB), not the UI.
 
 **Thumbnails also feed the preview.** Every thumbnail `ThumbService` loads is announced on `media/thumbBus.ts` (media id, seconds, bitmap); the preview host copies it to the preview Worker, which shows the nearest one as a scrub stand-in while the exact frame decodes (`docs/features/preview.md`). No listener = no cost; the timeline does not depend on it.
+
+## Multi-track (M2-042)
+- **Rows**: video tracks from the top of the model stack down (a track above another is composited over it), then audio tracks in stack order. `buildScene` produces rows in that order; `scene.trackModel[row]` maps back to the engine's stack index (used by `add_track` / `move_track`). Reordering is within a kind only.
+- **Headers** (canvas gutter, `timeline/header.ts`): wide (mouse, 148 px) = kind chip, name, four 28x22 switches (mute, solo, lock, hide); compact (touch or canvas < 560 px, 60 px) = the whole header is one target that opens the track menu (`TrackMenu.tsx`: switches, rename, move up/down, add, remove). Right click opens it on desktop; "Add track" and "Track options" (selected clip's track) are toolbar buttons (the options button hides on phones). Mouse: drag a name to reorder; touch: long press, then drag.
+- **Output state**: muted, hidden and silenced-by-solo tracks draw faded (`scene.trackLive`); locked tracks carry a veil. Ops: `addTrackOp`, `removeTrackOp`, `moveTrackOp`, `setTrackPropsOp`, each one undo step with a history label.
+- **Phones**: backing store capped at 2x (raster-bound), `data-gutter` on the canvas is the test hook for the header width.

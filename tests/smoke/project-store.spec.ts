@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 const UNDO = /^Undo( (?!recovery).+)?$/, REDO = /^Redo( .+)?$/; // the label names the step ("Undo import of clip.mp4")
 import { resolve } from "node:path";
+import { gutterShift } from "./timeline-geometry";
 
 /**
  * M1-024: bin, timeline and preview share ONE project. Import -> bin + timeline + preview show it -> trim -> play 1 s -> undo the trim:
@@ -34,9 +35,10 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
 
   // Trim both clips to 1 s: playhead at 1 s (ruler), trim the end to the playhead.
   const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
-  const tap = (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + x, box.y + y) : page.mouse.click(box.x + x, box.y + y));
+  const dg = await gutterShift(page);
+  const tap = (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + dg + x, box.y + y) : page.mouse.click(box.x + dg + x, box.y + y));
   // The import zoomed the timeline to fit its 3 s: width - gutter (48) - end padding (96), over 3 s.
-  const pps = (box.width - 48 - 96) / 3;
+  const pps = (box.width - 48 - dg - 96) / 3;
   await tap(48 + pps, 10); // 1.000 s
   await expect(page.getByRole("slider", { name: "Playhead position" })).toHaveAttribute("aria-valuenow", "30");
   await tap(68, 30 + 26); // the picture clip: its linked sound is selected with it, so one trim cuts both
