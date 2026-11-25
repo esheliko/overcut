@@ -12,7 +12,7 @@ const TICKS = 705_600_000;
 
 async function openClip(page: Page, name: string) {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 }); // empty project: the preview offers the same import as the bin
   await page.getByTestId("preview-input").setInputFiles(`${FIX}/${name}`);
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true", { timeout: 20_000 });

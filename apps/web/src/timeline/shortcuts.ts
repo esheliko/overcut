@@ -13,3 +13,7 @@ export function globalCommand(e: KeyLike, keymap: Keymap = currentKeymap()): Com
 export function canvasCommand(e: KeyLike, hasSelection: boolean, keymap: Keymap = currentKeymap()): Command | null {
   return resolveKey(e, "canvas", keymap, hasSelection)?.command ?? null;
 }
+
+const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta", "OS", "CapsLock"]);
+/** A modifier pressed on its own (Shift, Ctrl, Alt, Meta). It is not keyboard use of the timeline: it must not switch on the keyboard focus frame, and Shift+click still selects as before. */
+export function isModifierKey(key: string): boolean { return MODIFIER_KEYS.has(key); }

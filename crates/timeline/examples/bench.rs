@@ -70,6 +70,7 @@ fn main() {
                 source_in: t(0),
                 duration: t(29),
                 speed: Rational::new(1, 1).unwrap(),
+                link: None,
             };
             clip_ids.push((ti, c.id, k));
             track.clips.push(c);

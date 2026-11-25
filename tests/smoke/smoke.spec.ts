@@ -5,13 +5,13 @@ test("the app loads and the WebAssembly engine answers", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/Engine .+ v\d+\.\d+\.\d+ \(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   expect(errors).toEqual([]);
 });
 
 test("no horizontal scrolling at any width (works on every screen)", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toBeVisible();
+  await expect(page.getByTestId("engine")).toBeAttached();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
@@ -92,7 +92,7 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
 
   await page.goto("/");
   await page.getByRole("button", { name: "Menu" }).click();
-  await page.getByRole("menuitem", { name: "About / Diagnostics" }).click();
+  await page.getByRole("menuitem", { name: "About OverCut" }).click();
   await expect(page.getByTestId("diagnostics")).toBeVisible();
   await expect(page.getByRole("heading", { name: "What this device supports" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Video", exact: true })).toBeVisible({ timeout: 30_000 });
@@ -156,7 +156,7 @@ test("language and direction: the page declares lang and dir, and a right-to-lef
 test("timeline editing: select, split, delete, undo and redo go through the engine", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await page.goto("/?sample");
-  await expect(page.getByTestId("engine")).toContainText(/Engine .+ \(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const summary = page.locator("#tl-summary");
   const live = page.locator('[data-announcer="polite"]');
   const canvas = page.getByTestId("timeline-canvas");
@@ -249,7 +249,7 @@ test("top bar on a small phone: project name truncates but stays editable, Expor
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 700 });
     await page.goto("/");
-    await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+    await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
     const name = page.getByLabel("Project name");
     const exp = page.getByTestId("export-open");
     await expect(exp).toBeVisible();
@@ -317,3 +317,17 @@ for (const p of PROFILES) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   });
 }
+
+test("holding Shift after selecting a clip does not outline the whole timeline; Shift+click still toggles the clip", async ({ page }) => {
+  await page.goto("/?sample");
+  await expect(page.locator("#tl-summary")).toContainText("2 tracks, 14 clips");
+  const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
+  const stageFrame = () => page.evaluate(() => getComputedStyle(document.querySelector(".tl-stage")!, "::after").boxShadow);
+  await page.mouse.click(box.x + 108, box.y + 26 + 26); // the first clip, as in the editing test
+  await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
+  await page.keyboard.down("Shift");
+  expect(await stageFrame()).toBe("none"); // the keyboard focus frame must not appear for a bare modifier
+  await page.mouse.click(box.x + 108, box.y + 26 + 26);
+  await page.keyboard.up("Shift");
+  await expect(page.getByTestId("tl-selected")).toHaveCount(0); // Shift+click on a selected clip still toggles it off
+});

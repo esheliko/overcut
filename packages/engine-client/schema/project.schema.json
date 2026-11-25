@@ -47,6 +47,17 @@
         "id": {
           "$ref": "#/$defs/ClipId"
         },
+        "link": {
+          "description": "Clips sharing a link edit as one (TL-05, `docs/features/timeline-ops.md`): the picture and the sound of one import. `None` = alone.\nOnly the editing layer acts on it; evaluation and export ignore it. Absent in files made before linking existed.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LinkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "media": {
           "$ref": "#/$defs/MediaId"
         },
@@ -76,6 +87,10 @@
       ]
     },
     "ClipId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "LinkId": {
       "type": "string",
       "pattern": "^[0-9a-f]{32}$"
     },

@@ -71,7 +71,7 @@ test("presets: ADR 0004 order, never a combination the probe rejected", async ()
   const best = await resolvePreset(plan, settings, probe(["avc1", "vp09", "av01"], ["mp4a.40.2", "opus"]));
   assert.deepEqual([best.container, best.videoCodec, best.audioCodec, best.warnings.length], ["mp4", "avc", "aac", 0]);
   const noAac = await resolvePreset(plan, settings, probe(["avc1", "vp09"], ["opus"]));
-  assert.deepEqual([noAac.container, noAac.videoCodec, noAac.audioCodec], ["webm", "vp9", "opus"]);
+  assert.deepEqual([noAac.container, noAac.videoCodec, noAac.audioCodec], ["mp4", "avc", "opus"]); // H.264 is the default wherever it encodes
   const h264Opus = await resolvePreset(plan, settings, probe(["avc1"], ["opus"]));
   assert.deepEqual([h264Opus.container, h264Opus.videoCodec, h264Opus.audioCodec], ["mp4", "avc", "opus"]);
   assert.match(h264Opus.warnings[0] ?? "", /Opus/);
@@ -362,7 +362,7 @@ test("Tauri backend: export is a typed 'not yet' until native encoding exists", 
 import { openBlobMedia } from "../../packages/engine-client/src/export/blob-media";
 import type { MediaApi, MediaHandle } from "../../packages/engine-client/src/types";
 
-function fakeMedia(over: { fps?: { num: number; den: number }; vfr?: boolean; packets?: number; channels?: number } = {}) {
+function fakeMedia(over: { fps?: { num: number; den: number }; vfr?: boolean; packets?: number; channels?: number; pts?: number[] } = {}) {
   const asked: number[] = [];
   let released = 0;
   let closed = 0;
@@ -370,6 +370,7 @@ function fakeMedia(over: { fps?: { num: number; den: number }; vfr?: boolean; pa
     info: { container: "x", durationTicks: 0, video: { codec: "vp9", width: 160, height: 120, rotation: 90, sampleRate: 0, channels: 0, durationTicks: 0, packets: over.packets ?? 30, fps: over.fps ?? { num: 30, den: 1 }, vfr: over.vfr ?? false }, audio: { codec: "opus", width: 0, height: 0, rotation: 0, sampleRate: 48000, channels: over.channels ?? 1, durationTicks: 0, packets: 1, vfr: false } },
     frameKind: "gpu",
     audioRate: 48000,
+    frameIndexAt: (ticks: number) => over.pts ? over.pts.filter((p) => p <= ticks).length - 1 : 0,
     videoFrame: async (i: number) => (asked.push(i), { kind: "gpu", index: i, ptsTicks: 0, width: 160, height: 120, frame: {} as VideoFrame, release: () => void released++ }),
     audio: async (_s: number, n: number) => Float32Array.from({ length: n * (over.channels ?? 1) }, (_, i) => i + 1),
     stats: () => ({ received: 0, closed: 0, open: 0 }),
@@ -395,7 +396,7 @@ test("decoder adapter: ticks map to the media's own frame (floor), repeat withou
   assert.deepEqual(m.counts(), { released: 3, closed: 1 });
 });
 
-test("decoder adapter: mono audio fills both channels, stereo deinterleaves, variable frame rate is refused", async () => {
+test("decoder adapter: mono audio fills both channels, stereo deinterleaves", async () => {
   const mono = await openBlobMedia(fakeMedia({ channels: 1 }).api, new Blob(["x"]), 48000, "m");
   const out = [new Float32Array(3), new Float32Array(3)];
   await mono.audio!.read(0, 3, out);
@@ -403,5 +404,13 @@ test("decoder adapter: mono audio fills both channels, stereo deinterleaves, var
   const st = await openBlobMedia(fakeMedia({ channels: 2 }).api, new Blob(["x"]), 48000, "s");
   await st.audio!.read(0, 3, out);
   assert.deepEqual([Array.from(out[0]!), Array.from(out[1]!)], [[1, 3, 5], [2, 4, 6]]);
-  await assert.rejects(openBlobMedia(fakeMedia({ vfr: true }).api, new Blob(["x"]), 48000, "v"), /variable frame rate/);
+});
+
+test("decoder adapter: a variable-frame-rate clip exports at its real speed (frame chosen from its own timestamps, not a constant rate)", async () => {
+  // frames at 0, 0.1 s, 0.15 s, 0.5 s: no constant rate describes this
+  const pts = [0, 0.1, 0.15, 0.5].map((s) => Math.round(s * T));
+  const m = fakeMedia({ vfr: true, packets: 4, fps: { num: 0, den: 1 }, pts });
+  const opened = await openBlobMedia(m.api, new Blob(["x"]), 48000, "phone.mp4");
+  for (const s of [0, 0.05, 0.1, 0.12, 0.2, 0.49, 0.5, 9]) await opened.video!.frame(Math.round(s * T));
+  assert.deepEqual(m.asked, [0, 1, 2, 3], "each distinct picture is decoded once, the last one holds");
 });

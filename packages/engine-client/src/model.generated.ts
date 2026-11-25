@@ -5,6 +5,9 @@ export interface Clip {
   /** Length on the timeline (source length is `duration * speed`). */
   duration: Time;
   id: ClipId;
+  /** Clips sharing a link edit as one (TL-05, `docs/features/timeline-ops.md`): the picture and the sound of one import. `None` = alone.
+Only the editing layer acts on it; evaluation and export ignore it. Absent in files made before linking existed. */
+  link?: LinkId | null;
   media: MediaId;
   /** Where in the source media the clip starts. */
   source_in: Time;
@@ -15,6 +18,8 @@ export interface Clip {
 }
 
 export type ClipId = string;
+
+export type LinkId = string;
 
 export type MediaId = string;
 

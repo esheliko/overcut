@@ -2,7 +2,7 @@
  *  The canvas owns pointers, panning and drawing; the owner of the engine applies `Effects.ops` (via `Engine.editing`) and the selection.
  *  Touch rules: a tap selects; a drag on an unselected clip pans; a drag on an already selected clip moves it; handles of a selected clip are 44 px targets. */
 import type { Op } from "@app/engine-client";
-import { clampN, describeClip, type Say, fitsOnTrack, inRect, moveOps, moveRoom, moveToTrackOp, snapDelta, trimOp, trimRange, trimTarget, type Edge } from "./edit";
+import { clampN, describeClip, expandLinks, groupReps, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
 import { GUTTER, LANE, RULER, xToTime, type View } from "./view";
@@ -41,6 +41,15 @@ export type Gesture =
 export const IDLE: Gesture = { k: "idle" };
 type R = { g: Gesture; fx: Effects };
 
+/** Paints a gesture onto the selection flags the painter reads (1 = selected, 2 = being moved or trimmed: its body is hidden and a ghost drawn).
+ *  Every 2 is first settled back to 1, so a gesture that ends WITHOUT an edit (a move clamped back to 0:00, a trim that did not change)
+ *  leaves its clips visible. Mutates `f` in place (no allocation per pointer move). */
+export function markPreview(f: Uint8Array, g: Gesture): void {
+  for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
+  if (g.k === "move") for (const i of g.sel) f[i] = 2;
+  else if (g.k === "trim") f[g.clip] = 2;
+}
+
 export function pointerDown(c: Ctx, e: PEvent): R {
   const { scene, view } = c;
   const touch = e.kind === "touch";
@@ -49,6 +58,11 @@ export function pointerDown(c: Ctx, e: PEvent): R {
   if (hd && !scene.trackLocked[scene.clipTrack[hd.clip]!]) {
     const r = trimRange(scene, hd.clip, hd.edge);
     return { g: { k: "trim", sx: e.x, clip: hd.clip, edge: hd.edge, orig: r.at, value: r.at }, fx: NONE };
+  }
+  const eh = touch ? null : handleAt(scene, view, c.selFlags, e.x, e.y, false, true); // mouse: an edge of an unselected clip trims it (and selects it)
+  if (eh && !scene.trackLocked[scene.clipTrack[eh.clip]!]) {
+    const r = trimRange(scene, eh.clip, eh.edge);
+    return { g: { k: "trim", sx: e.x, clip: eh.clip, edge: eh.edge, orig: r.at, value: r.at }, fx: { select: { mode: "set", ids: [scene.id[eh.clip]!] } } };
   }
   const h = hitTest(scene, view, e.x, e.y, 0);
   if (h.kind === "clip") {
@@ -122,7 +136,7 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "trim": {
       if (g.value === g.orig) return { g: IDLE, fx: NONE };
-      return { g: IDLE, fx: { ops: [trimOp(scene, g.clip, g.edge, g.value)], say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
+      return { g: IDLE, fx: { ops: linkedTrimOps(scene, g.clip, g.edge, g.value), say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
     }
     case "marquee": {
       const [xa, xb] = [Math.min(g.x0, g.x1), Math.max(g.x0, g.x1)];
@@ -130,7 +144,8 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
       const row = (y: number) => Math.floor((clampN(y, RULER, 1e9) - RULER + view.scrollY) / LANE);
       const hit = inRect(scene, xToTime(view, Math.max(xa, GUTTER)), xToTime(view, xb), row(ya), row(yb));
       const ids = hit.map((i) => scene.id[i]!);
-      return { g: IDLE, fx: { select: { mode: e.shift || e.additive ? "add" : "set", ids }, say: { key: "timeline.say.selectedCount", values: { count: ids.length } } } };
+      const clips = groupReps(scene, hit).length; // a linked sound counts with its picture
+      return { g: IDLE, fx: { select: { mode: e.shift || e.additive ? "add" : "set", ids }, say: { key: "timeline.say.selectedCount", values: { count: clips } } } };
     }
     default:
       return { g: IDLE, fx: NONE };
@@ -138,11 +153,14 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
 }
 
 /** Selection after applying an effect's select to the current one. */
-export function applySelect(cur: ReadonlySet<string>, s: NonNullable<Effects["select"]>): Set<string> {
-  if (s.mode === "set") return new Set(s.ids);
+export function applySelect(cur: ReadonlySet<string>, s: NonNullable<Effects["select"]>, scene?: Scene): Set<string> {
+  // Linked clips are picked (and un-picked) together; without a scene (tests of the plain rules) ids are taken as given.
+  const ids = scene ? [...expandLinks(scene, s.ids)] : s.ids;
+  if (s.mode === "set") return new Set(ids);
   const next = new Set(cur);
-  for (const id of s.ids) {
-    if (s.mode === "toggle" && next.has(id)) next.delete(id);
+  const off = s.mode === "toggle" && s.ids.length > 0 && s.ids.every((id) => cur.has(id));
+  for (const id of ids) {
+    if (off) next.delete(id);
     else next.add(id);
   }
   return next;

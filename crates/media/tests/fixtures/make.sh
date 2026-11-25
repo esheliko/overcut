@@ -23,3 +23,8 @@ ffmpeg $Q -i h264_aac.mp4 -c copy -movflags frag_keyframe+empty_moov -frag_durat
 ffmpeg $Q -f lavfi -i "color=c=black:size=320x180:rate=30:duration=3,drawbox=x=0:y=0:w=iw:h=ih:color=white:t=fill:enable='between(t,1,1.03)'" \
   -f lavfi -i "aevalsrc='if(between(t,1,1.02),0.8*sin(2*PI*1000*t),0)':s=48000:d=3" \
   -c:v libx264 -g 30 -bf 0 -pix_fmt yuv420p -c:a aac -b:a 64k -movflags +faststart flash_click.mp4
+# Audio-only WebM (Opus), the shape of a voice recording saved as .webm (browsers report it as video/webm): 1 s, 440 Hz. Used by tests/smoke/media-bin.spec.ts.
+ffmpeg $Q -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" -c:a libopus -b:a 24k audio_only.webm
+# Stills for tests/smoke/stills.spec.ts: a red landscape PNG and a blue portrait JPG.
+ffmpeg $Q -f lavfi -i "color=c=red:s=320x180" -frames:v 1 still_red.png
+ffmpeg $Q -f lavfi -i "color=c=0x2060ff:s=200x300" -frames:v 1 -q:v 5 still_blue_portrait.jpg

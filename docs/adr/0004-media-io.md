@@ -1,5 +1,5 @@
 # 0004 Media I/O per platform; codec and patent policy
-**Status**: proposed (validate with S1, S3, S4; S1 software-only results below, hardware confirmation pending)
+**Status**: accepted 2026-11-24 by the M1 lead under the owner's delegation, on the S1/S3/S4 evidence below (WebCodecs decode/encode and libav LGPL path built and tested; decode and seek measured on the Windows laptop and S24). Hardware encode speed and A/V drift on the reference devices are **field validation** carried into M2 (issue #88); a failing number there changes the defaults, not this decision.
 
 **Context.** Decoding and encoding must be fast (hardware) and legally safe for a free app. H.264, HEVC and AAC are patent-encumbered; shipping software encoders (x264/x265 are GPL) is a licence and patent liability. Browsers and operating systems already license and expose hardware codecs.
 

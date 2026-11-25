@@ -8,7 +8,7 @@ async function ready(page: Page) {
   // No save picker in headless Chromium (it opens a native dialog nobody can answer): the download path is the one under test; the picker path is a unit test.
   await page.addInitScript(() => { delete (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker; });
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "vp9_opus.webm"));
   await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 30_000 });
@@ -18,7 +18,7 @@ const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.
 
 test("Export is disabled until there is something to export", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("export-open")).toBeDisabled();
 });
 
@@ -85,10 +85,16 @@ test("a chosen preset is remembered, and Advanced shows a live size", async ({ p
 test("cancel really cancels and returns to the settings; the editor is read-only meanwhile", async ({ page }) => {
   test.setTimeout(120_000);
   await ready(page);
-  // About 8 s of footage, so the export is still running when we reach for Cancel.
+  // About 8 s of footage, so the export is still running when we reach for Cancel: three more copies of the clip, each added with its own "+"
+  // (a clip already on the timeline has no "+", so the same card cannot be added three times).
+  await page.getByTestId("media-input").setInputFiles([resolve(FIX, "vp9_opus.webm"), resolve(FIX, "vp9_opus.webm"), resolve(FIX, "vp9_opus.webm")]);
+  await expect(page.locator('[data-testid=bin-item][data-status="ready"]')).toHaveCount(4, { timeout: 30_000 }); // the one that was added and the three new copies
   const add = page.getByRole("button", { name: "Add vp9_opus.webm to the timeline" });
-  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); // the sheet closed itself after the import
-  for (let i = 0; i < 3; i++) await add.first().click();
+  for (let i = 0; i < 3; i++) {
+    // the phone sheet closes itself after an import and after each add: reopen it only when the next "+" is hidden
+    if ((page.viewportSize()?.width ?? 0) < 720 && !(await add.first().isVisible())) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+    await add.first().click();
+  }
   await page.getByTestId("export-open").click();
   await page.getByTestId("export-go").click();
   const dialog = page.getByTestId("export-dialog");

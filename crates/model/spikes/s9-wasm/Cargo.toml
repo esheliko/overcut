@@ -1,0 +1,21 @@
+# Spike S9 (M2-001), throw-away: runs `app_model::anim::golden_checksum` and a timing loop as WebAssembly in node, to compare with native.
+# Not a workspace member (own empty workspace); build: see run.mjs.
+[package]
+name = "s9-wasm"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+app-model = { path = "../.." }
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"

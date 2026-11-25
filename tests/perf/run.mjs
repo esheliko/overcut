@@ -61,7 +61,7 @@ try {
     log('startup');
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
-    const load = async () => { const t0 = performance.now(); await page.goto(base + '/'); await page.waitForFunction(() => /\(wasm\)/.test(document.querySelector('[data-testid="engine"]')?.textContent ?? ''), null, { timeout: 60_000 }); return performance.now() - t0; };
+    const load = async () => { const t0 = performance.now(); await page.goto(base + '/'); await page.waitForFunction(() => document.querySelector('[data-testid="engine"]')?.getAttribute('data-backend') === 'wasm', null, { timeout: 60_000 }); return performance.now() - t0; };
     set('startup.cold_ms', await load());
     await page.evaluate(() => navigator.serviceWorker?.ready).catch(() => {});
     set('startup.warm_ms', await load());
@@ -87,7 +87,7 @@ try {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
     await page.goto(base + '/');
-    await page.waitForFunction(() => /\(wasm\)/.test(document.querySelector('[data-testid="engine"]')?.textContent ?? ''), null, { timeout: 60_000 });
+    await page.waitForFunction(() => document.querySelector('[data-testid="engine"]')?.getAttribute('data-backend') === 'wasm', null, { timeout: 60_000 });
     await page.getByTestId('preview-import').waitFor({ state: 'visible' });
     await page.getByTestId('preview-input').setInputFiles('crates/media/tests/fixtures/flash_click.mp4');
     await page.waitForSelector('.canvas[data-loaded="true"]', { timeout: 30_000 });

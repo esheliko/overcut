@@ -117,7 +117,7 @@ function Details() {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void } }) {
+function AppMenu({ compact, theme, status, save, project }: { compact: boolean; theme: { name: string; cycle: () => void }; status: ReactNode; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -147,6 +147,8 @@ function AppMenu({ compact, theme, status, project }: { compact: boolean; theme:
             <>
               <button className="menu-row" role="menuitem" onClick={theme.cycle} data-testid="theme-toggle"><Icon name="theme" size={20} /><span>{t("theme.change", { theme: theme.name })}</span></button>
               <div className="menu-row menu-status" role="presentation">{status}</div>
+              {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
+              <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
             </>
           )}
           <AccentPicker />
@@ -191,6 +193,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const [playing, setPlaying] = useState(false);
   const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
+  const [refusals, setRefusals] = useState<string[]>([]); // phone: files refused in an import, kept on screen until dismissed (the Media sheet closes after a successful one)
   const cycleTheme = () => {
     const next = nextPref(themePref);
     savePref(next);
@@ -237,6 +240,7 @@ function Editor({ store }: { store: ProjectStore }) {
     imported: (count) => t("media.imported", { count }),
     importLabel: (name) => t("media.importLabel", { name }),
     announce,
+    refused: (m) => setRefusals((all) => (all.includes(m) ? all : [...all, m])),
   });
   const importFiles = media.importSources;
   // Phone: the Media sheet covers the Split / Undo toolbar, so it closes once an import has succeeded (the bin is one tap away on the tool bar).
@@ -514,6 +518,10 @@ function Editor({ store }: { store: ProjectStore }) {
   const engineText = engine.status === "loading" ? t("engine.starting")
     : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
     : t("engine.failed", { message: engine.message });
+  // The menu says plain "Ready"; the engine's name, version and backend are on the About OverCut page.
+  // "Saved on this device" follows autosave (persistence.status); it does not claim a save before the project is open.
+  const saveState = persistence.status === "error" ? "error" : !persistence.ready ? "opening" : persistence.status;
+  const engineMenuText = engine.status === "ready" ? t("engine.menu.ready") : engineText;
 
   return (
     <div className={showHome ? "editor home-mode" : "editor"} ref={editorRef} data-profile={profile} data-testid="editor">
@@ -524,16 +532,19 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
         <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
-          <span className="chip" data-testid="engine" data-state={engine.status} aria-live="polite">
+          {engine.status === "error"
+            ? <span className="chip" data-testid="engine" data-state="error">
+                <span className="dot" aria-hidden="true" />
+                <span className="chip-text"><span role="alert" data-testid="engine-error">{t("engine.failed", { message: engine.message })}</span></span>
+              </span>
+            // Developer detail ("Engine overcut v0.1.0 (wasm)") is not for the top bar: it lives in the app menu and on the Diagnostics page. This hidden probe is what tests wait on.
+            : <span hidden data-testid="engine" data-state={engine.status} data-backend={engine.status === "ready" ? engine.backend : undefined} />}
+          <span className="chip save-state" role="status" data-testid="save-state" data-state={saveState}>
             <span className="dot" aria-hidden="true" />
-            <span className="chip-text">
-              {engine.status === "loading" && t("engine.starting")}
-              {engine.status === "ready" && t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })}
-              {engine.status === "error" && <span role="alert" data-testid="engine-error">{t("engine.failed", { message: engine.message })}</span>}
-            </span>
+            <span className="chip-text">{t(`save.state.${saveState}`)}</span>
           </span>
           <ExportControl engine={core} fileOf={media.fileOf} />
-          <AppMenu compact={compact} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineText}</span></>} />
+          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts") }} theme={{ name: themeName, cycle: cycleTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
         </div>
       </header>
 
@@ -552,7 +563,7 @@ function Editor({ store }: { store: ProjectStore }) {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
         </section>
 
-        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} />
+        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} />
 
         {wide && DETAILS_READY && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
@@ -581,6 +592,12 @@ function Editor({ store }: { store: ProjectStore }) {
       {dialog && typeof dialog === "object" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       </>}
+      {refusals.length > 0 && !roomy && (
+        <div className="refusal-note" data-testid="refusal-note">
+          <ul>{refusals.map((m) => <li key={m}>{m}</li>)}</ul>
+          <button className="icon-btn" aria-label={t("media.refusalDismiss")} onClick={() => setRefusals([])}>×</button>
+        </div>
+      )}
       <div className="toast" role="status">{toast}</div>
     </div>
   );

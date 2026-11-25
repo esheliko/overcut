@@ -6,7 +6,7 @@
 
 /** What a command does. Timeline commands carry the payload the timeline already understood before the registry existed. */
 export type Command =
-  | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" }
+  | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" } | { c: "unlink" }
   | { c: "go"; dir: "left" | "right" | "up" | "down" }
   /** Move the selection by whole frames. */
   | { c: "nudge"; frames: number }
@@ -51,6 +51,8 @@ export const COMMANDS: readonly CommandDef[] = [
   D("edit.cut", "global", ["Mod+X"], { c: "cut" }),
   D("edit.paste", "global", ["Mod+V"], { c: "paste" }),
   D("edit.duplicate", "global", ["Mod+D"], { c: "duplicate" }),
+  /** No default key on m2 (a button in the timeline toolbar); registered so the palette and the remap list can reach it. */
+  D("edit.unlink", "global", [], { c: "unlink" }),
   D("edit.split", "global", ["S"], { c: "split" }),
   D("edit.delete", "global", ["Delete", "Backspace"], { c: "delete" }),
 

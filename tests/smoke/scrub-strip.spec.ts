@@ -19,7 +19,7 @@ type Hook = {
 
 async function openClip(page: Page) {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
   await page.getByTestId("preview-input").setInputFiles(CLIP);
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true", { timeout: 20_000 });
@@ -92,7 +92,7 @@ test("a long-GOP clip gets a background scrub strip, then scrubs show a stand-in
 
 test("the menu turns smooth scrubbing off and on", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.locator(".menu .icon-btn").first().click();
   const item = page.getByTestId("menu-scrub-prep");
   await expect(item).toHaveAttribute("aria-checked", "true");

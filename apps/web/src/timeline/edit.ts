@@ -13,6 +13,31 @@ export function snapDelta(d: number, lo: number, hi: number, ft: number): number
   return clampN(Math.round(d / ft), kmin, kmax) * ft;
 }
 
+/** The other clips linked to clip `i` (empty when it is alone or its partners are gone). */
+export function partnersOf(scene: Scene, i: number): number[] {
+  const l = scene.link[i];
+  return l ? scene.linkGroups.get(l)!.filter((j) => j !== i) : [];
+}
+
+/** `ids` plus the ids of every clip linked to one of them: selecting half of a link selects both. */
+export function expandLinks(scene: Scene, ids: Iterable<string>): Set<string> {
+  const out = new Set<string>();
+  const at = new Map<string, number>();
+  for (let i = 0; i < scene.clipCount; i++) at.set(scene.id[i]!, i);
+  for (const id of ids) {
+    out.add(id);
+    const i = at.get(id);
+    if (i !== undefined) for (const j of partnersOf(scene, i)) out.add(scene.id[j]!);
+  }
+  return out;
+}
+
+/** One index per link group (the first) plus every unlinked clip: what "how many clips is this selection" means to the user. */
+export function groupReps(scene: Scene, sel: readonly number[]): number[] {
+  const seen = new Set<string>();
+  return sel.filter((i) => { const l = scene.link[i]!; if (!l) return true; if (seen.has(l)) return false; seen.add(l); return true; });
+}
+
 /** 1 for every index in `sel`, else 0. */
 export function flagsOf(scene: Scene, sel: readonly number[]): Uint8Array {
   const f = new Uint8Array(scene.clipCount);
@@ -78,6 +103,19 @@ export type Edge = "start" | "end";
 
 /** Allowed range (ticks) of the boundary being trimmed: neighbours, source media, and at least one frame left. */
 export function trimRange(scene: Scene, i: number, edge: Edge): { min: number; max: number; at: number } {
+  const own = ownTrimRange(scene, i, edge);
+  // A linked clip trims with its partners by the same amount, so the range is what ALL of them allow (a locked partner stays put and does not count).
+  let lo = own.min - own.at, hi = own.max - own.at;
+  for (const j of partnersOf(scene, i)) {
+    if (scene.trackLocked[scene.clipTrack[j]!]) continue;
+    const r = ownTrimRange(scene, j, edge);
+    lo = Math.max(lo, r.min - r.at);
+    hi = Math.min(hi, r.max - r.at);
+  }
+  return { min: own.at + lo, max: own.at + Math.max(lo, hi), at: own.at };
+}
+
+function ownTrimRange(scene: Scene, i: number, edge: Edge): { min: number; max: number; at: number } {
   const t = scene.clipTrack[i]!, lo = scene.trackFirst[t]!, hi = scene.trackFirst[t + 1]!;
   const s = scene.tStart[i]!, e = s + scene.tDur[i]!, ft = scene.frameTicks;
   const num = scene.speedNum[i]! || 1, den = scene.speedDen[i]! || 1;
@@ -102,6 +140,54 @@ export function trimOp(scene: Scene, i: number, edge: Edge, value: number): Op {
   return edge === "start" ? { op: "trim_in", clip: scene.id[i]!, start: value } : { op: "trim_out", clip: scene.id[i]!, end: value };
 }
 
+/** The same trim for clip `i` AND every unlocked clip linked to it, each moved by the same amount (one undo step): cutting the front of a clip cuts its sound too. */
+export function linkedTrimOps(scene: Scene, i: number, edge: Edge, value: number): Op[] {
+  const at = (j: number) => (edge === "start" ? scene.tStart[j]! : scene.tStart[j]! + scene.tDur[j]!);
+  const d = value - at(i);
+  return [trimOp(scene, i, edge, value), ...partnersOf(scene, i).filter((j) => !scene.trackLocked[scene.clipTrack[j]!]).map((j) => trimOp(scene, j, edge, at(j) + d))];
+}
+
+/** Rewrites single-clip trim ops (numeric timing) so the clip's linked partners are trimmed by the same amount; other ops pass through. */
+export function mirrorTrims(scene: Scene, ops: Op[]): Op[] {
+  const at = new Map<string, number>();
+  for (let i = 0; i < scene.clipCount; i++) at.set(scene.id[i]!, i);
+  return ops.flatMap((o) => {
+    const i = o.op === "trim_in" || o.op === "trim_out" ? at.get(o.clip) : undefined;
+    if (i === undefined) return [o];
+    return o.op === "trim_in" ? linkedTrimOps(scene, i, "start", o.start) : o.op === "trim_out" ? linkedTrimOps(scene, i, "end", o.end) : [o];
+  });
+}
+
+/** Ops that let the selected clips edit alone (`set_link` null), one per linked clip; empty when none is linked. */
+export const unlinkOps = (scene: Scene, sel: readonly number[]): Op[] => sel.filter((i) => scene.link[i]).map((i) => ({ op: "set_link" as const, clip: scene.id[i]!, link: null }));
+
+/** Deleting or start-trimming the first thing in the project would leave an empty stretch before everything else, and the export would
+ *  start with black and silence. For an edit made only of delete / trim ops that moved the project's first start later, append moves
+ *  that slide every remaining clip left by that amount (same undo step). Anything else, or a locked track in the way: `ops` unchanged. */
+export function closeStartGap(scene: Scene, ops: Op[]): Op[] {
+  const n = scene.clipCount;
+  if (n === 0 || !ops.some((o) => o.op === "delete" || o.op === "trim_in")) return ops;
+  const index = new Map<string, number>();
+  for (let i = 0; i < n; i++) index.set(scene.id[i]!, i);
+  const start = Array.from(scene.tStart.subarray(0, n)), gone = new Set<number>();
+  let first = Infinity, touched = false;
+  for (let i = 0; i < n; i++) first = Math.min(first, start[i]!);
+  for (const o of ops) {
+    if (o.op !== "delete" && o.op !== "trim_in" && o.op !== "trim_out") return ops;
+    const i = index.get(o.clip);
+    if (i === undefined) return ops;
+    if (o.op === "delete") gone.add(i);
+    else if (o.op === "trim_in") start[i] = o.start;
+    if (o.op !== "trim_out" && scene.tStart[i]! === first) touched = true;
+  }
+  const rest = [...Array(n).keys()].filter((i) => !gone.has(i));
+  if (!touched || rest.length === 0) return ops;
+  const gap = Math.min(...rest.map((i) => start[i]!)) - first;
+  if (gap <= 0 || rest.some((i) => scene.trackLocked[scene.clipTrack[i]!])) return ops;
+  rest.sort((a, b) => start[a]! - start[b]!);
+  return [...ops, ...rest.map((i): Op => ({ op: "move", clip: scene.id[i]!, track: scene.trackId[scene.clipTrack[i]!]!, start: start[i]! - gap }))];
+}
+
 /** Clips under `tick` (strictly inside, so both halves are non-empty), among `candidates` (all clips when null). */
 export function splittable(scene: Scene, tick: number, candidates: readonly number[] | null): number[] {
   const out: number[] = [];
@@ -119,8 +205,17 @@ export function splittable(scene: Scene, tick: number, candidates: readonly numb
   return out;
 }
 
+/** Splits; the right pieces of clips that were linked to each other (and are all split here) share one new link, so the pairs stay linked pairwise. */
 export function splitOps(scene: Scene, clips: readonly number[], tick: number, newId: () => string): Op[] {
-  return clips.map((i) => ({ op: "split" as const, clip: scene.id[i]!, at: tick, new_id: newId() }));
+  const count = new Map<string, number>();
+  for (const i of clips) { const l = scene.link[i]!; if (l) count.set(l, (count.get(l) ?? 0) + 1); }
+  const fresh = new Map<string, string>();
+  return clips.map((i) => {
+    const l = scene.link[i]!;
+    const op: Op = { op: "split", clip: scene.id[i]!, at: tick, new_id: newId() };
+    if (l && count.get(l)! > 1) { if (!fresh.has(l)) fresh.set(l, newId()); op.new_link = fresh.get(l)!; }
+    return op;
+  });
 }
 
 export const deleteOps = (scene: Scene, sel: readonly number[]): Op[] => sel.map((i) => ({ op: "delete" as const, clip: scene.id[i]! }));

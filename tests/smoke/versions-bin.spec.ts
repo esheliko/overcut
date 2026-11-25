@@ -11,7 +11,7 @@ const phoneOf = (page: Page) => (page.viewportSize()?.width ?? 0) < 720;
 const openBin = async (page: Page) => { if (phoneOf(page)) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); };
 async function ready(page: Page, url = "/") {
   await page.goto(url);
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
   await openBin(page);
 }
@@ -76,6 +76,7 @@ test("bin: type filter, sort, tags (undoable) and tag filter", async ({ page }) 
   const items = page.getByTestId("bin-item");
   await expect(page.getByTestId("bin-count")).toHaveText("3 of 3 shown");
   await openBin(page); // the phone's sheet closes itself after an import
+  await page.getByTestId("bin-filter-toggle").click(); // the kind, sort and tag controls sit behind "Filter and sort"
 
   await page.getByTestId("bin-kind-image").click();
   await expect(items).toHaveCount(1);
@@ -125,7 +126,7 @@ test("a bin of 10,000 items renders a window of rows and filters quickly", async
     await s.whenDurable();
   }, N);
   await page.goto("/"); // the project, 10k media in it, opens again from storage
-  await expect(page.getByTestId("engine")).toContainText(/\(wasm\)/, { timeout: 30_000 });
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await openBin(page);
   const items = page.getByTestId("bin-item");
   await expect(page.getByTestId("bin-count")).toContainText(/of 1000\d shown/, { timeout: 30_000 });
@@ -133,6 +134,7 @@ test("a bin of 10,000 items renders a window of rows and filters quickly", async
   expect(await items.count()).toBeGreaterThan(5);
 
   const t0 = Date.now();
+  await page.getByTestId("bin-filter-toggle").click();
   await page.getByTestId("bin-kind-audio").click();
   await expect(page.getByTestId("bin-count")).toContainText(/^33\d\d of 1000\d shown/);
   const filterMs = Date.now() - t0;

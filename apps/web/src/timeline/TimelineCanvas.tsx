@@ -5,13 +5,14 @@ import { onThemeChange } from "../theme/tokens";
 import { DARK, drawTimeline, newOverlay, paletteFromCss, type DrawStats, type Overlay, type Palette } from "./draw";
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
 import { handleAt } from "./hit";
-import { applySelect, IDLE, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
+import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
-import { canvasCommand, type Command } from "./shortcuts";
+import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
 
 export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement };
+const CLIP_LIST_MAX = 200;
 const NO_SEL: ReadonlySet<string> = new Set();
 
 type Props = {
@@ -186,21 +187,20 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   };
   const applyFx = (fx: Effects) => {
     const l = live.current;
-    if (fx.select) setSelection(applySelect(l.selected, fx.select));
+    if (fx.select) setSelection(applySelect(l.selected, fx.select, l.scene));
     if (fx.seek !== undefined) l.onFrame(clamp(Math.round(fx.seek * l.fps), 0, l.endFrame));
     if (fx.ops) l.onEdit?.(fx.ops, fx.say ?? { key: "timeline.say.edited" });
     else if (fx.say) l.onAnnounce?.(fx.say);
   };
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
-    const o = ui.current, f = flags.current;
+    const o = ui.current;
     o.ghosts = null; o.trimClip = -1; o.marquee = null;
+    markPreview(flags.current, g);
     if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTrack = g.track !== g.from ? g.track : -1;
-      for (const i of g.sel) f[i] = 2;
     } else if (g.k === "trim") {
       o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND;
-      f[g.clip] = 2;
     } else if (g.k === "marquee") o.marquee = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 };
     invalidate();
   };
@@ -227,9 +227,9 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   };
   const onMove = (e: React.PointerEvent) => {
     if (!ptr.current.has(e.pointerId)) {
-      if (e.pointerType === "mouse" && live.current.selected.size > 0) { // hover: show the resize cursor over a trim handle
+      if (e.pointerType === "mouse") { // hover: show the resize cursor over any clip edge (a trim handle)
         const p = local(e);
-        canvas.current!.style.cursor = handleAt(live.current.scene, view.current, flags.current, p.x, p.y, false) ? "ew-resize" : "";
+        canvas.current!.style.cursor = handleAt(live.current.scene, view.current, flags.current, p.x, p.y, false, true) ? "ew-resize" : "";
       }
       return;
     }
@@ -360,10 +360,19 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onCancel}
-        onKeyDown={(e) => { delete e.currentTarget.dataset.pointer; onKey(e); }}
+        onKeyDown={(e) => { if (!isModifierKey(e.key)) delete e.currentTarget.dataset.pointer; onKey(e); }}
         onBlur={(e) => { delete e.currentTarget.dataset.pointer; }}
       />
       <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>
+      {/* Text alternative to the canvas: every clip (capped) in reading order, so a screen reader can browse what the picture shows. */}
+      {scene.clipCount > 0 && (
+        <ul className="sr-only" aria-label={t("timeline.clipList")} data-testid="tl-clip-list">
+          {Array.from({ length: Math.min(scene.clipCount, CLIP_LIST_MAX) }, (_, i) => {
+            const say = describeClip(scene, i);
+            return <li key={scene.id[i]}>{t(say.key, say.values)}{selected.has(scene.id[i]!) ? ` ${t("timeline.clipSelected")}` : ""}</li>;
+          })}
+        </ul>
+      )}
     </>
   );
 }

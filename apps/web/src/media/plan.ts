@@ -18,6 +18,12 @@ const VIDEO_EXT = new Set(["mp4", "m4v", "mov", "webm", "mkv", "avi", "mpg", "mp
 const AUDIO_EXT = new Set(["m4a", "mp3", "aac", "wav", "ogg", "oga", "opus", "flac", "aif", "aiff", "wma"]);
 const IMAGE_EXT = new Set(["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "heic", "heif"]);
 
+/** An engine message as a sentence: first letter up, a full stop at the end (it is shown inside a longer message). */
+export const sentence = (m: string): string => {
+  const t = m.trim();
+  return t === "" ? t : `${t[0]!.toUpperCase()}${t.slice(1)}${/[.!?]$/.test(t) ? "" : "."}`;
+};
+
 export const extOf = (name: string): string => (name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "");
 
 /** Video, audio or image by MIME type, falling back to the extension (phones and some desktops give no type). `null` = not media. */
@@ -104,15 +110,17 @@ export function insertOps(p: Project, media: MediaRef, probed: Probed, start: nu
   const at = tracks.find((t) => t.kind === "audio" && !t.locked);
   const duration = media.kind === "image" ? STILL_SECONDS * TICKS : media.duration ?? 0;
   if (duration <= 0) return null;
-  const clip = (): Clip => ({ id: ids(), media: media.id, start, source_in: 0, duration });
+  const link = ids(); // the picture and the sound of one video import are linked: they select, move, trim and cut together
+  const clip = (linked = false): Clip => ({ id: ids(), media: media.id, start, source_in: 0, duration, ...(linked ? { link } : {}) });
   const ops: Op[] = [];
   if (media.kind === "audio") {
     if (!at) return null;
     ops.push({ op: "insert_clip", track: at.id, clip: clip() });
   } else {
     if (!vt) return null;
-    ops.push({ op: "insert_clip", track: vt.id, clip: clip() });
-    if (media.kind === "video" && probed.hasAudio && at) ops.push({ op: "insert_clip", track: at.id, clip: clip() });
+    const withSound = media.kind === "video" && probed.hasAudio && at;
+    ops.push({ op: "insert_clip", track: vt.id, clip: clip(!!withSound) });
+    if (withSound) ops.push({ op: "insert_clip", track: at.id, clip: clip(true) });
   }
   return ops;
 }
@@ -145,3 +153,9 @@ export function codecLabel(codec: string | undefined): string {
   if (c.startsWith("mp4a")) return "AAC";
   return codec.toUpperCase();
 }
+
+/**
+ * Why a card is offline. `moved`: a path or handle was kept and the file is gone or needs permission. `reopen`: the file came from a plain
+ * file input, which no browser lets a page keep across a reload, so it has to be chosen again (one click, nothing was lost).
+ */
+export const offlineReason = (uri: string | undefined): "moved" | "reopen" => (uri?.startsWith("file:") ? "reopen" : "moved");

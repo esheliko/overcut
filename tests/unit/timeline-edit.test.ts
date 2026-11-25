@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
+import { closeStartGap, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
-import { applySelect, IDLE, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
+import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
 import { buildScene, TICKS_PER_SECOND } from "../../apps/web/src/timeline/scene";
-import { canvasCommand, globalCommand, type KeyLike } from "../../apps/web/src/timeline/shortcuts";
+import { canvasCommand, globalCommand, isModifierKey, type KeyLike } from "../../apps/web/src/timeline/shortcuts";
 import { LANE, RULER, timeToX, type View } from "../../apps/web/src/timeline/view";
 
 const project = fixtureProject({ tracks: 4, clipsPerTrack: 6 });
@@ -114,6 +114,17 @@ test("hit zones for trim handles are at least 44 px wide for touch, even on a na
   const wide = view();
   assert.equal(handleAt(scene, wide, flagsOf(scene, [i]), cx(i, wide), y, true), null, "the body of a wide clip is not a handle");
   assert.ok(HANDLE_MOUSE < HANDLE_TOUCH);
+});
+
+test("mouse: the edge of an unselected clip trims it and selects it; touch still needs a selection first", () => {
+  const i = 4, v = view(), y = cy(0), x0 = timeToX(v, scene.start[i]!);
+  const none = flagsOf(scene, []);
+  assert.equal(handleAt(scene, v, none, x0, y, false), null);
+  assert.deepEqual(handleAt(scene, v, none, x0, y, false, true), { clip: i, edge: "start" });
+  const r = pointerDown(ctx(), mouse(x0, y));
+  assert.equal(r.g.k, "trim");
+  assert.deepEqual(r.fx.select, { mode: "set", ids: [scene.id[i]] });
+  assert.notEqual(pointerDown(ctx(), touch(x0, y)).g.k, "trim");
 });
 
 test("click selects, shift/ctrl toggles, and a tap on empty space seeks and clears", () => {
@@ -229,4 +240,64 @@ test("shortcuts: undo/redo/split/delete anywhere, selection keys only on the can
   assert.deepEqual(canvasCommand(key({ key: "[", code: "BracketLeft" }), true), { c: "trimToPlayhead", edge: "start" });
   assert.deepEqual(canvasCommand(key({ key: "a", ctrlKey: true }), false), { c: "selectAll" });
   assert.deepEqual(canvasCommand(key({ key: "Escape" }), true), { c: "clear" });
+});
+
+test("closing the start gap: deleting or start-trimming the first clips slides the rest left; other edits are left alone", () => {
+  const all = [...Array(scene.clipCount).keys()];
+  const t0 = Math.min(...all.map((i) => scene.tStart[i]!));
+  const front = all.filter((i) => scene.tStart[i]! === t0), rest = all.filter((i) => scene.tStart[i]! !== t0);
+  assert.ok(rest.length > 0);
+  const next = Math.min(...rest.map((i) => scene.tStart[i]!));
+  const out = closeStartGap(scene, deleteOps(scene, front));
+  const moves = out.filter((o) => o.op === "move");
+  assert.equal(out.length, front.length + rest.length, "every remaining clip gets one move");
+  for (const o of moves) { if (o.op !== "move") continue; const i = rest.find((k) => scene.id[k] === o.clip)!; assert.equal(o.start, scene.tStart[i]! - (next - t0)); }
+  assert.ok(moves.some((o) => o.op === "move" && o.start === t0), "the new first clip lands where the project started");
+  const del = deleteOps(scene, rest.slice(0, 1));
+  assert.deepEqual(closeStartGap(scene, del), del, "deleting something later leaves a deliberate gap alone");
+  const mv = moveOps(scene, front, scene.frameTicks);
+  assert.deepEqual(closeStartGap(scene, mv), mv, "a move is the user's own placement");
+  const ft = scene.frameTicks, e = trimOp(scene, front[0]!, "end", scene.tStart[front[0]!]! + scene.tDur[front[0]!]! - ft);
+  assert.deepEqual(closeStartGap(scene, [e]), [e], "an end trim never moves anything");
+});
+
+test("a modifier pressed alone is not keyboard use of the timeline (no focus frame over the whole stage)", () => {
+  for (const key of ["Shift", "Control", "Alt", "Meta", "AltGraph"]) assert.equal(isModifierKey(key), true, key);
+  for (const key of ["ArrowLeft", "s", "Delete", " ", "a"]) assert.equal(isModifierKey(key), false, key);
+});
+
+test("a drag clamped back to 0:00 makes no edit, and the clip is still painted afterwards (no stuck ghost flag)", () => {
+  // The first clip starts at 0: dragging its body left can only come back to 0, which is no edit at all.
+  const v = view(), x = cx(0, v), sel = [0];
+  const c = ctx(sel, v);
+  const flags = flagsOf(scene, sel);
+  let r = pointerDown(c, mouse(x, cy(0)));
+  assert.equal(r.g.k, "press");
+  let g: Gesture = r.g;
+  for (let k = 1; k <= 10; k++) {
+    r = pointerMove(c, g, mouse(x - 10 * k, cy(0)));
+    g = r.g;
+    markPreview(flags, g); // what the canvas does on every pointer move
+    assert.equal(g.k, "move");
+    assert.ok(scene.tStart[0]! + (g as Extract<Gesture, { k: "move" }>).delta >= 0, "never a negative start");
+  }
+  assert.equal(flags[0], 2, "while dragged the clip is a ghost");
+  r = pointerUp(c, g, mouse(x - 100, cy(0)));
+  assert.equal(r.fx.ops, undefined, "clamped to 0 is no move: no op is sent");
+  markPreview(flags, IDLE); // what the canvas does on release
+  assert.deepEqual(flags, flagsOf(scene, sel), "the clip is back to plain selected, so it is painted again");
+});
+
+test("a trim that ends where it started also leaves the clip painted", () => {
+  const v = view(), sel = [1], c = ctx(sel, v), flags = flagsOf(scene, sel);
+  const x1 = timeToX(v, scene.end[1]!);
+  let r = pointerDown(c, mouse(x1, cy(0)));
+  assert.equal(r.g.k, "trim");
+  markPreview(flags, r.g);
+  r = pointerMove(c, r.g, mouse(x1, cy(0)));
+  markPreview(flags, r.g);
+  r = pointerUp(c, r.g, mouse(x1, cy(0)));
+  assert.equal(r.fx.ops, undefined);
+  markPreview(flags, IDLE);
+  assert.deepEqual(flags, flagsOf(scene, sel));
 });

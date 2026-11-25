@@ -249,10 +249,18 @@ fn huge_counts_are_rejected_without_allocating() {
 
 #[test]
 fn unknown_formats_are_reported_plainly() {
-    assert!(matches!(
-        probe_bytes(b"RIFF\0\0\0\0AVI LIST\0\0\0\0"),
-        Err(MediaError::Unsupported(_))
-    ));
+    // The sentence is shown to the person as it is (after the file name and format), so it must read as one.
+    for head in [&b"RIFF\0\0\0\0AVI LIST\0\0\0\0"[..], &[0x7f; 64][..]] {
+        match probe_bytes(head) {
+            Err(MediaError::Unsupported(m)) => {
+                assert!(
+                    m.starts_with(|c: char| c.is_uppercase()) && m.ends_with('.'),
+                    "{m}"
+                )
+            }
+            other => panic!("{other:?}"),
+        }
+    }
 }
 
 /// What must survive fragmentation: timing relative to the first presented frame, sync flags and sizes of every packet. (A fragmented
