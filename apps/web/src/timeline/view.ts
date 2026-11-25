@@ -1,6 +1,9 @@
 /** Viewport math for the canvas timeline: pure, no DOM. Units: CSS pixels and seconds. */
-export const MIN_PPS = 2;
+/** 10 hours across a 1500 px timeline is 0.04 px/s; 0.005 leaves room for ultrawide and phone widths alike. */
+export const MIN_PPS = 0.005;
 export const MAX_PPS = 1200;
+/** Longest project the zoom range is built for (seconds): 10 h. */
+export const MAX_SPAN_SEC = 36000;
 /** Default gutter (px). The canvas widens it for track headers: `GUTTER_WIDE` with a mouse, `GUTTER_COMPACT` on a phone (view.gutter). */
 export const GUTTER = 48;
 export const GUTTER_WIDE = 148;
@@ -61,9 +64,40 @@ export const fitPps = (v: View, lengthSec: number) => clampPps((v.width - gut(v)
 /** Exponential fling decay: velocity (px/ms) after dt ms. */
 export const decayVelocity = (vel: number, dtMs: number, tauMs = 325) => vel * Math.exp(-dtMs / tauMs);
 
-const STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+const STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600, 7200, 14400, 21600, 43200];
 /** Smallest nice step (seconds) whose gap is at least `minGapPx` wide. */
 export function tickStep(pps: number, minGapPx = 72): number {
   for (let i = 0; i < STEPS.length; i++) if (STEPS[i]! * pps >= minGapPx) return STEPS[i]!;
-  return 3600;
+  return STEPS[STEPS.length - 1]!;
+}
+/** Minor ticks per labelled step: a divisor that lands on whole units (4 for 2 s / 2 min / 2 h, 3 for 15 s, 5 otherwise). */
+export function minorDivisions(step: number): number {
+  return step === 0.2 || step === 2 || step === 120 || step === 7200 || step === 14400 ? 4 : step === 15 || step === 21600 ? 3 : step === 30 || step === 60 || step === 1800 || step === 3600 || step === 43200 ? 6 : 5;
+}
+/** Ruler label for `sec` on a ruler stepping by `step`: m:ss(.f) at short scales, h:mm:ss once past an hour, h:mm when the step is a minute or more. */
+export function formatTick(sec: number, step: number): string {
+  const whole = Math.floor(sec + 1e-9);
+  const frac = sec - whole;
+  const h = Math.floor(whole / 3600), m = Math.floor((whole % 3600) / 60), s = whole % 60;
+  const two = (n: number) => String(n).padStart(2, "0");
+  if (step >= 60 && h > 0) return `${h}:${two(m)}`;
+  if (h > 0) return `${h}:${two(m)}:${two(s)}`;
+  return `${m}:${two(s)}${frac > 0.001 ? "." + String(Math.round(frac * 10)) : ""}`;
+}
+
+/** Marker names and chapter diamonds are drawn only when a marker's flag has room: below this zoom they collapse to a thin line. */
+export const MARKER_NAME_PPS = 20;
+/** Whether clips at this zoom are wide enough to carry a filmstrip or waveform (px per second; a clip needs `TILE_MIN` px). */
+export const TILE_MIN = 28, NAME_MIN = 56;
+/** Clip width (px) -> what to draw: "block" (plain coloured body only), "tiles" (filmstrip / waveform), "name" (tiles and the name). */
+export function clipDetail(widthPx: number): "block" | "tiles" | "name" {
+  return widthPx >= NAME_MIN ? "name" : widthPx >= TILE_MIN ? "tiles" : "block";
+}
+
+/** Zoom and scroll that show [t0, t1] seconds across the timeline width (with a small margin). Null if the range is empty. */
+export function viewForRange(v: View, t0: number, t1: number, margin = 24): { pps: number; scrollX: number } | null {
+  const span = t1 - t0;
+  if (!(span > 0)) return null;
+  const pps = clampPps((v.width - gut(v) - 2 * margin) / span);
+  return { pps, scrollX: Math.max(0, t0 * pps - margin) };
 }

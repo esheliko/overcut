@@ -15,9 +15,9 @@ import { markerAt } from "./markers";
 import { COMMAND_EVENT } from "../commands/palette";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import type { Tool } from "./ripple";
-import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
+import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, viewForRange, xToTime, zoomAt, type View } from "./view";
 
-export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement };
+export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement; /** Called after a frame whose zoom, scroll or width changed (the overview bar follows it). */ onView?: () => void };
 const CLIP_LIST_MAX = 200;
 const NO_SEL: ReadonlySet<string> = new Set();
 
@@ -82,6 +82,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     const f = flags.current;
     for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
   };
+  const seen = useRef({ pps: 0, x: -1, w: 0 });
+  const handle = useRef<CanvasHandle | null>(null);
   const lengthSec = useCallback(() => Math.max(live.current.endFrame / live.current.fps, live.current.scene.endSec), []);
 
   const draw = useCallback(() => {
@@ -97,6 +99,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     // Test/diagnostic hook: how much real media has landed (smoke asserts imported clips leave the placeholder state).
     if (media) { c.dataset.waveTiles = String(media.waveforms.stats.tilesRendered); c.dataset.thumbs = String(media.thumbs.stats.generated + media.thumbs.stats.fromCache); }
     drawTimeline(ctx, l.scene, view.current, l.frame / l.fps, dpr.current, palette.current, stats.current, ui.current, media);
+    const v = view.current, sig = seen.current;
+    if (sig.pps !== v.pps || sig.x !== v.scrollX || sig.w !== v.width) { sig.pps = v.pps; sig.x = v.scrollX; sig.w = v.width; handle.current?.onView?.(); }
   }, [lengthSec, media]);
   const invalidate = useCallback(() => { if (!raf.current) raf.current = requestAnimationFrame(draw); }, [draw]);
 
@@ -132,7 +136,12 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     return () => { ro.disconnect(); window.removeEventListener("resize", fit); cancelAnimationFrame(raf.current); raf.current = 0; };
   }, [invalidate]);
 
-  useEffect(() => { onReady?.({ view: view.current, invalidate, draw, stats: stats.current, el: canvas.current! }); }, [onReady, invalidate, draw]);
+  useEffect(() => {
+    const h: CanvasHandle = { view: view.current, invalidate, draw, stats: stats.current, el: canvas.current!, onView: handle.current?.onView };
+    handle.current = h;
+    onReady?.(h);
+    invalidate();
+  }, [onReady, invalidate, draw]);
 
   // Per-clip selection flags for the painter and hit-testing; rebuilt when the selection or the scene changes (never per frame).
   const sceneSeen = useRef<Scene | null>(null);
@@ -194,7 +203,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   // Pointers. Editing gestures (select, move, trim, marquee, tap) run through the pure state machine in interact.ts; the canvas keeps
   // panning (touch drag), momentum, pinch-zoom and ruler scrubbing. A mouse drag on empty track space is a marquee; a tap seeks and deselects.
   const ptr = useRef(new Map<number, { x: number; y: number }>());
-  const gesture = useRef({ mode: "none" as "none" | "scrub" | "pan" | "pinch" | "edit", sx: 0, sy: 0, moved: false, vx: 0, vy: 0, lastT: 0, dist: 0, fling: 0 });
+  const gesture = useRef({ mode: "none" as "none" | "scrub" | "pan" | "pinch" | "edit", sx: 0, sy: 0, moved: false, vx: 0, vy: 0, lastT: 0, dist: 0, cx: 0, fling: 0 });
   const local = (e: { clientX: number; clientY: number }) => { const r = canvas.current!.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const seekAt = (x: number) => {
     const l = live.current;
@@ -323,7 +332,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     if (ptr.current.size === 2) {
       const [a, b] = [...ptr.current.values()] as [{ x: number; y: number }, { x: number; y: number }];
       gest.current = IDLE; syncPreview(IDLE); // a second finger cancels any edit in progress
-      g.mode = "pinch"; g.dist = Math.hypot(a.x - b.x, a.y - b.y) || 1; return;
+      g.mode = "pinch"; g.dist = Math.hypot(a.x - b.x, a.y - b.y) || 1; g.cx = (a.x + b.x) / 2; return;
     }
     g.sx = p.x; g.sy = p.y; g.moved = false; g.vx = 0; g.vy = 0; g.lastT = e.timeStamp;
     const r = pointerDown(ctxNow(), pev(e, p));
@@ -360,8 +369,10 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     if (g.mode === "pinch" && ptr.current.size === 2) {
       const [a, b] = [...ptr.current.values()] as [{ x: number; y: number }, { x: number; y: number }];
       const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-      zoomAt(v, v.pps * (d / g.dist), (a.x + b.x) / 2);
-      g.dist = d;
+      const cx = (a.x + b.x) / 2;
+      v.scrollX -= cx - g.cx; // two-finger pan: the content follows the centre of the fingers, then the zoom is taken around it
+      zoomAt(v, v.pps * (d / g.dist), cx);
+      g.dist = d; g.cx = cx;
       live.current.onZoom(v.pps);
       invalidate();
     } else if (g.mode === "pan") {
@@ -457,7 +468,18 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
           l.onFrame(clamp(to, 0, l.endFrame));
           break;
         }
-        case "zoom": l.onZoom(cmd.how === "fit" ? fitPps(v, lengthSec()) : clampPps(cmd.how === "in" ? v.pps * 1.25 : v.pps / 1.25)); break;
+        case "zoom": {
+          if (cmd.how === "selection") {
+            if (sel.length === 0) { l.onNotice?.({ key: "timeline.say.zoomNoSelection" }); break; }
+            let a = Infinity, b = 0;
+            for (const j of sel) { a = Math.min(a, l.scene.start[j]!); b = Math.max(b, l.scene.end[j]!); }
+            const nv = viewForRange(v, a, b);
+            if (nv) { v.pps = nv.pps; v.scrollX = nv.scrollX; l.onZoom(v.pps); invalidate(); l.onAnnounce?.({ key: "timeline.say.zoomedSelection" }); }
+            break;
+          }
+          l.onZoom(cmd.how === "fit" ? fitPps(v, lengthSec()) : clampPps(cmd.how === "in" ? v.pps * 1.25 : v.pps / 1.25));
+          break;
+        }
         case "scroll": {
           const page = (v.width - gut(v)) * 0.8;
           if (cmd.how === "pageRight") v.scrollX += page; else if (cmd.how === "pageLeft") v.scrollX -= page;

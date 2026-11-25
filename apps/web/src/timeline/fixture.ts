@@ -39,3 +39,6 @@ export function fixtureProject({ tracks, clipsPerTrack, clipSec = 4 }: FixtureOp
 
 /** One video and one audio track, a handful of clips over ~40 s: what the editor shows before media is imported. */
 export const sampleProject = (): Project => fixtureProject({ tracks: 2, clipsPerTrack: 7, clipSec: 5 });
+
+/** About two hours on two tracks (`?sample=2h`): what the smoke test zooms out over. */
+export const longSampleProject = (): Project => fixtureProject({ tracks: 2, clipsPerTrack: 1150, clipSec: 5 });

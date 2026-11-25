@@ -2,7 +2,7 @@
  *  one fillStyle per track pass (no paths: software rasterizers are slow on thousands of sub-rects), ruler labels cached by second. Only clips intersecting the viewport are touched (binary search per visible track). */
 import { readColors } from "../theme/tokens";
 import { firstEndingAfter, TICKS_PER_SECOND, type Scene } from "./scene";
-import { gut, LANE, RULER, tickStep, timeToX, type View } from "./view";
+import { clipDetail, formatTick, gut, LANE, MARKER_NAME_PPS, minorDivisions, RULER, tickStep, timeToX, type View } from "./view";
 import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
 import { formatSpeed } from "../inspector/speedModel";
 import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
@@ -28,15 +28,11 @@ export function paletteFromCss(el: Element): Palette {
 }
 
 const labels = new Map<number, string>();
-function label(sec: number): string {
-  const key = Math.round(sec * 10);
+/** Ruler text for `sec`, cached (a few hundred distinct values at most): nothing is allocated per frame once seen. */
+function label(sec: number, step: number): string {
+  const key = Math.round(sec * 10) * 100000 + Math.round(step * 10) % 100000;
   let s = labels.get(key);
-  if (s === undefined) {
-    const whole = Math.floor(sec);
-    const frac = sec - whole;
-    s = `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}${frac > 0.001 ? "." + String(Math.round(frac * 10)) : ""}`;
-    labels.set(key, s);
-  }
+  if (s === undefined) { if (labels.size > 2000) labels.clear(); s = formatTick(sec, step); labels.set(key, s); }
   return s;
 }
 
@@ -138,7 +134,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     for (i = first; i < last; i++) {
       const x = timeToX(v, scene.start[i]!);
       const w = (scene.end[i]! - scene.start[i]!) * v.pps - 1;
-      if (w < 28) continue;
+      if (clipDetail(w) === "block") continue;
       if (sel !== null && sel[i] === 2) continue;
       const a = x < gut(v) ? gut(v) : x;
       const b = Math.min(W, x + w);
@@ -167,7 +163,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     for (i = first; i < last; i++) {
       const x = timeToX(v, scene.start[i]!);
       const w = (scene.end[i]! - scene.start[i]!) * v.pps - 1;
-      if (w < 56) continue;
+      if (clipDetail(w) !== "name") continue;
       const tx = (x < gut(v) ? gut(v) : x) + 6;
       const room = x + w - tx - 6;
       if (room > 24 && !(sel !== null && sel[i] === 2)) {
@@ -284,7 +280,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   ctx.fillStyle = p.line;
   ctx.fillRect(0, RULER - 1, W, 1);
   const step = tickStep(v.pps);
-  const minor = step / (step === 0.2 || step === 2 ? 4 : step === 15 ? 3 : 5);
+  const minor = step / minorDivisions(step);
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.font = FONT;
@@ -307,7 +303,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     if (x < gut(v)) continue;
     ctx.moveTo(Math.round(x) + 0.5, 0);
     ctx.lineTo(Math.round(x) + 0.5, RULER);
-    ctx.fillText(label(s), x + 5, 9);
+    ctx.fillText(label(s, step), x + 5, 9);
   }
   ctx.stroke();
   ctx.fillStyle = p.surface;
@@ -340,10 +336,13 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     ctx.fillRect(rx0 - 1, 0, 2, RULER); ctx.fillRect(rx1 - 1, 0, 2, RULER);
     if (scene.loop) { ctx.strokeStyle = p.accent; ctx.setLineDash([4, 3]); ctx.strokeRect(rx0 + 0.5, RULER - 8.5, Math.max(0, rx1 - rx0 - 1), 6); ctx.setLineDash([]); }
   }
+  let lastMarkerX = -1e9;
   for (const m of scene.markers) {
     const dragged = ui.markerDrag?.id === m.id;
     const x = Math.round(timeToX(v, dragged ? ui.markerDrag!.sec : m.sec)) + 0.5;
     if (x < gut(v) - 12 || x > W + 12) continue;
+    if (!dragged && x - lastMarkerX < 4) continue; // zoomed far out: markers closer than 4 px collapse into the first one
+    lastMarkerX = x;
     const col = m.colour ?? p.accent;
     ctx.fillStyle = col; ctx.strokeStyle = col;
     ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.moveTo(x, RULER); ctx.lineTo(x, H); ctx.stroke(); ctx.globalAlpha = 1;
@@ -352,7 +351,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     if (m.chapter) { ctx.moveTo(x, 12); ctx.lineTo(x + 6, 18); ctx.lineTo(x, 24); ctx.lineTo(x - 6, 18); }
     else { ctx.moveTo(x, 11); ctx.lineTo(x + 11, 15.5); ctx.lineTo(x, 20); }
     ctx.closePath(); ctx.fill();
-    if (m.name && v.pps >= 20) { ctx.fillStyle = p.fg; ctx.textBaseline = "top"; ctx.textAlign = "left"; ctx.font = FONT; ctx.fillText(m.name.length > 14 ? `${m.name.slice(0, 13)}…` : m.name, x + (m.chapter ? 9 : 14), 13); }
+    if (m.name && v.pps >= MARKER_NAME_PPS) { ctx.fillStyle = p.fg; ctx.textBaseline = "top"; ctx.textAlign = "left"; ctx.font = FONT; ctx.fillText(m.name.length > 14 ? `${m.name.slice(0, 13)}…` : m.name, x + (m.chapter ? 9 : 14), 13); }
   }
   ctx.restore();
 
