@@ -41,6 +41,8 @@ declare module "@app/wasm-pkg" {
     journal(): string;
     /** `FrameDescription` JSON; `ticks` is a BigInt (i64 in Rust). */
     evaluate(sequence: string, ticks: bigint, audioSamples: number): string;
+    /** Snap result JSON for a query JSON (`docs/features/snapping.md`). */
+    snap(sequence: string, params: string): string;
     take_log(): string;
     checkpoint(): string;
     static recover(baseJson: string | undefined, checkpointJson: string | undefined, log: string): Editor;
