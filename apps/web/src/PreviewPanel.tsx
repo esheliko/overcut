@@ -184,7 +184,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   return (
     <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview">
       <div className="stage-view">
-        <div ref={boxRef} className="canvas" style={{ ["--ar" as string]: ar, aspectRatio: String(ar) }} data-loaded={view.has}>
+        <div ref={boxRef} className={handled && !readOnly ? "canvas framed" : "canvas"} style={{ ["--ar" as string]: ar, aspectRatio: String(ar) }} data-loaded={view.has}>
           <canvas ref={canvasRef} className="preview-canvas" data-testid="preview-canvas" aria-label={t("preview.canvas")} role="img" />
           {!view.has && (
             <div className="canvas-hint">
