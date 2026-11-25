@@ -233,3 +233,25 @@ Keyframes (diamond, "Between keyframes", prev/next, timeline diamonds) and the o
 **Ready to ship M2.** No P0. The core journey, every M2 feature and the export (duration, overlay position, keyframed motion, 2x clip length, pitch, A/V sync) check out against the preview, the smoke suite is green and the 1000-clip x 20-track timeline holds 57..60 fps desktop, throttled and phone. Two P1 fixes are recommended before or right after the merge, both small: P1-1 (cross-track drop that also moves in time must say what it did) and P1-2 (markers as snap targets, as the docs promise). Everything else is polish.
 
 Test notes for the next round: a persistent profile (`launchPersistentContext`) lets one script build on the last one's project; set `window.showSaveFilePicker`, `showOpenFilePicker` and `showDirectoryPicker` to `undefined` in an init script so saves become downloads and "Choose files" becomes a `filechooser` event; at 1440x900 a 9 s project fits at about 131 px per second starting at x = 155.
+
+## Round 8 (verification): m2 after #194 and #195, plus the closeout fixes
+
+Driven like a person with Playwright against a local `npm run build` + `vite preview` (:4173) at 1440x900 (mouse, keyboard) and 390x844 (touch). Screenshots were looked at. The full `npm run smoke` is CI's job: locally it was too slow to finish (about 20 of ~210 steps in 7 minutes, all green), so the flows below were run as targeted specs (17 passed, 9 skipped by design, 0 failed: lanes, markers, persistence, project-library, activation, zoom-overview, drag-move) plus hand-driven scripts.
+
+**Verdict: no P0, no P1.**
+
+| Flow | 1440 | 390 |
+|---|---|---|
+| `/?sample=2h` fit, overview bar | Fit shows the whole 2 h; the bar hides when everything fits and appears after zooming in; dragging the window pans, dragging its edge zooms | The overview strip shows under the lanes with its window; fit is the toolbar button |
+| Shift+Z (zoom to selection) | Selected clip fills the width (0.40 to 410 px/s) | n/a (no keyboard) |
+| Pinch | n/a | Two fingers apart: 0.033 to 0.15 px/s, ruler labels follow (1:00, 1:10, 1:20); two-finger drag pans |
+| Cross-track drop that also moves in time | Lands where the ghost showed; the sound that would clash goes to a new A2; one undo (lanes spec) | Same spec on phone viewport: skipped (needs a mouse); the two-picture lane change passes |
+| Snapping | A clip dragged so its start was 3 px before a marker landed at exactly 2.00 s (marker and in/out snapping also covered by `snapMove` unit tests) | Touch drag shares the code path (unit) |
+| Recovery toast | "Recovered unsaved changes" shows once, "Undo recovery" goes back, the next open is quiet | same |
+| `.overcut` import name | Exported "Alpha.overcut", imported back as "Alpha (2)": the two cards can be told apart | same |
+| Full journey | Import, split at 1 s, delete the first part, export (MP4, "0:02"), save: passes | passes |
+| Phone app menu ("…") | n/a | Scrolls to its last item, About OverCut (its bottom edge 823 of 844 px; also fine at 600 px height); not cut off |
+
+Closeout fixes in this round (all three P2s from round 7): the live status now reads the new span after a speed change ("Speed 2×: B.mp4, V1, 0:06.00 to 0:09.00"); an Alt+drag slip in the direction where a split half has no footage left now says "No more footage that way: drag the other way to slip this clip" (the other direction already worked, the drag simply clamped to 0 in silence); the phone menu needed no change.
+
+Left as is: reading `data-pps` right after clicking Fit can still show the old value for a moment (the zoom applies on the next frame): a test-timing detail, not something a person sees.

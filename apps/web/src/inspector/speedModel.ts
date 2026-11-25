@@ -39,3 +39,17 @@ export function speedTarget(project: Project | null, selection: ReadonlySet<stri
 
 /** One `set_clip_speed` per clip of the group, in one undo step (the caller sends the array). */
 export const speedOps = (group: readonly Clip[], speed: Rational, ripple: boolean): Op[] => group.map((c) => ({ op: "set_clip_speed", clip: c.id, speed, ripple }));
+
+const TICKS = 705_600_000;
+const tcOf = (ticks: number): string => { const sec = ticks / TICKS; return `${Math.floor(sec / 60)}:${(sec % 60).toFixed(2).padStart(5, "0")}`; };
+
+/** The clip as the status line should read it after an edit: same fields as the timeline's own "name, track, from to" announcement, read from the project so the new span (after a speed change) is what is spoken. Null when the clip is gone. */
+export function clipSpan(project: Project | null, clipId: string): { name: string; track: string; from: string; to: string } | null {
+  const seq = project?.sequences[0];
+  if (!project || !seq) return null;
+  for (const tr of seq.tracks) {
+    const c = tr.clips.find((x) => x.id === clipId);
+    if (c) return { name: project.media.find((m) => m.id === c.media)?.name ?? c.media, track: tr.name, from: tcOf(c.start), to: tcOf(c.start + c.duration) };
+  }
+  return null;
+}
