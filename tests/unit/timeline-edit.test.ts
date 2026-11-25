@@ -156,9 +156,11 @@ test("dragging a clip previews, clamps at neighbours, and commits ONE batch of o
   assert.equal(r.g.k, "move");
   const m = r.g as Extract<Gesture, { k: "move" }>;
   assert.equal(m.delta, snapDelta(0.5 * TICKS_PER_SECOND, 0, moveRoom(scene, [i]).right, FT));
-  r = pointerMove(c, r.g, mouse(x + 4000, y)); // far right: clamped by the next clip
-  assert.equal((r.g as Extract<Gesture, { k: "move" }>).delta, Math.floor(moveRoom(scene, [i]).right / FT) * FT);
-  const done = pointerUp(c, r.g, mouse(x + 4000, y));
+  // Just into the next clip (short of its middle): the move stops against it, the edge snapping flush.
+  const into = x + ((moveRoom(scene, [i]).right + 0.2 * scene.tDur[i + 1]!) / TICKS_PER_SECOND) * view().pps;
+  r = pointerMove(c, r.g, mouse(into, y));
+  assert.equal((r.g as Extract<Gesture, { k: "move" }>).delta, moveRoom(scene, [i]).right);
+  const done = pointerUp(c, r.g, mouse(into, y));
   assert.equal(done.fx.ops?.length, 1);
   assert.deepEqual(done.fx.ops![0], { op: "move", clip: scene.id[i], track: scene.trackId[0], start: scene.tStart[i]! + (r.g as Extract<Gesture, { k: "move" }>).delta });
   assert.equal(done.g.k, "idle");

@@ -3,6 +3,7 @@
  *  Touch rules: a tap selects; a drag on an unselected clip pans; a drag on an already selected clip moves it; handles of a selected clip are 44 px targets. */
 import type { Op } from "@app/engine-client";
 import { clampN, describeClip, expandLinks, groupReps, type Say, fitsOnTrack, inRect, linkedTrimOps, moveOps, moveRoom, moveToTrackOp, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
+import { hopOps, planHop, snapMove, SNAP_PX } from "./arrange";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
 import { GUTTER, LANE, RULER, xToTime, type View } from "./view";
@@ -15,6 +16,8 @@ export interface Ctx {
   /** Selected clip ids and the same as per-index flags (the canvas keeps both). */
   selected: ReadonlySet<string>;
   selFlags: Uint8Array;
+  /** Playhead in ticks: a snap target while moving. */
+  playhead?: number | null;
 }
 export interface Effects {
   select?: { mode: "set" | "toggle" | "add"; ids: string[] };
@@ -34,7 +37,9 @@ export type Gesture =
   | { k: "pan" }
   /** Pointer is down but has not moved far enough to know what it is: a tap, or a drag that becomes `then`. */
   | { k: "press"; sx: number; sy: number; then: "move" | "pan" | "marquee" | "none"; tapClip: number; collapse: boolean; clearOnTap: boolean }
-  | { k: "move"; sx: number; sel: number[]; room: { left: number; right: number }; delta: number; track: number; from: number }
+  | { k: "move"; sx: number; sel: number[]; room: { left: number; right: number }; delta: number; track: number; from: number;
+      /** Clips jumped over (reorder): > 0 to the right, < 0 to the left. */ hop?: number;
+      /** Tick the selection snapped to or landed against: the painter draws a guide line there. */ guide?: number | null }
   | { k: "trim"; sx: number; clip: number; edge: Edge; orig: number; value: number }
   | { k: "marquee"; x0: number; y0: number; x1: number; y1: number };
 
@@ -105,7 +110,12 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
           if (fitsOnTrack(scene, g.sel[0]!, t, free)) { track = t; delta = free; }
         }
       }
-      return { g: { ...g, delta, track }, fx: NONE };
+      if (track !== g.from) return { g: { ...g, delta, track, hop: 0, guide: null }, fx: NONE };
+      // Past a neighbour's middle the selection jumps over it (reorder); otherwise it slides, pulled onto edges and the playhead.
+      const hop = planHop(scene, g.sel, dx, g.sel[0]!);
+      if (hop) return { g: { ...g, delta: hop.shift, track, hop: hop.n, guide: hop.edge }, fx: NONE };
+      const snap = snapMove(scene, g.sel, delta, -g.room.left, g.room.right, c.playhead ?? null, (SNAP_PX / view.pps) * TPS);
+      return { g: { ...g, delta: snap.delta, track, hop: 0, guide: snap.guide }, fx: NONE };
     }
     case "trim": {
       const value = trimTarget(scene, g.clip, g.edge, g.orig + ((e.x - g.sx) / view.pps) * TPS);
@@ -116,6 +126,14 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
     default:
       return { g, fx: NONE };
   }
+}
+
+/** A touch that rests on an unselected clip (it did not move for a moment) picks the clip up: it selects and the next drag moves it instead of panning. */
+export function longPress(c: Ctx, g: Gesture): R | null {
+  if (g.k !== "press" || g.tapClip < 0 || g.then !== "pan") return null;
+  const i = g.tapClip;
+  if (c.scene.trackLocked[c.scene.clipTrack[i]!]) return null;
+  return { g: { ...g, then: "move" }, fx: { select: { mode: "set", ids: [c.scene.id[i]!] }, say: describeClip(c.scene, i) } };
 }
 
 export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
@@ -130,6 +148,7 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "move": {
       if (g.delta === 0 && g.track === g.from) return { g: IDLE, fx: NONE };
+      if (g.hop) return { g: IDLE, fx: { ops: hopOps(scene, g.sel, g.hop), say: { key: "timeline.say.moved", values: { count: g.sel.length, name: scene.name[g.sel[0]!]! } } } };
       const ops = g.track !== g.from ? [moveToTrackOp(scene, g.sel[0]!, g.track, g.delta)] : moveOps(scene, g.sel, g.delta);
       const n = g.sel.length;
       return { g: IDLE, fx: { ops, say: { key: "timeline.say.moved", values: { count: n, name: scene.name[g.sel[0]!]! } } } };
@@ -164,4 +183,16 @@ export function applySelect(cur: ReadonlySet<string>, s: NonNullable<Effects["se
     else next.add(id);
   }
   return next;
+}
+
+/** True when `next` lays out every clip exactly as `prev` did (same ids, tracks, times). A project update that changes nothing the gesture depends on
+ *  (a thumbnail or a save arriving mid-drag rebuilds the scene) must not cancel the drag in progress. */
+export function sameLayout(prev: Scene, next: Scene): boolean {
+  if (prev === next) return true;
+  if (prev.clipCount !== next.clipCount || prev.trackCount !== next.trackCount) return false;
+  for (let i = 0; i < prev.clipCount; i++) {
+    if (prev.id[i] !== next.id[i] || prev.tStart[i] !== next.tStart[i] || prev.tDur[i] !== next.tDur[i] || prev.clipTrack[i] !== next.clipTrack[i]) return false;
+  }
+  for (let t = 0; t < prev.trackCount; t++) if (prev.trackLocked[t] !== next.trackLocked[t] || prev.trackId[t] !== next.trackId[t]) return false;
+  return true;
 }
