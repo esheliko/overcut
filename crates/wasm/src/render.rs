@@ -30,12 +30,12 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-/// Per-layer transform in sequence units; `params` order: centre x, centre y, scale x, scale y, rotation (radians clockwise), opacity, display rotation (degrees).
+/// Per-layer transform in sequence units; `params` order: centre x, centre y, scale x, scale y, rotation (radians clockwise), opacity, display rotation (degrees), crop left/top/right/bottom (fractions of the upright picture), flip x, flip y (0/1).
 #[derive(Clone, Copy)]
 struct Entry {
     w: u32,
     h: u32,
-    p: [f32; 7],
+    p: [f32; 13],
 }
 
 #[wasm_bindgen]
@@ -358,6 +358,8 @@ impl GpuRenderer {
                 rotation: e.p[4],
                 opacity: e.p[5],
                 display_rotation: e.p[6].rem_euclid(360.0) as u16,
+                crop: [e.p[7], e.p[8], e.p[9], e.p[10]],
+                flip: [e.p[11] > 0.5, e.p[12] > 0.5],
             });
         }
         v
@@ -374,10 +376,10 @@ fn entry(w: u32, h: u32, p: &[f64]) -> Result<Entry, String> {
     if w == 0 || h == 0 {
         return Err("layer has no pixels".into());
     }
-    if p.len() != 7 {
-        return Err("layer params must be 7 numbers".into());
+    if p.len() != 13 {
+        return Err("layer params must be 13 numbers".into());
     }
-    let mut a = [0f32; 7];
+    let mut a = [0f32; 13];
     for (d, s) in a.iter_mut().zip(p) {
         *d = *s as f32;
     }

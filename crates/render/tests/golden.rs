@@ -51,6 +51,8 @@ impl Img {
             rotation,
             opacity,
             display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
         }
     }
 }
@@ -365,6 +367,8 @@ fn yuv_bars_decode_to_the_original_colours_for_range_and_matrix() {
                 rotation: 0.0,
                 opacity: 1.0,
                 display_rotation: 0,
+                crop: [0.0; 4],
+                flip: [false; 2],
             };
             let f = c.render_to_rgba8(w, h, &[l]);
             for (i, b) in BARS.iter().enumerate() {
@@ -403,6 +407,8 @@ fn yuv_range_flag_matters() {
             rotation: 0.0,
             opacity: 1.0,
             display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
         };
         c.render_to_rgba8(4, 4, &[l])[0]
     };
@@ -443,6 +449,8 @@ fn steady_state_frames_create_no_gpu_objects() {
             rotation: 0.2,
             opacity: 0.8,
             display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
         };
         let layers = [
             a.layer([960.0, 540.0], [1.0, 1.0], 0.0, 1.0),
@@ -585,6 +593,8 @@ fn resident_layers_and_rendering_into_a_view_match_the_uploaded_readback_exactly
                 rotation,
                 opacity,
                 display_rotation: 0,
+                crop: [0.0; 4],
+                flip: [false; 2],
             };
             [
                 base(g, [48.0, 27.0], [1.5, 1.5], 0.0, 1.0),
@@ -656,4 +666,56 @@ fn resident_layers_and_rendering_into_a_view_match_the_uploaded_readback_exactly
             "{name}: view path and readback path must be identical"
         );
     }
+}
+
+// ---- M2-024: crop, flip and the picture-in-picture matrix ------------------------------------------------------------------------------
+
+#[test]
+fn crop_keeps_the_visible_part_in_place_and_flip_mirrors_before_the_crop() {
+    let _gpu = gpu();
+    let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
+        eprintln!("SKIPPED: no wgpu adapter");
+        return;
+    };
+    let img = rot_img(); // 4x2: left half red, right half blue, green marker at (0, 0)
+    let mut l = img.layer([2.0, 1.0], [1.0, 1.0], 0.0, 1.0);
+    // Crop the left half away: blue stays where it was (columns 2..4), the rest is black.
+    l.crop = [0.5, 0.0, 0.0, 0.0];
+    let f = c.render_to_rgba8(4, 2, &[l]);
+    assert_eq!(px(&f, 4, 0, 0), [0, 0, 0]);
+    assert_eq!(px(&f, 4, 1, 1), [0, 0, 0]);
+    assert_eq!(px(&f, 4, 2, 0), [0, 0, 255]);
+    assert_eq!(px(&f, 4, 3, 1), [0, 0, 255]);
+    // Mirrored: blue | red with the marker top-right; the crop is on screen, so removing the left half now leaves the red (mirrored) half on the right.
+    l.crop = [0.0; 4];
+    l.flip = [true, false];
+    let f = c.render_to_rgba8(4, 2, &[l]);
+    assert_eq!(px(&f, 4, 0, 1), [0, 0, 255]);
+    assert_eq!(
+        px(&f, 4, 3, 0),
+        [0, 255, 0],
+        "marker moved to the top-right"
+    );
+    l.crop = [0.5, 0.0, 0.0, 0.0];
+    let f = c.render_to_rgba8(4, 2, &[l]);
+    assert_eq!(px(&f, 4, 1, 1), [0, 0, 0]);
+    assert_eq!(px(&f, 4, 2, 1), [255, 0, 0]);
+    // Vertical flip moves the marker to the bottom-left.
+    l.crop = [0.0; 4];
+    l.flip = [false, true];
+    let f = c.render_to_rgba8(4, 2, &[l]);
+    assert_eq!(px(&f, 4, 0, 1), [0, 255, 0]);
+    assert_eq!(px(&f, 4, 0, 0), [255, 0, 0]);
+}
+
+#[test]
+fn picture_in_picture_matches_golden_on_every_available_backend() {
+    let _gpu = gpu();
+    let (base, pip) = (gradient(64, 36), checker(64, 64));
+    // A background filling the frame and a rotated, cropped, mirrored, half-transparent inset.
+    let mut inset = pip.layer([190.0, 40.0], [1.0, 1.0], 0.35, 0.8);
+    inset.crop = [0.1, 0.0, 0.25, 0.15];
+    inset.flip = [true, false];
+    let scene = [base.layer([128.0, 72.0], [4.0, 4.0], 0.0, 1.0), inset];
+    check_golden("pip_crop_flip_rotate", 256, 144, &scene);
 }

@@ -5,7 +5,7 @@
  * the layers to the compositor. A frame that cannot be ready in time is skipped, never waited for.
  * Everything platform-specific (clock, audio output, renderer, media) is injected, so the logic runs under fake clocks in unit tests.
  */
-import { containScale, layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle } from "@app/engine-client";
+import { layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle } from "@app/engine-client";
 import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "./audioMix";
 import type { RenderLayer, Renderer } from "./renderer";
 import { FrameCache, type Thumb } from "./scrubCache";
@@ -359,12 +359,8 @@ export class Player {
   private thumbLayer(l: FrameDescription["layers"][number], t: Thumb<ImageBitmap>, media: MediaHandle): RenderLayer {
     const v = media.info.video!;
     const turned = v.rotation === 90 || v.rotation === 270;
-    const dw = turned ? v.height : v.width;
-    const dh = turned ? v.width : v.height;
-    const k = containScale({ width: dw, height: dh }, this.d.size);
-    const sx = l.transform.scale[0] * k * (dw / t.width);
-    const sy = l.transform.scale[1] * k * (dh / t.height);
-    return layerOf({ ...l, transform: { ...l.transform, scale: [sx, sy] } }, { source: t.bitmap, width: t.width, height: t.height, rotation: 0 });
+    const display = { width: turned ? v.height : v.width, height: turned ? v.width : v.height };
+    return layerOf(l, { source: t.bitmap, width: t.width, height: t.height, rotation: 0, display }, this.d.size);
   }
 
   // --- paused: scrub and step -------------------------------------------------------------------------------------

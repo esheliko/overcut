@@ -8,6 +8,8 @@ struct Layer {
     yuv_a: vec4<f32>,    // y_offset, y_scale, c_offset, c_scale
     yuv_b: vec4<f32>,    // r_cr, g_cb, g_cr, b_cb
     uv: vec4<f32>,       // row-major 2x2: displayed unit square (centred, y down) -> coded image (display rotation)
+    crop: vec4<f32>,     // visible part of the displayed picture: left, top, right, bottom fractions removed
+    flip: vec4<f32>,     // x, y: 1 = mirrored
 };
 @group(0) @binding(0) var<uniform> layer: Layer;
 @group(0) @binding(1) var tex: texture_2d<f32>;
@@ -28,7 +30,10 @@ fn vs_layer(@builtin(vertex_index) i: u32) -> VOut {
     let p = r + layer.rect.xy;
     var o: VOut;
     o.pos = vec4(p.x / layer.out_size.x * 2.0 - 1.0, 1.0 - p.y / layer.out_size.y * 2.0, 0.0, 1.0);
-    let qc = q - vec2(0.5);
+    // quad corner -> position in the displayed picture (crop), mirrored (flip), centred
+    var d = vec2(mix(layer.crop.x, 1.0 - layer.crop.z, q.x), mix(layer.crop.y, 1.0 - layer.crop.w, q.y));
+    d = select(d, vec2(1.0) - d, layer.flip.xy > vec2(0.5));
+    let qc = d - vec2(0.5);
     o.uv = vec2(layer.uv.x * qc.x + layer.uv.y * qc.y, layer.uv.z * qc.x + layer.uv.w * qc.y) + vec2(0.5);
     return o;
 }

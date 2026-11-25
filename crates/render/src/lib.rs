@@ -92,6 +92,34 @@ pub struct Layer<'a> {
     /// Display rotation of the media in degrees clockwise (0, 90, 180, 270; other values round to the nearest right angle). At 90/270 the layer's
     /// displayed width and height swap, so `scale` applies to the upright picture and the layer is upright without a `rotation` of its own.
     pub display_rotation: u16,
+    /// Crop of the upright picture as fractions removed from the left, top, right, bottom edge (`0 <= v < 1`, opposite edges sum below 1; M2-024).
+    /// `center`, `scale` and `rotation` still describe the whole uncropped picture, so cropping never moves the visible part.
+    pub crop: [f32; 4],
+    /// Mirror the (cropped) picture horizontally / vertically about its own centre. The crop is given on screen, after the mirror.
+    pub flip: [bool; 2],
+}
+
+/// Where the visible part of a layer lands: its centre and half size in output pixels (before `rotation` about the centre), from the whole
+/// picture's `center`, displayed size `dw` x `dh`, `scale` and `crop`. Pure, so it is unit tested without a GPU.
+pub fn visible_rect(
+    center: [f32; 2],
+    dw: f32,
+    dh: f32,
+    scale: [f32; 2],
+    rotation: f32,
+    crop: [f32; 4],
+) -> ([f32; 2], [f32; 2]) {
+    let [l, t, r, b] = crop.map(|v| v.clamp(0.0, 0.999));
+    let (w, h) = (dw * scale[0], dh * scale[1]);
+    let (ox, oy) = ((l - r) * 0.5 * w, (t - b) * 0.5 * h);
+    let (s, c) = rotation.sin_cos();
+    (
+        [center[0] + ox * c - oy * s, center[1] + ox * s + oy * c],
+        [
+            w * (1.0 - l - r).max(0.001) * 0.5,
+            h * (1.0 - t - b).max(0.001) * 0.5,
+        ],
+    )
 }
 
 /// Rotation as the row-major matrix `[a, b, c, d]` taking a point of the displayed unit square (centred, y down) to the coded image (centred).
@@ -127,6 +155,10 @@ struct LayerUniform {
     yuv_b: [f32; 4],
     /// Row-major 2x2 `texture_matrix` (display unit square -> coded image).
     uv: [f32; 4],
+    /// Crop in display space (left, top, right, bottom fractions); the quad covers only the visible part.
+    crop: [f32; 4],
+    /// Mirror flags in x and y (1 = mirrored).
+    flip: [f32; 4],
 }
 const UNIFORM_SIZE: u64 = std::mem::size_of::<LayerUniform>() as u64;
 
@@ -628,6 +660,8 @@ impl Compositor {
             rotation: 0.0,
             opacity: 1.0,
             display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
         };
         self.prepare_slot(i, &l);
     }
@@ -658,18 +692,18 @@ impl Compositor {
             } else {
                 (l.width, l.height)
             };
+            let crop = l.crop.map(|v| v.clamp(0.0, 0.999));
+            let (centre, half) =
+                visible_rect(l.center, dw as f32, dh as f32, l.scale, l.rotation, crop);
             let u = LayerUniform {
-                rect: [
-                    l.center[0],
-                    l.center[1],
-                    dw as f32 * l.scale[0] * 0.5,
-                    dh as f32 * l.scale[1] * 0.5,
-                ],
+                rect: [centre[0], centre[1], half[0], half[1]],
                 rot: [c, s, l.opacity.clamp(0.0, 1.0), mode],
                 out_size: [width as f32, height as f32, 0.0, 0.0],
                 yuv_a: a,
                 yuv_b: b,
                 uv: texture_matrix(l.display_rotation),
+                crop,
+                flip: [l.flip[0] as u8 as f32, l.flip[1] as u8 as f32, 0.0, 0.0],
             };
             self.scratch[i * self.stride..i * self.stride + UNIFORM_SIZE as usize]
                 .copy_from_slice(bytemuck::bytes_of(&u));
@@ -894,4 +928,40 @@ pub fn headless_compositor_with(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn headless_compositor(backends: wgpu::Backends) -> Option<(Compositor, wgpu::AdapterInfo)> {
     headless_compositor_with(backends, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::visible_rect;
+
+    #[test]
+    fn visible_rect_is_the_whole_picture_without_a_crop() {
+        let (c, h) = visible_rect([100.0, 50.0], 40.0, 20.0, [2.0, 2.0], 0.7, [0.0; 4]);
+        assert_eq!(c, [100.0, 50.0]);
+        assert_eq!(h, [40.0, 20.0]);
+    }
+
+    #[test]
+    fn crop_shrinks_the_rect_and_shifts_its_centre_along_the_rotated_axes() {
+        // Remove the left half of an 80 x 20 picture: 40 wide, centred 20 px right of the picture centre.
+        let (c, h) = visible_rect(
+            [0.0, 0.0],
+            40.0,
+            10.0,
+            [2.0, 2.0],
+            0.0,
+            [0.5, 0.0, 0.0, 0.0],
+        );
+        assert_eq!((c, h), ([20.0, 0.0], [20.0, 10.0]));
+        // Rotated a quarter turn clockwise, "right" points down the screen.
+        let (c, _) = visible_rect(
+            [0.0, 0.0],
+            40.0,
+            10.0,
+            [2.0, 2.0],
+            std::f32::consts::FRAC_PI_2,
+            [0.5, 0.0, 0.0, 0.0],
+        );
+        assert!(c[0].abs() < 1e-4 && (c[1] - 20.0).abs() < 1e-4, "{c:?}");
+    }
 }

@@ -12,7 +12,7 @@ export { probeExportFormats, type ExportFormatId, type ExportFormatOption, type 
 export { defaultVideoBitrate } from "./export/presets";
 export { cleanupStaleExports, opfsStorage, type ExportStorage } from "./export/storage";
 export { registerMediaResolver, type MediaResolver, type OpenedMedia, type MediaVideo, type MediaAudio, type DrawableFrame } from "./export/media";
-export { containScale, layerOf, renderExportFrame, type GpuLayer, type GpuRenderer, type LayerSource, type RendererInfo } from "./render";
+export { containScale, fitScale, layerOf, placeLayer, renderExportFrame, type GpuLayer, type GpuRenderer, type LayerSource, type RendererInfo } from "./render";
 export type { Evaluator };
 export { addTrackOp, createEditing, moveTrackOp, newTrack, parseEditOutcome, removeTrackOp, setTrackPropsOp, type RawEditing } from "./editing";
 export { probeHost } from "./probe";
