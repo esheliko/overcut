@@ -7,6 +7,7 @@ import { useImportPicker } from "./media/MediaBin";
 import type { Source } from "./media/sources";
 import { canvasSummary, ratioLabel } from "./canvas";
 import { canvasBackingSize } from "./preview/layout";
+import { PLAY_RANGE_EVENT, type PlayRange } from "./commands/palette";
 import { acquirePreviewHost, type PlayerProxy, type PreviewHost } from "./preview/host";
 import { rateLabel, TICKS_PER_SECOND, timecodeHMS, type Rate } from "./preview/timing";
 import { TransformHandles } from "./preview/TransformHandles";
@@ -75,7 +76,25 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   cb.current = { onPlaying };
   // Frames the player itself published: the matching prop change is an echo, not a request to seek (state lags the player by a render).
   const echoes = useRef(new Set<number>());
-  const emit = useCallback((f: number) => { echoes.current.add(f); store.setPlayhead(f); }, [store]);
+  // Playing the in/out range (M2-046): the timeline asks with PLAY_RANGE_EVENT; the player runs from the range's start and stops at its end (or loops).
+  const rangeRun = useRef<(PlayRange & { seen: boolean }) | null>(null);
+  const emit = useCallback((f: number) => {
+    echoes.current.add(f);
+    store.setPlayhead(f);
+    const r = rangeRun.current, p = playerRef.current;
+    if (r && p && f >= r.end) { if (r.loop) p.seek(r.start); else { rangeRun.current = null; p.pause(); p.seek(r.end); } }
+  }, [store]);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const p = playerRef.current, d = (e as CustomEvent<PlayRange>).detail;
+      if (!p || !d) return;
+      rangeRun.current = { ...d, seen: false };
+      p.seek(d.start);
+      if (!p.isPlaying) p.toggle();
+    };
+    window.addEventListener(PLAY_RANGE_EVENT, on);
+    return () => window.removeEventListener(PLAY_RANGE_EVENT, on);
+  }, []);
 
   const view = sequenceView(project);
   const { rate, size, endTicks, endFrame } = view;
@@ -87,7 +106,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
-    const { host, release } = acquirePreviewHost(c, { onFrame: emit, onState: (pl, r) => { cb.current.onPlaying(pl); setSpeed(r || 1); }, onError: (m) => setProblem(m), onStrip: (p) => setPrep(p === null ? null : Math.min(99, Math.floor(p * 100))) });
+    const { host, release } = acquirePreviewHost(c, { onFrame: emit, onState: (pl, r) => { cb.current.onPlaying(pl); setSpeed(r || 1); const rr = rangeRun.current; if (rr) { if (pl) rr.seen = true; else if (rr.seen) rangeRun.current = null; } }, onError: (m) => setProblem(m), onStrip: (p) => setPrep(p === null ? null : Math.min(99, Math.floor(p * 100))) });
     hostRef.current = host;
     playerRef.current = host.player;
     setHostVersion((v) => v + 1);
