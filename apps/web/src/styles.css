@@ -38,6 +38,10 @@ h2, p { margin: 0; }
 .primary { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 700; transition: filter var(--dur-fast), transform var(--dur-instant); }
 .primary:hover { filter: brightness(1.08); }
 .primary:active { transform: scale(0.97); }
+/* The same filled accent look for every main action that only has `.export-go` (Projects "New project", dialog OK / Apply / Save, Add tag): without it they fell back to the browser's grey button with a raised border. */
+.export-go { border: 0; background: var(--accent); color: var(--accent-ink); transition: filter var(--dur-fast), transform var(--dur-instant); }
+.export-go:hover:not(:disabled) { filter: brightness(1.08); }
+.export-go:active:not(:disabled) { transform: scale(0.97); }
 
 /* Workspace: phone */
 .workspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(150px, 36%) auto; grid-template-areas: "stage" "timeline" "tools"; background: var(--bg); }
@@ -252,7 +256,8 @@ h2, p { margin: 0; }
 .bin-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; } /* the meta is one line; the whole line is the tooltip */
 .bin-error { color: var(--fg); white-space: normal; overflow-wrap: anywhere; }
 .bin-act { flex: none; min-width: 44px; min-height: 44px; }
-.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border-radius: 10px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: none; color: var(--fg); font-size: 12px; font-weight: 600; }
+.bin-tag-btn:hover { background: var(--surface-3); }
 .bin-on-timeline { color: var(--accent); font-weight: 600; }
 .bin-link { flex: none; min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tl-drop { grid-area: timeline; display: contents; }
