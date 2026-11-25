@@ -120,6 +120,9 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // A row that opens a dialog: focus goes to the menu button first, so the dialog returns focus there when it closes (the row itself is gone by then).
+  const opening = (run: () => void) => () => { trigger.current?.focus({ preventScroll: true }); setOpen(false); run(); };
   // Desktop app: where projects are saved. The open project stays where it is; the new folder is used from the next start.
   const chooseFolder = async () => {
     try {
@@ -139,7 +142,7 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
   }, [open]);
   return (
     <div className="menu" ref={ref}>
-      <button className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
+      <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
       {open && (
         <div className="menu-pop" role="menu">
           {compact && (
@@ -152,13 +155,13 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
           )}
           <AccentPicker />
           <ScrubPrepItem />
-          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={() => { setOpen(false); project.onProjects(); }}>{t("menu.projects")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={() => { setOpen(false); project.onNew(); }}>{t("menu.new")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={() => { setOpen(false); project.onOpen(); }}>{t("menu.openProject")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={() => { setOpen(false); project.onSave(); }}>{t("menu.saveProject")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}>{t("menu.projects")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}>{t("menu.new")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={opening(project.onOpen)}>{t("menu.openProject")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}>{t("menu.saveProject")}</button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
-          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={() => { setOpen(false); project.onVersions(); }}>{t("menu.versions")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={() => { setOpen(false); project.onPrivacy(); }}>{t("menu.privacy")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}>{t("menu.versions")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={opening(project.onPrivacy)}>{t("menu.privacy")}</button>
           <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
           <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
         </div>
