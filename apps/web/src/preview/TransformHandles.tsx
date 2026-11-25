@@ -53,6 +53,23 @@ export function TransformHandles({ clip, canvas, picture, boxRef, onEdit }: Prop
   const vw = Math.max(0.001, w * (1 - l - r));
   const vh = Math.max(0.001, h * (1 - t - b));
 
+  // Keep every handle inside the visible preview: a picture that fills the frame has its corners on the frame's edge, where half of a 44 px handle would be cut off
+  // (phones). Each handle is pulled inwards by what sticks out; the shift is computed on screen and turned back into the rotated frame of the box.
+  const rect = boxRef.current?.getBoundingClientRect();
+  const kept = (lx: number, ly: number): { transform?: string } => {
+    if (!rect || rect.width < 100 || rect.height < 100) return {};
+    const k = rect.width / canvas.width, R = 22;
+    const X = cxs * k + lx * c - ly * s, Y = cys * k + lx * s + ly * c;
+    // The visible area is the stage view around the frame (it clips what sticks out), in the frame's coordinates.
+    const vis = boxRef.current?.parentElement?.getBoundingClientRect() ?? rect;
+    const x0 = vis.left - rect.left + R, x1 = vis.right - rect.left - R, y0 = vis.top - rect.top + R, y1 = vis.bottom - rect.top - R;
+    const dx = Math.min(Math.max(X, x0), x1) - X, dy = Math.min(Math.max(Y, y0), y1) - Y;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return {};
+    return { transform: `translate(${(dx * c + dy * s).toFixed(1)}px, ${(-dx * s + dy * c).toFixed(1)}px)` };
+  };
+  const kw = rect ? (vw / 2) * (rect.width / canvas.width) : 0, kh = rect ? (vh / 2) * (rect.width / canvas.width) : 0;
+  const corner = { nw: [-1, -1], ne: [1, -1], se: [1, 1], sw: [-1, 1] } as const;
+
   const start = (mode: Mode) => (e: RPointerEvent<HTMLElement>) => {
     const box = boxRef.current?.getBoundingClientRect();
     if (!box || e.button > 0) return;
@@ -90,9 +107,9 @@ export function TransformHandles({ clip, canvas, picture, boxRef, onEdit }: Prop
     <div className="th" aria-hidden={false} style={{ left: pc(cxs, canvas.width), top: pc(cys, canvas.height), width: pc(vw, canvas.width), height: pc(vh, canvas.height), transform: `translate(-50%, -50%) rotate(${p.angle}rad)` }}>
       <div className="th-body" data-testid="transform-body" onPointerDown={start("move")} {...evt} />
       {(["nw", "ne", "se", "sw"] as const).map((k) => (
-        <span key={k} className={`th-h th-${k}`} data-testid={`transform-scale-${k}`} onPointerDown={start("scale")} {...evt} />
+        <span key={k} className={`th-h th-${k}`} data-testid={`transform-scale-${k}`} style={kept(corner[k][0] * kw, corner[k][1] * kh)} onPointerDown={start("scale")} {...evt} />
       ))}
-      <span className="th-rot" data-testid="transform-rotate" onPointerDown={start("rotate")} {...evt} />
+      <span className="th-rot" data-testid="transform-rotate" style={kept(0, -kh - 30)} onPointerDown={start("rotate")} {...evt} />
     </div>
   );
 }
