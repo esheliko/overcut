@@ -181,3 +181,55 @@ Driven as a human with Playwright against a local `npm run build` + `vite previe
 - Not verified (script-driven, may be a harness effect): after `canvas.focus()` via script, Shift+Right did not move the playhead; a ruler click did.
 
 Test notes for the next round: the browser's `showSaveFilePicker` blocks a headless Save; set `window.showSaveFilePicker = undefined` in an init script to get the anchor download. Clicking the canvas at x = 7 + gutter + offset selects a clip; the gutter is 148 px at 1440.
+
+## Round 7: final M2 sweep (m2 at 66cbf66, after #182)
+
+Driven as a first-time creator and as a pro editor with Playwright against a local `npm run build` + `vite preview` at 1440x900 (mouse and keyboard), 820x1180 and 390x844 (touch). Media: three generated clips (A: 6 s test pattern with a burn-in frame counter and a 440 Hz tone, B: 6 s colour bars and 880 Hz, C: a 4 s red 320x180 clip and 220 Hz) plus `flash_click.mp4`. The repo's own `npm run smoke` on this build: 169 passed, 41 skipped, 0 failed. Every screenshot was looked at.
+
+**The one realistic project** (V3 empty, V2 overlay C, V1 A then B, A1 + A2 sounds): A and B on V1; C from the bin onto a new V2 at 2 s (its sound landed on a new A2); C as picture-in-picture (inspector: scale 40 %, X 35 %, Y -30 %; then the on-canvas handles: a corner handle scaled it, a body drag moved it to X 26.18 / Y -22.16); Position X keyed 35 % at 2 s and -35 % at 5 s, Opacity keyed 100 % and 30 %; B at 2x (Speed tab, "2×" badge on the clip and its sound, the project shortened from 12 s to 9 s); markers at 1 s and 7 s, in 1 s, out 8 s, Alt+P played the range from 1 s; Alt+drag ripple (C's end -15 frames), roll (the cut at 3 s +15 frames), Slide tool (A slid 9 frames, the neighbour followed); multi-clip drag of A and B from V1 to V3 (one drag, both ghosts on V3, "Moved 4 clips", ONE Undo put both back); edge auto-scroll (clip held at the right edge at 4 zoom steps: the view scrolled and the clip landed at 7.13 s); Ctrl+K palette (filtering "split" -> "Split at playhead  S"), `?` shortcuts dialog (presets, Change buttons); project library (rename, duplicate, export `.overcut` 1454 bytes, archive with Undo toast, import the `.overcut` back); reload (the edit comes back, the files must be chosen again: round 1, by design).
+
+### Export of that project, checked with ffprobe and frame grabs (it matches the preview)
+- **Duration**: video 9.000 s, 270 frames at 30 fps, 640x360 H.264; audio Opus 48 kHz stereo 9.02 s. The project says 0:09. 16 s to export.
+- **Overlay position**: at 2.2 s the PiP covers x 386..640, y 0..144 (centre 513, 72): the keyframed X (30.3 %) and Y -30 % of the preview, scale 40 % = 256 px wide. At 3.5 s it is centred (X 0 %), half see-through (opacity ~65 %); at 5.0 s it hangs off the left edge (X -35 %, only x 0..224 visible) at 30 % opacity; gone after 6 s.
+- **Keyframed motion**: the three frames sit exactly where the preview put them (the burn-in counter on A reads 66, 105, 150 at 2.2, 3.5, 5.0 s).
+- **Speed**: B (6 s) occupies 6.0..9.0 s; the tone in 6.3..8.7 s is 880.0 Hz (**pitch kept**, not 1760); level steps at exactly 6.0 s and falls to silence at 9.0 s.
+- **A/V sync at 2x** (`flash_click.mp4`, flash at frame 30, click at 1.000 s): 2x export is 1.52 s; the flash lands at 0.500 s (frame 15), the click at 0.509 s. Sync holds (9 ms is under a frame).
+
+### Core journey regression (1440): passed
+Import, split (status "Split 2 clips at 00:02:00"), delete ("Deleted 2 clips"), undo, redo, undo, wait for "Saved on this device", reload: the 6-clip timeline came back; the picture needs its file again (known).
+
+### Timeline benchmark (`tests/perf/timeline-bench.mjs`, 1000 clips x 20 tracks, this container)
+| Case | pan | zoom | pan+zoom | drag one / all 1000 (input-to-paint p95) |
+|---|---|---|---|---|
+| desktop 1280x800 | 60.0 fps | 60.0 | 59.8 | 2.9 ms / 1.9 ms |
+| desktop, 4x CPU throttle | 57.1 (p95 33 ms) | 60.0 | 58.1 | 19.0 ms / 10.7 ms |
+| phone 390x844 dpr3, 4x throttle | 59.5 | 60.0 | 60.0 | 13.2 ms / 9.9 ms |
+
+Against `docs/PERFORMANCE.md` (Timeline UI, pan/zoom 1000 clips x 20 tracks: floor 30 fps, target 60 fps): every case clears the floor by ~2x; desktop and phone are at the 60 target; the only value under 58 is desktop-throttled pan (57.1), which is the container's noise, not a regression (no phase drops a frame budget twice in a row).
+
+### P0
+None.
+
+### P1
+- **P1-1 A cross-track drop that also moves in time silently keeps the old time** `[C]` (`timeline/interact.ts` lane-change plan, `arrange.ts`). Steps: V1 has A, B, C (C at 12 s with its sound on A1); More > Add video track; drag C from 13 s on V1 up to V2 at the 3 s mark (target start 2 s). Saw: the ghost sits on V2 at 12 s the whole drag, release gives "Moved 2 clips" and C is on V2 at 12 s (sound would collide with A's on A1 at 2 s). Expected: either the ghost shows where it will land and the status says why the time was kept ("kept at 12 s: the sound would overlap"), or the sound moves to a free audio track as the bin drop does (that path works: C from the bin to V2 at 2 s put its sound on a new A2). Round 6 listed this as a P2; it is the first thing a user who drags an overlay tries, so it is a P1 now. Fix: in the lane-change plan, when the linked sound blocks the new time, try a free same-kind track for the sound or refuse the lane change with a message; draw the ghost at the planned time.
+- **P1-2 Markers and in/out points are not snap targets for clip moves** `[C]` (`timeline/arrange.ts` `targets()`: only 0, the playhead and clip edges; `docs/features/snapping.md` and M2-009 list markers). Steps: marker at 1 s, playhead far away; drag C so its start is 5 px (0.04 s) from the marker. Saw: it lands at 1.03 s. Control: the same drag 4 px from a clip edge snaps to exactly 6.00 s. Expected: it snaps to 1.00 s (and the guide line shows). Fix: pass the sequence markers and in/out into `targets()` (the engine's `snap_json` already knows them).
+
+### P2
+- **A reload loses the media for the web build** (round 1 P1, still open, by design): "Your browser does not keep imported files after a reload. Choose it again to use it." The "Choose all N missing files" row makes it one step, which is good; a creator who loses an hour of edits to a closed tab still sees black.
+- **Status says "Moved 4 clips" when two pictures changed lane** (the two sounds stayed on A1 at the same time). Count only what moved. `[C]`
+- **After a speed change the live status still reads the old span**: "B.mp4, V1, 0:06.00 to 0:12.00" while the clip is now 6.0..9.0 s. Re-announce the selection after the op. `[C]`
+- **Alt+drag slip on the left half of a split clip did nothing and said nothing** (the left half had footage after its end); the next Ctrl+Z reverted the split instead. Not retried with the Slip tool (Y); check that a no-op slip says "No extra footage" and that the slip is announced when it works. Roll and the "No extra footage to roll/slip" messages are clear. `[C]`
+- **Alt+Up on the top video track says "No free track there for this clip"** and does not offer to add one; a first-time user has to find More > Add video track. Offer "Add a video track and move there" or create it. `[C]`
+- **A .overcut import of the project that is already in the library makes a second card with the same name** ("Round 7 project copy" twice, same time, same size): no way to tell them apart. Name it "... (imported)" or ask. Project cards have a blank placeholder thumbnail. `[C]`
+- **The export file name ignores the project name** ("OverCut export 2026-11-25.mp4" for "Round 7 project copy"). The audio track is 20 ms longer than the picture (9.02 vs 9.00 s, 1.52 vs 1.50 s): harmless, but players show a different length. `[C]`
+- **"Recovered unsaved changes / Undo recovery" stays on screen** over the lowest tracks (A1/A2) for the whole session after a reload (about 40 s of scripted use) and hides the clip labels there; auto-dismiss after ~8 s like the other toasts, or move it above the timeline. `[C]`
+- **Phone (390x844)**: no horizontal scroll anywhere (empty, imported, Edit sheet, Speed tab, More sheet, app menu, palette, Export: scrollWidth = 390). The transform corner handles now sit inside the screen. The app menu still lists "Commands  Ctrl+K" on a touch phone and is cut off at the bottom ("Smooth scrubbing"); the preview leaves ~100 px of empty grey above the picture on this portrait layout while the timeline gets only ~236 px, so a 5-track project scrolls. `[C]`
+- **Tablet (820x1180)**: no overflow; the timeline gets ~25 % of the height under a tall media panel, so a project with five tracks needs vertical scrolling to see them all. `[C]`
+
+### Works (keep it)
+Keyframes (diamond, "Between keyframes", prev/next, timeline diamonds) and the on-canvas handles follow the animated values; the PiP is identical in preview and export; the Speed tab (presets, field, "Move later clips to follow", "Keep pitch" note, badge on both rows); markers, I/O, Alt+P play range; clip-edge snapping; Alt+drag ripple and roll with clear refusals; Slide tool; multi-clip cross-track drag is one undo step; edge auto-scroll; palette and shortcuts dialog; project library (rename, duplicate, archive + Undo, export, import); export dialog wording is now consistent ("Plays in browsers, VLC and most phones. Some older apps may play it without sound").
+
+### Ship readiness (M2 as it stands at 66cbf66)
+**Ready to ship M2.** No P0. The core journey, every M2 feature and the export (duration, overlay position, keyframed motion, 2x clip length, pitch, A/V sync) check out against the preview, the smoke suite is green and the 1000-clip x 20-track timeline holds 57..60 fps desktop, throttled and phone. Two P1 fixes are recommended before or right after the merge, both small: P1-1 (cross-track drop that also moves in time must say what it did) and P1-2 (markers as snap targets, as the docs promise). Everything else is polish.
+
+Test notes for the next round: a persistent profile (`launchPersistentContext`) lets one script build on the last one's project; set `window.showSaveFilePicker`, `showOpenFilePicker` and `showDirectoryPicker` to `undefined` in an init script so saves become downloads and "Choose files" becomes a `filechooser` event; at 1440x900 a 9 s project fits at about 131 px per second starting at x = 155.
