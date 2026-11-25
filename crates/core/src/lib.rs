@@ -11,7 +11,7 @@ mod capabilities;
 pub use capabilities::*;
 
 /// Bumped when the shape of anything crossing the JS boundary changes incompatibly.
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 
 /// What the host (web or native shell) learns about the engine it loaded.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

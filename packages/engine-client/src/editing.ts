@@ -1,5 +1,5 @@
-import { parseRecovery, type Editing, type EditOutcome, type FrameDescription, type Op } from "./types";
-import type { Project } from "./model.generated";
+import { parseRecovery, type Editing, type EditOutcome, type FrameDescription, type Op, type TrackProps } from "./types";
+import type { Project, SequenceId, Track, TrackId, TrackKind } from "./model.generated";
 
 /** What each backend supplies: the engine's string-in, string-out editor calls. Rejections/throws carry the engine's message. */
 export interface RawEditing {
@@ -63,4 +63,31 @@ export function createEditing(raw: RawEditing): Editing {
     recover: (base: Project | null, checkpoint: string | null, log: string) =>
       call(async () => parseRecovery(await raw.recover(base ? JSON.stringify(base) : null, checkpoint, log))),
   };
+}
+
+// ---- Track ops (M2-002, `docs/features/model.md`): small builders for `Editing.apply`. Ids come from the caller (`newId()`). ----
+
+/** A new, empty track. Pass it to `addTrackOp`. */
+export function newTrack(id: TrackId, kind: TrackKind, name: string): Track {
+  return { id, kind, name, muted: false, locked: false, clips: [] };
+}
+
+/** Add `track` at stack position `index` (0 = bottom, `tracks.length` = top). */
+export function addTrackOp(sequence: SequenceId, track: Track, index: number): Op {
+  return { op: "add_track", sequence, track, index };
+}
+
+/** Remove a track and its clips; one undo step brings both back. Locked tracks are refused by the engine. */
+export function removeTrackOp(track: TrackId): Op {
+  return { op: "remove_track", track };
+}
+
+/** Move a track to stack position `index` (counted after lifting it out, so `tracks.length - 1` is the top). */
+export function moveTrackOp(track: TrackId, index: number): Op {
+  return { op: "move_track", track, index };
+}
+
+/** Change some properties of a track (name, mute, solo, lock, hide, height, colour); see `TrackProps`. */
+export function setTrackPropsOp(track: TrackId, props: TrackProps): Op {
+  return { op: "set_track_props", track, ...props };
 }

@@ -1,10 +1,11 @@
 //! S7 property tests. Case count: `PROPTEST_CASES` (default 256 here; the S7 bar of 100k is
 //! `PROPTEST_CASES=100000 cargo test -p app-timeline --release`).
 
+use crate::apply::MAX_TRACKS;
 use crate::*;
 use app_model::{
     Clip, ClipId, IdSource, LinkId, MediaId, MediaKind, MediaRef, Project, Rational, Resolution,
-    SeqIds, Time, Track, TrackId, TrackKind,
+    SeqIds, SequenceId, Time, Track, TrackId, TrackKind,
 };
 use proptest::prelude::*;
 
@@ -51,6 +52,10 @@ fn base() -> (Project, SeqIds) {
             name: "V2".into(),
             muted: false,
             locked: false,
+            hidden: false,
+            solo: false,
+            height: None,
+            colour: None,
             clips: vec![],
         },
     );
@@ -107,6 +112,26 @@ enum Step {
         source_in: u8,
         dur: u8,
     },
+    AddTrack {
+        video: bool,
+        index: usize,
+        with_clip: bool,
+    },
+    RemoveTrack {
+        track: usize,
+    },
+    MoveTrack {
+        track: usize,
+        index: usize,
+    },
+    TrackProps {
+        track: usize,
+        muted: Option<bool>,
+        solo: Option<bool>,
+        locked: Option<bool>,
+        hidden: Option<bool>,
+        height: Option<Option<u32>>,
+    },
     Undo,
     Redo,
 }
@@ -121,6 +146,11 @@ fn step() -> impl Strategy<Value = Step> {
         3 => (any::<usize>(), 0..4usize, 0..70u8).prop_map(|(clip, track, start)| Step::Move { clip, track, start }),
         2 => any::<usize>().prop_map(|clip| Step::Delete { clip }),
         1 => (any::<usize>(), 0..60u8, 0..30u8, 0..25u8).prop_map(|(clip, start, source_in, dur)| Step::SetClip { clip, start, source_in, dur }),
+        1 => (any::<bool>(), any::<usize>(), any::<bool>()).prop_map(|(video, index, with_clip)| Step::AddTrack { video, index, with_clip }),
+        1 => any::<usize>().prop_map(|track| Step::RemoveTrack { track }),
+        1 => (any::<usize>(), any::<usize>()).prop_map(|(track, index)| Step::MoveTrack { track, index }),
+        2 => (any::<usize>(), any::<Option<bool>>(), any::<Option<bool>>(), any::<Option<bool>>(), any::<Option<bool>>(), prop::option::of(prop::option::of(0..450u32)))
+            .prop_map(|(track, muted, solo, locked, hidden, height)| Step::TrackProps { track, muted, solo, locked, hidden, height }),
         2 => Just(Step::Undo),
         2 => Just(Step::Redo),
     ]
@@ -209,6 +239,69 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
             start: t(i64::from(start)),
             source_in: t(i64::from(source_in)),
             duration: t(i64::from(dur)),
+        },
+        Step::AddTrack {
+            video,
+            index,
+            with_clip,
+        } => {
+            let kind = if video {
+                TrackKind::Video
+            } else {
+                TrackKind::Audio
+            };
+            let m = p
+                .media
+                .iter()
+                .find(|m| matches!(m.kind, MediaKind::Video))
+                .unwrap();
+            let clips = if with_clip {
+                vec![clip(ids, m.id, 0, 0, 5)]
+            } else {
+                vec![]
+            };
+            Op::AddTrack {
+                sequence: p.sequences[0].id,
+                index: index % (tracks.len() + 2), // sometimes one past the top (invalid)
+                track: Track {
+                    id: TrackId::new(ids),
+                    kind,
+                    name: "New".into(),
+                    muted: false,
+                    locked: false,
+                    hidden: false,
+                    solo: false,
+                    height: None,
+                    colour: None,
+                    clips,
+                },
+            }
+        }
+        // Never empty the sequence: the generator addresses tracks by index modulo their count.
+        Step::RemoveTrack { track } if tracks.len() > 1 => Op::RemoveTrack {
+            track: tracks[track % tracks.len()].id,
+        },
+        Step::RemoveTrack { .. } => return None,
+        Step::MoveTrack { track, index } => Op::MoveTrack {
+            track: tracks[track % tracks.len()].id,
+            index: index % (tracks.len() + 1),
+        },
+        Step::TrackProps {
+            track,
+            muted,
+            solo,
+            locked,
+            hidden,
+            height,
+        } => Op::SetTrackProps {
+            track: tracks[track % tracks.len()].id,
+            name: None,
+            muted,
+            solo,
+            locked,
+            hidden,
+            height,
+            colour: None,
         },
         Step::Undo | Step::Redo => return None,
     })
@@ -890,7 +983,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        7,
+        11,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -906,7 +999,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 14, "one example per Op variant");
+    assert_eq!(ops.len(), 18, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -1685,4 +1778,607 @@ fn a_saved_and_reopened_project_has_the_same_timeline_and_length() {
             .project(),
         &p
     );
+}
+
+// ---- M2-002: tracks ----
+
+fn new_track(ids: &mut SeqIds, kind: TrackKind, name: &str) -> Track {
+    Track {
+        id: TrackId::new(ids),
+        kind,
+        name: name.into(),
+        muted: false,
+        locked: false,
+        hidden: false,
+        solo: false,
+        height: None,
+        colour: None,
+        clips: vec![],
+    }
+}
+
+/// A `SetTrackProps` patch under construction: name only what changes.
+#[derive(Default)]
+struct P {
+    name: Option<String>,
+    muted: Option<bool>,
+    solo: Option<bool>,
+    locked: Option<bool>,
+    hidden: Option<bool>,
+    height: Option<Option<u32>>,
+    colour: Option<Option<String>>,
+}
+
+impl P {
+    fn op(self, track: TrackId) -> Op {
+        Op::SetTrackProps {
+            track,
+            name: self.name,
+            muted: self.muted,
+            solo: self.solo,
+            locked: self.locked,
+            hidden: self.hidden,
+            height: self.height,
+            colour: self.colour,
+        }
+    }
+}
+
+fn props(track: TrackId) -> Op {
+    P::default().op(track)
+}
+
+#[test]
+fn add_move_and_remove_a_track_and_each_undoes_exactly() {
+    let (mut p, mut ids) = base(); // V1, V2, A1 (bottom to top)
+    let before = p.clone();
+    let seq = p.sequences[0].id;
+    let v3 = new_track(&mut ids, TrackKind::Video, "V3");
+    let id = v3.id;
+    let inv = apply(
+        &mut p,
+        Op::AddTrack {
+            sequence: seq,
+            track: v3,
+            index: 3,
+        },
+    )
+    .unwrap();
+    assert_eq!(p.sequences[0].tracks.len(), 4);
+    assert_eq!(p.sequences[0].tracks[3].id, id);
+    p.validate().unwrap();
+    let after_add = p.clone();
+
+    // Lift it to the bottom, then back.
+    let inv_move = apply(
+        &mut p,
+        Op::MoveTrack {
+            track: id,
+            index: 0,
+        },
+    )
+    .unwrap();
+    assert_eq!(p.sequences[0].tracks[0].id, id);
+    apply_all(&mut p, &inv_move.0).unwrap();
+    assert_eq!(p, after_add);
+
+    // Removing a track with clips takes them along and undo restores them, in place.
+    let tr = p.sequences[0].tracks[0].id;
+    let m = p.media[0].id;
+    let c = clip(&mut ids, m, 0, 0, 10);
+    apply(&mut p, Op::InsertClip { track: tr, clip: c }).unwrap();
+    let with_clip = p.clone();
+    let inv_rm = apply(&mut p, Op::RemoveTrack { track: tr }).unwrap();
+    assert_eq!(p.sequences[0].tracks.len(), 3);
+    assert!(p.sequences[0].tracks.iter().all(|t| t.clips.is_empty()));
+    apply_all(&mut p, &inv_rm.0).unwrap();
+    assert_eq!(p, with_clip);
+
+    apply_all(&mut p, &[]).unwrap();
+    let c_id = p.sequences[0].tracks[0].clips[0].id;
+    apply(&mut p, Op::Delete { clip: c_id }).unwrap();
+    apply_all(&mut p, &inv.0).unwrap();
+    assert_eq!(p.sequences[0].tracks.len(), 3);
+    assert_eq!(
+        p.sequences[0].tracks[0].id,
+        before.sequences[0].tracks[0].id
+    );
+}
+
+#[test]
+fn track_ops_reject_what_they_must_and_leave_the_project_alone() {
+    let (p, mut ids) = base();
+    let seq = p.sequences[0].id;
+    let t0 = p.sequences[0].tracks[0].id;
+    let cases: Vec<Case> = vec![
+        (
+            "unknown sequence",
+            Op::AddTrack {
+                sequence: SequenceId::new(&mut ids),
+                track: new_track(&mut ids, TrackKind::Video, "X"),
+                index: 0,
+            },
+            |e| matches!(e, OpError::UnknownSequence(_)),
+        ),
+        (
+            "index past the top",
+            Op::AddTrack {
+                sequence: seq,
+                track: new_track(&mut ids, TrackKind::Video, "X"),
+                index: 4,
+            },
+            |e| matches!(e, OpError::BadTrackIndex),
+        ),
+        (
+            "id already used",
+            Op::AddTrack {
+                sequence: seq,
+                track: Track {
+                    id: t0,
+                    ..new_track(&mut ids, TrackKind::Video, "X")
+                },
+                index: 0,
+            },
+            |e| matches!(e, OpError::IdInUse(_)),
+        ),
+        (
+            "empty name",
+            Op::AddTrack {
+                sequence: seq,
+                track: new_track(&mut ids, TrackKind::Video, ""),
+                index: 0,
+            },
+            |e| matches!(e, OpError::BadTrack),
+        ),
+        (
+            "move past the top",
+            Op::MoveTrack {
+                track: t0,
+                index: 3,
+            },
+            |e| matches!(e, OpError::BadTrackIndex),
+        ),
+        (
+            "unknown track",
+            Op::MoveTrack {
+                track: TrackId::new(&mut ids),
+                index: 0,
+            },
+            |e| matches!(e, OpError::UnknownTrack(_)),
+        ),
+        (
+            "name with edge spaces",
+            P {
+                name: Some(" V1".into()),
+                ..P::default()
+            }
+            .op(t0),
+            |e| matches!(e, OpError::BadTrack),
+        ),
+        (
+            "name too long",
+            P {
+                name: Some("x".repeat(65)),
+                ..P::default()
+            }
+            .op(t0),
+            |e| matches!(e, OpError::BadTrack),
+        ),
+        (
+            "height too small",
+            P {
+                height: Some(Some(5)),
+                ..P::default()
+            }
+            .op(t0),
+            |e| matches!(e, OpError::BadTrack),
+        ),
+        (
+            "height too big",
+            P {
+                height: Some(Some(401)),
+                ..P::default()
+            }
+            .op(t0),
+            |e| matches!(e, OpError::BadTrack),
+        ),
+        (
+            "bad colour",
+            P {
+                colour: Some(Some("red".into())),
+                ..P::default()
+            }
+            .op(t0),
+            |e| matches!(e, OpError::BadTrack),
+        ),
+        (
+            "bad prop does not half-apply a good one",
+            P {
+                muted: Some(true),
+                colour: Some(Some("#12".into())),
+                ..P::default()
+            }
+            .op(t0),
+            |e| matches!(e, OpError::BadTrack),
+        ),
+    ];
+    for (name, op, ok) in cases {
+        let mut q = p.clone();
+        let err = apply(&mut q, op).expect_err(name);
+        assert!(ok(&err), "{name}: wrong error {err:?}");
+        assert_eq!(q, p, "{name}: the project changed");
+    }
+}
+
+#[test]
+fn a_locked_track_cannot_be_removed_but_can_be_unlocked_and_the_stack_is_capped() {
+    let (mut p, mut ids) = base();
+    let t = p.sequences[0].tracks[0].id;
+    apply(
+        &mut p,
+        P {
+            locked: Some(true),
+            ..P::default()
+        }
+        .op(t),
+    )
+    .unwrap();
+    assert!(matches!(
+        apply(&mut p, Op::RemoveTrack { track: t }),
+        Err(OpError::TrackLocked(_))
+    ));
+    // Reordering and restyling a locked track is fine; it is the clips that are protected.
+    apply(&mut p, Op::MoveTrack { track: t, index: 2 }).unwrap();
+    apply(
+        &mut p,
+        P {
+            locked: Some(false),
+            ..P::default()
+        }
+        .op(t),
+    )
+    .unwrap();
+    apply(&mut p, Op::RemoveTrack { track: t }).unwrap();
+
+    let seq = p.sequences[0].id;
+    while p.sequences[0].tracks.len() < MAX_TRACKS {
+        let track = new_track(&mut ids, TrackKind::Audio, "A");
+        apply(
+            &mut p,
+            Op::AddTrack {
+                sequence: seq,
+                track,
+                index: 0,
+            },
+        )
+        .unwrap();
+    }
+    let one_more = new_track(&mut ids, TrackKind::Audio, "A");
+    assert!(matches!(
+        apply(
+            &mut p,
+            Op::AddTrack {
+                sequence: seq,
+                track: one_more,
+                index: 0
+            }
+        ),
+        Err(OpError::TooManyTracks)
+    ));
+}
+
+#[test]
+fn add_track_with_clips_checks_them_like_insert_clip() {
+    let (mut p, mut ids) = base();
+    let seq = p.sequences[0].id;
+    let m = p.media[0].id;
+    let mut t = new_track(&mut ids, TrackKind::Video, "V3");
+    t.clips = vec![clip(&mut ids, m, 0, 0, 10), clip(&mut ids, m, 5, 0, 10)];
+    let before = p.clone();
+    assert!(matches!(
+        apply(
+            &mut p,
+            Op::AddTrack {
+                sequence: seq,
+                track: t.clone(),
+                index: 0
+            }
+        ),
+        Err(OpError::Overlap { .. })
+    ));
+    t.clips[1] = Clip {
+        start: Time::from_ticks(10 * U),
+        ..t.clips[1].clone()
+    };
+    let audio_only = p.media[1].id;
+    let mut bad_kind = t.clone();
+    bad_kind.clips[0].media = audio_only;
+    assert!(matches!(
+        apply(
+            &mut p,
+            Op::AddTrack {
+                sequence: seq,
+                track: bad_kind,
+                index: 0
+            }
+        ),
+        Err(OpError::KindMismatch)
+    ));
+    let mut dup = t.clone();
+    dup.clips[1].id = dup.clips[0].id;
+    assert!(matches!(
+        apply(
+            &mut p,
+            Op::AddTrack {
+                sequence: seq,
+                track: dup,
+                index: 0
+            }
+        ),
+        Err(OpError::IdInUse(_))
+    ));
+    assert_eq!(p, before);
+    apply(
+        &mut p,
+        Op::AddTrack {
+            sequence: seq,
+            track: t,
+            index: 0,
+        },
+    )
+    .unwrap();
+    p.validate().unwrap();
+}
+
+#[test]
+fn set_track_props_patches_only_what_it_names_resets_and_undoes_in_one_step() {
+    let (mut p, _) = base();
+    let t = p.sequences[0].tracks[1].id;
+    let before = p.clone();
+    let inv = apply(
+        &mut p,
+        P {
+            name: Some("Titles".into()),
+            muted: Some(true),
+            solo: Some(true),
+            hidden: Some(true),
+            height: Some(Some(80)),
+            colour: Some(Some("#FF8800".into())),
+            ..P::default()
+        }
+        .op(t),
+    )
+    .unwrap();
+    let tr = &p.sequences[0].tracks[1];
+    assert_eq!(
+        (
+            tr.name.as_str(),
+            tr.muted,
+            tr.solo,
+            tr.hidden,
+            tr.locked,
+            tr.height
+        ),
+        ("Titles", true, true, true, false, Some(80))
+    );
+    assert_eq!(tr.colour.as_deref(), Some("#FF8800"));
+    let after = p.clone();
+    apply_all(&mut p, &inv.0).unwrap();
+    assert_eq!(p, before);
+    apply(&mut p, after_ops(t)).unwrap();
+    // `null` resets height and colour to the default.
+    apply(
+        &mut p,
+        P {
+            height: Some(None),
+            colour: Some(None),
+            ..P::default()
+        }
+        .op(t),
+    )
+    .unwrap();
+    let tr = &p.sequences[0].tracks[1];
+    assert!(tr.height.is_none() && tr.colour.is_none() && tr.hidden);
+    // A no-op patch is valid and its inverse is a no-op.
+    let snapshot = p.clone();
+    let inv = apply(&mut p, props(t)).unwrap();
+    apply_all(&mut p, &inv.0).unwrap();
+    assert_eq!(p, snapshot);
+    let _ = after;
+}
+
+fn after_ops(t: TrackId) -> Op {
+    P {
+        hidden: Some(true),
+        height: Some(Some(80)),
+        colour: Some(Some("#FF8800".into())),
+        ..P::default()
+    }
+    .op(t)
+}
+
+#[test]
+fn set_track_props_wire_format_distinguishes_absent_null_and_value() {
+    let t = "00000000000000000000000000000003";
+    let op: Op =
+        serde_json::from_value(serde_json::json!({"op":"set_track_props","track":t,"muted":true}))
+            .unwrap();
+    let Op::SetTrackProps {
+        muted,
+        height,
+        colour,
+        name,
+        ..
+    } = &op
+    else {
+        panic!()
+    };
+    assert_eq!(
+        (*muted, *height, colour.clone(), name.clone()),
+        (Some(true), None, None, None)
+    );
+    let op: Op = serde_json::from_value(
+        serde_json::json!({"op":"set_track_props","track":t,"height":null,"colour":"#112233"}),
+    )
+    .unwrap();
+    let Op::SetTrackProps { height, colour, .. } = &op else {
+        panic!()
+    };
+    assert_eq!(
+        (*height, colour.clone()),
+        (Some(None), Some(Some("#112233".to_string())))
+    );
+    // And it writes back the same way.
+    assert_eq!(
+        serde_json::to_value(&op).unwrap(),
+        serde_json::json!({"op":"set_track_props","track":t,"height":null,"colour":"#112233"})
+    );
+}
+
+#[test]
+fn evaluate_honours_hide_mute_and_solo_per_kind() {
+    use crate::evaluate::evaluate;
+    let (mut p, mut ids) = base(); // V1, V2, A1
+    let m = p.media[0].id; // video media with audio
+    for ti in [0usize, 1] {
+        let tid = p.sequences[0].tracks[ti].id;
+        let c = clip(&mut ids, m, 0, 0, 10);
+        apply(
+            &mut p,
+            Op::InsertClip {
+                track: tid,
+                clip: c,
+            },
+        )
+        .unwrap();
+    }
+    let a_id = p.sequences[0].tracks[2].id;
+    let ac = clip(&mut ids, m, 0, 0, 10);
+    apply(
+        &mut p,
+        Op::InsertClip {
+            track: a_id,
+            clip: ac,
+        },
+    )
+    .unwrap();
+    let (v1, v2) = (p.sequences[0].tracks[0].id, p.sequences[0].tracks[1].id);
+    let layers = |p: &Project| {
+        evaluate(&p.sequences[0], Time::from_ticks(U), 480)
+            .layers
+            .iter()
+            .map(|l| l.track)
+            .collect::<Vec<_>>()
+    };
+    let audio = |p: &Project| {
+        evaluate(&p.sequences[0], Time::from_ticks(U), 480)
+            .audio
+            .len()
+    };
+    assert_eq!(layers(&p), vec![v1, v2]);
+    assert_eq!(audio(&p), 1);
+
+    apply(
+        &mut p,
+        P {
+            hidden: Some(true),
+            ..P::default()
+        }
+        .op(v2),
+    )
+    .unwrap();
+    assert_eq!(layers(&p), vec![v1], "a hidden track is not drawn");
+    apply(
+        &mut p,
+        P {
+            hidden: Some(false),
+            muted: Some(true),
+            ..P::default()
+        }
+        .op(v2),
+    )
+    .unwrap();
+    assert_eq!(
+        layers(&p),
+        vec![v1],
+        "a muted video track is not drawn either"
+    );
+    apply(
+        &mut p,
+        P {
+            muted: Some(false),
+            solo: Some(true),
+            ..P::default()
+        }
+        .op(v2),
+    )
+    .unwrap();
+    assert_eq!(
+        layers(&p),
+        vec![v2],
+        "solo shows only the soloed track of its kind"
+    );
+    assert_eq!(audio(&p), 1, "a video solo does not silence audio tracks");
+    apply(
+        &mut p,
+        P {
+            solo: Some(true),
+            ..P::default()
+        }
+        .op(v1),
+    )
+    .unwrap();
+    assert_eq!(
+        layers(&p),
+        vec![v1, v2],
+        "two solos both show, in stack order"
+    );
+    apply(
+        &mut p,
+        P {
+            hidden: Some(true),
+            ..P::default()
+        }
+        .op(v1),
+    )
+    .unwrap();
+    assert_eq!(layers(&p), vec![v2], "hide wins over solo");
+    apply(
+        &mut p,
+        P {
+            solo: Some(true),
+            ..P::default()
+        }
+        .op(a_id),
+    )
+    .unwrap();
+    apply(
+        &mut p,
+        P {
+            muted: Some(true),
+            ..P::default()
+        }
+        .op(a_id),
+    )
+    .unwrap();
+    assert_eq!(audio(&p), 0, "mute wins over solo");
+    // Reordering the stack changes the draw order and nothing else.
+    apply(
+        &mut p,
+        P {
+            hidden: Some(false),
+            ..P::default()
+        }
+        .op(v1),
+    )
+    .unwrap();
+    apply(
+        &mut p,
+        Op::MoveTrack {
+            track: v1,
+            index: 1,
+        },
+    )
+    .unwrap();
+    assert_eq!(layers(&p), vec![v2, v1]);
 }

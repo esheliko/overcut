@@ -56,6 +56,10 @@ fn main() {
             name: format!("V{i}"),
             muted: false,
             locked: false,
+            hidden: false,
+            solo: false,
+            height: None,
+            colour: None,
             clips: vec![],
         });
     }

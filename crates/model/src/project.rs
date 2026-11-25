@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::fmt;
 
 /// Version of the document schema. Bump (and add a migration + fixture, M1-005) on any incompatible change.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Project {
@@ -57,13 +57,51 @@ pub enum TrackKind {
     Audio,
 }
 
+/// Bounds of `Track::height` (UI pixels).
+pub const MIN_TRACK_HEIGHT: u32 = 24;
+pub const MAX_TRACK_HEIGHT: u32 = 400;
+/// Longest track name, in characters.
+pub const MAX_TRACK_NAME: usize = 64;
+
+/// True for `#rrggbb` (hex digits of either case).
+pub fn is_track_colour(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+impl Track {
+    /// Whether the track takes part in the output (drawn / heard) given whether another track of its kind is soloed.
+    pub fn is_live(&self, kind_has_solo: bool) -> bool {
+        !self.muted && !self.hidden && (!kind_has_solo || self.solo)
+    }
+}
+
+impl Sequence {
+    /// True when some track of `kind` is soloed.
+    pub fn has_solo(&self, kind: TrackKind) -> bool {
+        self.tracks.iter().any(|t| t.kind == kind && t.solo)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Track {
     pub id: TrackId,
     pub kind: TrackKind,
     pub name: String,
+    /// Silent (audio) / not drawn (video). The track keeps its clips and its place in the stack.
     pub muted: bool,
     pub locked: bool,
+    /// Out of the output entirely (eye off): neither drawn nor heard. Added in schema 2; absent = false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hidden: bool,
+    /// While any track of a kind is soloed, only the soloed tracks of that kind are drawn / heard. Schema 2; absent = false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub solo: bool,
+    /// Row height in UI pixels (`MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT`); `None` = the view's default for the kind. Schema 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// Label colour as `#rrggbb`; `None` = the theme's default for the kind. Schema 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
     /// Sorted by `start`, never overlapping (see [`Project::validate`]).
     pub clips: Vec<Clip>,
 }
@@ -148,6 +186,10 @@ pub enum ModelError {
         sequence: SequenceId,
         why: &'static str,
     },
+    BadTrack {
+        track: TrackId,
+        why: &'static str,
+    },
 }
 
 impl fmt::Display for ModelError {
@@ -172,6 +214,10 @@ impl Project {
             name: name.to_string(),
             muted: false,
             locked: false,
+            hidden: false,
+            solo: false,
+            height: None,
+            colour: None,
             clips: Vec::new(),
         };
         let id = ProjectId::new(src);
@@ -225,6 +271,20 @@ impl Project {
             }
             for t in &s.tracks {
                 unique(t.id.0)?;
+                if t.height
+                    .is_some_and(|h| !(MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT).contains(&h))
+                {
+                    return Err(ModelError::BadTrack {
+                        track: t.id,
+                        why: "height out of range",
+                    });
+                }
+                if t.colour.as_deref().is_some_and(|c| !is_track_colour(c)) {
+                    return Err(ModelError::BadTrack {
+                        track: t.id,
+                        why: "colour must be #rrggbb",
+                    });
+                }
                 let mut prev_end = Time::ZERO;
                 for c in &t.clips {
                     unique(c.id.0)?;
@@ -332,7 +392,7 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: Project = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
-        assert!(json.contains("\"schema_version\":1"));
+        assert!(json.contains("\"schema_version\":2"));
     }
 
     #[test]
@@ -395,8 +455,8 @@ mod tests {
             p.validate().unwrap_err()
         };
         assert!(matches!(
-            edit(&|p| p.schema_version = 2),
-            ModelError::UnsupportedVersion(2)
+            edit(&|p| p.schema_version = 3),
+            ModelError::UnsupportedVersion(3)
         ));
         assert!(matches!(
             edit(&|p| p.media.clear()),
