@@ -263,6 +263,26 @@
             "$ref": "#/$defs/Clip"
           }
         },
+        "colour": {
+          "description": "Label colour as `#rrggbb`; `None` = the theme's default for the kind. Schema 2.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "height": {
+          "description": "Row height in UI pixels (`MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT`); `None` = the view's default for the kind. Schema 2.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hidden": {
+          "description": "Out of the output entirely (eye off): neither drawn nor heard. Added in schema 2; absent = false.",
+          "type": "boolean"
+        },
         "id": {
           "$ref": "#/$defs/TrackId"
         },
@@ -273,10 +293,15 @@
           "type": "boolean"
         },
         "muted": {
+          "description": "Silent (audio) / not drawn (video). The track keeps its clips and its place in the stack.",
           "type": "boolean"
         },
         "name": {
           "type": "string"
+        },
+        "solo": {
+          "description": "While any track of a kind is soloed, only the soloed tracks of that kind are drawn / heard. Schema 2; absent = false.",
+          "type": "boolean"
         }
       },
       "required": [

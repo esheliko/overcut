@@ -86,11 +86,20 @@ export type Time = number;
 export interface Track {
   /** Sorted by `start`, never overlapping (see [`Project::validate`]). */
   clips: Clip[];
+  /** Label colour as `#rrggbb`; `None` = the theme's default for the kind. Schema 2. */
+  colour?: string | null;
+  /** Row height in UI pixels (`MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT`); `None` = the view's default for the kind. Schema 2. */
+  height?: number | null;
+  /** Out of the output entirely (eye off): neither drawn nor heard. Added in schema 2; absent = false. */
+  hidden?: boolean;
   id: TrackId;
   kind: TrackKind;
   locked: boolean;
+  /** Silent (audio) / not drawn (video). The track keeps its clips and its place in the stack. */
   muted: boolean;
   name: string;
+  /** While any track of a kind is soloed, only the soloed tracks of that kind are drawn / heard. Schema 2; absent = false. */
+  solo?: boolean;
 }
 
 export type TrackId = string;

@@ -2,9 +2,19 @@
 //! id they create (the host supplies fresh ids), so applying the same op list to the same project is deterministic.
 
 use app_model::{
-    Clip, ClipId, LinkId, MediaId, MediaRef, Rational, Resolution, SequenceId, Time, TrackId,
+    Clip, ClipId, LinkId, MediaId, MediaRef, Rational, Resolution, SequenceId, Time, Track, TrackId,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Reads a field where "absent" means leave it alone, `null` means clear it and a value means set it
+/// (`Option<Option<T>>` with `#[serde(default)]`).
+fn set_or_clear<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
+}
 
 /// One edit. `#[non_exhaustive]` + the `op` tag leave room for M2 ripple / roll / slip / slide, which are new variants
 /// (with their own inverses), not changes to these.
@@ -44,6 +54,44 @@ pub enum Op {
         start: Time,
         source_in: Time,
         duration: Time,
+    },
+    /// Add a track to a sequence at stack position `index` (0 = bottom, `tracks.len()` = top). Its id must be new. A track that carries
+    /// clips is allowed (the inverse of `RemoveTrack` restores them); the clips are checked like `InsertClip`.
+    AddTrack {
+        sequence: SequenceId,
+        track: Track,
+        index: usize,
+    },
+    /// Remove a track and the clips on it (undo puts it all back). A locked track cannot be removed.
+    RemoveTrack { track: TrackId },
+    /// Move a track to stack position `index` in the order after it is lifted out (so `tracks.len() - 1` = top). Video draws bottom-to-top.
+    MoveTrack { track: TrackId, index: usize },
+    /// Change a track's properties; fields left out stay as they are. `height` / `colour`: a value sets, `null` resets to the default.
+    /// Valid on a locked track (that is how it gets unlocked).
+    SetTrackProps {
+        track: TrackId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        muted: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        solo: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        locked: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        hidden: Option<bool>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "set_or_clear"
+        )]
+        height: Option<Option<u32>>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "set_or_clear"
+        )]
+        colour: Option<Option<String>>,
     },
     /// Set where a media file is found and its content fingerprint (`b3-64k:...`, `docs/features/project-file.md`).
     /// Used by import (record the fingerprint) and relink (the file moved); clips are untouched.
