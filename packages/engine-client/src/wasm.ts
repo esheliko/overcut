@@ -28,6 +28,7 @@ export async function createWasmEngine(opts: { spawnExportWorker: () => WorkerLi
     project: () => open().project(),
     journal: () => open().journal(),
     evaluate: (sequence, ticks, audioSamples) => open().evaluate(sequence, ticks, audioSamples),
+    snap: (sequence, paramsJson) => open().snap(sequence, paramsJson),
     takeLog: () => open().take_log(),
     checkpoint: () => open().checkpoint(),
     recover: (baseJson, checkpointJson, log) => {

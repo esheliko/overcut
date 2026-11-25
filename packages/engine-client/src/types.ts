@@ -312,6 +312,11 @@ export interface Editing {
    */
   evaluate(sequence: string, ticks: number, audioSamples?: number): Promise<FrameDescription>;
   /**
+   * Snap a time (or a dragged span) to the sequence's clip edges, the playhead and markers (TL-03, `docs/features/snapping.md`). Tolerance in ticks, inclusive.
+   * Cheap (a linear pass in the engine); call it per pointer move. Priority on ties: playhead, marker, clip edge.
+   */
+  snap(sequence: string, query: SnapQuery): Promise<SnapResult>;
+  /**
    * The commit records (edits, undos, redos) produced since the last call, as JSON Lines; empty when nothing changed.
    * Autosave appends them to durable storage after every edit (`docs/features/persistence.md`).
    */
@@ -365,6 +370,26 @@ export interface FrameDescription {
   layers: VideoLayer[];
   /** Samples not covered are silence. */
   audio: AudioSegment[];
+}
+
+/** Input of `Editing.snap`. All times are integer ticks. */
+export interface SnapQuery {
+  /** The time to snap, or the START of the dragged span when `span` is given. */
+  t: number;
+  tolerance: number;
+  playhead?: number | null;
+  /** Clips that are being dragged: their own edges are not targets. */
+  exclude?: ClipId[];
+  markers?: number[];
+  /** Length of the dragged span: either its start or its end snaps, whichever moves less. */
+  span?: number | null;
+}
+
+/** `time` is where `t` ends up (the new start for a span), `delta = time - t`, `hit` the target snapped to (`null` = none in range). */
+export interface SnapResult {
+  time: number;
+  delta: number;
+  hit: { time: number; kind: "playhead" | "marker" | "clip_edge" } | null;
 }
 
 /** What `Editing.recover` did. Mirrors `app_timeline::Recovery`. */
