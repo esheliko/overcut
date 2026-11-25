@@ -90,3 +90,18 @@ Driven at 1440x900 with the keyboard, against a real export checked with `ffprob
 **P2**
 - a. Exported audio is 20 ms longer than the picture (Opus pre-roll/padding); harmless alone, watch it when A/V sync work lands. `[A]`
 - b. The recovery toast on a phone wraps its close button onto a second row and covers the preview. `[C]`
+
+## Round 3: drag, shortcuts dialog, grouped menu (m2 at c5d6ce0)
+
+Driven as a human with mouse (1440x900), touch emulation (820x1180 and 390x844) and keyboard. No P0.
+
+**Works**
+- Mouse drag of a clip past its neighbour reorders it (picture and sound together), the preview shows the new first frame, the status line says "Moved 2 clips", and one Ctrl+Z puts it back.
+- Touch: press and hold about 0.7 s on an unselected clip, then drag, reorders it; the result matched the mouse.
+- `?` opens "Keyboard shortcuts" with the key set picker and a Change button per row; the dialog fits at 390 px with no sideways scroll. The menu is grouped (Project, View, Help) and now holds the save and ready status on a phone, which closes P1-9 and P1-10.
+
+**P2**
+- The "…" menu is taller than a 844 px phone: "About OverCut" is below the fold; the menu scrolls, but nothing hints that it does. `[C]`
+- The shortcuts dialog has a tall empty gap under the intro text on desktop and phone, and on a phone (no keyboard) its use is limited. `[C]`
+- While a drag is in progress the dragged clip is drawn faded with its name nearly invisible; keep the name readable. `[C]`
+- Tablet (820 px, touch): the saved status is still cut to "Saved o…" and the media list is clipped by the preview below it (it scrolls). `[C]`
