@@ -66,6 +66,7 @@ type BinProps = {
   onAdd: (id: string) => void;
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
+  onRelinkAll?: () => void;
   meta: BinMeta;
   onTags: (id: string, tags: readonly string[]) => void;
 };
@@ -324,6 +325,7 @@ function Editor({ store }: { store: ProjectStore }) {
     onImport: (s) => void importFiles(s),
     onAdd: (id) => void media.addToTimeline(id).then((ok) => ok && announce(t("media.added"))),
     onRemove: media.remove,
+    onRelinkAll: () => void locate(),
     onRelink: (id) => void media.relink(id).then(async (ok) => {
       if (ok) return;
       const picked = await pickOne(); // no stored permission: choose the file again
