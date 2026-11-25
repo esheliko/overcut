@@ -60,8 +60,10 @@ export interface Overlay {
   /** Trim preview: clip index (-1 none), which edge, and the new boundary in seconds. */
   trimClip: number; trimEnd: boolean; trimSec: number;
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** Where a drag snapped or will drop (seconds): a thin guide line across the tracks. Null = none. */
+  guideSec: number | null;
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, marquee: null });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTrack: -1, trimClip: -1, trimEnd: false, trimSec: 0, marquee: null, guideSec: null });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -183,6 +185,17 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   if (ui.trimClip >= 0) {
     const i = ui.trimClip;
     ghost(ctx, v, p, scene.clipTrack[i]!, ui.trimEnd ? scene.start[i]! : ui.trimSec, ui.trimEnd ? ui.trimSec : scene.end[i]!, scene.trackKind[scene.clipTrack[i]!] === 1);
+  }
+
+  if (ui.guideSec !== null) {
+    const gx = Math.round(timeToX(v, ui.guideSec)) + 0.5;
+    if (gx >= GUTTER && gx <= v.width) {
+      ctx.strokeStyle = p.accent;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(gx, RULER); ctx.lineTo(gx, v.height); ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 
   // Gutter (sticky) with track labels.
