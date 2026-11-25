@@ -243,13 +243,13 @@ h2, p { margin: 0; }
 /* Media bin (M1-032) */
 .dropzone-big { min-height: 220px; cursor: pointer; border-width: 2px; }
 .dropzone-big strong { font-size: 18px; }
-.bin { display: flex; flex-direction: column; gap: 10px; min-width: 0; align-content: start; }
+.bin { container: bin / inline-size; display: flex; flex-direction: column; gap: 8px; min-width: 0; align-content: start; }
 .bin-import { align-self: stretch; justify-content: center; min-height: 44px; }
-.bin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .bin-none { color: var(--muted); text-align: center; padding: 16px 0; }
-.bin-card { display: flex; align-items: center; gap: 10px; padding: 8px; min-height: 64px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); cursor: grab; }
+.bin-card { display: flex; align-items: center; gap: 10px; padding: 6px 8px; min-height: 56px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); cursor: grab; }
 .bin-card[data-status="unsupported"], .bin-card[data-status="offline"] { cursor: default; border-color: var(--danger, var(--line-strong)); }
-.bin-thumb { flex: none; display: grid; place-items: center; width: 72px; height: 48px; border-radius: 8px; overflow: hidden; background: var(--surface-3); color: var(--muted); }
+.bin-thumb { flex: none; display: grid; place-items: center; width: 64px; height: 36px; border-radius: 8px; overflow: hidden; background: var(--surface-3); color: var(--muted); }
 .bin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .bin-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
 .bin-text strong { color: var(--fg); font-size: 13px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } /* the name wraps (at most a few lines); the full name is also the tooltip */
@@ -258,7 +258,13 @@ h2, p { margin: 0; }
 .bin-act { flex: none; min-width: 44px; min-height: 44px; }
 .bin-tag-btn { display: flex; align-items: center; gap: 4px; padding-inline: 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: none; color: var(--fg); font-size: 12px; font-weight: 600; }
 .bin-tag-btn:hover { background: var(--surface-3); }
-.bin-on-timeline { color: var(--accent); font-weight: 600; }
+/* Compact bin: Import and Filter and sort on one row; the "N of M shown" line only while a search or filter is on; "On the timeline" is a check mark in the meta line */
+.bin-bar { display: flex; gap: var(--space-2); min-inline-size: 0; }
+.bin-bar > .bin-import { flex: 1 1 auto; min-inline-size: 0; white-space: nowrap; }
+.bin-bar > .bin-filter-toggle { flex: 0 0 auto; inline-size: auto; min-inline-size: 44px; white-space: nowrap; }
+.bin-count[data-quiet="true"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.bin-line { display: flex; align-items: center; gap: 6px; min-inline-size: 0; }
+.bin-on-timeline { flex: none; display: inline-grid; place-items: center; inline-size: 18px; block-size: 18px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
 .bin-link { flex: none; min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .tl-drop { grid-area: timeline; display: contents; }
 .tl-drop[data-over="true"] > .timeline { outline: 2px dashed var(--accent); outline-offset: -3px; }
@@ -390,7 +396,7 @@ h2, p { margin: 0; }
 .bin-tags { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
 .bin-virtual { position: relative; }
 .bin-fixed { will-change: transform; }
-.bin-fixed > .bin-card { block-size: 64px; box-sizing: border-box; }
+.bin-fixed > .bin-card { block-size: 56px; box-sizing: border-box; }
 .tag-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; list-style: none; }
 .tag-chips li { display: inline-flex; align-items: center; gap: var(--space-1); padding-inline-start: var(--space-3); border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .tag-chips li.export-note { background: none; padding: 0; }
@@ -420,7 +426,7 @@ h2, p { margin: 0; }
 /* Laptop and desktop (the Media panel is 320 px): a smaller thumbnail and gap leave the name room beside the Tags label and the "+". */
 @container editor (min-width: 1100px) {
   .bin-card { gap: 8px; }
-  .bin-thumb { width: 56px; height: 40px; }
+  .bin-thumb { width: 56px; height: 32px; }
 }
 
 /* ---- projects list (PM-06) ---- */
@@ -462,5 +468,7 @@ h2, p { margin: 0; }
 .theme-pop { inset-inline-start: 0; inset-inline-end: auto; min-width: 200px; }
 .menu-check { display: inline-block; inline-size: 1.2em; font-weight: 700; }
 .menu-row[aria-checked="true"] { font-weight: 700; }
+/* A narrow Media panel (phone < 360 px, the 320 px laptop column): Filter and sort keeps its icon (and the On badge); its words stay for screen readers and as the tooltip, so Import and the filter fit one row without wrapping */
+@container bin (max-width: 340px) { .bin-filter-toggle > span:nth-child(2) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
 /* Touch screens (kept last so it wins over per-component field sizes): fields are at least 16 px so iOS Safari does not zoom the page on focus (it never zooms back); the zoom slider gets a 44 px tall hit area. */
 @media (pointer: coarse) { :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"]), select, textarea) { font-size: max(16px, 1em); } .zoom input { block-size: 44px; } }
