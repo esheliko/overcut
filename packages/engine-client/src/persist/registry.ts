@@ -22,6 +22,8 @@ export interface ProjectEntry {
   width?: number;
   height?: number;
   clips?: number;
+  /** Milliseconds since the epoch: when the project was archived (tucked out of the main list, never deleted); absent = active. */
+  archived?: number;
 }
 
 export interface RegistryData {
@@ -57,6 +59,12 @@ export function copyName(name: string, taken: readonly string[], base: string): 
 
 const isEntry = (e: unknown): e is ProjectEntry => !!e && typeof e === "object" && typeof (e as ProjectEntry).id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test((e as ProjectEntry).id) && typeof (e as ProjectEntry).modified === "number";
 
+const withoutArchived = (e: ProjectEntry): ProjectEntry => {
+  const row = { ...e };
+  delete row.archived;
+  return row;
+};
+
 /**
  * The list of local projects (PM-06, `docs/features/projects.md`): a small file in its own storage (`REGISTRY_ID`), replaced atomically.
  * It only NAMES projects; each project's data stays in its own storage, so losing or damaging the list never touches a project.
@@ -75,7 +83,7 @@ export class ProjectRegistry {
     if (!raw) return null;
     try {
       const v = JSON.parse(decode(raw)) as { current?: unknown; items?: unknown };
-      const items = (Array.isArray(v.items) ? v.items : []).filter(isEntry);
+      const items = (Array.isArray(v.items) ? v.items : []).filter(isEntry).map((e) => (Number.isFinite(e.archived) ? e : withoutArchived(e)));
       return { current: typeof v.current === "string" ? v.current : null, items };
     } catch {
       return { current: null, items: [] };
@@ -113,7 +121,8 @@ export class ProjectRegistry {
   /** Changes a row; does nothing for an id that is not listed. `modified` is only set when the patch carries it. */
   update(id: string, patch: Partial<Omit<ProjectEntry, "id" | "created">>): Promise<void> {
     return this.change((d) => {
-      d.items = d.items.map((i) => (i.id === id ? { ...i, ...patch } : i));
+      // `archived: undefined` in a patch clears the field (restore); JSON would drop it anyway, this keeps the in-memory row the same.
+      d.items = d.items.map((i) => (i.id === id ? ("archived" in patch && patch.archived === undefined ? withoutArchived({ ...i, ...patch }) : { ...i, ...patch }) : i));
     });
   }
 

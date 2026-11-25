@@ -76,10 +76,9 @@ export async function createProject(engine: Engine, name: string, bytes?: Uint8A
   return reg.add({ id, name, ...extra });
 }
 
-/** A copy of a project that is not open: its latest state (a crash-left journal is replayed first, like opening it would) saved as a new project. */
-export async function duplicateProject(engine: Engine, entry: ProjectEntry, defaultName: string): Promise<ProjectEntry> {
-  const reg = await getRegistry();
-  const bytes = await withStorage(entry.id, async (s) => {
+/** The latest state of a project that is not open (a crash-left journal is replayed first, like opening it would), as `.overcut` bytes. */
+export function projectBytes(engine: Engine, entry: ProjectEntry): Promise<Uint8Array> {
+  return withStorage(entry.id, async (s) => {
     const { session } = await openProjectSession(engine, s, { createProject: () => { throw new Error("this project has no saved file"); } });
     try {
       return await session.exportBytes();
@@ -87,9 +86,20 @@ export async function duplicateProject(engine: Engine, entry: ProjectEntry, defa
       await session.close().catch(() => undefined);
     }
   });
+}
+
+/** A copy of a project that is not open: its latest state saved as a new project. */
+export async function duplicateProject(engine: Engine, entry: ProjectEntry, defaultName: string): Promise<ProjectEntry> {
+  const reg = await getRegistry();
+  const bytes = await projectBytes(engine, entry);
   const name = copyName(entry.name, (await reg.list()).map((e) => e.name), defaultName);
-  const copy = await createProject(engine, name, bytes);
-  return copy;
+  return createProject(engine, name, bytes);
+}
+
+/** Archives (`true`) or restores (`false`) a project: only its row changes, its data is never touched. */
+export async function setArchived(entry: ProjectEntry, archived: boolean): Promise<void> {
+  const reg = await getRegistry();
+  await reg.update(entry.id, { archived: archived ? Date.now() : undefined });
 }
 
 /** Deletes a project for good (its data and its row). The caller has asked the person first. */

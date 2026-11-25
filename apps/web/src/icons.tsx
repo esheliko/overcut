@@ -50,6 +50,7 @@ const PATHS = {
   trackOptions: "M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6",
   rippleDelete: "M3 6h8v12H3zM15 12h6M18 9l3 3-3 3M5 9l4 6M9 9l-4 6",
   closeGap: "M3 5v14M21 5v14M6 12h4M18 12h-4M9 9l3 3-3 3M15 9l-3 3 3 3",
+  archive: "M3 5h18v4H3zM5 9v10h14V9M10 13h4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
 } as const;
 
