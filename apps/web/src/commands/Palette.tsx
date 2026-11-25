@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { rememberFocus } from "../a11y/restoreFocus";
 import { useI18n } from "../i18n";
 import { useProjectStore } from "../store/projectStore";
@@ -22,7 +22,8 @@ export function Palette({ onClose }: { onClose(): void }) {
   const hits = useMemo(() => searchCommands(q, (id) => t(`cmd.${id}`), recent, undefined, (d) => whyNot(d, avail)), [q, recent, t, avail]);
   const touch = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches; // no keyboard: the shortcut hints would be noise
   const apple = isApple();
-  useEffect(() => {
+  // Layout effect: the dialog is open (and focused) before the browser paints, so a key pressed right after the rows appear already reaches it.
+  useLayoutEffect(() => {
     const d = dlg.current;
     const back = rememberFocus();
     if (d && !d.open) d.showModal();
