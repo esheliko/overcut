@@ -11,6 +11,7 @@ import { acquirePreviewHost, type PlayerProxy, type PreviewHost } from "./previe
 import { rateLabel, TICKS_PER_SECOND, timecodeHMS, type Rate } from "./preview/timing";
 import { TransformHandles } from "./preview/TransformHandles";
 import { selectedVideoClip, useTransformEdit } from "./inspector/Inspector";
+import { relativeTicks } from "./inspector/keyframeModel";
 import { useWorkerMedia } from "./preview/useWorkerMedia";
 import { useProjectStore, useStore } from "./store/projectStore";
 
@@ -197,7 +198,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
               )}
             </div>
           )}
-          {handled && !readOnly && <TransformHandles clip={handled} canvas={size} picture={pictureOf?.(handled.media)} boxRef={boxRef} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
+          {handled && !readOnly && <TransformHandles clip={handled} canvas={size} rel={relativeTicks(handled, frame, rate)} picture={pictureOf?.(handled.media)} boxRef={boxRef} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
           {prep !== null && <span className="scrub-prep" role="status" data-testid="scrub-prep">{t("scrub.preparing", { percent: prep })}</span>}
         </div>
