@@ -181,6 +181,16 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
         const w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 1);
         ctx.strokeRect(x + 1, y + 4, w - 2, LANE - 9);
         if (w >= 14) { ctx.fillStyle = p.accent; ctx.fillRect(x + 1, y + 4, 4, LANE - 9); ctx.fillRect(x + w - 5, y + 4, 4, LANE - 9); }
+        const keys = w >= 60 ? scene.keys.get(i) : undefined; // keyframe diamonds on the selected clip (skipped when it is too narrow to read)
+        if (keys) {
+          ctx.fillStyle = "#fff"; ctx.strokeStyle = p.accent; ctx.lineWidth = 1.5;
+          const cy = y + LANE - 13, r = 5.5;
+          for (const k of keys) {
+            const kx = timeToX(v, k);
+            if (kx < Math.max(gut(v), x) || kx > Math.min(W, x + w)) continue;
+            ctx.beginPath(); ctx.moveTo(kx, cy - r); ctx.lineTo(kx + r, cy); ctx.lineTo(kx, cy + r); ctx.lineTo(kx - r, cy); ctx.closePath(); ctx.fill(); ctx.stroke();
+          }
+        }
       }
     }
   }

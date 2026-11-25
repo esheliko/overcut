@@ -141,3 +141,14 @@ test("edge auto-scroll: speed grows toward the edge, a drag origin follows the s
   assert.equal(scrollsAtEdge(IDLE), false);
   assert.equal(scrollsAtEdge(g), true);
 });
+
+test("scene.keys: the keyframe times (seconds) of clips that have some, for the timeline's diamonds", () => {
+  const p = structuredClone(newProject("x"));
+  p.media.push(mediaRef("m1", "v.mp4", "u", video, null));
+  const a = clip("a", 2, 0, 6), b = clip("b", 10, 0, 2);
+  (a as { transform?: unknown }).transform = { position_x: { value: 0, keys: [{ t: 0, v: 0 }, { t: 3 * TICKS, v: 0.2 }] } };
+  p.sequences[0]!.tracks[0]!.clips.push(a, b);
+  const sc = buildScene(p);
+  assert.deepEqual(sc.keys.get(0), [2, 5]);
+  assert.equal(sc.keys.has(1), false, "no keys: no entry");
+});

@@ -50,11 +50,31 @@ test("inspector: fields edit the selected clip's transform, undo reverts, reset 
   await expect(page.getByTestId("insp-reset")).toBeDisabled();
 
   await x.fill("-10");
+  await page.getByTestId("insp-more").click(); // crop, fit and flip sit under "Crop & flip"
   await page.getByTestId("insp-flip-h").click();
   await expect(page.getByTestId("insp-flip-h")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("insp-reset").click();
   await expect(x).toHaveValue("0");
   await expect(page.getByTestId("insp-flip-h")).toHaveAttribute("aria-pressed", "false");
+
+  // Keyframes (M2-004): the diamond adds a key at the playhead, the easing picker appears on it, editing the field updates the key,
+  // the diamond again removes it and the value stays.
+  const diamond = page.getByTestId("insp-key-opacity");
+  const opacity = page.getByTestId("insp-opacity");
+  await expect(diamond).toHaveAttribute("aria-pressed", "false");
+  expect((await diamond.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await diamond.click();
+  await expect(diamond).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("insp-ease-opacity")).toHaveValue("linear");
+  await opacity.fill("40");
+  await expect(opacity).toHaveValue("40");
+  await expect(diamond).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("insp-ease-opacity").selectOption("hold");
+  await expect(page.getByTestId("insp-ease-opacity")).toHaveValue("hold");
+  await diamond.click();
+  await expect(diamond).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("insp-ease-opacity")).toHaveCount(0);
+  await expect(opacity).toHaveValue("40");
 
   // Desktop: drag the picture on the preview. Many pointer moves = one undo step.
   if (!phone) {
