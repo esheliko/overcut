@@ -231,3 +231,36 @@ test("desktop (1440x900): a card's name is whole (wraps, at most two lines) and 
   expect((await meta.boundingBox())!.height).toBeLessThan(24); // one line
   await expect(meta).toHaveAttribute("title", /0:01 · 160×120 · VP9 \+ OPUS · 17 KB/); // the whole meta on hover
 });
+
+test("compact bin: Import and Filter and sort share one row, the count shows only while filtering, a card is two lines with a check for On the timeline", async ({ page }) => {
+  await ready(page);
+  await page.getByTestId("media-input").setInputFiles([file("h264_aac.mp4"), file("vp9_opus.webm")]);
+  await expect(page.getByTestId("bin-item")).toHaveCount(2);
+  await expect(page.locator('[data-testid=bin-item][data-status="ready"]')).toHaveCount(2, { timeout: 20_000 });
+  const toggle = page.getByTestId("bin-filter-toggle");
+  if ((page.viewportSize()?.width ?? 0) < 720) {
+    await expect(async () => {
+      if (!(await toggle.isVisible())) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+      await expect(toggle).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
+  }
+  const importBtn = page.getByTestId("import-more");
+  // both measured in the same poll: the phone sheet may still be sliding in
+  await expect.poll(async () => Math.abs((await toggle.boundingBox())!.y - (await importBtn.boundingBox())!.y)).toBeLessThan(2); // one row
+  for (const b of [(await importBtn.boundingBox())!, (await toggle.boundingBox())!]) expect(b.height).toBeGreaterThanOrEqual(44);
+  await expect(toggle).toHaveAccessibleName(/Filter and sort/);
+  const count = page.getByTestId("bin-count");
+  await expect(count).toHaveText("2 of 2 shown"); // still announced
+  expect((await count.boundingBox())?.height ?? 0).toBeLessThanOrEqual(1); // but not a line on screen while nothing filters
+  const card = page.getByTestId("bin-item").filter({ hasText: "h264_aac.mp4" });
+  expect((await card.boundingBox())!.height).toBeLessThanOrEqual(60); // two lines: name, then meta with the check
+  await expect(card.getByTestId("bin-on-timeline")).toHaveText("On the timeline"); // the check's words for screen readers
+  const list = (await page.getByTestId("bin-item").first().boundingBox())!;
+  const panel = (await page.locator(".library").boundingBox())!;
+  expect(list.y - panel.y).toBeLessThan(170); // header, search and the one control row above the first card
+  await toggle.click();
+  await page.getByTestId("bin-kind-audio").click();
+  expect((await count.boundingBox())!.height).toBeGreaterThan(10); // filtering: the count is a visible line again
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});

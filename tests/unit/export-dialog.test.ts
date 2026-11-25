@@ -321,11 +321,25 @@ test("a remembered capped preset is by name only; an old stored 'vertical' keeps
   assert.deepEqual(loadRemembered(store), { preset: "vertical" });
 });
 
+// E4: for a 720p project the three platform presets must not read the same. Each line names what that platform's preset does.
+test("export presets at 720p: YouTube, X and Facebook each get their own true line", () => {
+  const en = JSON.parse(readFileSync(resolve(here, "../../apps/web/src/i18n/en.json"), "utf8")) as Record<string, string>;
+  const P720: Source = { width: 1280, height: 720, fps: 30, seconds: 60 };
+  const line = (id: "youtube" | "x" | "facebook") => {
+    const h = presetHint(id, P720);
+    return en[h.key]!.replace("{size}", h.values.size!).replace("{cap}", h.values.cap ?? "");
+  };
+  assert.equal(line("youtube"), "Full HD at most · no file-size cap set · stays 1280×720");
+  assert.equal(line("x"), "Full HD at most · aims under 512 MB · stays 1280×720");
+  assert.equal(line("facebook"), "Feed and Reels · Full HD at most · no file-size cap set · stays 1280×720");
+  assert.equal(new Set([line("youtube"), line("x"), line("facebook")]).size, 3);
+});
+
 // E1: MP4 is the format we name first; WebM is said plainly, and the copy never contradicts itself.
 test("export format copy: MP4 never says 'plays everywhere' next to a limited mark; WebM says what it is for", async () => {
   const en = JSON.parse(readFileSync(resolve(here, "../../apps/web/src/i18n/en.json"), "utf8")) as Record<string, string>;
   assert.equal(en["export.format.mp4-h264"], "MP4 (H.264), works in most apps and devices");
-  assert.equal(en["export.format.mp4-h264.opus"], "MP4 (H.264)"); // Opus in MP4: no "works in most apps" claim, the note says what plays
+  assert.equal(en["export.format.mp4-h264.opus"], "MP4 (H.264) with Opus sound"); // Opus in MP4: no "works in most apps" claim; the label names the sound, the note says what plays
   assert.match(en["export.warn.limited"]!, /^Plays in browsers, VLC and most phones\. Some older apps \(e\.g\. QuickTime\) may play it without sound\.$/);
   assert.equal(en["export.format.webm-vp9"], "WebM (VP9), for the web");
   assert.ok(!/everywhere/i.test(en["export.format.mp4-h264"]));

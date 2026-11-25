@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { STILL_SECONDS, TICKS, classify, clipCount, codecLabel, formatBytes, formatDuration, importOps, insertOps, mediaRef, placeAt, sentence, sequenceFrom, sequenceIsUnset, timelineEnd, type Probed } from "../../apps/web/src/media/plan";
+import { STILL_SECONDS, TICKS, classify, clipCount, codecLabel, formatBytes, formatDuration, iconForKind, importOps, insertOps, mediaRef, placeAt, sentence, sequenceFrom, sequenceIsUnset, timelineEnd, type Probed } from "../../apps/web/src/media/plan";
 import { probeFile } from "../../apps/web/src/media/probe";
 import type { Engine } from "../../packages/engine-client/src/index";
 import { newProject as emptyProject } from "../../packages/engine-client/src/project";
@@ -15,6 +15,12 @@ test("classify uses the MIME type, then the extension (phones often give no type
   assert.equal(classify("photo.HEIC", ""), "image");
   assert.equal(classify("notes.pdf", "application/pdf"), null);
   assert.equal(classify("noext", ""), null);
+});
+
+test("the bin icon is the audio icon for audio, the video icon for video, the still icon for images", () => {
+  assert.equal(iconForKind("audio"), "audio");
+  assert.equal(iconForKind("video"), "video");
+  assert.equal(iconForKind("image"), "media");
 });
 
 test("the first picture sets frame rate and size, rotated phone video swaps its sides; audio sets nothing", () => {
@@ -102,5 +108,8 @@ test("probe: the tracks decide the kind, so an audio-only .webm named as video i
   assert.equal(ok.probed.kind, "audio");
   assert.equal(ok.probed.hasVideo, false);
   assert.equal(ok.probed.hasAudio, true);
+  // The bin icon follows the tracks: an audio-only .webm (its MIME says video) gets the audio icon, a real video keeps the video icon.
+  assert.equal(iconForKind(ok.probed.kind), "audio");
+  assert.equal(iconForKind(video.kind), "video");
   await assert.rejects(probeFile(engineWith({ container: "webm", durationTicks: 0 }), new File(["x"], "empty.webm"), "video"), /no picture or sound/);
 });
