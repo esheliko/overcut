@@ -105,25 +105,28 @@ function Library({ tool, bin }: { tool: Tool; bin: BinProps }) {
   );
 }
 
-/** Only tabs with real content. Animation lives inline in Video (keyframes); Audio, Speed and Adjust come back when they are built (add the id here). */
-const DETAIL_TABS = ["video"] as const;
+/** Only tabs with real content. Animation lives inline in Video (keyframes); Audio and Adjust come back when they are built. Speed shows only while a clip is selected. */
+type DetailTab = "video" | "speed";
 function Details() {
   const { t, dir } = useI18n();
-  const [tab, setTab] = useState<(typeof DETAIL_TABS)[number]>("video");
-  const roving = useRovingTabindex(DETAIL_TABS.length, { rtl: dir === "rtl", onMove: (i) => setTab(DETAIL_TABS[i]!) });
+  const hasSelection = useProjectStore((s) => s.selection.size > 0);
+  const tabs: readonly DetailTab[] = hasSelection ? ["video", "speed"] : ["video"];
+  const [picked, setTab] = useState<DetailTab>("video");
+  const tab: DetailTab = tabs.includes(picked) ? picked : "video";
+  const roving = useRovingTabindex(tabs.length, { rtl: dir === "rtl", onMove: (i) => setTab(tabs[i]!) });
   return (
     <>
       <header className="panel-head"><h2>{t("details.title")}</h2></header>
-      {/* One tab is no choice: a plain heading above is enough, the tab bar returns with the second tab. */}
-      {DETAIL_TABS.length > 1 && (
+      {/* One tab is no choice: a plain heading above is enough, the tab bar appears with the second tab (a clip is selected). */}
+      {tabs.length > 1 && (
         <div className="segmented" role="tablist" aria-label={t("details.tabs")}>
-          {DETAIL_TABS.map((id, i) => (
+          {tabs.map((id, i) => (
             <button key={id} role="tab" aria-selected={tab === id} {...roving.itemProps(i)} onClick={() => setTab(id)}>{t(`details.tab.${id}`)}</button>
           ))}
         </div>
       )}
       <div className="panel-body">
-        {tab === "video" ? <Inspector /> : tab === "speed" ? <SpeedSection /> : <EmptyState icon="edit" title={t("details.emptyTitle")} text={t("details.emptyText")} />}
+        {tab === "speed" ? <SpeedSection /> : <Inspector />}
       </div>
     </>
   );

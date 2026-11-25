@@ -4,6 +4,7 @@ import { readColors } from "../theme/tokens";
 import { firstEndingAfter, type Scene } from "./scene";
 import { gut, LANE, RULER, tickStep, timeToX, type View } from "./view";
 import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
+import { formatSpeed } from "../inspector/speedModel";
 import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
 
 export interface Palette {
@@ -41,6 +42,14 @@ function label(sec: number): string {
 
 const FONT = '500 10.5px Inter, system-ui, sans-serif';
 const LABEL_SCRIM = "rgba(0,0,0,0.62)", LABEL_FG = "#fff";
+const speedLabels = new Map<number, string>();
+/** "2×" for a clip whose speed is not 1 (cached by ratio: nothing allocated per frame once seen). */
+function speedLabel(num: number, den: number): string {
+  const key = num * 65536 + den;
+  let s = speedLabels.get(key);
+  if (s === undefined) { s = formatSpeed(num / den); if (speedLabels.size > 200) speedLabels.clear(); speedLabels.set(key, s); }
+  return s;
+}
 const nameWidths = new Map<string, number>();
 function nameWidth(ctx: CanvasRenderingContext2D, name: string): number {
   let w = nameWidths.get(name);
@@ -168,6 +177,22 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
         ctx.fillStyle = LABEL_FG;
         ctx.fillText(name, tx, y + 8, room);
       }
+    }
+    // Speed badge (bottom left, under the name): only clips that do not play at 1x.
+    for (i = first; i < last; i++) {
+      const sn = scene.speedNum[i]!, sd = scene.speedDen[i]!;
+      if (sn === sd) continue;
+      const x = timeToX(v, scene.start[i]!);
+      const w = (scene.end[i]! - scene.start[i]!) * v.pps - 1;
+      const tx = (x < gut(v) ? gut(v) : x) + 6;
+      const room = x + w - tx - 6;
+      if (room < 30 || (sel !== null && sel[i] === 2)) continue;
+      const text = speedLabel(sn, sd);
+      const tw = Math.min(room, nameWidth(ctx, text));
+      ctx.fillStyle = LABEL_SCRIM;
+      ctx.fillRect(tx - 4, y + LANE - 24, tw + 8, 15);
+      ctx.fillStyle = LABEL_FG;
+      ctx.fillText(text, tx, y + LANE - 22, room);
     }
     ctx.globalAlpha = 1;
     // Pass 4: selection outline and trim handles (few clips, so strokes are fine).

@@ -32,8 +32,6 @@
   "details.tab.speed": "Speed",
   "details.tab.animation": "Animation",
   "details.tab.adjust": "Adjust",
-  "details.emptyTitle": "Nothing selected",
-  "details.emptyText": "Select a clip on the timeline to change its size, speed, volume and look.",
   "engine.starting": "Starting engine…",
   "engine.ready": "Engine {name} v{version} ({backend})",
   "engine.failed": "Engine failed to start: {message}",
