@@ -57,6 +57,13 @@ pub enum OpError {
     NotAdjacent,
     /// `CloseGap` at a time that is on a clip or after the last clip, so there is no gap to close.
     NotInGap,
+    UnknownMarker(app_model::MarkerId),
+    /// `AddMarker` / `MoveMarker` / `SetMarkerProps` with a negative time, or a bad name or colour.
+    BadMarker,
+    /// A sequence may hold at most `MAX_MARKERS` markers.
+    TooManyMarkers,
+    /// `SetRange` with `start < 0`, `end <= start`, or `looping` without a range.
+    BadRange,
     /// A batch step failed; earlier steps were rolled back.
     Batch {
         index: usize,
@@ -108,6 +115,7 @@ fn id_in_use(p: &Project, id: app_model::Id) -> bool {
         || p.media.iter().any(|m| m.id.0 == id)
         || p.sequences.iter().any(|s| {
             s.id.0 == id
+                || s.markers.iter().any(|m| m.id.0 == id)
                 || s.tracks
                     .iter()
                     .any(|t| t.id.0 == id || t.clips.iter().any(|c| c.id.0 == id))
@@ -241,6 +249,28 @@ fn restore_geometry(loc_clip: &Clip) -> Op {
         source_in: loc_clip.source_in,
         duration: loc_clip.duration,
     }
+}
+
+fn find_marker(p: &Project, id: app_model::MarkerId) -> Result<(usize, usize), OpError> {
+    p.sequences
+        .iter()
+        .enumerate()
+        .find_map(|(si, s)| s.markers.iter().position(|m| m.id == id).map(|mi| (si, mi)))
+        .ok_or(OpError::UnknownMarker(id))
+}
+
+/// Keeps `markers` ordered by (time, id).
+fn insert_marker(s: &mut app_model::Sequence, m: app_model::Marker) {
+    let at = s
+        .markers
+        .partition_point(|o| (o.time, o.id) < (m.time, m.id));
+    s.markers.insert(at, m);
+}
+
+fn check_marker(m: &app_model::Marker) -> Result<(), OpError> {
+    (m.time >= Time::ZERO && app_model::marker_props_ok(&m.name, m.colour.as_deref()))
+        .then_some(())
+        .ok_or(OpError::BadMarker)
 }
 
 /// Most tracks one sequence may hold (a UI and render-cost guard, not a model limit).
@@ -527,6 +557,93 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
             }
             check_track_props(&next)?;
             *t = next;
+            Ok(Inverse(vec![undo]))
+        }
+        Op::AddMarker { sequence, marker } => {
+            let si = p
+                .sequences
+                .iter()
+                .position(|s| s.id == sequence)
+                .ok_or(OpError::UnknownSequence(sequence))?;
+            check_marker(&marker)?;
+            if id_in_use(p, marker.id.0) {
+                return Err(OpError::IdInUse(marker.id.to_string()));
+            }
+            let s = &mut p.sequences[si];
+            if s.markers.len() >= app_model::MAX_MARKERS {
+                return Err(OpError::TooManyMarkers);
+            }
+            let id = marker.id;
+            insert_marker(s, marker);
+            Ok(Inverse(vec![Op::DeleteMarker { marker: id }]))
+        }
+        Op::MoveMarker { marker, time } => {
+            let (si, mi) = find_marker(p, marker)?;
+            if time < Time::ZERO {
+                return Err(OpError::BadMarker);
+            }
+            let s = &mut p.sequences[si];
+            let mut m = s.markers.remove(mi);
+            let old = std::mem::replace(&mut m.time, time);
+            insert_marker(s, m);
+            Ok(Inverse(vec![Op::MoveMarker { marker, time: old }]))
+        }
+        Op::SetMarkerProps {
+            marker,
+            name,
+            kind,
+            colour,
+        } => {
+            let (si, mi) = find_marker(p, marker)?;
+            let mut next = p.sequences[si].markers[mi].clone();
+            let mut undo = (None, None, None);
+            if let Some(v) = name {
+                undo.0 = Some(std::mem::replace(&mut next.name, v));
+            }
+            if let Some(v) = kind {
+                undo.1 = Some(std::mem::replace(&mut next.kind, v));
+            }
+            if let Some(v) = colour {
+                undo.2 = Some(std::mem::replace(&mut next.colour, v));
+            }
+            check_marker(&next)?;
+            p.sequences[si].markers[mi] = next;
+            Ok(Inverse(vec![Op::SetMarkerProps {
+                marker,
+                name: undo.0,
+                kind: undo.1,
+                colour: undo.2,
+            }]))
+        }
+        Op::DeleteMarker { marker } => {
+            let (si, mi) = find_marker(p, marker)?;
+            let s = &mut p.sequences[si];
+            let removed = s.markers.remove(mi);
+            Ok(Inverse(vec![Op::AddMarker {
+                sequence: s.id,
+                marker: removed,
+            }]))
+        }
+        Op::SetRange {
+            sequence,
+            range,
+            looping,
+        } => {
+            let s = p
+                .sequences
+                .iter_mut()
+                .find(|s| s.id == sequence)
+                .ok_or(OpError::UnknownSequence(sequence))?;
+            if range.is_some_and(|r| r.start < Time::ZERO || r.end <= r.start)
+                || (looping && range.is_none())
+            {
+                return Err(OpError::BadRange);
+            }
+            let undo = Op::SetRange {
+                sequence,
+                range: std::mem::replace(&mut s.range, range),
+                looping: std::mem::replace(&mut s.loop_range, looping),
+            };
             Ok(Inverse(vec![undo]))
         }
         Op::InsertClip { track, clip } => {

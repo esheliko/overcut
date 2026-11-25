@@ -1,5 +1,5 @@
 import { parseRecovery, type SnapQuery, type SnapResult, type Editing, type EditOutcome, type FrameDescription, type Op, type TrackProps } from "./types";
-import type { Project, SequenceId, Track, TrackId, TrackKind } from "./model.generated";
+import type { Marker, MarkerId, MarkerKind, Project, SequenceId, Time, TimeRange, Track, TrackId, TrackKind } from "./model.generated";
 
 /** What each backend supplies: the engine's string-in, string-out editor calls. Rejections/throws carry the engine's message. */
 export interface RawEditing {
@@ -92,6 +92,35 @@ export function removeTrackOp(track: TrackId): Op {
 /** Move a track to stack position `index` (counted after lifting it out, so `tracks.length - 1` is the top). */
 export function moveTrackOp(track: TrackId, index: number): Op {
   return { op: "move_track", track, index };
+}
+
+/** Add a marker or chapter. Make the marker with `newMarker`; ids are the caller's. */
+export function addMarkerOp(sequence: SequenceId, marker: Marker): Op {
+  return { op: "add_marker", sequence, marker };
+}
+
+/** Move a marker to `time` ticks (>= 0). Send a drag's moves under one coalesce key to make it one undo step. */
+export function moveMarkerOp(marker: MarkerId, time: Time): Op {
+  return { op: "move_marker", marker, time };
+}
+
+/** Patch a marker's name, kind and colour (`colour: null` resets to the default); fields left out stay. */
+export function setMarkerPropsOp(marker: MarkerId, props: { name?: string; kind?: MarkerKind; colour?: string | null }): Op {
+  return { op: "set_marker_props", marker, ...props };
+}
+
+export function deleteMarkerOp(marker: MarkerId): Op {
+  return { op: "delete_marker", marker };
+}
+
+/** Set the in/out range (and loop it), or clear it with `null`. */
+export function setRangeOp(sequence: SequenceId, range: TimeRange | null, looping = false): Op {
+  return looping ? { op: "set_range", sequence, range, looping } : { op: "set_range", sequence, range };
+}
+
+/** A marker for `addMarkerOp`; `id` is a fresh 32-hex id (`newId`). */
+export function newMarker(id: string, time: Time, over: { kind?: MarkerKind; name?: string; colour?: string } = {}): Marker {
+  return { id, time, ...over };
 }
 
 /** Change some properties of a track (name, mute, solo, lock, hide, height, colour); see `TrackProps`. */
