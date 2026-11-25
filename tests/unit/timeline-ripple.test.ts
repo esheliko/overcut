@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { TICKS, mediaRef, type Probed } from "../../apps/web/src/media/plan";
 import { pointerDown, pointerMove, pointerUp, type Ctx, type PEvent } from "../../apps/web/src/timeline/interact";
 import { closeGapOps, cutAt, rippleDeleteOps, rippleRange, rippleTrimOps, rollCuts, rollOps, rollRangeAll, slideOps, slideRange, slipOps, slipRange, snapTo } from "../../apps/web/src/timeline/ripple";
+import { handleAt } from "../../apps/web/src/timeline/hit";
 import { flagsOf } from "../../apps/web/src/timeline/edit";
 import { buildScene } from "../../apps/web/src/timeline/scene";
 import { gut, LANE, RULER, type View } from "../../apps/web/src/timeline/view";
@@ -118,4 +119,12 @@ test("a fresh import has no spare footage: Alt-drag slip / roll say why, visibly
   assert.deepEqual(slip.fx.say, { key: "timeline.say.noRoom.slip" });
   assert.equal(slip.fx.visible, true);
   assert.equal(pointerDown(c, ev(20, { alt: true })).fx.say?.key, "timeline.say.noRoom.roll"); // the cut between them
+});
+
+test("on a shared edge the pointer's side picks the clip: left of the cut trims the left clip's end, right of it the right clip's start", () => {
+  const none = flagsOf(scene, []);
+  const y = RULER + LANE / 2;
+  const at = (xSec: number) => handleAt(scene, view, none, gut(view) + xSec * view.pps, y, false, true);
+  assert.deepEqual(at(3.97), { clip: A, edge: "end" });
+  assert.deepEqual(at(4.03), { clip: B, edge: "start" });
 });
