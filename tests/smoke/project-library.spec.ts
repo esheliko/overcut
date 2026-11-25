@@ -100,7 +100,8 @@ test("library: archive and restore (with Undo and the Archived filter), export t
   const chooser = page.waitForEvent("filechooser");
   await page.getByTestId("projects-open-file").click();
   await (await chooser).setFiles(saved2);
-  await expect(page.getByLabel("Project name")).toHaveValue("Alpha", { timeout: 20_000 });
+  // The name is taken (the original is in the library), so the import gets "Alpha (2)": the two cards can be told apart.
+  await expect(page.getByLabel("Project name")).toHaveValue("Alpha (2)", { timeout: 20_000 });
   await menu(page, "Projects");
   await expect(page.getByTestId("library-filter-active")).toContainText("(2)");
 
