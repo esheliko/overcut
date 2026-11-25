@@ -120,11 +120,14 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   // The timeline (or anything else) moved the playhead: show that frame.
   useEffect(() => {
     const echo = echoes.current;
+    const p = playerRef.current;
     if (echo.has(frame)) {
       for (const f of echo) if (f <= frame) echo.delete(f);
-      return;
+      // A stale echo (the player published this frame earlier, while the playhead already was there) must not swallow a real request such as Home:
+      // it is an echo only while the player really shows that frame, or is playing (state then lags the player).
+      if (!p || p.isPlaying || p.frame === frame) return;
     }
-    playerRef.current?.seek(frame);
+    p?.seek(frame);
   }, [frame]);
 
   // Canvas backing store follows the panel at real device pixels.
