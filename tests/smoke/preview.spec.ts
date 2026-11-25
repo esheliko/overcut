@@ -99,6 +99,14 @@ test("play 2 s, pause, frame-step; numbers reported", async ({ page }, info) => 
   await expect.poll(() => page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.frame)).toBe(before);
   await page.keyboard.press("Home");
   await expect(tc).toContainText("00:00:00:00");
+  // End then Home from the timeline canvas: the shown frame follows both (a stale "echo" of an earlier frame 0 used to swallow the Home seek).
+  const shown = () => page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.frame);
+  await page.getByTestId("timeline-canvas").focus();
+  await page.keyboard.press("End");
+  await expect.poll(shown).toBeGreaterThan(0);
+  await page.keyboard.press("Home");
+  await expect(tc).toContainText("00:00:00:00");
+  await expect.poll(shown, "Home moves the shown frame too, not only the timecode").toBe(0);
   // Scrub latency: 40 random seeks.
   const scrub = await page.evaluate(async () => {
     const h = (window as unknown as { __overcutPreview: Hook }).__overcutPreview;
