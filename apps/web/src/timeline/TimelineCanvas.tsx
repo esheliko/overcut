@@ -11,6 +11,7 @@ import { snapDrop, SNAP_PX } from "./arrange";
 import { applySelect, IDLE, longPress, markPreview, sameLayout, pointerDown, pointerMove, pointerUp, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
+import { COMMAND_EVENT } from "../commands/palette";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import type { Tool } from "./ripple";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, xToTime, zoomAt, type View } from "./view";
@@ -381,11 +382,10 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     invalidate();
   };
 
-  const onKey = (e: KeyboardEvent) => {
+  /** Runs a command: the ones that need the view or the selection here, the rest handed to the timeline. Used by the keys and by the command palette. */
+  const exec = (cmd: Command) => {
     const l = live.current, v = view.current;
-    const cmd = canvasCommand(e, l.selected.size > 0);
-    if (cmd) {
-      e.preventDefault();
+    {
       const sel = indicesOf(l.scene, l.selected);
       switch (cmd.c) {
         case "clear": if (l.tool !== "select") { l.onCommand?.({ c: "tool", tool: "select" }); break; } if (l.selected.size) { setSelection(new Set()); l.onAnnounce?.({ key: "timeline.say.cleared" }); } break;
@@ -422,6 +422,17 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
       }
     }
   };
+  const onKey = (e: KeyboardEvent) => {
+    const cmd = canvasCommand(e, live.current.selected.size > 0);
+    if (cmd) { e.preventDefault(); exec(cmd); }
+  };
+  const execRef = useRef(exec);
+  execRef.current = exec;
+  useEffect(() => {
+    const on = (e: Event) => execRef.current((e as CustomEvent<Command>).detail);
+    window.addEventListener(COMMAND_EVENT, on);
+    return () => window.removeEventListener(COMMAND_EVENT, on);
+  }, []);
 
   return (
     <>
