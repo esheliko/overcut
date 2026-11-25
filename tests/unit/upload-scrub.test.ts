@@ -204,6 +204,19 @@ test("with no thumbnail the nearest decoded frame is the stand-in; the held pict
   s.player.dispose();
 });
 
+test("a scrub replaced before its exact frame does not leave a first-update number without an exact one", async () => {
+  const s = setup({ thumb: true });
+  s.player.seek(30);
+  await settle();
+  assert.equal(s.player.stats.firstUpdateMs.length, 1, "stand-in shown");
+  s.player.seek(50); // replaces the first scrub while 30 is still decoding
+  await settle();
+  s.finish(50);
+  await settle();
+  assert.equal(s.player.stats.scrubMs.length, 1, "only the scrub that finished");
+  assert.equal(s.player.stats.firstUpdateMs.length, s.player.stats.scrubMs.length, "one-to-one: every counted scrub has both numbers");
+});
+
 test("decode-ahead fills the cache around a paused playhead so a frame step needs no decode and updates at once", async () => {
   const s = setup();
   s.player.seek(40);
