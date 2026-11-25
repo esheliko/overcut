@@ -454,8 +454,12 @@ export class Player {
       }
       // Stand-in first (only when something better than the held picture exists), then the exact frames.
       const standIn = await draw(true);
-      if (standIn) this.stats.firstUpdateMs.push(performance.now() - t0);
-      if (this.scrubTarget || this.playing) return;
+      const firstMs = performance.now() - t0;
+      if (standIn) this.stats.firstUpdateMs.push(firstMs);
+      // A newer target (or playback) replaced this scrub before its exact frame: it did not finish, so its first update is not counted either
+      // (`firstUpdateMs` and `scrubMs` stay one-to-one: every entry is a scrub that reached its exact frame).
+      const dropFirst = () => { if (standIn) { const i = this.stats.firstUpdateMs.lastIndexOf(firstMs); if (i >= 0) this.stats.firstUpdateMs.splice(i, 1); } };
+      if (this.scrubTarget || this.playing) { dropFirst(); return; }
       await Promise.all(missing.map(async (w) => {
         const t1 = performance.now();
         const frame = await w.media.videoFrame(w.idx);
@@ -463,8 +467,9 @@ export class Player {
         w.exact = this.cache.put(w.l.media, frame);
         pinned.push(w.exact);
       }));
-      if (this.scrubTarget || this.playing) return;
+      if (this.scrubTarget || this.playing) { dropFirst(); return; }
       await draw(false);
+      if (this.scrubTarget || this.playing || this.disposed) { dropFirst(); return; } // replaced while the exact frame was being drawn
       const ms = performance.now() - t0;
       if (!standIn) this.stats.firstUpdateMs.push(ms); // nothing was shown before: the first update is the exact frame
       this.stats.scrubMs.push(ms);
