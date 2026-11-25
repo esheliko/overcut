@@ -1,7 +1,7 @@
 import { useRef, type PointerEvent as RPointerEvent } from "react";
 import type { Clip } from "@app/engine-client";
 import { placeLayer } from "@app/engine-client";
-import { newGestureKey, setFields, valuesOf, type NumKey } from "../inspector/transformModel";
+import { newGestureKey, setFields, snapRotation, valuesOf, type NumKey } from "../inspector/transformModel";
 import "../inspector/inspector.css";
 
 type Mode = "move" | "scale" | "rotate";
@@ -25,6 +25,8 @@ interface Props {
   picture?: { width: number; height: number };
   /** The element that has the preview's aspect ratio; the handles live inside it. */
   boxRef: { current: HTMLElement | null };
+  /** The playhead in ticks from the clip's start: an animated clip shows (and is dragged from) its values at that moment. */
+  rel?: number;
   onEdit(next: ReturnType<typeof setFields>, key: number): void;
 }
 
@@ -32,10 +34,10 @@ interface Props {
  * Drag handles for the selected clip over the preview: drag the picture to move it, a corner to scale (uniform, about the pivot), the round
  * handle to rotate. Targets are 44 px. One drag is one undo step (one coalescing key). Math is in `inspector/transformModel`.
  */
-export function TransformHandles({ clip, canvas, picture, boxRef, onEdit }: Props) {
+export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }: Props) {
   const drag = useRef<Drag | null>(null);
   const tr = clip.transform;
-  const v = valuesOf(tr);
+  const v = valuesOf(tr, rel);
   const display = picture ?? canvas;
   const p = placeLayer(
     { position: [v.position_x, v.position_y], scale: [v.scale_x, v.scale_y], rotation: v.rotation, anchor: [tr?.anchor_x?.value ?? 0, tr?.anchor_y?.value ?? 0], crop: [v.crop_left, v.crop_top, v.crop_right, v.crop_bottom], flip: [!!tr?.flip_h, !!tr?.flip_v], fit: tr?.fit ?? "contain" },
@@ -94,7 +96,7 @@ export function TransformHandles({ clip, canvas, picture, boxRef, onEdit }: Prop
       const a0 = Math.atan2(d.py - d.cy, d.px - d.cx);
       const a1 = Math.atan2(e.clientY - d.cy, e.clientX - d.cx);
       let deg = d.v.rotation + ((a1 - a0) * 180) / Math.PI;
-      if (e.shiftKey) deg = Math.round(deg / 15) * 15;
+      deg = snapRotation(deg, e.shiftKey); // right angles within 3 degrees, 15-degree steps with Shift
       patch = { rotation: deg };
     }
     onEdit(setFields(tr, patch), d.key);

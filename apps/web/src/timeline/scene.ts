@@ -1,6 +1,7 @@
 /** Flat, typed-array view of a Project's timeline for the canvas (ADR 0007, S8). Built once per project change, read every frame without allocating.
  *  Times here are SECONDS as floats, for drawing and hit-testing only; the model keeps integer ticks (ADR 0010). */
 import type { MediaRef, Project } from "@app/engine-client";
+import { clipKeyTimes } from "../inspector/keyframeModel";
 
 export const TICKS_PER_SECOND = 705_600_000;
 
@@ -49,6 +50,8 @@ export interface Scene {
   /** Link id per clip ("" = alone) and, per link id, the indices of its clips (TL-05: linked clips are selected and edited together). */
   link: string[];
   linkGroups: Map<string, number[]>;
+  /** Clip index -> absolute times (seconds) of its transform keyframes; only clips that have some. */
+  keys: Map<number, number[]>;
 }
 
 export const EMPTY_SCENE: Scene = buildScene(null);
@@ -103,6 +106,7 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     mediaById,
     link: new Array<string>(total),
     linkGroups: new Map(),
+    keys: new Map(),
   };
   let i = 0;
   tracks.forEach((t, ti) => {
@@ -132,6 +136,7 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
       scene.link[i] = c.link ?? "";
       if (c.link) { const g = scene.linkGroups.get(c.link); if (g) g.push(i); else scene.linkGroups.set(c.link, [i]); }
       scene.srcIn[i] = c.source_in / TICKS_PER_SECOND;
+      if (c.transform) { const kt = clipKeyTimes(c); if (kt.length) scene.keys.set(i, kt.map((k) => k / TICKS_PER_SECOND)); }
       if (scene.end[i]! > scene.endSec) scene.endSec = scene.end[i]!;
       i++;
     }
