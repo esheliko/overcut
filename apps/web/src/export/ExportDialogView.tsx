@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
+import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
@@ -39,6 +40,7 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
   const head = useRef<HTMLHeadingElement>(null);
   const running = state.phase === "running";
   const lastSettings = useRef<ReturnType<typeof buildSettings> | null>(null);
+  useReturnFocus();
 
   useEffect(() => {
     const d = ref.current;
