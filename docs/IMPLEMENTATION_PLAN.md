@@ -176,6 +176,9 @@ Per section 4a: an item merges when CI passes; a hardware bar is "proven" only w
 | **E4** drift < 1 frame over 2 h | M2-021 method + M2-034 harness: click-and-flash media, sample audio clock vs presented frame pts each second, report max and p99; export side by integer-tick unit test (frame times and sample counts exact) | max drift < 1 frame (33.3 ms at 30 fps) | Export check in `cargo test`; playback 2 h run once per milestone on one device (and nightly accelerated run in the container after a process request); a number from a run shorter than 2 h is labelled as such |
 Property, golden-frame and smoke steps listed on each item are CI gates; the four criteria above are checked off in a `docs/M2-STATUS.md` (same shape as M1-STATUS, created at the exit review), with the proof file linked.
 
+### 4b.4a Scope cut (owner decision, 2026-11-26)
+M2 stops after the zoom/overview item (M2-043, with pinch from M2-049). Items M2-021..023, M2-027/028, M2-031..034, M2-050, M2-052/053 and the rest of M2-048 (graph editor, copy keys) move to **M2.1 Media** (ROADMAP). E3 and E4 move with them; E1 device proof becomes field validation. Reason: ship real editing to users now; heavy-media work is a separate, measurable milestone.
+
 ### 4b.5 Not in M2 (goes to an issue or a later milestone, not to this backlog)
 Transitions, effects, masks, keying, nested clips, adjustment layers, compound clips, multicam (after 1.0); text and effect tracks (M3/M4: `TrackKind` only reserves them); mixer, ducking, loudness, beat detection (M3: snapping has a beat hook, no beats); voice-over recording and captions (M3); speed ramps and keyframed time remap beyond constant, reverse, freeze, loop (TL-22 here means VFR handling); HDR; hardware controllers and multi-window (UX-10/11); mobile layout polish and phone share sheet (M5); collaboration (M8); server-backed anything (XT-06b endpoint waits on ADR 0019); proxy for audio; cloud or sync storage; plugin API.
 
