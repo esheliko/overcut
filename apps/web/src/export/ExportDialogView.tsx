@@ -189,7 +189,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
       {format && presetWarnings(preset, choice, src, format, locale).map((w) => <p key={w.key} className="export-note" role="status" data-testid={w.key === "export.warn.cap" ? "export-cap-warning" : "export-duration-warning"}>{t(w.key, w.values)}</p>)}
       {format?.warnings.map((w) => <p key={w} className="export-note" data-testid="export-warning">{t("export.warn.limited")}</p>)}
       {format && formatNote(format, fmts?.options ?? []) && <p className="export-note" data-testid="export-format-note">{t(formatNote(format, fmts?.options ?? [])!)}</p>}
-      <button className="primary export-go" onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
+      <button className="primary export-go" style={{ position: "sticky", insetBlockEnd: 8, boxShadow: "0 0 0 8px var(--surface)" }} onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
     </>
   );
 }
