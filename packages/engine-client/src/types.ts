@@ -1,5 +1,5 @@
 import type { ExportApi } from "./export/types";
-import type { Clip, ClipId, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TrackId } from "./model.generated";
+import type { Clip, ClipId, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, Track, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
 
 export * from "./capabilities";
@@ -241,7 +241,31 @@ export type Op =
   | { op: "remove_media"; media: MediaId }
   | { op: "set_sequence_format"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution }
   /** The project canvas (PM-01). `*_fixed` false = follows the first picture imported ("match first clip"). */
-  | { op: "set_canvas"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution; size_fixed: boolean; rate_fixed: boolean };
+  | { op: "set_canvas"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution; size_fixed: boolean; rate_fixed: boolean }
+  /** Add a track at stack position `index` (0 = bottom of the stack = drawn first; `tracks.length` = top). The id is the caller's. */
+  | { op: "add_track"; sequence: SequenceId; track: Track; index: number }
+  /** Remove a track and its clips (undo restores both). A locked track is refused. */
+  | { op: "remove_track"; track: TrackId }
+  /** Move a track to stack position `index` (in the order after it is lifted out; `tracks.length - 1` = top). */
+  | { op: "move_track"; track: TrackId; index: number }
+  /** Change track properties; fields left out stay as they are (`TrackProps`). Valid on a locked track. */
+  | ({ op: "set_track_props"; track: TrackId } & TrackProps);
+
+/**
+ * A track patch (`set_track_props`): leave a field out to keep it. `height` / `colour`: a value sets it, `null` resets to the default.
+ * `name` is 1-64 characters without surrounding spaces; `height` 24-400 (UI px); `colour` is `#rrggbb`.
+ * `hidden` takes the track out of the output; `muted` silences / blanks it; `solo` limits output to the soloed tracks of the same kind
+ * (video solos never silence audio and vice versa); hide and mute win over solo.
+ */
+export interface TrackProps {
+  name?: string;
+  muted?: boolean;
+  solo?: boolean;
+  locked?: boolean;
+  hidden?: boolean;
+  height?: number | null;
+  colour?: string | null;
+}
 
 /** What the engine reports after every edit. Re-read `project()` when `revision` moved. */
 export interface EditOutcome {
@@ -339,7 +363,7 @@ export interface Recovery {
   validLog: string;
 }
 
-export const EXPECTED_ABI = 1;
+export const EXPECTED_ABI = 2;
 
 export function parseEngineInfo(json: string): EngineInfo {
   const v: unknown = JSON.parse(json);

@@ -32,7 +32,7 @@ export function fixtureProject({ tracks, clipsPerTrack, clipSec = 4 }: FixtureOp
     out.push({ id: hex(id++), kind, name: `${kind === "video" ? "V" : "A"}${Math.floor(t / 2) + 1}`, clips, locked: false, muted: false });
   }
   return {
-    id: hex(id++), name: "Sample", schema_version: 1, media,
+    id: hex(id++), name: "Sample", schema_version: 2, media,
     sequences: [{ id: hex(id++), name: "Main", frame_rate: { num: 30, den: 1 }, resolution: { width: 1920, height: 1080 }, sample_rate: 48000, tracks: out }],
   };
 }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createEditing, parseEditOutcome, type RawEditing } from "../../packages/engine-client/src/editing";
+import { addTrackOp, createEditing, moveTrackOp, parseEditOutcome, removeTrackOp, setTrackPropsOp, type RawEditing } from "../../packages/engine-client/src/editing";
 import type { Op } from "../../packages/engine-client/src/types";
 import type { Project } from "../../packages/engine-client/src/model.generated";
 
@@ -33,7 +33,7 @@ function fake(over: Partial<RawEditing> = {}) {
 }
 
 test("the contract holds one example of every op the Op type allows", () => {
-  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["add_media", "delete", "insert_clip", "move", "remove_media", "set_canvas", "set_clip", "set_link", "set_media", "set_media_tags", "set_sequence_format", "split", "trim_in", "trim_out"]);
+  assert.deepEqual(contract.ops.map((o) => o.op).sort(), ["add_media", "add_track", "delete", "insert_clip", "move", "move_track", "remove_media", "remove_track", "set_canvas", "set_clip", "set_link", "set_media", "set_media_tags", "set_sequence_format", "set_track_props", "split", "trim_in", "trim_out"]);
 });
 
 test("a single op and a list go over as JSON (a list is one undo step); the coalesce key rides along", async () => {
@@ -97,4 +97,21 @@ test("evaluate refuses ticks that are not exact integers and bad window sizes", 
   await assert.rejects(editing.evaluate("s", 2 ** 60), /safe integer/);
   await assert.rejects(editing.evaluate("s", 0, -1), /audioSamples/);
   assert.equal(calls.length, 0);
+});
+
+test("track op builders produce exactly the wire shapes pinned in the contract", () => {
+  const byOp = (name: string) => contract.ops.find((o) => o.op === name);
+  const add = byOp("add_track") as Extract<Op, { op: "add_track" }>;
+  assert.deepEqual(addTrackOp(add.sequence, add.track, add.index), add);
+  const rm = byOp("remove_track") as Extract<Op, { op: "remove_track" }>;
+  assert.deepEqual(removeTrackOp(rm.track), rm);
+  const mv = byOp("move_track") as Extract<Op, { op: "move_track" }>;
+  assert.deepEqual(moveTrackOp(mv.track, mv.index), mv);
+  const props = byOp("set_track_props") as Extract<Op, { op: "set_track_props" }>;
+  const patch: Record<string, unknown> = { ...props };
+  delete patch.op;
+  delete patch.track;
+  assert.deepEqual(setTrackPropsOp(props.track, patch), props);
+  // `null` (reset) must survive JSON, an omitted field must stay omitted.
+  assert.equal(JSON.stringify(setTrackPropsOp(props.track, { height: null })), `{"op":"set_track_props","track":"${props.track}","height":null}`);
 });

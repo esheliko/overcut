@@ -25,7 +25,7 @@ pub use file::{
 };
 pub use ids::{ClipId, Id, IdSource, LinkId, MediaId, ProjectId, SeqIds, SequenceId, TrackId};
 pub use project::{
-    Clip, MediaKind, MediaRef, ModelError, Project, Resolution, Sequence, Track, TrackKind,
-    SCHEMA_VERSION,
+    is_track_colour, Clip, MediaKind, MediaRef, ModelError, Project, Resolution, Sequence, Track,
+    TrackKind, MAX_TRACK_HEIGHT, MAX_TRACK_NAME, MIN_TRACK_HEIGHT, SCHEMA_VERSION,
 };
 pub use time::{Rational, Time, TICKS_PER_SECOND};

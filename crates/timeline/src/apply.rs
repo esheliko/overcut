@@ -41,6 +41,12 @@ pub enum OpError {
     SplitOutside,
     /// A speed ratio would need a fraction of a tick.
     InexactSpeed,
+    /// `SetTrackProps` / `AddTrack` with a bad name (empty, untrimmed, over `MAX_TRACK_NAME`), height or colour.
+    BadTrack,
+    /// A sequence may hold at most `MAX_TRACKS` tracks.
+    TooManyTracks,
+    /// `AddTrack` / `MoveTrack` position beyond the end of the stack.
+    BadTrackIndex,
     /// A batch step failed; earlier steps were rolled back.
     Batch {
         index: usize,
@@ -210,6 +216,25 @@ fn restore_geometry(loc_clip: &Clip) -> Op {
     }
 }
 
+/// Most tracks one sequence may hold (a UI and render-cost guard, not a model limit).
+pub const MAX_TRACKS: usize = 64;
+
+fn valid_track_name(n: &str) -> bool {
+    !n.is_empty() && n.trim() == n && n.chars().count() <= app_model::MAX_TRACK_NAME
+}
+
+fn valid_track_height(h: u32) -> bool {
+    (app_model::MIN_TRACK_HEIGHT..=app_model::MAX_TRACK_HEIGHT).contains(&h)
+}
+
+/// Everything about a track that is not its clips: name, height and colour in range.
+fn check_track_props(t: &Track) -> Result<(), OpError> {
+    let ok = valid_track_name(&t.name)
+        && t.height.is_none_or(valid_track_height)
+        && t.colour.as_deref().is_none_or(app_model::is_track_colour);
+    ok.then_some(()).ok_or(OpError::BadTrack)
+}
+
 pub const MAX_TAGS: usize = 16;
 pub const MAX_TAG_LEN: usize = 40;
 
@@ -351,6 +376,127 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 rate_fixed: std::mem::replace(&mut s.rate_fixed, rate_fixed),
             };
             Ok(Inverse(vec![old]))
+        }
+        Op::AddTrack {
+            sequence,
+            track,
+            index,
+        } => {
+            let si = p
+                .sequences
+                .iter()
+                .position(|s| s.id == sequence)
+                .ok_or(OpError::UnknownSequence(sequence))?;
+            let n = p.sequences[si].tracks.len();
+            if n >= MAX_TRACKS {
+                return Err(OpError::TooManyTracks);
+            }
+            if index > n {
+                return Err(OpError::BadTrackIndex);
+            }
+            check_track_props(&track)?;
+            if id_in_use(p, track.id.0) {
+                return Err(OpError::IdInUse(track.id.to_string()));
+            }
+            let mut prev_end = Time::ZERO;
+            for (i, c) in track.clips.iter().enumerate() {
+                if id_in_use(p, c.id.0)
+                    || c.id.0 == track.id.0
+                    || track.clips[..i].iter().any(|o| o.id == c.id)
+                {
+                    return Err(OpError::IdInUse(c.id.to_string()));
+                }
+                check_clip(p, &track, c)?;
+                if c.start < prev_end {
+                    return Err(OpError::Overlap { with: c.id });
+                }
+                prev_end = c.end().ok_or(OpError::OutOfRange)?;
+            }
+            let id = track.id;
+            p.sequences[si].tracks.insert(index, track);
+            Ok(Inverse(vec![Op::RemoveTrack { track: id }]))
+        }
+        Op::RemoveTrack { track } => {
+            let (si, ti) = find_track(p, track).ok_or(OpError::UnknownTrack(track))?;
+            unlocked(&p.sequences[si].tracks[ti])?;
+            let removed = p.sequences[si].tracks.remove(ti);
+            Ok(Inverse(vec![Op::AddTrack {
+                sequence: p.sequences[si].id,
+                track: removed,
+                index: ti,
+            }]))
+        }
+        Op::MoveTrack { track, index } => {
+            let (si, ti) = find_track(p, track).ok_or(OpError::UnknownTrack(track))?;
+            let tracks = &mut p.sequences[si].tracks;
+            if index >= tracks.len() {
+                return Err(OpError::BadTrackIndex);
+            }
+            let t = tracks.remove(ti);
+            tracks.insert(index, t);
+            Ok(Inverse(vec![Op::MoveTrack { track, index: ti }]))
+        }
+        Op::SetTrackProps {
+            track,
+            name,
+            muted,
+            solo,
+            locked,
+            hidden,
+            height,
+            colour,
+        } => {
+            let (si, ti) = find_track(p, track).ok_or(OpError::UnknownTrack(track))?;
+            let t = &mut p.sequences[si].tracks[ti];
+            // Build the changed track first and check it, so a bad patch leaves the project as it was.
+            let mut next = t.clone();
+            let mut undo = Op::SetTrackProps {
+                track,
+                name: None,
+                muted: None,
+                solo: None,
+                locked: None,
+                hidden: None,
+                height: None,
+                colour: None,
+            };
+            let Op::SetTrackProps {
+                name: u_name,
+                muted: u_muted,
+                solo: u_solo,
+                locked: u_locked,
+                hidden: u_hidden,
+                height: u_height,
+                colour: u_colour,
+                ..
+            } = &mut undo
+            else {
+                unreachable!()
+            };
+            if let Some(v) = name {
+                *u_name = Some(std::mem::replace(&mut next.name, v));
+            }
+            if let Some(v) = muted {
+                *u_muted = Some(std::mem::replace(&mut next.muted, v));
+            }
+            if let Some(v) = solo {
+                *u_solo = Some(std::mem::replace(&mut next.solo, v));
+            }
+            if let Some(v) = locked {
+                *u_locked = Some(std::mem::replace(&mut next.locked, v));
+            }
+            if let Some(v) = hidden {
+                *u_hidden = Some(std::mem::replace(&mut next.hidden, v));
+            }
+            if let Some(v) = height {
+                *u_height = Some(std::mem::replace(&mut next.height, v));
+            }
+            if let Some(v) = colour {
+                *u_colour = Some(std::mem::replace(&mut next.colour, v));
+            }
+            check_track_props(&next)?;
+            *t = next;
+            Ok(Inverse(vec![undo]))
         }
         Op::InsertClip { track, clip } => {
             let (si, ti) = find_track(p, track).ok_or(OpError::UnknownTrack(track))?;
