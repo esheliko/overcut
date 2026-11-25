@@ -537,7 +537,7 @@ function Editor({ store }: { store: ProjectStore }) {
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           {!compact && <ThemeMenu pref={themePref} onPick={pickTheme} />}
         </div>
-        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
+        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} readOnly={openId === null} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
           {engine.status === "error"
             ? <span className="chip" data-testid="engine" data-state="error">

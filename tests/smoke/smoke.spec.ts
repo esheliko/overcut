@@ -275,6 +275,27 @@ test("top bar on a small phone: project name truncates but stays editable, Expor
   }
 });
 
+// The project name typed before the project has finished opening must not be reset to the default when the open lands (it was: the open overwrote the field).
+test("project name typed before the project opens is not reset when it opens", async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>((done) => (release = done));
+  // Hold the storage workers (the projects list and the project itself) until the test lets them go: a slow device, as in the field.
+  await page.route(/worker[^/]*\.js(\?.*)?$/, async (route) => { await gate; await route.continue(); });
+  await page.goto("/");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  const name = page.getByLabel("Project name");
+  await expect(name).toBeVisible();
+  await name.click();
+  await page.keyboard.type("A long name typed before the project has opened");
+  const shown = await name.inputValue();
+  release();
+  await expect(page.getByTestId("save-state")).not.toHaveAttribute("data-state", "opening", { timeout: 30_000 });
+  await expect(name).toHaveValue(shown); // the open must not change what the field shows
+  await name.fill("My trip");
+  await name.blur();
+  await expect(name).toHaveValue("My trip");
+});
+
 // M1-030: one deliberate layout per form-factor profile (docs/features/editor-layouts.md). The test sets its own viewport, so it runs once.
 const PROFILES = [
   { name: "phone-portrait", w: 390, h: 844, inspector: false, docked: false },
