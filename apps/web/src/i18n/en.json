@@ -319,7 +319,7 @@
   "export.quality.medium": "Medium",
   "export.quality.low": "Low (smallest)",
   "export.estimate": "About {size} · {format}",
-  "export.warn.limited": "This browser can't make the most compatible version, so some phones, TVs and editing apps may not play this file. Another browser or the desktop app gives the widest support.",
+  "export.warn.limited": "This browser can't add AAC sound to the MP4, so the sound is Opus and some phones, TVs and editing apps may not play it. The desktop app or another browser makes the widest-support file.",
   "export.go": "Export",
   "export.close": "Close",
   "export.minimize": "Keep editing while it exports",
