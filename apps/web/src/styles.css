@@ -567,3 +567,10 @@ h2, p { margin: 0; }
 @container bin (max-width: 340px) { .bin-filter-toggle > span:nth-child(2) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
 /* Touch screens (kept last so it wins over per-component field sizes): fields are at least 16 px so iOS Safari does not zoom the page on focus (it never zooms back); the zoom slider gets a 44 px tall hit area. */
 @media (pointer: coarse) { :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"]), select, textarea) { font-size: max(16px, 1em); } .zoom input { block-size: 44px; } }
+
+/* Overview bar (M2-043): the whole project in a thin strip under the tracks, with a window for the visible part. */
+.tl-overview { flex: 0 0 auto; height: 26px; border-top: 1px solid var(--line); background: var(--surface); }
+.tl-overview[hidden] { display: none; }
+.tl-overview canvas { display: block; width: 100%; height: 26px; touch-action: none; cursor: grab; }
+.tl-overview canvas:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: -2px; }
+@media (pointer: coarse) { .tl-overview, .tl-overview canvas { height: 44px; } }

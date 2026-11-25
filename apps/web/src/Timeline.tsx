@@ -24,6 +24,7 @@ import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
 import { clampPps, fitPps, ppsToSlider, sliderToPps } from "./timeline/view";
 import { TimelineCanvas, type CanvasHandle } from "./timeline/TimelineCanvas";
+import { Overview } from "./timeline/Overview";
 import { TrackMenu, type TrackAction, type TrackMenuTarget } from "./timeline/TrackMenu";
 import { addTrack, removeTrack, renameTrack, reorderTrack, toggleTrack, TRACK_SAY_KEYS } from "./timeline/tracks";
 import { useProjectStore, useStore } from "./store/projectStore";
@@ -143,6 +144,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const lengthRef = useRef(lengthSec);
   lengthRef.current = lengthSec;
   const fit = useCallback(() => { if (canvasHandle.current) onZoom(fitPps(canvasHandle.current.view, lengthRef.current)); }, [onZoom]);
+  const getHandle = useCallback(() => canvasHandle.current, []);
   const ready = useCallback((h: CanvasHandle) => { canvasHandle.current = h; onReady?.(h); }, [onReady]);
   // The first clips on an empty timeline fill the width: a 1 s clip must not be 40 px on a 30 s ruler.
   const hasClips = project !== null && scene.clipCount > 0;
@@ -424,6 +426,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
             { id: "zin", section: t("timeline.more.view"), label: t("timeline.zoomIn"), onSelect: () => onZoom(clampPps(zoom * 1.25)) },
             { id: "zout", label: t("timeline.zoomOut"), onSelect: () => onZoom(clampPps(zoom / 1.25)) },
             { id: "fit", label: t("timeline.fit"), hint: "0", testid: "tl-fit-menu", onSelect: fit },
+            { id: "zsel", label: t("timeline.zoomSelection"), hint: keyHint("view.zoomSelection"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-zoom-selection", onSelect: () => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { c: "zoom", how: "selection" } })) },
           ]} />}
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
@@ -435,6 +438,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
           selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} onMarkerMenu={openMarkerMenu} tool={tool} onLane={(id) => { armed.current = id; }} />
       </div>
+      <Overview scene={scene} lengthSec={lengthSec} handle={getHandle} onZoom={onZoom} />
     </section>
   );
 }
