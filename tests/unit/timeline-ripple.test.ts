@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { TICKS, mediaRef, type Probed } from "../../apps/web/src/media/plan";
 import { pointerDown, pointerMove, pointerUp, type Ctx, type PEvent } from "../../apps/web/src/timeline/interact";
 import { closeGapOps, cutAt, rippleDeleteOps, rippleRange, rippleTrimOps, rollCuts, rollOps, rollRangeAll, slideOps, slideRange, slipOps, slipRange, snapTo } from "../../apps/web/src/timeline/ripple";
+import { handleAt } from "../../apps/web/src/timeline/hit";
 import { flagsOf } from "../../apps/web/src/timeline/edit";
 import { buildScene } from "../../apps/web/src/timeline/scene";
 import { gut, LANE, RULER, type View } from "../../apps/web/src/timeline/view";
@@ -104,4 +105,26 @@ test("the toolbar tool does the same without a key; with the select tool and no 
   assert.equal((pointerDown(ctx("ripple"), ev(8)).g as { tool: string }).tool, "ripple");
   assert.equal(pointerDown(ctx("roll"), ev(8)).g.k !== "tool", true, "no touching clip on b's right edge falls back to the normal press");
   assert.notEqual(pointerDown(ctx(), ev(2)).g.k, "tool");
+});
+
+test("a fresh import has no spare footage: Alt-drag slip / roll say why, visibly, instead of doing nothing", () => {
+  const p = structuredClone(newProject("x"));
+  p.media.push(mediaRef("m1", "v.mp4", "u", video, null));
+  // Two touching clips that use ALL of their media (20 s each, source 0-20), like two fresh imports side by side.
+  p.sequences[0]!.tracks[0]!.clips.push(clip("a", 0, 0, 20), clip("b", 20, 0, 20));
+  const fresh = buildScene(p);
+  const c: Ctx = { scene: fresh, view, selected: new Set(), selFlags: flagsOf(fresh, []) };
+  const slip = pointerDown(c, ev(5, { alt: true }));
+  assert.equal(slip.g.k, "idle");
+  assert.deepEqual(slip.fx.say, { key: "timeline.say.noRoom.slip" });
+  assert.equal(slip.fx.visible, true);
+  assert.equal(pointerDown(c, ev(20, { alt: true })).fx.say?.key, "timeline.say.noRoom.roll"); // the cut between them
+});
+
+test("on a shared edge the pointer's side picks the clip: left of the cut trims the left clip's end, right of it the right clip's start", () => {
+  const none = flagsOf(scene, []);
+  const y = RULER + LANE / 2;
+  const at = (xSec: number) => handleAt(scene, view, none, gut(view) + xSec * view.pps, y, false, true);
+  assert.deepEqual(at(3.97), { clip: A, edge: "end" });
+  assert.deepEqual(at(4.03), { clip: B, edge: "start" });
 });
