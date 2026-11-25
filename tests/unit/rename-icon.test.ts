@@ -6,8 +6,8 @@ const read = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url),
 
 test("Projects Rename uses the pencil icon, not the sliders icon", () => {
   const home = read("apps/web/src/Home.tsx");
-  const rename = home.match(/data-testid="project-rename"[\s\S]*?<\/button>/)?.[0] ?? "";
-  assert.match(rename, /<Icon name="pencil"/, "the Rename button's icon is named pencil");
+  const rename = home.match(/id: "rename"[^\n]*/)?.[0] ?? "";
+  assert.match(rename, /icon: "pencil"/, "the Rename menu item's icon is named pencil");
   assert.doesNotMatch(rename, /name="edit"/);
   // the icon named pencil is a pencil drawing: a nib outline plus the stroke across the barrel
   const icons = read("apps/web/src/icons.tsx");
