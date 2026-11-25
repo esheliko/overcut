@@ -70,3 +70,51 @@ None found in the journeys above. Not verified: touch drag on the timeline (a sc
 8. P1-6 repetitive preset descriptions (`export/model.ts`, `en.json`) `[QA]`
 9. P1-10 save state invisible on phone `[C]`
 10. P1-9 "…" menu is one flat list, no Help/Shortcuts `[C]`
+
+## Round 2: editing core (m2 at 7fa42a0)
+
+Driven at 1440x900 with the keyboard, against a real export checked with `ffprobe`. Correction to P1-1: the media bin does have an Add (+) button and its cards are draggable; what is missing is dragging clips on the timeline itself.
+
+**Verified fine**
+- Keyboard precision: Right/Left step one frame, Shift+Right one second, `,` `.` nudge a frame, Home/End jump; the timecode matches every step (00:00:01:00 after Shift+Right, 01:02 after one more Shift+Right from 00:02, and so on).
+- Split at the playhead (`S`), select clip with Enter, Delete: linked picture and sound go together, the gap closes (3 s becomes 2 s). `]` trims the end to the playhead and Ctrl+Z restores it.
+- Undo and redo: 6x Ctrl+Z goes back to an empty project, 6x Ctrl+Shift+Z returns to the same edit.
+- Playback: Space plays and pauses; the timecode advances (about 1.2 s of play moved the playhead 1 s 3 frames; start-up latency, not measured further).
+- Export file: 320x180, H.264 30 fps, video 2.000 s, Opus audio 2.020 s, container 2.020 s. Matches the 2 s edit; the audio is 20 ms longer than the picture (P2-a below).
+- Reload straight after a split: the split was kept ("4 clips"), with a "Recovered unsaved changes / Undo recovery" toast.
+
+**P1**
+- **Offline media card was unreadable** `[QA]`, fixed in this PR. After a reload in a browser without file handles the bin card showed the message one word per line next to the Tags and "Choose file" buttons. The Choose file button now sits under the message. Screenshots at phone and desktop widths.
+- **After a reload the picture is gone until every file is chosen again** (browsers without file handles, for example Firefox and Safari). By design (the message explains it), but for a creator who closes the tab it means re-picking every clip; consider a single "Choose all files" action (the code has `relinkMany`) offered in the toast. `[C]`
+
+**P2**
+- a. Exported audio is 20 ms longer than the picture (Opus pre-roll/padding); harmless alone, watch it when A/V sync work lands. `[A]`
+- b. The recovery toast on a phone wraps its close button onto a second row and covers the preview. `[C]`
+
+## Round 3: drag, shortcuts dialog, grouped menu (m2 at c5d6ce0)
+
+Driven as a human with mouse (1440x900), touch emulation (820x1180 and 390x844) and keyboard. No P0.
+
+**Works**
+- Mouse drag of a clip past its neighbour reorders it (picture and sound together), the preview shows the new first frame, the status line says "Moved 2 clips", and one Ctrl+Z puts it back.
+- Touch: press and hold about 0.7 s on an unselected clip, then drag, reorders it; the result matched the mouse.
+- `?` opens "Keyboard shortcuts" with the key set picker and a Change button per row; the dialog fits at 390 px with no sideways scroll. The menu is grouped (Project, View, Help) and now holds the save and ready status on a phone, which closes P1-9 and P1-10.
+
+**P2**
+- The "…" menu is taller than a 844 px phone: "About OverCut" is below the fold; the menu scrolls, but nothing hints that it does. `[C]`
+- The shortcuts dialog has a tall empty gap under the intro text on desktop and phone, and on a phone (no keyboard) its use is limited. `[C]`
+- While a drag is in progress the dragged clip is drawn faded with its name nearly invisible; keep the name readable. `[C]`
+- Tablet (820 px, touch): the saved status is still cut to "Saved o…" and the media list is clipped by the preview below it (it scrolls). `[C]`
+
+## Round 4: keyboard-only and accessible names (m2 at c5d6ce0)
+
+Every visible button, input, select, menu item and radio in the main view, menu, shortcuts, export and canvas dialogs has an accessible name (script check: none unnamed). Each dialog opens with focus on its heading and a `aria-labelledby` title; Esc closes it.
+
+**P1**
+- **Focus was lost when a dialog closed** `[QA]`, fixed in this PR. After Esc on the Export or Canvas dialog focus went to the page root instead of the button that opened it, so a keyboard or screen-reader user restarted from the top of the page. `a11y/restoreFocus.ts` puts focus back on the opener (Export, Canvas, project dialogs). Checked: Esc on Export returns to "Export", on Canvas to the canvas button.
+- **The "…" menu does not follow the menu pattern** `[C]` (`App.tsx`). It has `role="menu"` but focus stays on the Menu button when it opens, and Arrow Down does nothing; only Tab walks the items (and the accent swatches). Expected: focus moves to the first item, Arrow Up/Down, Home/End, Esc returns to the button (Esc already does).
+
+**P2**
+- The history and clip timing dialogs (`timeline/EditDialogs.tsx`) and the shortcuts dialog (`commands/`) should use the same restore-focus helper if they do not already. `[C]`
+- Dialogs wrap Tab through the page root before coming back (native dialog behaviour in this browser); acceptable, noted.
+- Drag alternatives: with a clip selected `,` and `.` nudge it and announce "Can't move further" at a neighbour. There is no keyboard way to jump a clip over its neighbour (the mouse reorder); consider Alt+Arrow. `[C]`

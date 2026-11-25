@@ -1,4 +1,5 @@
 /** The export dialog itself (settings, progress, done, failed). Loaded on first use so it stays out of the first-load JavaScript. */
+import { rememberFocus } from "../a11y/restoreFocus";
 import { h264Percent, parseH264Failure, probeExportFormats, type DesktopCodecs, type ExportFormats, type H264FailureCode, type H264Progress } from "@app/engine-client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
@@ -44,8 +45,9 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
 
   useEffect(() => {
     const d = ref.current;
+    const back = rememberFocus();
     if (d && !d.open) d.showModal();
-    return () => d?.close();
+    return () => { d?.close(); back(); };
   }, []);
   // A new view (progress, done, error, back to settings) starts at its heading, so a screen reader reads where it is.
   useEffect(() => { head.current?.focus({ preventScroll: true }); }, [state.phase]);
