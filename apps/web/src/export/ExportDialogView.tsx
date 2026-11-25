@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
+import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
@@ -40,6 +41,7 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
   const head = useRef<HTMLHeadingElement>(null);
   const running = state.phase === "running";
   const lastSettings = useRef<ReturnType<typeof buildSettings> | null>(null);
+  useReturnFocus();
 
   useEffect(() => {
     const d = ref.current;
@@ -191,7 +193,9 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
       {format && presetWarnings(preset, choice, src, format, locale).map((w) => <p key={w.key} className="export-note" role="status" data-testid={w.key === "export.warn.cap" ? "export-cap-warning" : "export-duration-warning"}>{t(w.key, w.values)}</p>)}
       {format?.warnings.map((w) => <p key={w} className="export-note" data-testid="export-warning">{t("export.warn.limited")}</p>)}
       {format && formatNote(format, fmts?.options ?? []) && <p className="export-note" data-testid="export-format-note">{t(formatNote(format, fmts?.options ?? [])!)}</p>}
-      <button className="primary export-go" style={{ position: "sticky", insetBlockEnd: 8, boxShadow: "0 0 0 8px var(--surface)" }} onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
+      <div className="export-footer">
+        <button className="primary export-go" onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
+      </div>
     </>
   );
 }

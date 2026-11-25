@@ -4,6 +4,7 @@ import { FPS_CHOICES, QUALITIES, SHAPES, canvasOp, choiceOf, fpsLabel, frameRate
 import { rememberFocus } from "./a11y/restoreFocus";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
+import { useReturnFocus } from "./a11y/returnFocus";
 import { NetworkLog } from "./privacy/NetworkLog";
 
 /** A modal `<dialog>` that closes on Esc and starts focused on its title. Shared by the canvas settings and the confirmations. */
@@ -11,6 +12,7 @@ export function Modal({ title, titleId, testId, onClose, children, role }: { tit
   const { t } = useI18n();
   const ref = useRef<HTMLDialogElement>(null);
   const head = useRef<HTMLHeadingElement>(null);
+  useReturnFocus();
   useEffect(() => {
     const d = ref.current;
     const back = rememberFocus();

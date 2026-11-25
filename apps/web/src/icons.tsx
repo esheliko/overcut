@@ -13,6 +13,7 @@ const PATHS = {
   filters: `${c(9, 14, 5)}${c(15, 14, 5)}${c(12, 9, 5)}`,
   stickers: `${c(12, 12, 9)}M8.5 14a4.5 4.5 0 0 0 7 0M9 9.5v.5M15 9.5v.5`,
   edit: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
+  pencil: "M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5ZM15 5l4 4",
   tag: `M3 12V4h8l10 10-8 8zM7.5 8v.5`,
   play: "M8 5v14l11-7z",
   pause: "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z",
@@ -47,6 +48,9 @@ const PATHS = {
   canvas: "M3 7h18v10H3zM7 3v4M17 3v4M7 17v4M17 17v4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
 } as const;
+
+/** The path data of every icon, by name (tests pin an icon's shape through it). */
+export const ICON_PATHS = PATHS;
 
 export type IconName = keyof typeof PATHS;
 

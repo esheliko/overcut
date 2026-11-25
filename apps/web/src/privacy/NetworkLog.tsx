@@ -17,6 +17,9 @@ export function NetworkLog() {
         {quiet ? t("net.none") : t("net.outside", { hosts: s.outside.join(", ") })}
       </p>
       <p className="diag-muted">{t("net.count", { n: s.total, size: kb(s.bytes) })}</p>
+      {/* F5: the plain summary above is what people read first; the raw request list is one tap away. */}
+      <details className="net-details" data-testid="network-details">
+        <summary>{t("net.details")}</summary>
       <div className="net-scroll" tabIndex={0} role="region" aria-label={t("net.title")}>
         <table className="net-table">
           <thead><tr><th scope="col">{t("net.col.time")}</th><th scope="col">{t("net.col.url")}</th><th scope="col">{t("net.col.size")}</th><th scope="col">{t("net.col.from")}</th></tr></thead>
@@ -32,6 +35,7 @@ export function NetworkLog() {
           </tbody>
         </table>
       </div>
+      </details>
     </div>
   );
 }

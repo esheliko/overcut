@@ -86,7 +86,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
                     </span>
                   </button>
                   <div className="project-tools">
-                    <button onClick={() => setRenaming(e)} disabled={busy} data-testid="project-rename" aria-label={t("projects.rename", { name: nameOf(e) })}><Icon name="edit" size={18} /><span>{t("projects.rename.short")}</span></button>
+                    <button onClick={() => setRenaming(e)} disabled={busy} data-testid="project-rename" aria-label={t("projects.rename", { name: nameOf(e) })}><Icon name="pencil" size={18} /><span>{t("projects.rename.short")}</span></button>
                     <button onClick={() => onDuplicate(e)} disabled={busy} data-testid="project-duplicate" aria-label={t("projects.duplicate", { name: nameOf(e) })}><Icon name="duplicate" size={18} /><span>{t("projects.duplicate.short")}</span></button>
                     <button onClick={() => setDeleting(e)} disabled={busy} data-testid="project-delete" aria-label={t("projects.delete", { name: nameOf(e) })}><Icon name="trash" size={18} /><span>{t("projects.delete.short")}</span></button>
                   </div>

@@ -301,6 +301,9 @@ h2, p { margin: 0; }
 .export-fields select { min-block-size: var(--target); padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--fg); font-size: var(--text-base); min-inline-size: 0; }
 .export-go, .export-secondary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-block-size: 52px; padding: 0 var(--space-5); border-radius: var(--radius); font-weight: 700; font-size: var(--text-md); }
 .export-go:disabled { opacity: 0.45; cursor: default; }
+/* The setup's Export button stays on screen while the settings scroll (phone 320x640 included); opaque, so the scrolled fields pass under it. */
+.export-footer { position: sticky; inset-block-end: 0; z-index: 1; margin-inline: calc(var(--space-5) * -1); margin-block-start: auto; padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)); border-block-start: 1px solid var(--line); background: var(--surface); }
+.export-footer .export-go { inline-size: 100%; }
 .export-secondary { border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); }
 .export-secondary:hover { background: var(--surface-3); }
 .export-danger { color: var(--danger); }
@@ -330,7 +333,8 @@ h2, p { margin: 0; }
 /* accent picker (menu) and install how-to */
 .menu-accent { padding: 6px 12px 8px; }
 .menu-accent-title { display: block; padding-block: 4px; color: var(--muted); font-size: var(--text-sm); }
-.menu-accent-row { display: flex; flex-wrap: wrap; gap: 2px; margin-inline: -8px; }
+/* F4: a fixed 4-column grid (there are 7 accents, so 4 + 3) instead of a wrap that left the 7th swatch alone. */
+.menu-accent-row { display: grid; grid-template-columns: repeat(4, 44px); gap: 2px; margin-inline: -8px; }
 .swatch { display: grid; place-items: center; inline-size: 44px; block-size: 44px; padding: 0; border: 0; border-radius: var(--radius-full); background: none; }
 .swatch-dot { inline-size: 24px; block-size: 24px; border-radius: var(--radius-full); border: 2px solid var(--line-strong); box-sizing: border-box; }
 .swatch[data-checked="true"] .swatch-dot { border-color: var(--fg); box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--fg); }
@@ -362,6 +366,8 @@ h2, p { margin: 0; }
 
 /* Network activity (XT-06) */
 .pj-dialog:has([data-testid="network-log"]) { inline-size: min(720px, calc(100vw - 24px)); }
+.net-details { margin-block: 12px; }
+.net-details > summary { display: inline-flex; align-items: center; min-block-size: 44px; font-weight: 600; color: var(--accent); cursor: pointer; }
 .net-scroll { max-block-size: 40dvh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
 .net-table { inline-size: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .net-table th, .net-table td { padding: 6px 10px; text-align: start; border-block-end: 1px solid var(--line); white-space: nowrap; }
@@ -476,3 +482,8 @@ h2, p { margin: 0; }
 .sc-keys em, .sc-fixed { color: var(--muted); font-size: 12px; }
 .sc-change { min-height: 44px; min-width: 44px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--fg); font: inherit; }
 @media (max-width: 560px) { .sc-name { flex-basis: 100%; padding-top: 6px; } .sc-keys { flex: 1; } .sc-row { padding-bottom: 6px; } }
+/* F3 theme menu: the top-bar popover and the phone menu rows; the checked choice has a visible tick, not colour alone. */
+.theme-menu { position: relative; }
+.theme-pop { inset-inline-start: 0; inset-inline-end: auto; min-width: 200px; }
+.menu-check { display: inline-block; inline-size: 1.2em; font-weight: 700; }
+.menu-row[aria-checked="true"] { font-weight: 700; }
