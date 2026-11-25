@@ -9,8 +9,8 @@ import { useIncoming } from "./incoming";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
 import { Home } from "./Home";
-import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects } from "./projects";
-import { startScreen } from "./projectsView";
+import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects, projectBytes, setArchived } from "./projects";
+import { isArchived, startScreen } from "./projectsView";
 import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
 import { canvasSummary, hasPicture } from "./canvas";
 import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
@@ -138,11 +138,21 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
   };
   useEffect(() => {
     if (!open) return;
+    const rows = () => [...(ref.current?.querySelectorAll<HTMLElement>(".menu-pop button, .menu-pop a[href]") ?? [])];
+    rows()[0]?.focus({ preventScroll: true }); // keyboard users land on the first item, not on the button they came from
     const away = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); trigger.current?.focus({ preventScroll: true }); return; }
+      const list = rows();
+      const at = list.indexOf(document.activeElement as HTMLElement);
+      const go = e.key === "ArrowDown" ? at + 1 : e.key === "ArrowUp" ? at - 1 : e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : null;
+      if (go === null || list.length === 0 || !ref.current?.contains(document.activeElement)) return;
+      e.preventDefault();
+      list[(go + list.length) % list.length]!.focus();
+    };
     document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", esc);
-    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", key); };
   }, [open]);
   return (
     <div className="menu" ref={ref}>
@@ -439,9 +449,10 @@ function Editor({ store }: { store: ProjectStore }) {
         const items = await (await getRegistry()).list();
         if (!alive) return;
         setLastId(data.current);
-        const screen = startScreen(items.length);
+        const live = items.filter((i) => !isArchived(i)); // archived projects are tucked away: they do not count as "the only project"
+        const screen = startScreen(live.length, items.length - live.length);
         if (screen === "home") setList(items);
-        else if (screen === "editor") { setList(items); openEntry(items.find((i) => i.id === data.current) ?? items[0]!); }
+        else if (screen === "editor") { setList(items); openEntry(live.find((i) => i.id === data.current) ?? live[0]!); }
         else if (screen === "new") {
           const e = await createProject(core, "");
           if (alive) { setList([e]); openEntry(e); }
@@ -501,6 +512,11 @@ function Editor({ store }: { store: ProjectStore }) {
     announce(t("projects.duplicated", { name: copy.name }));
     setToast(t("projects.duplicated", { name: copy.name }));
   });
+  const homeArchive = (e: ProjectEntry, archived: boolean) => void homeTask(async () => { await setArchived(e, archived); await refreshList(); });
+  const homeExport = (e: ProjectEntry) => void homeTask(async () => {
+    const file = await saveProjectBytes(await projectBytes(core!, e), projectFileName(e.name || t("app.untitled")));
+    if (file) { announce(t("projects.exported", { file })); setToast(t("projects.exported", { file })); }
+  });
   const homeDelete = (e: ProjectEntry) => void homeTask(async () => {
     await deleteProject(e);
     if (lastId === e.id) setLastId(null);
@@ -550,7 +566,7 @@ function Editor({ store }: { store: ProjectStore }) {
 
   return (
     <div className={showHome ? "editor home-mode" : "editor"} ref={editorRef} data-profile={profile} data-testid="editor">
-      {showHome ? <Home entries={list} current={lastId} busy={homeBusy} onOpen={(e) => openEntry(e)} onNew={homeNew} onOpenFile={homeOpenFile} onRename={homeRename} onDuplicate={homeDuplicate} onDelete={homeDelete} /> : <>
+      {showHome ? <Home entries={list} current={lastId} busy={homeBusy} onOpen={(e) => openEntry(e)} onNew={homeNew} onOpenFile={homeOpenFile} onRename={homeRename} onDuplicate={homeDuplicate} onArchive={homeArchive} onExport={homeExport} onDelete={homeDelete} /> : <>
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           {!compact && <ThemeMenu pref={themePref} onPick={pickTheme} />}

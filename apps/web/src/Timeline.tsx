@@ -10,6 +10,7 @@ import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
 import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
 import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
+import { hopStep } from "./timeline/arrange";
 import { ToolbarMenu } from "./timeline/ToolbarMenu";
 import { chordLabel } from "./commands/registry";
 import { currentKeymap } from "./commands/keymap";
@@ -53,7 +54,7 @@ const KEYS = { rippleDel: "Shift+Del", closeGap: "Ctrl+Del", undo: "Ctrl+Z", red
 const LABELS: Record<string, string> = { "timeline.say.split": "timeline.label.split", "timeline.say.deleted": "timeline.label.deleted", "timeline.say.moved": "timeline.label.moved",
   "timeline.say.nudged": "timeline.label.nudged", "timeline.say.trimmed": "timeline.label.trimmed", "timeline.say.duplicated": "timeline.label.duplicated",
   "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed",
-  "timeline.say.laneMoved": "timeline.label.laneMoved", "timeline.say.rippled": "timeline.label.rippled", "timeline.say.rolled": "timeline.label.rolled", "timeline.say.slipped": "timeline.label.slipped", "timeline.say.slid": "timeline.label.slid",
+  "timeline.say.laneMoved": "timeline.label.laneMoved",  "timeline.say.rippled": "timeline.label.rippled", "timeline.say.rolled": "timeline.label.rolled", "timeline.say.slipped": "timeline.label.slipped", "timeline.say.slid": "timeline.label.slid",
   "timeline.say.rippleDeleted": "timeline.label.rippleDeleted", "timeline.say.gapClosed": "timeline.label.gapClosed",
   "timeline.say.track.added": "timeline.label.track.added", "timeline.say.track.removed": "timeline.label.track.removed", "timeline.say.track.moved": "timeline.label.track.edited", "timeline.say.track.renamed": "timeline.label.track.edited",
   ...Object.fromEntries(TRACK_SAY_KEYS.map((k) => [k, "timeline.label.track.edited"])) };
@@ -208,6 +209,19 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         const step = laneStepOps(sc, mine, cmd.dir);
         if (!step) { const m = say("timeline.say.noLane"); speak(m); onNotice(t(m.key)); break; }
         commit(step.ops, say("timeline.say.laneMoved", { track: sc.trackName[step.track]! }));
+        break;
+      }
+      case "hop": {
+        const ops = mine.length ? hopStep(sc, mine, cmd.dir) : [];
+        if (ops.length === 0) { const m = say(mine.length === 0 ? "timeline.say.selectFirst" : "timeline.say.cantHop"); speak(locked ?? m); onNotice(t((locked ?? m).key)); break; }
+        commit(ops, say("timeline.say.moved", { count: mine.length, name: sc.name[mine[0]!]! }));
+        break;
+      }
+      case "trackToggle": {
+        const row = mine.length ? sc.clipTrack[mine[0]!]! : sc.trackId.indexOf(armed.current ?? "");
+        if (row < 0) { const m = say("timeline.say.noTrack"); speak(m); onNotice(t(m.key)); break; }
+        const r = toggleTrack(sc, row, cmd.part);
+        commit(r.ops, r.say);
         break;
       }
       case "tool": setTool(cmd.tool); speak(say("timeline.say.tool", { tool: cmd.tool })); break;
