@@ -36,17 +36,24 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
   canvas.style.cssText = "position:fixed;left:-9999px;top:0;width:960px;height:540px";
   document.body.appendChild(canvas);
   let host: PreviewHost | null = null;
+  const lap = { t: performance.now(), ms: {} as Record<string, number> };
+  const mark = (name: string): void => { const n = performance.now(); lap.ms[name] = Math.round(n - lap.t); lap.t = n; };
   try {
     host = new PreviewHost(canvas, { onFrame: () => undefined, onState: () => undefined, onError: () => undefined });
     const info = await Promise.race([host.ready, sleep(15_000).then(() => { throw new Error("the preview did not start in 15 s"); })]);
+    mark("t_start_ms");
     host.resize(960, 540);
     host.send({ type: "media", id: hex(2), file });
     host.configure({ project: JSON.stringify(layeredProject(SECONDS)), sequence: hex(3), rate: { num: 30, den: 1 }, size: { width: 1920, height: 1080 }, endTicks: SECONDS * TICKS_PER_SECOND });
     for (let i = 0; i < 150 && ((await host.rpc<unknown[]>({ name: "frames" })).length === 0); i++) await sleep(100);
     if ((await host.rpc<unknown[]>({ name: "frames" })).length === 0) throw new Error("the test clip could not be opened by the decoder");
+    mark("t_open_ms");
     host.player.seek(0);
     // First frame drawn: the preview measures its upload path once the player is idle (about 1 to 3 s on a phone); wait for it so it is not inside the timed run.
     for (let i = 0; i < 100 && !(await host.rpc<{ upload?: unknown }>({ name: "gpu" })).upload; i++) await sleep(100);
+    mark("t_upload_wait_ms");
+    const pre = await host.rpc<{ uploadState?: string }>({ name: "gpu" });
+    const preStats = await host.rpc<{ scrubMs?: number[] }>({ name: "stats" });
     await sleep(500);
     type S = { presented: number; dropped: number; stalls: number; late: number[]; times: number[] };
     const s0 = await host.rpc<S>({ name: "stats" });
@@ -58,6 +65,7 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
       if (performance.now() - t0 > 1000 && !host.player.isPlaying) break; // reached the end
     }
     host.player.toggle();
+    mark("t_play_ms");
     const s1 = await host.rpc<S>({ name: "stats" });
     const gpu = await host.rpc<{ upload?: { path: string; source: string; ms?: Record<string, number> }; uploadState?: string }>({ name: "gpu" });
     const times = s1.times.slice(s0.times.length);
@@ -65,8 +73,8 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
     const late = s1.late.slice(s0.late.length).sort((a, b) => a - b);
     const presented = s1.presented - s0.presented;
     return {
-      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a", upload_source: gpu.upload?.source ?? "n/a", upload_state: gpu.uploadState ?? "n/a", upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
-      presented, dropped: s1.dropped - s0.dropped, stalls: s1.stalls - s0.stalls,
+      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a", upload_source: gpu.upload?.source ?? "n/a", upload_state: gpu.uploadState ?? "n/a", upload_state_before_play: pre.uploadState ?? "n/a", scrubs_before_play: preStats.scrubMs?.length ?? -1, upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
+      ...lap.ms, presented, dropped: s1.dropped - s0.dropped, stalls: s1.stalls - s0.stalls,
       fps: span ? Math.round(((times.length - 1) / span) * 10) / 10 : 0,
       p95_late_ms: Math.round(late[Math.floor(late.length * 0.95)] ?? 0),
     };

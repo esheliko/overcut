@@ -462,12 +462,30 @@ export class Player {
       // (`firstUpdateMs` and `scrubMs` stay one-to-one: every entry is a scrub that reached its exact frame).
       const dropFirst = () => { if (standIn) { const i = this.stats.firstUpdateMs.lastIndexOf(firstMs); if (i >= 0) this.stats.firstUpdateMs.splice(i, 1); } };
       if (this.scrubTarget || this.playing) { dropFirst(); return; }
-      await Promise.all(missing.map(async (w) => {
-        const t1 = performance.now();
-        const frame = await w.media.videoFrame(w.idx);
-        this.d.onSeek?.(w.l.media, performance.now() - t1);
-        w.exact = this.cache.put(w.l.media, frame);
-        pinned.push(w.exact);
+      // One decode per distinct picture: layers showing the same frame of the same media (a clip stacked on itself, a duplicate) share it. The handle runs
+      // "latest request wins", so asking for the same media several times at once cancelled all but the last and the scrub never reached its exact frame.
+      const distinct = new Map<string, typeof missing>();
+      for (const w of missing) {
+        const key = `${w.l.media}:${w.idx}`;
+        const group = distinct.get(key);
+        if (group) group.push(w); else distinct.set(key, [w]);
+      }
+      // Different media decode in parallel; two different pictures of one media go one after the other (the handle would cancel the first).
+      const perMedia = new Map<string, (typeof missing)[]>();
+      for (const group of distinct.values()) {
+        const list = perMedia.get(group[0]!.l.media);
+        if (list) list.push(group); else perMedia.set(group[0]!.l.media, [group]);
+      }
+      await Promise.all([...perMedia.values()].map(async (groups) => {
+        for (const group of groups) {
+          const first = group[0]!;
+          const t1 = performance.now();
+          const frame = await first.media.videoFrame(first.idx);
+          this.d.onSeek?.(first.l.media, performance.now() - t1);
+          const exact = this.cache.put(first.l.media, frame);
+          for (const w of group) w.exact = exact;
+          pinned.push(exact);
+        }
       }));
       if (this.scrubTarget || this.playing) { dropFirst(); return; }
       await draw(false);
