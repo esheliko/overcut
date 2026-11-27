@@ -113,10 +113,15 @@ async fn open(
         .map_err(err)?;
     // Validation errors would otherwise abort the module (wgpu's default handler panics): report them to the console and carry on.
     device.on_uncaptured_error(Box::new(|e| {
+        GPU_ERRORS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         web_sys::console::error_1(&JsValue::from_str(&format!("wgpu: {e}")));
     }));
     Ok((instance, surface, adapter, device, queue))
 }
+
+/// Uncaptured GPU errors (validation, out of memory) since the module loaded. Reported in `alloc_stats` so a test can assert there were none:
+/// a rejected copy or draw is otherwise only a line in a Worker's console.
+static GPU_ERRORS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 #[wasm_bindgen]
 impl GpuRenderer {
@@ -191,8 +196,11 @@ impl GpuRenderer {
     pub fn alloc_stats(&self) -> String {
         let s = self.comp.alloc_stats();
         format!(
-            r#"{{"textures":{},"buffers":{},"bind_groups":{}}}"#,
-            s.textures, s.buffers, s.bind_groups
+            r#"{{"textures":{},"buffers":{},"bind_groups":{},"errors":{}}}"#,
+            s.textures,
+            s.buffers,
+            s.bind_groups,
+            GPU_ERRORS.load(std::sync::atomic::Ordering::Relaxed)
         )
     }
 
@@ -251,6 +259,17 @@ impl GpuRenderer {
         };
         let i = self.entries.len();
         let tex = self.comp.layer_texture(i, w, h).clone();
+        // The copy is checked against the source's own size, not the layer's: a source that is smaller than the caller said (or already closed, size 0)
+        // would make the GPU reject the copy (#209). Copy what both have; the slot keeps its last picture when there is nothing to copy.
+        let (sw, sh) = match &src {
+            wgpu::ExternalImageSource::VideoFrame(f) => (f.display_width(), f.display_height()),
+            wgpu::ExternalImageSource::ImageBitmap(b) => (b.width(), b.height()),
+            _ => (w, h),
+        };
+        let Some((cw, ch)) = app_render::external_copy_extent((w, h), (sw, sh)) else {
+            self.entries.push(e);
+            return Ok(());
+        };
         self.comp.queue().copy_external_image_to_texture(
             &wgpu::CopyExternalImageSourceInfo {
                 source: src,
@@ -266,8 +285,8 @@ impl GpuRenderer {
                 premultiplied_alpha: false,
             },
             wgpu::Extent3d {
-                width: w,
-                height: h,
+                width: cw,
+                height: ch,
                 depth_or_array_layers: 1,
             },
         );

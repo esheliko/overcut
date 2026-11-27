@@ -122,6 +122,15 @@ pub fn visible_rect(
     )
 }
 
+/// What to copy from a platform image (`copy_external_image_to_texture`) into a layer texture of `layer` (w, h): the part both have.
+/// The copy is validated against the SOURCE's own size, so a copy sized by the layer overruns a source that is smaller (a different clip's
+/// frame, a thumbnail) or already closed (size 0) and the whole call is rejected. `None` when there is nothing to copy (closed or empty source):
+/// the slot keeps its last picture instead of the GPU reporting a validation error.
+pub fn external_copy_extent(layer: (u32, u32), source: (u32, u32)) -> Option<(u32, u32)> {
+    let (w, h) = (layer.0.min(source.0), layer.1.min(source.1));
+    (w > 0 && h > 0).then_some((w, h))
+}
+
 /// Rotation as the row-major matrix `[a, b, c, d]` taking a point of the displayed unit square (centred, y down) to the coded image (centred).
 /// Exact for right angles. A phone clip whose probe says 90 is stored sideways; showing it rotated clockwise by 90 makes it upright.
 pub fn texture_matrix(display_rotation: u16) -> [f32; 4] {
@@ -932,6 +941,28 @@ pub fn headless_compositor(backends: wgpu::Backends) -> Option<(Compositor, wgpu
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn external_copy_never_exceeds_the_source() {
+        use super::external_copy_extent as ext;
+        assert_eq!(ext((160, 120), (160, 120)), Some((160, 120)));
+        assert_eq!(
+            ext((160, 120), (320, 180)),
+            Some((160, 120)),
+            "a bigger source is cropped, never overrun"
+        );
+        assert_eq!(
+            ext((320, 180), (160, 120)),
+            Some((160, 120)),
+            "a smaller source is copied whole"
+        );
+        assert_eq!(
+            ext((160, 120), (0, 0)),
+            None,
+            "a closed frame reports size 0"
+        );
+        assert_eq!(ext((0, 120), (160, 120)), None);
+    }
+
     use super::visible_rect;
 
     #[test]

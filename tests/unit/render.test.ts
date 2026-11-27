@@ -8,7 +8,7 @@ function fakeRaw() {
   const calls: unknown[][] = [];
   const raw: RawGpuRenderer = {
     info: () => JSON.stringify({ backend: "webgl2", accum: "float16", adapter: "fake" }),
-    alloc_stats: () => JSON.stringify({ textures: 1, buffers: 2, bind_groups: 3 }),
+    alloc_stats: () => JSON.stringify({ textures: 1, buffers: 2, bind_groups: 3, errors: 0 }),
     resize: (w, h) => calls.push(["resize", w, h]),
     begin: () => calls.push(["begin"]),
     add_rgba: (rgba, w, h, p) => calls.push(["rgba", rgba.length, w, h, [...p]]),
@@ -35,7 +35,7 @@ test("present: layers are packed in order with clamped opacity and drawn at the 
     ["render", 1920, 1080, 320, 180, true],
   ]);
   assert.equal(r.info.backend, "webgl2");
-  assert.deepEqual(r.allocStats(), { textures: 1, buffers: 2, bind_groups: 3 });
+  assert.deepEqual(r.allocStats(), { textures: 1, buffers: 2, bind_groups: 3, errors: 0 });
 });
 
 test("readback reuses one buffer per output size and does not touch the canvas", async () => {

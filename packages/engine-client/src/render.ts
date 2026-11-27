@@ -46,7 +46,7 @@ export interface GpuRenderer {
   /** Composite offscreen at `out` and read the frame back as RGBA8 (sRGB, tight). The array is reused by the next call: copy it out (a `VideoFrame` does). */
   readback(layers: readonly GpuLayer[], seq: { width: number; height: number }, out: { width: number; height: number }): Promise<Uint8Array>;
   /** GPU objects created so far; unchanged between steady-state frames. */
-  allocStats(): { textures: number; buffers: number; bind_groups: number };
+  allocStats(): { textures: number; buffers: number; bind_groups: number; /** Uncaptured GPU errors so far (a rejected copy or draw): 0 in a healthy run. */ errors: number };
   dispose(): void;
 }
 
@@ -107,7 +107,7 @@ export function wrapRenderer(raw: RawGpuRenderer, canvas: { width: number; heigh
       await raw.read_rgba8(seq.width, seq.height, out.width, out.height, buf);
       return buf;
     },
-    allocStats: () => JSON.parse(raw.alloc_stats()) as { textures: number; buffers: number; bind_groups: number },
+    allocStats: () => JSON.parse(raw.alloc_stats()) as { textures: number; buffers: number; bind_groups: number; errors: number },
     dispose: () => raw.free(),
   };
 }
