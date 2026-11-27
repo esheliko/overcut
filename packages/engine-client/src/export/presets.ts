@@ -22,12 +22,14 @@ export interface ResolvedPreset {
 }
 
 /** Codec string per size: the level must cover the frame size and rate or the encoder rejects the config. */
-export function videoCodecString(codec: VideoCodecName, w: number, h: number, fps: number): string {
+export function videoCodecString(codec: VideoCodecName, w: number, h: number, fps: number, profile: "high" | "main" | "baseline" = "high"): string {
   const pixelRate = w * h * fps;
   const big = pixelRate > 1920 * 1088 * 31; // above 1080p30
   switch (codec) {
-    case "avc":
-      return big ? "avc1.640033" : pixelRate > 1280 * 720 * 31 ? "avc1.640028" : "avc1.64001f";
+    case "avc": {
+      const level = big ? "33" : pixelRate > 1280 * 720 * 31 ? "28" : "1f";
+      return `avc1.${profile === "high" ? "64" : profile === "main" ? "4d" : "42"}00${level}`;
+    }
     case "vp9":
       return big ? "vp09.00.51.08" : "vp09.00.40.08";
     case "av1":
@@ -42,17 +44,23 @@ export function defaultVideoBitrate(codec: VideoCodecName, w: number, h: number,
 
 const AUDIO_CODEC_STRING: Record<AudioCodecName, string> = { aac: "mp4a.40.2", opus: "opus" };
 
-function videoConfig(codec: VideoCodecName, plan: ExportPlan, s: ExportSettings): VideoEncoderConfig {
+/**
+ * The encoder config for `codec`. `level` (`ExportSettings.safeLevel`) walks down a ladder of what phone encoders accept: 0 = High profile, variable
+ * bitrate, quality latency (best picture); 1 = Main profile, constant bitrate, realtime (what MediaCodec encoders on Android take most reliably);
+ * 2 = Baseline and the software encoder (slow but it exists everywhere). Level 3 drops H.264 altogether (see `resolvePreset`).
+ */
+export function videoConfig(codec: VideoCodecName, plan: ExportPlan, s: ExportSettings, level = 0): VideoEncoderConfig {
   const fps = plan.fpsNum / plan.fpsDen;
+  const hardware = s.hardware === "prefer-hardware" ? "prefer-hardware" : s.hardware === "prefer-software" ? "prefer-software" : "no-preference";
   const cfg: VideoEncoderConfig = {
-    codec: videoCodecString(codec, plan.width, plan.height, fps),
+    codec: videoCodecString(codec, plan.width, plan.height, fps, level >= 2 ? "baseline" : level === 1 ? "main" : "high"),
     width: plan.width,
     height: plan.height,
     framerate: fps,
     bitrate: s.videoBitrate ?? defaultVideoBitrate(codec, plan.width, plan.height, fps),
-    bitrateMode: "variable",
-    latencyMode: "quality",
-    hardwareAcceleration: s.hardware === "prefer-hardware" ? "prefer-hardware" : s.hardware === "prefer-software" ? "prefer-software" : "no-preference",
+    bitrateMode: level >= 1 ? "constant" : "variable",
+    latencyMode: level >= 1 ? "realtime" : "quality",
+    hardwareAcceleration: level >= 2 && s.hardware !== "prefer-hardware" ? "prefer-software" : hardware,
   };
   if (codec === "avc") cfg.avc = { format: "avc" };
   return cfg;
@@ -89,6 +97,7 @@ const WEBM_VIDEO: VideoCodecName[] = ["vp9", "av1"];
  * Throws `ExportError("unsupported")` naming what failed; never returns a combination the probe rejected.
  */
 export async function resolvePreset(plan: ExportPlan, settings: ExportSettings, probe: CodecProbe): Promise<ResolvedPreset> {
+  const level = settings.safeLevel ?? 0;
   const wantC = settings.container ?? "auto";
   const wantV = settings.videoCodec ?? "auto";
   const wantA = settings.audioCodec ?? "auto";
@@ -97,12 +106,14 @@ export async function resolvePreset(plan: ExportPlan, settings: ExportSettings, 
       (wantC === "auto" || c.container === wantC) &&
       (wantV === "auto" || VIDEO_NAME[wantV] === c.video) &&
       (wantA === "auto" || wantA === c.audio) &&
-      (c.container !== "webm" || WEBM_VIDEO.includes(c.video)),
+      (c.container !== "webm" || WEBM_VIDEO.includes(c.video)) &&
+      // Level 3: H.264 failed three times (some Android encoders): VP9 in WebM, unless the person asked for H.264 by name.
+      (level < 3 || c.video !== "avc" || wantV === "h264"),
   );
   const videoOk = new Map<VideoCodecName, boolean>();
   const audioOk = new Map<AudioCodecName, boolean>();
   for (const c of candidates) {
-    if (!videoOk.has(c.video)) videoOk.set(c.video, await probe.video(videoConfig(c.video, plan, settings)));
+    if (!videoOk.has(c.video)) videoOk.set(c.video, await probe.video(videoConfig(c.video, plan, settings, level)));
     if (!videoOk.get(c.video)) continue;
     if (!audioOk.has(c.audio)) audioOk.set(c.audio, await probe.audio(audioConfig(c.audio, plan, settings)));
     if (!audioOk.get(c.audio)) continue;
@@ -110,7 +121,7 @@ export async function resolvePreset(plan: ExportPlan, settings: ExportSettings, 
       container: c.container,
       videoCodec: c.video,
       audioCodec: c.audio,
-      video: videoConfig(c.video, plan, settings),
+      video: videoConfig(c.video, plan, settings, level),
       audio: audioConfig(c.audio, plan, settings),
       warnings: c.warning ? [c.warning] : [],
     };
@@ -118,6 +129,10 @@ export async function resolvePreset(plan: ExportPlan, settings: ExportSettings, 
   const asked = [wantC, wantV, wantA].filter((x) => x !== "auto").join(" + ") || "any format";
   throw new ExportError("unsupported", `This browser cannot encode ${asked} at ${plan.width}x${plan.height}. Try another format or a smaller size.`);
 }
+
+/** One line naming an encoder config, for failure reports: `avc1.640028 1920x1080 4000000bps variable realtime hw:no-preference`. */
+export const describeVideoConfig = (c: VideoEncoderConfig): string => `${c.codec} ${c.width}x${c.height} ${c.bitrate}bps ${c.bitrateMode ?? "?"} ${c.latencyMode ?? "?"} hw:${c.hardwareAcceleration ?? "?"}`;
+export const describeAudioConfig = (c: AudioEncoderConfig): string => `${c.codec} ${c.sampleRate}Hz x${c.numberOfChannels} ${c.bitrate ?? "?"}bps`;
 
 /** The probe backed by the real WebCodecs `isConfigSupported` (worker or window). */
 export const webCodecsProbe: CodecProbe = {

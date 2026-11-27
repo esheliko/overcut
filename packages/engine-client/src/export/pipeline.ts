@@ -39,6 +39,8 @@ export interface ExportEnv<F extends { close(): void }> {
   now(): number;
   /** Most frames that were waiting in the video encoder at any moment. */
   peakQueue(): number;
+  /** Optional finer split of `render` (decode vs composite) in ms since the start, for the stats. */
+  timing?(): Record<string, number>;
 }
 
 export interface PipelineResult {
@@ -46,6 +48,8 @@ export interface PipelineResult {
   fileBytes: number;
   encodeMs: number;
   peakEncodeQueue: number;
+  /** Where the time went, ms summed over the run (the loop is serial, so they add up to about `encodeMs`): `evaluate`, `render` (decode + composite + capture), `encode` (handing the frame over), `audio`, `wait` (back-pressure from the encoder and muxer), plus whatever `env.timing` adds. */
+  timingMs: Record<string, number>;
 }
 
 const PROGRESS_EVERY_MS = 200;
@@ -78,6 +82,13 @@ export async function runExport<F extends { close(): void }>(env: ExportEnv<F>, 
     if (signal.aborted) throw new ExportError("cancelled", "The export was cancelled.");
   };
 
+  const timing: Record<string, number> = { evaluate: 0, render: 0, encode: 0, audio: 0, wait: 0 };
+  const lap = (key: string, since: number): number => {
+    const t = env.now();
+    timing[key] = (timing[key] ?? 0) + (t - since);
+    return t;
+  };
+
   const hasAudio = plan.totalSamples > 0;
   const audioStart = Number((BigInt(plan.startFrame) * BigInt(plan.sampleRate) * BigInt(plan.fpsDen) * 2n + BigInt(plan.fpsNum)) / (BigInt(plan.fpsNum) * 2n));
   const scratch = new Float32Array(AUDIO_BLOCK * 2);
@@ -97,16 +108,22 @@ export async function runExport<F extends { close(): void }>(env: ExportEnv<F>, 
   try {
     for (let i = 0; i < plan.totalFrames; i++) {
       checkCancelled();
+      let t = env.now();
       const desc = await env.evaluate(frameTicks(plan.startFrame + i, plan.fpsNum, plan.fpsDen), 0);
+      t = lap("evaluate", t);
       const frame = await env.render(desc, i);
+      t = lap("render", t);
       try {
         env.video.encode(frame, i % plan.keyframeEvery === 0);
       } finally {
         frame.close();
       }
+      t = lap("encode", t);
       const target = i === plan.totalFrames - 1 ? plan.totalSamples : Number((BigInt(i + 1) * BigInt(plan.sampleRate) * BigInt(plan.fpsDen) * 2n + BigInt(plan.fpsNum)) / (BigInt(plan.fpsNum) * 2n));
       await feedAudio(target);
+      t = lap("audio", t);
       await Promise.all([env.video.ready(), env.audio.ready()]);
+      lap("wait", t);
       emit(i + 1, "encoding", i === plan.totalFrames - 1);
     }
     checkCancelled();
@@ -114,7 +131,8 @@ export async function runExport<F extends { close(): void }>(env: ExportEnv<F>, 
     await Promise.all([env.video.flush(), env.audio.flush()]);
     checkCancelled();
     const { fileBytes } = await env.finish();
-    return { frames: plan.totalFrames, fileBytes, encodeMs: env.now() - t0, peakEncodeQueue: env.peakQueue() };
+    const split = Object.fromEntries(Object.entries({ ...timing, ...env.timing?.() }).map(([k, v]) => [k, Math.round(v)]));
+    return { frames: plan.totalFrames, fileBytes, encodeMs: env.now() - t0, peakEncodeQueue: env.peakQueue(), timingMs: split };
   } catch (e) {
     await env.abort();
     throw e;

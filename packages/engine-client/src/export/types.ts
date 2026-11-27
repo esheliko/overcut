@@ -37,6 +37,12 @@ export interface ExportSettings {
   sources?: Record<string, Blob>;
   /** Sequence frames to export, `[startFrame, endFrame)`. Default: the whole sequence (to the end of its last clip). */
   range?: { startFrame: number; endFrame: number };
+  /**
+   * Compatibility level (0 = the normal preset). The host raises it by itself when a worker crashes or an encoder fails, then starts over with
+   * more conservative encoder settings: 1 = Main profile H.264, constant bitrate, realtime latency; 2 = Baseline H.264, software encoder;
+   * 3 = no H.264 (VP9 + Opus in WebM). See `presets.ts`. Normally left unset.
+   */
+  safeLevel?: 0 | 1 | 2 | 3;
 }
 
 /** Emitted at least four times a second while a job runs, and once when the last frame is encoded. */
@@ -64,9 +70,31 @@ export type ExportErrorCode =
   | "storage_failed"
   | "not_yet";
 
+/** What was known when an export attempt failed: enough for a device report to show the cause (diagnostics, M2 W7). All fields best effort. */
+export interface ExportFailureDetail {
+  /** Last step the worker announced: `loading-engine`, `preset`, `media`, `renderer`, `file`, `encoders`, `encoding`, `finishing`, or `starting` / `none` when it never spoke. */
+  stage?: string;
+  /** Frames encoded when it failed. */
+  frames?: number;
+  /** Compatibility level of the attempt (`ExportSettings.safeLevel`). */
+  level?: number;
+  name?: string;
+  message?: string;
+  stack?: string;
+  /** From the worker's error event (`ErrorEvent.filename/lineno/colno`). */
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  /** The encoder configs of the attempt, e.g. `avc1.640028 1920x1080 4000000bps variable hw:no-preference`. */
+  video?: string;
+  audio?: string;
+  /** Earlier attempts of the same export (each failed), oldest first. */
+  attempts?: ExportFailureDetail[];
+}
+
 /** Every way an export fails. `message` is fit to show the user; `code` is stable. */
 export class ExportError extends Error {
-  constructor(readonly code: ExportErrorCode, message: string) {
+  constructor(readonly code: ExportErrorCode, message: string, readonly detail?: ExportFailureDetail) {
     super(message);
     this.name = "ExportError";
   }
@@ -84,6 +112,14 @@ export interface ExportStats {
   peakEncodeQueue: number;
   /** Codec strings actually used, e.g. "avc1.640028 + mp4a.40.2". */
   codecs: string;
+  /** Where the time went, ms summed over the run: `evaluate`, `render`, `decode` and `composite` (parts of `render`), `encode`, `audio`, `wait` (waiting for the encoder). Whatever dominates is what to speed up. */
+  timingMs?: Record<string, number>;
+  /** How frames reached the encoder: `canvas` (VideoFrame of the compositor's canvas, no readback) or `readback`. */
+  capture?: string;
+  /** Compatibility level that finally worked (0 = the normal preset; see `ExportSettings.safeLevel`). */
+  safeLevel?: number;
+  /** Attempts that failed before this one worked (empty or absent when the first one did). */
+  failedAttempts?: ExportFailureDetail[];
 }
 
 export interface ExportResult {
@@ -126,4 +162,6 @@ export type ToWorker =
 export type FromWorker =
   | { type: "progress"; jobId: string; progress: ExportProgress }
   | { type: "done"; jobId: string; mime: string; path: string; fileName: string; fileBytes: number; stats: ExportStats; warnings: string[] }
-  | { type: "error"; jobId: string; code: ExportErrorCode; message: string };
+  /** The step the worker is on now (`ExportFailureDetail.stage`): the host keeps the last one to say where a crash happened. */
+  | { type: "stage"; jobId: string; stage: string; video?: string; audio?: string }
+  | { type: "error"; jobId: string; code: ExportErrorCode; message: string; detail?: ExportFailureDetail };

@@ -66,6 +66,25 @@ const probe = (video: string[], audio: string[]): CodecProbe => ({
   audio: async (c) => audio.includes(c.codec),
 });
 
+test("presets: the compatibility ladder (Main + constant, Baseline + software, then no H.264) and a probe that rejects a level is skipped", async () => {
+  const plan = planExport(project(), settings);
+  const all = probe(["avc1", "vp09", "av01"], ["mp4a.40.2", "opus"]);
+  const l0 = await resolvePreset(plan, settings, all);
+  const l1 = await resolvePreset(plan, { ...settings, safeLevel: 1 }, all);
+  const l2 = await resolvePreset(plan, { ...settings, safeLevel: 2 }, all);
+  const l3 = await resolvePreset(plan, { ...settings, safeLevel: 3 }, all);
+  assert.deepEqual([l0.video.codec.slice(0, 7), l0.video.bitrateMode, l0.video.latencyMode], ["avc1.64", "variable", "quality"]);
+  assert.deepEqual([l1.video.codec.slice(0, 7), l1.video.bitrateMode, l1.video.latencyMode, l1.video.hardwareAcceleration], ["avc1.4d", "constant", "realtime", "no-preference"]);
+  assert.deepEqual([l2.video.codec.slice(0, 7), l2.video.hardwareAcceleration], ["avc1.42", "prefer-software"]);
+  assert.deepEqual([l3.container, l3.videoCodec, l3.audioCodec], ["webm", "vp9", "opus"]);
+  // A device whose probe refuses Baseline at level 2 falls through to VP9 instead of failing.
+  const noBaseline: CodecProbe = { ...all, video: async (c) => !c.codec.startsWith("avc1.42") && (await all.video(c)) };
+  const l2b = await resolvePreset(plan, { ...settings, safeLevel: 2 }, noBaseline);
+  assert.equal(l2b.videoCodec, "vp9");
+  // Asking for H.264 by name keeps it at every level.
+  assert.equal((await resolvePreset(plan, { ...settings, videoCodec: "h264", safeLevel: 3 }, all)).videoCodec, "avc");
+});
+
 test("presets: ADR 0004 order, never a combination the probe rejected", async () => {
   const plan = planExport(project(), settings);
   const best = await resolvePreset(plan, settings, probe(["avc1", "vp09", "av01"], ["mp4a.40.2", "opus"]));
@@ -347,11 +366,69 @@ test("job: a worker that never answers a cancel is terminated after the grace pe
   assert.ok(log.some((l) => l.startsWith("remove overcut-exports/")));
 });
 
-test("job: a crashed worker is a typed error, not a hang", async () => {
-  const w = new LoopbackWorker((w) => w.onerror?.({ message: "oom" }));
-  const api = createExportApi({ spawn: () => w, project: async () => project(), storage: storage([]) });
+test("job: a crashed worker is a typed error, not a hang; the host retries with safer settings, then reports every attempt", async () => {
+  const levels: Array<number | undefined> = [];
+  const workers: LoopbackWorker[] = [];
+  const spawn = (): LoopbackWorker => {
+    const w = new LoopbackWorker((w, m) => {
+      if (m.type !== "start") return;
+      levels.push(m.settings.safeLevel);
+      w.send({ type: "stage", jobId: m.jobId, stage: "renderer" });
+      w.onerror?.({ message: "oom", filename: "https://x/assets/export-worker-abc.js", lineno: 7, colno: 3 });
+    });
+    workers.push(w);
+    return w;
+  };
+  const api = createExportApi({ spawn, project: async () => project(), storage: storage([]), crashGraceMs: 1 });
   const job = await api.start(settings);
-  await assert.rejects(job.result, (e: unknown) => e instanceof ExportError && e.code === "encode_failed" && /oom/.test(e.message));
+  await assert.rejects(job.result, (e: unknown) => {
+    assert.ok(e instanceof ExportError);
+    assert.equal(e.code, "encode_failed");
+    assert.match(e.message, /oom/);
+    assert.match(e.message, /renderer/);
+    assert.equal(e.detail?.stage, "renderer");
+    assert.equal(e.detail?.lineno, 7);
+    assert.equal(e.detail?.level, 3);
+    assert.equal(e.detail?.attempts?.length, 3, "levels 0, 1, 2 failed before the last one");
+    return true;
+  });
+  assert.deepEqual(levels, [undefined, 1, 2, 3]);
+  assert.ok(workers.every((w) => w.terminated));
+});
+
+test("job: an encoder failure at level 0 is retried at level 1 and the file is delivered with a compatibility note", async () => {
+  const w0 = (w: LoopbackWorker, m: ToWorker): void => {
+    if (m.type !== "start") return;
+    if (m.settings.safeLevel === 1) w.send({ type: "done", jobId: m.jobId, mime: "video/mp4", path: "p.mp4", fileName: "p.mp4", fileBytes: 3, stats, warnings: [] });
+    else w.send({ type: "error", jobId: m.jobId, code: "encode_failed", message: "Encoding failed: EncodingError", detail: { stage: "encoding", video: "avc1.640028 1920x1080", message: "EncodingError" } });
+  };
+  const api = createExportApi({ spawn: () => new LoopbackWorker(w0), project: async () => project(), storage: storage([]) });
+  const job = await api.start(settings);
+  const r = await job.result;
+  assert.equal(r.stats.safeLevel, 1);
+  assert.equal(r.stats.failedAttempts?.length, 1);
+  assert.equal(r.stats.failedAttempts?.[0]?.video, "avc1.640028 1920x1080");
+  assert.ok(r.warnings.some((x) => /compatibility/.test(x)));
+});
+
+test("job: unreadable media is not retried (it would fail the same way)", async () => {
+  let spawned = 0;
+  const api = createExportApi({
+    spawn: () => (spawned++, new LoopbackWorker((w, m) => m.type === "start" && w.send({ type: "error", jobId: m.jobId, code: "media_unavailable", message: "nope" }))),
+    project: async () => project(),
+    storage: storage([]),
+  });
+  const job = await api.start(settings);
+  await assert.rejects(job.result, (e: unknown) => e instanceof ExportError && e.code === "media_unavailable");
+  assert.equal(spawned, 1);
+});
+
+test("job: a worker that goes silent is taken down after the stall limit and retried", async () => {
+  let spawned = 0;
+  const api = createExportApi({ spawn: () => (spawned++, new LoopbackWorker(() => undefined)), project: async () => project(), storage: storage([]), stallMs: 20 });
+  const job = await api.start(settings);
+  await assert.rejects(job.result, (e: unknown) => e instanceof ExportError && /stopped responding/.test(e.message) && e.detail?.stage === "starting");
+  assert.equal(spawned, 4);
 });
 
 test("Tauri backend: export is a typed 'not yet' until native encoding exists", async () => {
@@ -394,6 +471,37 @@ test("decoder adapter: ticks map to the media's own frame (floor), repeat withou
   opened.video!.close();
   opened.audio!.close();
   assert.deepEqual(m.counts(), { released: 3, closed: 1 });
+});
+
+test("decoder adapter: sequential export decodes through one stream (each picture once), skips frames it does not need, restarts for a backward or far jump, and falls back when streaming fails", async () => {
+  const m = fakeMedia({ fps: { num: 30, den: 1 }, packets: 600 });
+  const h = (await m.api.open(new Blob(["x"]))) as unknown as MediaHandle & { stream?: unknown };
+  const starts: number[] = [];
+  let streamReleased = 0;
+  let fail = false;
+  h.stream = (start: number) => {
+    starts.push(start);
+    let i = start;
+    return {
+      next: async () => { if (fail) throw new Error("no stream"); return { kind: "gpu", index: i++, ptsTicks: 0, width: 160, height: 120, frame: {} as VideoFrame, release: () => void streamReleased++ }; },
+      buffered: () => 0,
+      close: () => undefined,
+    };
+  };
+  const opened = await openBlobMedia({ open: async () => h } as MediaApi, new Blob(["x"]), 48000, "clip");
+  const at = (frame: number) => Math.round((frame / 30) * T);
+  for (const f of [0, 1, 2, 4, 5]) await opened.video!.frame(at(f)); // frame 3 is skipped (a speed-up): pulled and released
+  assert.deepEqual(starts, [0], "one stream for the whole forward run");
+  assert.deepEqual(m.asked, [], "no random-access decode");
+  assert.equal(streamReleased, 5, "skipped and replaced frames are released (the last one is still held)");
+  await opened.video!.frame(at(400)); // far ahead: restart there instead of decoding 400 frames
+  assert.deepEqual(starts, [0, 400]);
+  await opened.video!.frame(at(10)); // backward: random access, the stream is left alone
+  assert.deepEqual(m.asked, [10]);
+  fail = true;
+  await opened.video!.frame(at(401)); // stream breaks: this and every later frame use random access
+  await opened.video!.frame(at(402));
+  assert.deepEqual(m.asked, [10, 401, 402]);
 });
 
 test("decoder adapter: mono audio fills both channels, stereo deinterleaves", async () => {
