@@ -67,7 +67,7 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
           <span className="export-chip-text">{t("export.chip.text", { percent })}</span>
         </button>
       ) : (
-        <button className="primary" data-testid="export-open" onPointerEnter={() => void loadView()} onFocus={() => void loadView()} disabled={!engine || !src} title={!src ? t("export.needClip") : undefined} onClick={() => setOpen(true)}>
+        <button className="primary" data-testid="export-open" onPointerEnter={() => void loadView()} onFocus={() => void loadView()} disabled={!engine || !src} title={!src ? t("export.needClip") : t("export.go")} onClick={() => setOpen(true)}>
           <Icon name="export" size={18} /><span>{t("export.label")}</span>
         </button>
       )}

@@ -44,6 +44,11 @@ export function Palette({ onClose }: { onClose(): void }) {
     else if (e.key === "ArrowUp") { e.preventDefault(); setAt((i) => Math.max(0, i - 1)); }
     else if (e.key === "Home" && e.ctrlKey) { e.preventDefault(); setAt(0); }
     else if (e.key === "Enter") { e.preventDefault(); const d = hits[at]; if (d) run(d); }
+    else if (e.key === "Tab") e.preventDefault(); // the input is the one tab stop of this modal: Tab never walks out to the page or the browser chrome (K-01)
+  };
+  const mark = (label: string) => {
+    const needle = q.trim().toLowerCase(), i = needle ? label.toLowerCase().indexOf(needle) : -1;
+    return i < 0 ? label : <>{label.slice(0, i)}<mark>{label.slice(i, i + needle.length)}</mark>{label.slice(i + needle.length)}</>;
   };
   const keyOf = (d: CommandDef) => { const k = (currentKeymap().get(d.id) ?? d.keys)[0]; return k ? chordLabel(k, apple) : ""; };
 
@@ -56,7 +61,7 @@ export function Palette({ onClose }: { onClose(): void }) {
         {hits.map((d, i) => (
           <li key={d.id} id={`pal-${d.id}`} role="option" aria-selected={i === at} aria-disabled={whyNot(d, avail) ? true : undefined} className={`${i === at ? "palette-row on" : "palette-row"}${whyNot(d, avail) ? " off" : ""}`} data-testid={`pal-${d.id}`}
             onPointerMove={() => setAt(i)} onClick={() => run(d)}>
-            <span>{t(`cmd.${d.id}`)}</span>
+            <span className="palette-name">{mark(t(`cmd.${d.id}`))}</span>
             {whyNot(d, avail) ? <small className="palette-why">{t(whyNot(d, avail)!)}</small> : !touch && keyOf(d) && <kbd>{keyOf(d)}</kbd>}
           </li>
         ))}

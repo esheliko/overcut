@@ -3,6 +3,7 @@ import { rememberFocus } from "../a11y/restoreFocus";
 import { useI18n } from "../i18n";
 import { MARKER_COLOURS } from "./markers";
 import type { SceneMarker } from "./scene";
+import { Icon } from "../icons";
 
 export type MarkerAction =
   | { a: "rename"; id: string; name: string }
@@ -64,7 +65,7 @@ export function MarkerMenu({ marker, anchor, onAct, onClose }: Props) {
         ))}
       </div>
       <button className="menu-row" role="menuitemcheckbox" aria-checked={marker.chapter} data-testid="marker-chapter" onClick={() => act({ a: "chapter", id: marker.id, chapter: !marker.chapter })}>
-        <span className="menu-check" aria-hidden="true">{marker.chapter ? "✓" : ""}</span><span>{t("marker.chapter")}</span>
+        <span className="menu-check" aria-hidden="true">{marker.chapter && <Icon name="check" size={16} />}</span><span>{t("marker.chapter")}</span>
       </button>
       <button className="menu-row" role="menuitem" data-danger="true" data-testid="marker-delete" onClick={() => act({ a: "delete", id: marker.id })}>{t("marker.delete")}</button>
     </div>

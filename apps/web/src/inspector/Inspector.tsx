@@ -1,6 +1,7 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 import type { Clip, ClipTransform, Fit, Op, Project } from "@app/engine-client";
 import { useI18n } from "../i18n";
+import { Icon } from "../icons";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { isIdentity, newGestureKey, setField, setFit, toggleFlip, valuesOf, RESET, rangeOf, type NumKey } from "./transformModel";
 import { EASING_CHOICES, PROPS_OF, easingId, easingOps, keyNear, keyState, neighbourKey, relativeTicks, setKeyOps, ticksPerFrame, ticksToFrame, toggleKeyOps, type EasingId } from "./keyframeModel";
@@ -87,6 +88,8 @@ export function Inspector(): ReactNode {
   const playhead = useProjectStore((s) => s.playhead);
   const edit = useTransformEdit();
   const key = useRef<number | undefined>(undefined);
+  const drag = useRef<{ x: number; v: number; moved: boolean } | null>(null); // a label drag-scrub in progress
+  const [clamped, setClamped] = useState<{ key: NumKey; text: string } | null>(null); // F-01: the field a typed number was limited on, and why
   const clip = selectedVideoClip(project, selection);
   if (!clip || !project) return <p className="insp-empty">{t("inspector.none")}</p>;
   const rate = project.sequences[0]!.frame_rate;
@@ -122,10 +125,36 @@ export function Inspector(): ReactNode {
     const near = keyNear(anim, rel, tol);
     const [lo, hi] = rangeOf(f.key, v);
     const name = t(f.label);
+    const shown = Math.round(v[f.key] * f.mul * 100) / 100;
+    const atDefault = Math.abs(v[f.key] - DEFAULT_OF[f.key]) < 1e-9;
+    // Typing past the range limits the value; say so next to the field (live region) instead of silently changing the number.
+    const typed = (raw: number) => {
+      const [a, b] = [lo * f.mul, hi * f.mul];
+      setClamped(raw > b ? { key: f.key, text: t("inspector.clamp.max", { value: String(b), unit: f.unit }) } : raw < a ? { key: f.key, text: t("inspector.clamp.min", { value: String(a), unit: f.unit }) } : null);
+      set(f, raw / f.mul);
+    };
+    // Drag the label sideways to scrub the value: 4 px = one step, Shift x10, Alt x0.1. One drag is one undo step.
+    const scrub = {
+      onPointerDown: (e: PointerEvent<HTMLSpanElement>) => {
+        if (readOnly || e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { x: e.clientX, v: shown, moved: false };
+        key.current = newGestureKey();
+      },
+      onPointerMove: (e: PointerEvent<HTMLSpanElement>) => {
+        const d = drag.current;
+        if (!d || !e.currentTarget.hasPointerCapture(e.pointerId) || (!d.moved && Math.abs(e.clientX - d.x) < 3)) return;
+        d.moved = true;
+        const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+        typed(Math.round((d.v + ((e.clientX - d.x) / 4) * f.step * mult) * 100) / 100);
+      },
+      onPointerUp: () => { if (drag.current) key.current = undefined; },
+      onClick: (e: React.MouseEvent) => { if (drag.current?.moved) e.preventDefault(); drag.current = null; }, // a drag is not a click: do not focus the field
+    };
     return (
       <div key={f.key} className="insp-field" data-keystate={state}>
         <label className="insp-fl">
-          <span>{name}</span>
+          <span className="insp-name" {...scrub}>{name}</span>
           <input
             type="number"
             inputMode="decimal"
@@ -134,13 +163,26 @@ export function Inspector(): ReactNode {
             step={f.step}
             min={lo * f.mul}
             max={hi * f.mul}
-            value={Math.round(v[f.key] * f.mul * 100) / 100}
+            value={shown}
             onFocus={() => (key.current = newGestureKey())}
-            onBlur={() => (key.current = undefined)}
-            onChange={(e) => e.currentTarget.value !== "" && set(f, Number(e.currentTarget.value) / f.mul)}
+            onBlur={() => { key.current = undefined; setClamped(null); }}
+            onChange={(e) => e.currentTarget.value !== "" && typed(Number(e.currentTarget.value))}
           />
           <em>{f.unit}</em>
         </label>
+        <button
+          type="button"
+          className="insp-kbtn insp-fieldreset"
+          data-testid={`insp-resetfield-${f.key}`}
+          aria-label={t("inspector.resetField", { name })}
+          title={t("inspector.resetField", { name })}
+          style={atDefault ? { visibility: "hidden" } : undefined}
+          tabIndex={atDefault ? -1 : 0}
+          disabled={readOnly || atDefault}
+          onClick={() => { setClamped(null); set(f, DEFAULT_OF[f.key]); }}
+        >
+          <Icon name="reset" size={16} />
+        </button>
         <button
           type="button"
           className="insp-kbtn insp-diamond"
@@ -152,9 +194,10 @@ export function Inspector(): ReactNode {
         >
           <Diamond filled={state === "on"} />
         </button>
+        <span className="insp-note" role="status" aria-live="polite" data-testid={`insp-note-${f.key}`}>{clamped?.key === f.key ? clamped.text : ""}</span>
         {state !== "none" && (
           <div className="insp-sub">
-            <button type="button" className="insp-kbtn" data-testid={`insp-prevkey-${f.key}`} aria-label={t("inspector.prevKey", { name })} disabled={neighbourKey(anim, rel, tol, -1) === undefined} onClick={() => step(f, -1)}>‹</button>
+            <button type="button" className="insp-kbtn" data-testid={`insp-prevkey-${f.key}`} aria-label={t("inspector.prevKey", { name })} disabled={neighbourKey(anim, rel, tol, -1) === undefined} onClick={() => step(f, -1)}><Icon name="chevronLeft" size={18} /></button>
             {near ? (
               <select
                 className="insp-ease"
@@ -173,14 +216,14 @@ export function Inspector(): ReactNode {
             ) : (
               <span className="insp-between">{t("inspector.betweenKeys")}</span>
             )}
-            <button type="button" className="insp-kbtn" data-testid={`insp-nextkey-${f.key}`} aria-label={t("inspector.nextKey", { name })} disabled={neighbourKey(anim, rel, tol, 1) === undefined} onClick={() => step(f, 1)}>›</button>
+            <button type="button" className="insp-kbtn" data-testid={`insp-nextkey-${f.key}`} aria-label={t("inspector.nextKey", { name })} disabled={neighbourKey(anim, rel, tol, 1) === undefined} onClick={() => step(f, 1)}><Icon name="chevronRight" size={18} /></button>
           </div>
         )}
       </div>
     );
   };
   return (
-    <div className="insp" data-testid="inspector-fields">
+    <div className="insp" data-testid="inspector-fields" data-anim={[...FIELDS, ...CROPS].some((f) => tr?.[PROPS_OF[f.key]![0]!]?.keys?.length) || undefined}>
       {FIELDS.map(field)}
       <details className="insp-more">
         <summary data-testid="insp-more">{t("inspector.more")}</summary>

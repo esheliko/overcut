@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { rememberFocus } from "../a11y/restoreFocus";
 import { useI18n } from "../i18n";
+import { Icon } from "../icons";
 
 export interface MenuItem {
   id: string;
@@ -63,7 +64,7 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
   return (
     <div ref={box} className={sheet ? "menu-pop tl-menu tl-sheet" : "menu-pop tl-menu"} role="menu" aria-label={name} data-testid={testid ?? "toolbar-menu"} onKeyDown={onKey}
       style={sheet ? undefined : { left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}>
-      {sheet && <div className="tl-sheet-title">{name}<button className="icon-btn" aria-label={t("timeline.close")} onClick={close}>×</button></div>}
+      {sheet && <div className="tl-sheet-title">{name}<button className="icon-btn" aria-label={t("timeline.close")} onClick={close}><Icon name="close" size={18} /></button></div>}
       {items.map((it) => {
         const head = it.section && it.section !== section ? <div key={`s-${it.id}`} className="menu-group" role="presentation">{it.section}</div> : null;
         section = it.section ?? section;
@@ -73,7 +74,7 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
             {head}
             <button className="menu-row" role={radio ? "menuitemradio" : "menuitem"} aria-checked={radio ? !!it.checked : undefined} aria-disabled={it.disabled || undefined}
               data-testid={it.testid} onClick={() => { if (it.disabled) return; it.onSelect(); onClose(); back(); }}>
-              {radio && <span className="menu-check" aria-hidden="true">{it.checked ? "✓" : ""}</span>}
+              {radio && <span className="menu-check" aria-hidden="true">{it.checked && <Icon name="check" size={16} />}</span>}
               <span className="menu-label">{it.label}{why && <small className="menu-why">{why}</small>}</span>
               {it.hint && <kbd className="menu-hint">{it.hint}</kbd>}
             </button>
