@@ -2,6 +2,7 @@ import { acquireProjectLock, newProject, openProjectSession, openProjectStorage,
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { reportSaveStatus } from "./errorScreen/crash";
 import { useI18n } from "./i18n";
+import { Icon } from "./icons";
 import { longSampleProject, sampleProject } from "./timeline/fixture";
 
 type Hook = { session: ProjectSession; kill(): void; storageKind: string };
@@ -105,7 +106,7 @@ export function PersistenceNotes({ state, extra }: { state: ReturnType<typeof us
         <div className="persist-note" role="status" data-testid="recovery-note">
           <span>{t("persist.recovered")}</span>
           <button onClick={() => void undoRecovery()}>{t("persist.undo-recovery")}</button>
-          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={dismiss}>×</button>
+          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={dismiss}><Icon name="close" size={18} /></button>
         </div>
       )}
     </div>

@@ -24,6 +24,11 @@ export interface ProjectEntry {
   clips?: number;
   /** Milliseconds since the epoch: when the project was archived (tucked out of the main list, never deleted); absent = active. */
   archived?: number;
+  /** Length of the first sequence in ticks and the first track colour (`#rrggbb`), for the card's meta line and its placeholder. Absent until known. */
+  ticks?: number;
+  colour?: string;
+  /** A small preview picture of the project (`data:image/jpeg;base64,...`, 320x180, under 15 KB), refreshed when the project is left or after edits. Absent = the card draws a placeholder. */
+  poster?: string;
 }
 
 export interface RegistryData {
@@ -40,6 +45,18 @@ export function summarize(p: Project): Pick<ProjectEntry, "width" | "height" | "
     height: seq?.resolution.height,
     clips: p.sequences.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.clips.length, 0), 0),
   };
+}
+
+/** The sequence length (end of the last clip, ticks) and the first track colour of a project, for its list card. */
+export function summarizeExtra(p: Project): Pick<ProjectEntry, "ticks" | "colour"> {
+  const seq = p.sequences[0];
+  let ticks = 0;
+  let colour: string | undefined;
+  for (const t of seq?.tracks ?? []) {
+    colour ??= typeof t.colour === "string" && /^#[0-9a-fA-F]{6}$/.test(t.colour) ? t.colour : undefined;
+    for (const c of t.clips) ticks = Math.max(ticks, c.start + c.duration);
+  }
+  return { ticks, colour };
 }
 
 /** A fresh flat id: `p` + time + randomness. Never `default` or `registry`. */

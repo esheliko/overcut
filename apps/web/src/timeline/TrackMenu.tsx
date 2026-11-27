@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 import type { Toggle } from "./header";
 import type { Scene } from "./scene";
 import { cleanName, isOn, rowRange } from "./tracks";
+import { Icon } from "../icons";
 
 export type TrackMenuTarget = { kind: "track"; track: number } | { kind: "add" };
 export type TrackAction =
@@ -59,7 +60,7 @@ export function TrackMenu({ scene, target, anchor, onAct, onClose }: Props) {
 
   const row = (label: string, onClick: () => void, o: { testid?: string; disabled?: boolean; on?: boolean; danger?: boolean } = {}) => (
     <button key={label} className="menu-row" role={o.on === undefined ? "menuitem" : "menuitemcheckbox"} aria-checked={o.on} disabled={o.disabled} data-testid={o.testid} data-danger={o.danger || undefined} onClick={onClick}>
-      {o.on !== undefined && <span className="menu-check" aria-hidden="true">{o.on ? "✓" : ""}</span>}<span>{label}</span>
+      {o.on !== undefined && <span className="menu-check" aria-hidden="true">{o.on && <Icon name="check" size={16} />}</span>}<span>{label}</span>
     </button>
   );
 

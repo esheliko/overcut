@@ -50,12 +50,15 @@ export function useImportPicker(onImport: (s: Source[]) => void, testId = "media
 function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onRemove" | "onRelink">) {
   const { t } = useI18n();
   const ready = item.status === "ready";
+  // The duration is a badge on the poster; the meta line keeps what does not fit there (size first, so a narrow panel cuts the codec, never the size). The full line is the tooltip.
+  const duration = ready && item.kind !== "image" ? formatDuration(item.durationTicks) : "";
   const meta = [
-    item.kind !== "image" && formatDuration(item.durationTicks),
     item.width && item.height ? `${item.width}×${item.height}` : "",
-    item.codec,
     formatBytes(item.size),
+    item.codec,
   ].filter(Boolean).join(" · ");
+  const tooltip = [duration, item.width && item.height ? `${item.width}×${item.height}` : "", item.codec, formatBytes(item.size)].filter(Boolean).join(" · ");
+  const offline = item.status === "offline";
   return (
     <li
       className="bin-card"
@@ -66,7 +69,8 @@ function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }:
       onDragStart={(e) => { e.dataTransfer.setData(BIN_DRAG_TYPE, item.id); e.dataTransfer.effectAllowed = "copy"; }}
     >
       <span className="bin-thumb" aria-hidden="true">
-        {item.poster ? <img src={item.poster} alt="" draggable={false} /> : <Icon name={iconForKind(item.kind)} size={22} />}
+        {item.poster ? <img src={item.poster} alt="" draggable={false} /> : <Icon name={offline ? "warn" : iconForKind(item.kind)} size={22} />}
+        {duration && <span className="bin-dur">{duration}</span>}
       </span>
       <span className="bin-text">
         <strong title={item.name}>{item.name}</strong>
@@ -75,15 +79,15 @@ function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }:
           <span className="bin-line">
             {/* "On the timeline" is a check mark in the meta line (its words stay for screen readers and as the tooltip): one line less per card */}
             {onTimeline && <span className="bin-on-timeline" data-testid="bin-on-timeline" title={t("media.onTimeline")}><Icon name="check" size={14} aria-hidden="true" /><span className="sr-only">{t("media.onTimeline")}</span></span>}
-            <span className="bin-meta" title={meta}>{meta}</span>
+            <span className="bin-meta" title={tooltip}>{meta}</span>
           </span>
         )}
         {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
         {item.status === "offline" && <span role="alert">{t(offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
         {item.status === "unsupported" && <span role="alert" className="bin-error">{item.message}</span>}
-        {item.status === "offline" && <button className="bin-link" style={{ alignSelf: "flex-start", marginBlockStart: 4 }} onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
+        {item.status === "offline" && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       </span>
-      {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span>{t("media.tags.editShort")}</span></button>}
+      {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span className="sr-only">{t("media.tags.editShort")}</span></button>}
       {ready && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
       {item.status === "unsupported" && <button className="icon-btn bin-act" aria-label={t("media.dismiss", { name: item.name })} onClick={() => onRemove(item.id)}><Icon name="close" size={18} /></button>}
     </li>

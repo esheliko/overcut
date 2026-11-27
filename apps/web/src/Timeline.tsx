@@ -404,15 +404,16 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           <button className="icon-btn" aria-label={redoText} title={tip(redoText, KEYS.redo)} disabled={off || !proj.canRedo} onClick={() => run({ c: "redo" })}><Icon name="redo" /></button>
           <span className="sep" aria-hidden="true" />
           <button className="icon-btn" aria-label={t("timeline.split")} title={tip(t("timeline.split"), KEYS.split)} disabled={off} onClick={() => run({ c: "split" })}><Icon name="split" /></button>
+          <span className="sep" aria-hidden="true" />
           <button className="icon-btn" aria-label={t("timeline.delete")} title={tip(t("timeline.delete"), KEYS.del)} disabled={off || none} onClick={() => run({ c: "delete" })}><Icon name="trash" /></button>
           <button className="icon-btn tl-wide" aria-label={t("timeline.rippleDelete")} title={tip(t("timeline.rippleDelete"), KEYS.rippleDel)} data-testid="tl-ripple-delete" disabled={off || none} onClick={() => run({ c: "rippleDelete" })}><Icon name="rippleDelete" /></button>
           <span className="sep tl-wide" aria-hidden="true" />
           <button className={tool === "select" ? "tl-pick" : "tl-pick on"} aria-haspopup="menu" aria-expanded={menuOpen === "tool"} data-testid="tl-tool" data-tool={tool} title={t("timeline.tool.pick")}
             aria-label={t("timeline.tool.current", { tool: t(`timeline.tool.${tool}`) })} onClick={(e) => openBar("tool", e.currentTarget)}>
-            <span>{t(`timeline.tool.${tool}`)}</span><span aria-hidden="true" className="tl-caret">▾</span>
+            <span>{t(`timeline.tool.${tool}`)}</span><Icon name="chevronDown" size={14} className="tl-caret" />
           </button>
-          <button className="tl-pick" aria-haspopup="menu" aria-expanded={menuOpen === "more"} data-testid="tl-more" onClick={(e) => openBar("more", e.currentTarget)}>
-            <span>{t("timeline.more")}</span><span aria-hidden="true" className="tl-caret">▾</span>
+          <button className="tl-pick" aria-haspopup="menu" aria-expanded={menuOpen === "more"} data-testid="tl-more" title={t("timeline.more")} onClick={(e) => openBar("more", e.currentTarget)}>
+            <span>{t("timeline.more")}</span><Icon name="chevronDown" size={14} className="tl-caret" />
           </button>
         </div>
         <div className="tl-right">
@@ -481,9 +482,9 @@ const ZoomBar = memo(function ZoomBar({ onFit }: { onFit: () => void }) {
   const zoom = useSyncExternalStore(zoomStore.subscribe, zoomStore.get, zoomStore.get);
   return (
     <label className="zoom">
-      <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomOut")} onClick={() => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user")}><Icon name="minus" size={18} /></button>
+      <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomOut")} title={tip(t("timeline.zoomOut"), "-")} onClick={() => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user")}><Icon name="minus" size={18} /></button>
       <input type="range" min={0} max={1} step={0.005} value={ppsToSlider(zoom)} onChange={(e) => zoomStore.set(sliderToPps(Number(e.target.value)), "user")} aria-label={t("timeline.zoom")} />
-      <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomIn")} onClick={() => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user")}><Icon name="plus" size={18} /></button>
+      <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomIn")} title={tip(t("timeline.zoomIn"), "+")} onClick={() => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user")}><Icon name="plus" size={18} /></button>
       <button type="button" className="icon-btn tl-fit" aria-label={t("timeline.fit")} title={tip(t("timeline.fit"), "0")} data-testid="tl-fit" onClick={onFit}><Icon name="fit" size={18} /></button>
     </label>
   );

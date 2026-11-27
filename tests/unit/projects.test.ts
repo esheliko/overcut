@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { memoryStorage } from "../../packages/engine-client/src/persist/memory";
 import { CHECKPOINT_FILE, JOURNAL_FILE, PROJECT_FILE } from "../../packages/engine-client/src/persist/session";
 import { SnapshotStore } from "../../packages/engine-client/src/persist/snapshots";
-import { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_FILE, copyName, deleteProjectData, migrateSingleProject, newProjectId, summarize } from "../../packages/engine-client/src/persist/registry";
+import { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_FILE, copyName, deleteProjectData, migrateSingleProject, newProjectId, summarize, summarizeExtra } from "../../packages/engine-client/src/persist/registry";
 import { isArchived, libraryView, shapeBox, startScreen, whenLabel } from "../../apps/web/src/projectsView";
 import type { Project } from "../../packages/engine-client/src/model.generated";
 
@@ -106,6 +106,12 @@ test("a project's row facts are counted from the project itself", () => {
   const project = { sequences: [{ resolution: { width: 1080, height: 1920 }, tracks: [{ clips: [1, 2] }, { clips: [3] }] }] } as unknown as Project;
   assert.deepEqual(summarize(project), { width: 1080, height: 1920, clips: 3 });
   assert.deepEqual(summarize({ sequences: [] } as unknown as Project), { width: undefined, height: undefined, clips: 0 });
+});
+
+test("a project's length and tint for its card come from the project", () => {
+  const project = { sequences: [{ tracks: [{ colour: null, clips: [{ start: 0, duration: 100 }] }, { colour: "#ff8800", clips: [{ start: 50, duration: 400 }] }] }] } as unknown as Project;
+  assert.deepEqual(summarizeExtra(project), { ticks: 450, colour: "#ff8800" });
+  assert.deepEqual(summarizeExtra({ sequences: [] } as unknown as Project), { ticks: 0, colour: undefined });
 });
 
 test("list view helpers: first screen, real canvas shape, relative times", () => {

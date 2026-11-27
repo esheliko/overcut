@@ -39,7 +39,7 @@ test("install: nothing is offered unasked; a browser install prompt adds an Inst
   await page.getByRole("button", { name: "Menu" }).click();
   const item = page.getByTestId("menu-install");
   await expect(item).toBeVisible();
-  expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(test.info().project.name === "phone" ? 43.5 : 31.5); // menu rows: 44 px on touch, 32 px desktop density with a mouse (V-11)
   await item.click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __prompted?: boolean }).__prompted)).toBe(true);
   await expect(item).toHaveCount(0); // used once; the menu closed
