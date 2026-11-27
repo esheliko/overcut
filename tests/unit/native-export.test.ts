@@ -63,7 +63,7 @@ function fake(over: { failBegin?: string; failVideoAt?: number } = {}) {
     resize: () => undefined,
     present: () => undefined,
     readback: async (_l: unknown, _s: unknown, out: { width: number; height: number }) => new Uint8Array(out.width * out.height * 4),
-    allocStats: () => ({ textures: 0, buffers: 0, bind_groups: 0 }),
+    allocStats: () => ({ textures: 0, buffers: 0, bind_groups: 0, errors: 0 }),
     dispose: () => undefined,
   } as unknown as GpuRenderer;
   const host: NativeExportHost = {
