@@ -3,7 +3,7 @@
  * "playback" drives the preview Worker (PreviewHost: decode, compositor, player) on a hidden canvas; "exportSpeed" drives `engine.export`.
  * Both fail soft (unsupported / error / timeout with a reason) and report flat numbers like the Worker tests.
  */
-import { createEngine, ExportError, type Project } from "@app/engine-client";
+import { createEngine, ExportError, type ExportFailureDetail, type Project } from "@app/engine-client";
 import { patternProject } from "../ExportHarness";
 import { PreviewHost } from "../preview/host";
 import { TICKS_PER_SECOND } from "../preview/timing";
@@ -85,10 +85,36 @@ async function exportSpeed(progress: (f: number) => void): Promise<Record<string
     const r = await job.result;
     await r.remove().catch(() => undefined);
     const st = r.stats;
-    return { size: "1920x1080@30", seconds: 10, audio: "yes", codec: st.codecs, x_realtime: Math.round(st.speedVsRealtime * 100) / 100, encode_ms: Math.round(st.encodeMs), frames: st.frames, file_mb: Math.round((st.fileBytes / 1e6) * 10) / 10 };
+    return { size: "1920x1080@30", seconds: 10, audio: "yes", codec: st.codecs, x_realtime: Math.round(st.speedVsRealtime * 100) / 100, encode_ms: Math.round(st.encodeMs), frames: st.frames, file_mb: Math.round((st.fileBytes / 1e6) * 10) / 10, safe_level: st.safeLevel ?? 0, ...(st.failedAttempts?.length ? failureMetrics(undefined, st.failedAttempts) : {}) };
   } finally {
     clearTimeout(timer);
   }
+}
+
+const clip = (v: string | undefined, n: number): string => (v ?? "").replace(/\s+/g, " ").slice(0, n);
+
+/** The failure of an export, flat and short enough for the copied report: where it died, what the browser said, which encoder config was tried. */
+export function failureMetrics(e: ExportError | undefined, attempts: ExportFailureDetail[] = e?.detail?.attempts ?? []): Record<string, number | string> {
+  const m: Record<string, number | string> = {};
+  const d = e?.detail;
+  if (e) {
+    m.error_code = e.code;
+    if (d?.stage) m.stage = d.stage;
+    if (d?.frames !== undefined) m.frames_done = d.frames;
+    if (d?.level !== undefined) m.safe_level = d.level;
+    if (d?.name) m.err_name = d.name;
+    if (d?.message) m.err_msg = clip(d.message, 200);
+    if (d?.filename) m.err_file = clip(d.filename.split("/").slice(-2).join("/"), 80);
+    if (d?.lineno !== undefined) m.err_line = `${d.lineno}:${d.colno ?? 0}`;
+    if (d?.stack) m.err_stack = clip(d.stack, 400);
+    if (d?.video) m.video_cfg = d.video;
+    if (d?.audio) m.audio_cfg = d.audio;
+  }
+  m.attempts = attempts.length + (e ? 1 : 0);
+  attempts.slice(0, 4).forEach((a, i) => {
+    m[`attempt${i + 1}`] = clip(`L${a.level ?? 0} stage=${a.stage ?? "?"} frames=${a.frames ?? 0} ${a.video ?? ""} | ${a.name ? `${a.name}: ` : ""}${a.message ?? ""}${a.filename ? ` @${a.filename.split("/").pop()}:${a.lineno ?? 0}` : ""}`, 300);
+  });
+  return m;
 }
 
 export const PIPELINE_TESTS: readonly TestId[] = ["playback", "exportSpeed"];
@@ -104,7 +130,8 @@ export async function runPipelineTest(id: TestId, progress: (f: number) => void)
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "__timeout") return done({ status: "timeout", metrics: {} });
-    const unsupported = /unsupported|not available|WebGPU|WebGL|WebCodecs|Worker/i.test(msg) || (e instanceof ExportError && e.code === "unsupported");
-    return done({ status: unsupported ? "unsupported" : "error", reason: msg.slice(0, 160), metrics: {} });
+    // A crashed or failed export is an error with its cause attached, never "unsupported": only "this device cannot do it at all" is.
+    const unsupported = e instanceof ExportError ? e.code === "unsupported" : /unsupported|not available|WebGPU|WebGL|WebCodecs|Worker/i.test(msg);
+    return done({ status: unsupported ? "unsupported" : "error", reason: msg.slice(0, 160), metrics: e instanceof ExportError ? failureMetrics(e) : {} });
   }
 }
