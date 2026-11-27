@@ -185,7 +185,7 @@ test("a clip already on the timeline has no \"+\" (no duplicate on a second clic
   await ready(page);
   await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4")); // the first import is added to the timeline
   await expect(summary(page)).toContainText("2 clips");
-  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // the sheet closes itself after an import: wait for that, clicking earlier would toggle it shut
   const first = page.getByTestId("bin-item").filter({ hasText: "h264_aac.mp4" });
   await expect(first.getByTestId("bin-on-timeline")).toHaveText("On the timeline");
   await expect(first.getByRole("button", { name: /Add .* to the timeline/ })).toHaveCount(0);
@@ -193,7 +193,7 @@ test("a clip already on the timeline has no \"+\" (no duplicate on a second clic
   await expect(page.getByTestId("preview-import")).toHaveCount(0); // the Media panel has the one Import
   await page.getByTestId("media-input").setInputFiles(file("vp9_opus.webm"));
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
-  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // the sheet closes itself after an import: wait for that, clicking earlier would toggle it shut
   const second = page.getByTestId("bin-item").filter({ hasText: "vp9_opus.webm" });
   await expect(second.getByRole("button", { name: "Add vp9_opus.webm to the timeline" })).toBeVisible();
   await expect(second.getByTestId("bin-on-timeline")).toHaveCount(0);

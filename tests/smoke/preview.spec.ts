@@ -26,8 +26,9 @@ test("a portrait phone clip shows upright (display rotation applied) and the pre
   await expect(page.getByTestId("timecode")).toContainText("00:00:00:00");
   // Frame 0 is on the canvas (not black) and the canvas is not stretched: backing aspect equals the display aspect.
   await expect.poll(async () => { const b = (await page.getByTestId("preview-canvas").boundingBox())!; return Math.abs(b.width / b.height - 0.75); }).toBeLessThan(0.02); // layout transition done
-  await page.waitForTimeout(150);
-  // The canvas belongs to the preview Worker: its backing size and pixels are asked of the Worker.
+  // The canvas belongs to the preview Worker: its backing size and pixels are asked of the Worker. The backing store follows the box once the box has stopped
+  // animating (debounced resize), so wait for it to take the display aspect instead of reading it after a fixed pause.
+  await expect.poll(() => page.evaluate(async () => { const { canvas } = await (window as unknown as { __overcutPreview: { gpu(): Promise<{ canvas: { width: number; height: number } }> } }).__overcutPreview.gpu(); return Math.abs(canvas.width / canvas.height - 120 / 160); }), { timeout: 10_000 }).toBeLessThan(0.02);
   const px = await page.evaluate(async () => {
     const h = (window as unknown as { __overcutPreview: { gpu(): Promise<{ canvas: { width: number; height: number } }>; probe(x: number, y: number): Promise<number[]> } }).__overcutPreview;
     const { canvas } = await h.gpu();
