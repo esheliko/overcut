@@ -11,7 +11,9 @@ import type { TestResult } from "../../apps/web/src/diagnostics/types";
 test("the faster measured path wins, zero-copy is never assumed, a failed path never wins, nothing measurable falls back to the frame path", () => {
   assert.equal(pickPath({ frame: 5.9, cpu: 27 }), "frame"); // Intel UHD 630: copy 5.9 ms vs CPU 27 ms
   assert.equal(pickPath({ frame: 40, cpu: 9 }), "cpu");
-  assert.equal(pickPath({ frame: 10, cpu: 9.5 }), "frame"); // within 10%: the path that needs no CPU copy
+  assert.equal(pickPath({ frame: 10, cpu: 9.5 }), "frame"); // within 25%: the path that needs no CPU copy
+  assert.equal(pickPath({ frame: 10, cpu: 8 }), "frame");
+  assert.equal(pickPath({ frame: 10, cpu: 7 }), "cpu");
   assert.equal(pickPath({ frame: null, cpu: 30 }), "cpu");
   assert.equal(pickPath({ frame: 8, cpu: null }), "frame");
   assert.equal(pickPath({ frame: null, cpu: null }), "frame");
@@ -25,6 +27,19 @@ test("the cache key changes with the GPU, the backend and the browser version", 
   assert.notEqual(k, uploadKey("webgpu", "Xclipse 940", ua));
   assert.notEqual(k, uploadKey("webgl2", "Mali", ua));
   assert.notEqual(k, uploadKey("webgl2", "Xclipse 940", ua.replace("157", "158")));
+  // A value cached by the old measuring method (no version suffix) is never found under the current key: it is measured again.
+  assert.ok(k.endsWith("|v2"));
+  assert.notEqual(k, "webgl2|Xclipse 940|Chrome/157.0.0.0");
+});
+
+test("S24 regression: both paths measured together; a run disturbed by playback is dropped, not stored", async () => {
+  const saved: UploadChoice[] = [];
+  const ok = await chooseUploadPath({ key: "k", cached: async () => null, save: (_k, v) => void saved.push(v), measure: async () => null, measureAll: async () => ({ frame: 9.5, cpu: 28 }) });
+  assert.deepEqual([ok.path, ok.source, saved.length], ["frame", "measured", 1]);
+  // The numbers the v1 method produced on the S24 (frame 45 ms, cpu 28 ms) would still pick cpu; the fix is the method, not the threshold.
+  assert.equal(pickPath({ frame: 45.36, cpu: 28.19 }), "cpu");
+  const disturbed = await chooseUploadPath({ key: "k", cached: async () => null, save: (_k, v) => void saved.push(v), measure: async () => null, measureAll: async () => ({ frame: 45, cpu: 20 }), undisturbed: () => false });
+  assert.deepEqual([disturbed.path, disturbed.source, saved.length], ["frame", "default", 1]);
 });
 
 test("a stored choice is reused without measuring; a bad or missing one is measured and saved; a run where nothing worked is not remembered", async () => {

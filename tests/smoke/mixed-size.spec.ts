@@ -30,7 +30,7 @@ for (const path of ["frame", "cpu"] as const) {
     await importMixed(page);
     // Pin the device-measured upload choice (cached per backend, GPU and browser version in local storage), then start over so the Worker reads it.
     const g = await page.evaluate(async () => { const { info } = await (window as unknown as { __overcutPreview: Hook }).__overcutPreview.gpu(); return { info, ua: navigator.userAgent }; });
-    await page.evaluate(([i, ua, p]) => { const v = /(Edg|CriOS|Firefox|Chrome|Version)\/([\d.]+)/.exec(ua)!; localStorage.setItem("overcut.uploadPath", JSON.stringify({ [`${i.backend}|${i.adapter}|${v[1]}/${v[2]}`]: { path: p, ms: {} } })); }, [g.info, g.ua, path] as const);
+    await page.evaluate(([i, ua, p]) => { const v = /(Edg|CriOS|Firefox|Chrome|Version)\/([\d.]+)/.exec(ua)!; localStorage.setItem("overcut.uploadPath", JSON.stringify({ [`${i.backend}|${i.adapter}|${v[1]}/${v[2]}|v2`]: { path: p, ms: {} } })); }, [g.info, g.ua, path] as const);
     await page.reload();
     await importMixed(page);
     await page.evaluate(async () => {
