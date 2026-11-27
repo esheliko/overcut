@@ -338,7 +338,7 @@ fn parse_trak(
     };
     let end = packets
         .iter()
-        .map(|p| p.pts + p.duration)
+        .map(|p| Time::from_ticks(p.pts.ticks().saturating_add(p.duration.ticks())))
         .max()
         .unwrap_or(Time::ZERO);
     let duration = to_time(mdhd_dur as i64, u64::from(timescale))
