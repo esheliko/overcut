@@ -25,6 +25,8 @@ export interface MuxerOptions {
   /** Upper bounds on packets per track; sizes the reserved index of a fast-start MP4. */
   maxVideoPackets: number;
   maxAudioPackets: number;
+  /** Where the picture ends, in seconds: the sound is cut there (`fitAudioPacket`). Omit to keep every packet. */
+  endSeconds?: number;
   /** Creation time metadata; default: now. */
   creationTime?: Date;
   /** Positioned writes (the muxer seeks back to patch headers). Closed by `finalize`. */
@@ -46,11 +48,28 @@ export async function createMuxer(o: MuxerOptions): Promise<Muxer> {
   await output.start();
   return {
     addVideo: (chunk, meta) => video.add(EncodedPacket.fromEncodedChunk(chunk), meta),
-    addAudio: (chunk, meta) => audio.add(EncodedPacket.fromEncodedChunk(chunk), meta),
+    addAudio: async (chunk, meta) => {
+      const packet = EncodedPacket.fromEncodedChunk(chunk);
+      const fit = fitAudioPacket(packet.timestamp, packet.duration, o.endSeconds);
+      if (fit === null) return; // after the picture's last frame: the encoder's padding packet
+      await audio.add(fit === packet.duration ? packet : packet.clone({ duration: fit }), meta);
+    },
     finalize: () => output.finalize(),
     cancel: () => output.cancel(),
     mime: () => output.getMimeType(),
   };
+}
+
+/**
+ * What to do with an encoded audio packet at `timestamp` of `duration` (seconds) when the picture ends at `end`: `null` = drop it (it starts at or after the end),
+ * else the duration to keep (cut back so the track ends with the picture). The Opus encoder flushes a last, padded 20 ms packet past the final sample, which
+ * made the audio 20 ms longer than the video (#138). Without an `end` every packet is kept as it is.
+ */
+export function fitAudioPacket(timestamp: number, duration: number, end: number | undefined): number | null {
+  if (end === undefined) return duration;
+  const eps = 1e-9;
+  if (timestamp >= end - eps) return null;
+  return Math.min(duration, end - timestamp);
 }
 
 /** Audio packets are at most one per 480 samples (Opus 10 ms) in practice 960/1024; the bound adds a third on top, as the library advises. */

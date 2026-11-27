@@ -2,6 +2,13 @@
 
 Every change to a rule, instruction, hook, CI or deploy mechanism gets an entry here (newest first) with an expected effect and a review-by date, so a change is judged by what happened, not by feel. Format and workflow: `.claude/skills/process/SKILL.md`. Checked by `tests/unit/process-changelog.test.ts`.
 
+## 2026-11-27 · #201 #199 · Preview URL parsing, service worker freshness
+What: `preview.yml` takes the URL from `scripts/vercel-url.mjs` (exact `https://*.vercel.app` match) and the PR comment says a Vercel sign-in is needed; `sw.js` races network vs cached shell (3 s), cache name stamped with the build hash (Vite plugin), old caches deleted on activate; `/assets/*` served `immutable`.
+Why: preview job reported "no deployment URL" although Vercel deployed (CLI 66 output); a slow network blocked app start and stale caches could linger.
+Expected effect: `preview` job green on labelled PRs with a working link; installed app opens within ~3 s on a bad connection; repeat visits reuse hashed assets without revalidation.
+Review by: 2026-12-11
+Status: pending
+
 ## 2026-11-25 · #166 · Previews only for PRs labelled `preview`
 What: `preview.yml` triggers on `pull_request` (labeled/synchronize/opened/reopened) and runs only with the `preview` label; no preview for branch pushes. A Vercel refusal now fails the job and comments on the PR instead of ending green with an empty URL. `deploy-web` unchanged.
 Why: owner approved on #166 after previews on every push hit Vercel's free daily deployment limit.

@@ -11,6 +11,7 @@ writeFileSync('.vercel/output/config.json', JSON.stringify({
   version: 3,
   routes: [
     { src: '/sw.js', headers: { 'Cache-Control': 'no-cache', ...isolation }, continue: true },
+    { src: '/assets/(.*)', headers: { 'Cache-Control': 'public, max-age=31536000, immutable', ...isolation }, continue: true },
     { src: '/(.*)', headers: isolation, continue: true },
     { handle: 'filesystem' },
     { src: '/(.*)', dest: '/index.html' },
