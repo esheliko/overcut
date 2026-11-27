@@ -93,11 +93,21 @@ Not in the 4b.4a cut list and not built on `m2`: **TL-19 background fill** (M2-0
 ## 4. Field validation (owner's devices; does not block the M2 merge)
 | Item | State |
 |---|---|
-| Windows laptop (Intel UHD 630): `/diagnostics` JSON incl. timeline 60 fps pan/zoom (E1 device proof), 1080p playback, export speed | **pending from the owner** (numbers to be filled in by the M2 lead) |
-| Android (Galaxy S24): same JSON, timeline 30 fps throttled-phone bar, export >= 1x realtime | **pending from the owner** |
+| Windows laptop (Intel UHD 630, WebGPU) | **numbers in, one FAIL** (see below) |
+| Android (Galaxy S24, WebGL2) | **numbers in, two FAILs, one P0** (see below) |
 | Mac and iPhone 14 | **carried to M2.1** (owner cannot arrange them now) |
 | 5-person activation test (`ACTIVATION-TEST.md`) | **carried to M2.1**; the automated proxy `tests/smoke/activation.spec.ts` passes in CI on every `verify` |
 | E3 (30 min 4K with proxies), E4 (A/V drift < 1 frame over 2 h) | **moved to M2.1** with the proxy and drift work (4b.4a) |
+
+**Device numbers 2026-11-27** (owner's devices, Chrome 158, `m2` preview; fixes are in progress, the owner re-runs afterwards; these are open, not pass):
+| Device | Check | Result | State |
+|---|---|---|---|
+| Windows laptop | Playback 3x 1080p30 | 30 fps, 0 dropped, p95 late 14 ms | PASS |
+| Windows laptop | Export | 0.58x realtime (bar >= 1x) | **FAIL**, fix in progress (W7) |
+| Windows laptop | Seek, GOP 30 | p50 60 ms | recorded |
+| Galaxy S24 | Playback | 11.2 fps, 50 dropped, 21 stalls | **FAIL**, fix in progress (W7: the upload path picks the CPU) |
+| Galaxy S24 | Export | export worker crashed | **FAIL, P0**, fix in progress (W7) |
+| Galaxy S24 | Seek, GOP 30 | p50 75 ms | recorded |
 Issue #88 tracks the M1 and M2 device items.
 
 ## 5. ADRs

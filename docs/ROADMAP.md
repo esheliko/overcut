@@ -35,7 +35,7 @@ M0 Foundations ──► M1 First cut ──► M2 Real editing ──► M3 Sou
 ## M2.1 Media (~4-6 weeks, after M2)
 **Goal**: heavy media, fast and reliable.
 - PM-04/05, PV-02, TL-22, EX-03/05, PM-09, XT-06b (local part), speed freeze/reverse, keyframe graph editor; plan items M2-020 (ADR 0016 done), M2-021..023, M2-027/028, M2-031..034, M2-050, M2-052/053.
-- **Carried in (field validation, not done in M2)**: Mac and iPhone 14 device numbers, the 5-person activation test (owner cannot arrange them now; the automated proxy `tests/smoke/activation.spec.ts` passes in CI). The Windows laptop and Galaxy S24 diagnostics for M2 (timeline 60/30 fps, export speed) are pending from the owner (issue #88). E3 and E4 live here.
+- **Carried in (field validation, not done in M2)**: Mac and iPhone 14 device numbers, the 5-person activation test (owner cannot arrange them now; the automated proxy `tests/smoke/activation.spec.ts` passes in CI). The Windows laptop and Galaxy S24 numbers of 2026-11-27 show export 0.58x on the laptop and playback 11.2 fps plus an export crash on the S24 (M2-STATUS section 4; fixes in progress, owner re-runs; issue #88). E3 and E4 live here.
 - **Exit**: a 30 min 4K project edits smoothly with proxies on the reference laptop; A/V sync drift < 1 frame over 2 h; a killed export resumes; formats outside the support matrix get a clear message.
 
 ## M3 Sound and words (~8 weeks) **Public beta**
