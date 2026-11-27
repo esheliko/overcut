@@ -69,3 +69,32 @@ test("Alt+drag slip on the right half of a split says there is no footage that w
   await page.keyboard.up("Alt");
   await expect(page.getByRole("status").filter({ hasText: /footage/ }).first()).toBeVisible();
 });
+
+test("tablet width: with a linked clip selected the toolbar tools, the selection pill and the zoom do not overlap", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "the pill is hidden on a phone; this is the 820 px layout");
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.goto("/");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  await page.getByTestId("media-input").setInputFiles(resolve("crates/media/tests/fixtures/flash_click.mp4"));
+  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 });
+  await page.waitForTimeout(500); // the view fits the new clip
+  const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
+  await page.mouse.click(box.x + box.width * 0.5, box.y + 40);
+  const pill = page.getByTestId("tl-selected");
+  await expect(pill).toBeVisible();
+  const [more, sel, zoomIn] = await Promise.all([page.getByTestId("tl-more").boundingBox(), pill.boundingBox(), page.getByRole("button", { name: "Zoom in" }).boundingBox()]);
+  expect(more!.x + more!.width).toBeLessThanOrEqual(sel!.x + 1);
+  expect(sel!.x + sel!.width).toBeLessThanOrEqual(zoomIn!.x + 1);
+});
+
+test("Add as overlay on a new track selects the new clip, so it can be sized at once", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  await page.getByTestId("media-input").setInputFiles(resolve("crates/media/tests/fixtures/flash_click.mp4"));
+  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 });
+  await expect(page.getByTestId("tl-selected")).toHaveCount(0);
+  await page.getByTestId("tl-more").click();
+  await page.getByTestId("tl-add-overlay").click();
+  await expect(page.locator("#tl-summary")).toContainText("4 clips", { timeout: 20_000 });
+  await expect(page.getByTestId("tl-selected")).toHaveText(/1 clip \+ linked audio/);
+});

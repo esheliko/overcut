@@ -327,6 +327,15 @@ function Editor({ store }: { store: ProjectStore }) {
     readyBefore.current = readyCount;
   }, [readyCount, roomy]);
   /** "Add media at playhead" / "Add as overlay on a new track": the selected clip's media, else the newest card in the bin (T-01). */
+  /** The overlay just added is the thing to size next: select it (picture and its linked sound), so its on-canvas handles and Details show at once. */
+  const selectOverlay = useCallback((trackId: string) => {
+    const project = store.getState().project;
+    const all = project?.sequences[0]?.tracks.flatMap((tr) => tr.clips) ?? [];
+    const mine = all.filter((c) => project?.sequences[0]?.tracks.find((tr) => tr.id === trackId)?.clips.some((x) => x.id === c.id));
+    if (mine.length === 0) return;
+    const links = new Set(mine.map((c) => c.link).filter(Boolean));
+    store.setSelection(new Set(all.filter((c) => mine.includes(c) || (c.link && links.has(c.link))).map((c) => c.id)));
+  }, [store]);
   const addMediaAt = useCallback((overlay: boolean, tick: number) => {
     const st = store.getState();
     const id = mediaToAdd(st.project, st.selection, media.items);
@@ -335,9 +344,9 @@ function Editor({ store }: { store: ProjectStore }) {
     const kind = media.items.find((i) => i.id === id)?.kind;
     if (overlay && kind !== "audio" && st.project) { // a new video track on top, then the clip on it (two undo steps: the track, then the clip)
       const track = newId();
-      void store.apply(addTrack(buildScene(st.project), "video", track).ops).then(() => media.addToTimeline(id, tick, track)).then(done).catch(() => soon(t("timeline.say.failed")));
+      void store.apply(addTrack(buildScene(st.project), "video", track).ops).then(() => media.addToTimeline(id, tick, track)).then((ok) => { done(ok); if (ok) selectOverlay(track); }).catch(() => soon(t("timeline.say.failed")));
     } else void media.addToTimeline(id, tick).then(done);
-  }, [store, media, soon, t]);
+  }, [store, media, soon, t, selectOverlay]);
   // History and Timing dialogs (lazy chunks in the timeline's More menu): fetched while the browser is idle once there is something to edit, so they open at once.
   const hasMedia = readyCount > 0;
   useEffect(() => {

@@ -416,7 +416,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           </button>
         </div>
         <div className="tl-right">
-          {!none && <span className="tl-sel" data-testid="tl-selected">{withLinked ? t("timeline.selected.linked", { count: clipCount }) : t("timeline.selected", { count: clipCount })}</span>}
+          {!none && <span className="tl-sel" data-testid="tl-selected" title={withLinked ? t("timeline.selected.linked", { count: clipCount }) : undefined}>{withLinked ? t("timeline.selected.linked", { count: clipCount }) : t("timeline.selected", { count: clipCount })}</span>}
           <ZoomBar onFit={fit} />
         </div>
       </div>

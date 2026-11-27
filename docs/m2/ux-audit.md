@@ -341,3 +341,30 @@ Fixes (behaviour unchanged):
 - **P-3:** `Timecode` is no longer a store subscription that renders per tick: it writes its text node from `store.subscribe`. React commits during playback of `?sample`: 29.3 per second -> 0.3 per second (counted with a devtools-hook commit counter over 3 s; only `Timecode` re-rendered before).
 
 Verdict: apply + patch is within the 8 ms budget (3.1 ms at 1x, 12.9 ms at 4x which is the phone proxy); key->paint is at the aim at 1x (13-16 ms against < 16) and at 4x (47-50 ms against < 50), both close to the line, so a noisy run can land a little over. Not done: the preview Worker still receives the whole project JSON (built from cached per-track strings, now after the paint, about 5 ms per edit at 4x on the main thread) and the UI still parses the engine's project on load only. A patch binding (`apply_patch` in wasm + Tauri + both clients) would remove that; it needs its own PR and is not on the key->paint path any more.
+
+## Round 10: final audit (m2 at 6a21494)
+
+Who: W5. Method: `npm run build` + `vite preview`, Playwright driving Chromium at 1440x900 (mouse + keyboard), 820x1180 (touch), 390x844 (touch), 844x390 landscape and 320x640, dark and light. Scripted per size: empty app, import of 3 files (video+sound, a second video, a still), selection, Details/Edit sheet, More menu, command palette (Ctrl+K), shortcuts (`?`), Export dialog, Projects home; plus the creator path at desktop and phone (import, **Add as overlay on a new track**, Speed tab, marker, palette). Every step checks horizontal overflow, console errors/warnings and (touch sizes) targets under 44 px; screenshots were read at each size. Journeys that already have a smoke spec with real assertions (trim modes, snapping, opacity keyframes with easing, loop, remap, .overcut round-trip, archive/restore) were not re-driven by hand; they ran green in CI and are marked "covered by smoke" below. Final before/after images: `docs/features/img/m2-r10/audit-*`.
+
+### Findings
+
+| # | Pri | Where | Steps | Saw | Expected | Status |
+|---|---|---|---|---|---|---|
+| 1 | P1 | Editor -> Projects home | Split with the playhead on a clip edge ("Nothing to split here..."), then Menu > Projects | The toast stayed on the Projects list | Messages about the editor end with the editor | Fixed (#216): `goHome` clears the toast; smoke in `first-time.spec.ts` |
+| 2 | P1 | Details "Clips", project card | Import 3 clips (picture+sound each) | "6 clips" | "3 clips": a linked picture+sound pair is one clip, detached audio counts on its own | Fixed (#216): `countClips`, unit test; card, Details and `clipCount` agree |
+| 3 | P1 | Details > Speed (desktop, any clip) | Select a clip, open the Speed tab | The "Keep pitch..." note and the status message were drawn at the bottom of the window, outside the panel, half clipped | Both inside the panel under "Move later clips to follow" | Fixed: `.insp-note` was defined twice (a floating field note won); Speed now uses `.insp-help`. Smoke asserts the note sits under the checkbox and inside the viewport |
+| 4 | P1 | Timeline toolbar at 820 px (tablet) | Select a clip that has linked sound | The pill "1 clip + linked audio" lay on top of the "More" button | No overlap | Fixed: tool groups never shrink, the zoom slider and the pill give way (pill ellipsizes, title carries the full text). Smoke checks the three boxes do not overlap at 820 |
+| 5 | P2 | Timeline: Add as overlay on a new track | More > Add as overlay on a new track | New V2/A2 clips added but nothing selected: Details said "Select one video clip", no on-canvas handles | The new overlay is selected so it can be sized/placed at once (the PiP journey) | Fixed: the overlay (picture + linked sound) is selected after the add. Smoke |
+| 6 | P2 | Timeline zoom slider on touch (tablet) | Measure targets | 140x24 px | 44 px high on `pointer: coarse` | Fixed |
+| 7 | P2 | `#tl-summary` (screen-reader summary of the canvas) | Import one video | "2 clips" (picture and sound listed as two) | Same wording as the rest of the app | Open, not changed: it describes the tracks' clips for a screen reader and many smoke specs assert the numbers; a wording change is a separate small PR |
+| 8 | P2 | Phone/landscape | Overlay controls (loop, timecode) sit over the picture's bottom corners and can hide a corner handle of an overlay | Handle and timecode chip overlap on a 390 px phone | Handles stay reachable | Open (report): the handle can still be dragged from the preview's other corners and from Details; moving the chip is a design call for the lead |
+
+Checked and fine (no finding): no console errors or warnings on any size (the wgpu texture error of round 9 is gone with #211), no page overflow at 320 / 390 / 844 / 820 / 1440 in dark or light, Export dialog at 320 px (pinned button), Projects home at 320 px in light, More sheet on phone with reasons under disabled rows, Details sheet peek/half on phone, the command palette and `?` dialog at every size, selection handles on the preview on phone and desktop. Covered by smoke (not re-driven by hand): ripple/roll/slip/slide, snapping, opacity keyframes + easing, in/out loop, shortcut remap, .overcut export/import, archive/restore, rename/duplicate.
+
+### Not verified here
+- A real long (minutes) project on a phone-class CPU; the edit-latency numbers are in the perf section above.
+- Real-device touch (Safari/iOS gestures, pinch zoom): Chromium touch emulation only.
+- Full keyboard-only and touch-only runs of journeys (a) and (b) were done through the scripted steps above and the existing keyboard/touch smoke specs, not as one hand-driven pass.
+
+### Ship readiness
+Ready to ship once the two round-10 PRs are in: the four P1 findings are fixed with tests and no P0 was found. Remaining items are P2 (7 wording of the screen-reader summary, 8 the overlay chip vs. handle on a 390 px phone) and the open perf notes of the earlier rounds; none blocks the M2 journeys.
