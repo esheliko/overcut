@@ -92,3 +92,18 @@ test("snapMove: centre and canvas edges pull in within the tolerance, each axis 
   // A picture as wide as the canvas: centre and both edges tie, the centre guide is the one shown.
   assert.deepEqual(snapMove({ cx: 503, cy: 250, hw: 500, hh: 250 }, canvas, 6).guides, { x: 0.5, y: 0.5 });
 });
+
+test("opacityKeyOps: a key at the playhead, removed again on a second press, nothing outside the clip (#241)", async () => {
+  const { opacityKeyOps, ticksPerFrame } = await import("../../apps/web/src/inspector/keyframeModel");
+  const rate = { num: 30, den: 1 };
+  const tpf = ticksPerFrame(rate);
+  const clip = { id: "c1", media: "m", start: 30 * tpf, duration: 60 * tpf, transform: undefined } as never;
+  assert.equal(opacityKeyOps(clip, rate, 29), null, "before the clip");
+  assert.equal(opacityKeyOps(clip, rate, 90), null, "after the clip");
+  const add = opacityKeyOps(clip, rate, 45)!;
+  assert.equal(add.length, 1);
+  assert.deepEqual(add[0], { op: "set_keyframe", clip: "c1", prop: "opacity", key: { t: 15 * tpf, v: 1, easing: LINEAR } });
+  const keyed = { ...(clip as object), transform: { opacity: { value: 1, keys: [{ t: 15 * tpf, v: 1, easing: LINEAR }, { t: 40 * tpf, v: 0.5, easing: LINEAR }] } } } as never;
+  const off = opacityKeyOps(keyed, rate, 45)!;
+  assert.deepEqual(off, [{ op: "delete_keyframe", clip: "c1", prop: "opacity", t: 15 * tpf }]);
+});

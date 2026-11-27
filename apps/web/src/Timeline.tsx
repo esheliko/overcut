@@ -11,7 +11,7 @@ import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from 
 import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
 import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { clipboardState } from "./commands/availability";
-import { COMMAND_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
+import { COMMAND_EVENT, EXPORT_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
 import { addMarkerPlan, clearRangePlan, frameTick, loopPlan, markerAtTick, moveMarkerPlan, rangePlan } from "./timeline/markers";
 import { MarkerMenu, type MarkerAction } from "./timeline/MarkerMenu";
 import { deleteMarkerOp, newProject, setMarkerPropsOp } from "@app/engine-client";
@@ -24,6 +24,8 @@ import { globalCommand, type Command } from "./timeline/shortcuts";
 import { clampPps, fitPps, gut, ppsToSlider, shouldAutoFit, sliderToPps } from "./timeline/view";
 import { zoomStore } from "./timeline/zoomStore";
 import { clipMenuItems } from "./timeline/clipMenu";
+import { selectedVideoClip } from "./inspector/Inspector";
+import { opacityKeyOps } from "./inspector/keyframeModel";
 import { clipSpan, speedOps, speedTarget, toRational, SPEED_PRESETS, formatSpeed } from "./inspector/speedModel";
 import { TimelineCanvas, type CanvasHandle, type PlayheadSource } from "./timeline/TimelineCanvas";
 import { Overview } from "./timeline/Overview";
@@ -195,6 +197,15 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       .catch(() => onNotice(t("timeline.say.failed")));
   }, [speak, onNotice, t]);
 
+  /** A speed preset from the clip menu: the same edit as the Speed inspector (one undo step, a linked sound follows). */
+  const setSpeed = useCallback((x: number) => {
+    const target = speedTarget(live.current.proj.project, live.current.selected), r = toRational(x);
+    if (!target || target.still || !r) return;
+    const label = t("speed.undoLabel");
+    live.current.proj.apply(speedOps(target.group, r, false), undefined, label)
+      .then(() => { const span = clipSpan(store.getState().project, target.clip.id); if (span) announce(t("speed.announce", { speed: formatSpeed(x), ...span })); })
+      .catch(() => onNotice(t("speed.failed")));
+  }, [store, onNotice, t]);
   const run = useCallback((cmd: Command) => {
     const { scene: sc, selected: sel } = live.current;
     const f = store.getState().playhead;
@@ -249,6 +260,24 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
         break;
       }
       case "addMedia": onAddMedia?.(cmd.overlay, tick); break;
+      case "speed": { // the Speed tab's preset from the keyboard (same edit, same undo step)
+        const target = speedTarget(live.current.proj.project, sel);
+        if (!target) { const m = say("timeline.say.selectFirst"); speak(m); onNotice(t(m.key)); break; }
+        if (target.still) { speak(say("speed.still")); onNotice(t("speed.still")); break; }
+        setSpeed(cmd.x);
+        break;
+      }
+      case "keyframe": {
+        const st = store.getState();
+        const clip = selectedVideoClip(st.project, st.selection), rate = st.project?.sequences[0]?.frame_rate;
+        if (!clip || !rate) { speak(say("keyframe.pick")); onNotice(t("keyframe.pick")); break; }
+        const ops = opacityKeyOps(clip, rate, st.playhead);
+        if (!ops) { speak(say("keyframe.outside")); onNotice(t("keyframe.outside")); break; }
+        const added = ops[0]?.op === "set_keyframe";
+        void store.apply(ops, undefined, t("inspector.undoLabel")).then(() => announce(t(added ? "keyframe.added" : "keyframe.removed", { time: timecode(st.playhead) }))).catch(() => onNotice(t("timeline.say.failed")));
+        break;
+      }
+      case "export": window.dispatchEvent(new Event(EXPORT_EVENT)); break;
       case "trackToggle": {
         const row = mine.length ? sc.clipTrack[mine[0]!]! : sc.trackId.indexOf(armed.current ?? "");
         if (row < 0) { const m = say("timeline.say.noTrack"); speak(m); onNotice(t(m.key)); break; }
@@ -349,17 +378,8 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       }
       default: break;
     }
-  }, [speak, commit, undoRedo, onNotice, t, setSelected, store, onAddMedia]);
+  }, [speak, commit, undoRedo, onNotice, t, setSelected, store, onAddMedia, setSpeed]);
 
-  /** A speed preset from the clip menu: the same edit as the Speed inspector (one undo step, a linked sound follows). */
-  const setSpeed = useCallback((x: number) => {
-    const target = speedTarget(live.current.proj.project, live.current.selected), r = toRational(x);
-    if (!target || target.still || !r) return;
-    const label = t("speed.undoLabel");
-    live.current.proj.apply(speedOps(target.group, r, false), undefined, label)
-      .then(() => { const span = clipSpan(store.getState().project, target.clip.id); if (span) announce(t("speed.announce", { speed: formatSpeed(x), ...span })); })
-      .catch(() => onNotice(t("speed.failed")));
-  }, [store, onNotice, t]);
   const trackAction = useCallback((a: TrackAction) => {
     const sc = live.current.scene;
     const r = a.a === "toggle" ? toggleTrack(sc, a.track, a.part)
@@ -475,7 +495,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
         items={clipMenuItems({ clips: clipCount, anyLinked, allLocked: oneIdx.length > 0 && editable(scene, oneIdx).length === 0, still: speedTarget(project, selected)?.still ?? false }).map((it) => {
           const speed = it.id.startsWith("speed:") ? Number(it.id.slice(6)) : null;
           const label = speed !== null ? formatSpeed(speed) : it.id === "split" ? t("timeline.split") : it.id === "duplicate" ? t("timeline.duplicate") : it.id === "delete" ? t("timeline.delete") : it.id === "rippleDelete" ? t("timeline.rippleDelete") : t("timeline.unlink");
-          const hint = it.id === "split" ? KEYS.split : it.id === "duplicate" ? KEYS.dup : it.id === "delete" ? KEYS.del : it.id === "rippleDelete" ? KEYS.rippleDel : "";
+          const hint = it.id === "split" ? KEYS.split : it.id === "duplicate" ? KEYS.dup : it.id === "delete" ? KEYS.del : it.id === "rippleDelete" ? KEYS.rippleDel : speed === 2 ? keyHint("clip.speed2x") : speed === 0.5 ? keyHint("clip.speedHalf") : speed === 1 ? keyHint("clip.speedNormal") : "";
           const cmd: Command | null = it.id === "split" ? { c: "split" } : it.id === "duplicate" ? { c: "duplicate" } : it.id === "delete" ? { c: "delete" } : it.id === "rippleDelete" ? { c: "rippleDelete" } : it.id === "unlink" ? { c: "unlink" } : null;
           return { id: it.id, section: it.id === "split" ? t("timeline.more.clip") : speed === SPEED_PRESETS[0] ? t("timeline.speed.section") : undefined, label, hint, disabled: it.disabled, reason: it.why ? t(`timeline.why.${it.why}`) : undefined,
             testid: `tl-clip-${it.id.replace(":", "-")}`, onSelect: () => (cmd ? run(cmd) : setSpeed(speed!)) };

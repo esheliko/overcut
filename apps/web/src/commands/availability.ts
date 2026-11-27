@@ -16,7 +16,7 @@ export interface Availability {
 export const clipboardState = { copied: false, range: false };
 
 /** Commands that need a selection to do anything. */
-const NEEDS_SELECTION = new Set(["delete", "rippleDelete", "closeGap", "copy", "cut", "duplicate", "unlink", "lane", "hop", "slip", "slide", "roll", "nudge", "trimToPlayhead", "trimBy", "go"]);
+const NEEDS_SELECTION = new Set(["delete", "rippleDelete", "closeGap", "copy", "cut", "duplicate", "unlink", "lane", "hop", "slip", "slide", "roll", "nudge", "trimToPlayhead", "trimBy", "go", "speed", "keyframe"]);
 
 /** The i18n key of why `d` cannot run now, or null when it can. */
 export function whyNot(d: CommandDef, a: Availability): string | null {

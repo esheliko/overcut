@@ -35,6 +35,12 @@ export type Command =
   | { c: "zoom"; how: "in" | "out" | "fit" | "selection" }
   /** Put a media item on the timeline at the playhead (the selected clip's media, else the newest in the bin): on its track, or as an overlay on a new video track. */
   | { c: "addMedia"; overlay: boolean }
+  /** Playback speed of the selected clip (a linked sound follows), one undo step: the Speed tab's preset, from the keyboard. */
+  | { c: "speed"; x: number }
+  /** Add (or remove) an opacity keyframe at the playhead on the selected picture clip: the inspector's diamond, from the keyboard. */
+  | { c: "keyframe" }
+  /** Open the Export dialog (the top bar's button). */
+  | { c: "export" }
   | { c: "scroll"; how: "pageLeft" | "pageRight" | "up" | "down" }
   /** The preview (M2 UX): full-screen picture, loop playback on or off. Handled by the preview panel (it listens for COMMAND_EVENT and reads the keys itself). */
   | { c: "preview"; what: "fullscreen" | "loop" }
@@ -120,6 +126,12 @@ export const COMMANDS: readonly CommandDef[] = [
   D("clip.slideForward", "canvas", ["Mod+Shift+Period"], { c: "slide", frames: 1 }),
   D("clip.rollBack", "canvas", ["Mod+Alt+Comma"], { c: "roll", frames: -1 }),
   D("clip.rollForward", "canvas", ["Mod+Alt+Period"], { c: "roll", frames: 1 }),
+
+  D("clip.speed2x", "global", ["T"], { c: "speed", x: 2 }),
+  D("clip.speedHalf", "global", ["Shift+T"], { c: "speed", x: 0.5 }),
+  D("clip.speedNormal", "global", [], { c: "speed", x: 1 }),
+  D("clip.keyframeAtPlayhead", "global", ["Shift+D"], { c: "keyframe" }),
+  D("app.export", "global", ["Mod+E"], { c: "export" }),
 
   D("media.addAtPlayhead", "global", [], { c: "addMedia", overlay: false }),
   D("media.addOverlay", "global", [], { c: "addMedia", overlay: true }),

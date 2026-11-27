@@ -3,7 +3,10 @@ import { useI18n } from "../i18n";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { announce } from "../a11y/announcer";
 import { clipSpan, formatSpeed, MAX_SPEED, MIN_SPEED, speedOf, speedOps, speedTarget, SPEED_PRESETS, toRational } from "./speedModel";
+import { withKey } from "../commands/keymap";
 import "./inspector.css";
+
+const PRESET_COMMAND: Partial<Record<number, string>> = { 0.5: "clip.speedHalf", 1: "clip.speedNormal", 2: "clip.speed2x" };
 
 /** The Speed tab: presets, a number field, "move later clips" (ripple), a note that the sound keeps its pitch. One edit = one undo step. */
 export function SpeedSection(): ReactNode {
@@ -36,7 +39,7 @@ export function SpeedSection(): ReactNode {
     <div className="insp" data-testid="speed-section">
       <div className="insp-row" role="group" aria-label={t("speed.presets")}>
         {SPEED_PRESETS.map((p) => (
-          <button key={p} aria-pressed={current === p} disabled={readOnly} data-testid={`speed-preset-${p}`} onClick={() => void apply(p)}>{formatSpeed(p)}</button>
+          <button key={p} aria-pressed={current === p} disabled={readOnly} data-testid={`speed-preset-${p}`} title={PRESET_COMMAND[p] ? withKey(formatSpeed(p), PRESET_COMMAND[p]!) : undefined} onClick={() => void apply(p)}>{formatSpeed(p)}</button>
         ))}
       </div>
       <div className="insp-field">

@@ -2,6 +2,8 @@
 import { ExportError, type Engine } from "@app/engine-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { announce } from "../a11y/announcer";
+import { EXPORT_EVENT } from "../commands/palette";
+import { withKey } from "../commands/keymap";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { TICKS } from "../media/plan";
@@ -57,6 +59,12 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
   }, [src, engine, warm]);
   const openRef = useRef(false);
   openRef.current = open;
+  // The `app.export` command (Ctrl/Cmd+E, the palette): the same as pressing the button; with nothing to export it says so.
+  useEffect(() => {
+    const on = () => { if (!engine || !src) announce(t("export.needClip")); else setOpen(true); };
+    window.addEventListener(EXPORT_EVENT, on);
+    return () => window.removeEventListener(EXPORT_EVENT, on);
+  }, [engine, src, t]);
 
   const sources = useCallback(async (sequence: string): Promise<Record<string, Blob>> => {
     const p = store.getState().project;
@@ -99,7 +107,7 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
           <span className="export-chip-text">{t("export.chip.text", { percent })}</span>
         </button>
       ) : (
-        <button className="primary" data-testid="export-open" onPointerEnter={warm} onFocus={warm} onTouchStart={warm} disabled={!engine || !src} title={!src ? t("export.needClip") : t("export.go")} onClick={() => setOpen(true)}>
+        <button className="primary" data-testid="export-open" onPointerEnter={warm} onFocus={warm} onTouchStart={warm} disabled={!engine || !src} title={!src ? t("export.needClip") : withKey(t("export.go"), "app.export")} onClick={() => setOpen(true)}>
           <Icon name="export" size={18} /><span>{t("export.label")}</span>
         </button>
       )}

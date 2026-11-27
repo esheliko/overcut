@@ -17,6 +17,8 @@ type Props = {
   onTags: (id: string, tags: readonly string[]) => void;
   onImport: (s: Source[]) => void;
   onAdd: (id: string) => void;
+  /** Picture-in-picture: the item on a new video track above, at the playhead (the timeline's "Add as overlay"). Absent: no such button. */
+  onAddOverlay?: (id: string) => void;
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
   /** One file picker for every offline item (matched by name): offered when two or more are offline. */
@@ -47,7 +49,7 @@ export function useImportPicker(onImport: (s: Source[]) => void, testId = "media
   return { open, field };
 }
 
-function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onRemove" | "onRelink">) {
+function Card({ item, tags, onTimeline, onAdd, onAddOverlay, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onAddOverlay" | "onRemove" | "onRelink">) {
   const { t } = useI18n();
   const ready = item.status === "ready";
   // The duration is a badge on the poster; the meta line keeps what does not fit there (size first, so a narrow panel cuts the codec, never the size). The full line is the tooltip.
@@ -88,6 +90,7 @@ function Card({ item, tags, onTimeline, onAdd, onRemove, onRelink, onEditTags }:
         {item.status === "offline" && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       </span>
       {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span className="sr-only">{t("media.tags.editShort")}</span></button>}
+      {ready && onAddOverlay && item.kind !== "audio" && !onTimeline && <button className="bin-act bin-tag-btn bin-overlay-btn" aria-label={t("media.addOverlay", { name: item.name })} title={t("media.addOverlayShort")} onClick={() => onAddOverlay(item.id)} data-testid="bin-add-overlay"><Icon name="overlay" size={20} /></button>}
       {ready && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
       {item.status === "unsupported" && <button className="icon-btn bin-act" aria-label={t("media.dismiss", { name: item.name })} onClick={() => onRemove(item.id)}><Icon name="close" size={18} /></button>}
     </li>
@@ -155,7 +158,7 @@ function TagsDialog({ item, tags, onTags, onClose }: { item: BinItem; tags: read
 }
 
 /** Media tool panel body: the big empty-state target, then the list of imported media with "+" to add each to the timeline. */
-export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove, onRelink, onRelinkAll }: Props) {
+export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOverlay, onRemove, onRelink, onRelinkAll }: Props) {
   const { t } = useI18n();
   const { open, field } = useImportPicker(onImport);
   const project = useProjectStore((s) => s.project);
@@ -169,7 +172,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
   const shown = viewBin(items, meta, { ...filter, tag: activeTag, query });
   const filtersOn = filter.kind !== DEFAULT_FILTER.kind || activeTag !== "" || filter.sort !== DEFAULT_FILTER.sort; // shown on the toggle, so a hidden filter is not forgotten
   const editItem = editing ? items.find((i) => i.id === editing) : undefined;
-  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onTimeline={onTimeline.has(i.id)} onAdd={onAdd} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
+  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onTimeline={onTimeline.has(i.id)} onAdd={onAdd} onAddOverlay={onAddOverlay} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
   const pending = shown.filter((i) => !meta.has(i.id));
   const settled = shown.filter((i) => meta.has(i.id));
   if (items.length === 0) {

@@ -108,3 +108,22 @@ test("picture nudge (preview context): arrows 1 px, Shift 10 px, remappable, no 
   assert.equal(id({ key: ",", code: "Comma" }, "canvas", true), "clip.nudgeBack");
   assert.equal(id({ key: ",", code: "Comma" }, "canvas", false), null);
 });
+
+test("speed, keyframe and export have registered, remappable keyboard commands (#241)", () => {
+  assert.equal(id({ key: "t" }, "global"), "clip.speed2x");
+  assert.equal(id({ key: "T", shiftKey: true }, "global"), "clip.speedHalf");
+  assert.equal(id({ key: "D", shiftKey: true }, "global"), "clip.keyframeAtPlayhead");
+  assert.equal(id({ key: "e", ctrlKey: true }, "global"), "app.export");
+  assert.equal(id({ key: "e", metaKey: true }, "global"), "app.export");
+  assert.equal(id({ key: "k" }, "global"), null, "K stays the player's pause key (J/K/L also swallow Shift+J/K/L in the preview panel, so no default uses them)");
+  const by = (i: string) => COMMANDS.find((d) => d.id === i)!;
+  assert.deepEqual(by("clip.speed2x").command, { c: "speed", x: 2 });
+  assert.deepEqual(by("clip.speedHalf").command, { c: "speed", x: 0.5 });
+  assert.deepEqual(by("clip.speedNormal").command, { c: "speed", x: 1 });
+  assert.deepEqual(by("clip.keyframeAtPlayhead").command, { c: "keyframe" });
+  assert.deepEqual(by("app.export").command, { c: "export" });
+  for (const i of ["clip.speed2x", "clip.speedHalf", "clip.speedNormal", "clip.keyframeAtPlayhead", "app.export"]) assert.ok(!by(i).fixed, `${i} is remappable`);
+  // none of the defaults is a chord the browser keeps for itself (new tab / window / close tab / reopen tab / address bar / reload / print / find / history)
+  const reserved = new Set(["Mod+T", "Mod+W", "Mod+N", "Mod+Shift+T", "Mod+Shift+N", "Mod+L", "Mod+R", "Mod+P", "Mod+F", "Mod+H", "Mod+Q"]);
+  for (const i of ["clip.speed2x", "clip.speedHalf", "clip.keyframeAtPlayhead", "app.export"]) for (const k of by(i).keys) assert.ok(!reserved.has(k), `${i}: ${k} is a browser shortcut`);
+});

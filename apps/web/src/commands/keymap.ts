@@ -1,5 +1,5 @@
 /** The user's shortcut settings, stored on this device only (no account, no sync). Fails soft: unreadable storage means the defaults. */
-import { DEFAULT_SETTINGS, PRESETS, buildKeymap, commandById, type Keymap, type KeymapSettings } from "./registry";
+import { DEFAULT_SETTINGS, PRESETS, buildKeymap, chordLabel, commandById, type Keymap, type KeymapSettings } from "./registry";
 
 const KEY = "overcut.keymap";
 export const KEYMAP_EVENT = "overcut:keymap";
@@ -38,3 +38,7 @@ export function saveSettings(settings: KeymapSettings): void {
 export const currentSettings = (): KeymapSettings => state().settings;
 /** The keymap in force right now (read it inside the key handler, never cache it). */
 export const currentKeymap = (): Keymap => state().keymap;
+
+/** The first key of command `id` as shown to the user (" (Ctrl+E)" style suffix for tooltips: `withKey(title, id)`), or "" when it has none. */
+export const keyLabel = (id: string): string => { const k = currentKeymap().get(id)?.[0]; return k ? chordLabel(k) : ""; };
+export const withKey = (title: string, id: string): string => { const k = keyLabel(id); return k ? `${title} (${k})` : title; };
