@@ -2,7 +2,7 @@
 
 Written 2026-11-27 (IST) against `m2` at `6a21494` (PR #215), integration PR #120 (m2 -> main, owner's review pending; `main` stays frozen). Shape copied from [M1-STATUS.md](M1-STATUS.md). Legend: **done** (merged in `m2` with a test), **partial**, **missing** (planned for M2, not built), **M2.1** (moved by the owner's scope cut of 2026-11-26, [plan 4b.4a](IMPLEMENTATION_PLAN.md)). Every claim below was checked against the code on `m2`, not only against PR titles. "Container" numbers are calibrated estimates, not device proofs.
 
-**Verdict: the engineering exit is met; the product scope is not 100% of the ROADMAP row.** E1 and E2 pass. Four planned M2 features are **not built** and are not in the 4b.4a cut list (section 3): background fill (TL-19), link/group/detach-attach beyond the M1 link (TL-05 / AU-03), replace/extend/overwrite (TL-20), and a dedicated playback-while-editing step (PV-06). The owner decides whether they ship in M2.1 or block the merge. Field validation (section 4) is outside the engineering exit.
+**Verdict: the engineering exit is met; the product scope is not 100% of the ROADMAP row.** E1 and E2 pass. Background fill (TL-19) and the automated export parity test (M2-030) are **built** (`docs/features/background.md`); link/group/detach-attach beyond the M1 link (TL-05 / AU-03), replace/extend/overwrite (TL-20), speed freeze/reverse/loop, stylus/palm rejection and a dedicated playback-while-editing step (PV-06) moved to M2.1 by the lead's decision of 2026-11-27 (section 3). Field validation (section 4) is outside the engineering exit.
 
 ## 1. Exit criteria (ROADMAP M2, amended 2026-11-26)
 | Criterion | Status | Evidence |
@@ -10,7 +10,7 @@ Written 2026-11-27 (IST) against `m2` at `6a21494` (PR #215), integration PR #12
 | **E2** undo/redo property tests pass 10k random sequences | **met** | `PROPTEST_CASES=10000 cargo test -p app-timeline --release` (`npm run test:e2`) on `m2` @ `6a21494`: **88 passed, 0 failed**; every property ran at 10,000 cases (the env var is the proptest default); test time 6.4 s, whole run 2 min 04 s including the release build (4 shared vCPU container). Covers every op in the S7 generator (M2-011, PR #172). CI runs 256 cases per `verify` |
 | **E1** 1000 clips x 20 tracks pan/zoom at 60 fps on desktop | **met in the container** (device proof = field validation) | `tests/perf/timeline-bench.mjs` on a fresh `npm run build` (container, headless Chromium, no GPU), table below |
 | Every M2 flow passes the human QA sweep with no open P0/P1 and has a smoke step | **met** at round 9 (`docs/m2/ux-audit.md`: "no P0"; the one P1, edit latency P-4, fixed by PRs #205/#212); **W5's final audit is still running** and owns the last word | Smoke specs per flow: `tracks`, `lanes`, `tl-tools`, `inspector` (transform, keyframes), `markers`, `speed`, `zoom-overview`, `palette`, `shortcuts`, `project-library`, `activation` |
-| Export matches preview for multi-track, PiP, keyframes, speed (ffprobe) | **met by audit, thin in CI** | Checked by hand with ffprobe in audit rounds 5, 6 and 8 (duration, overlay position, keyframed motion, 2x length, pitch, A/V sync); CI has `export.spec.ts` (speed runs, pitch kept) and the preview-equals-export pixel test, but **no automated multi-track + keyframe export test**. M2-030 had no dedicated PR |
+| Export matches preview for multi-track, PiP, keyframes, speed (ffprobe) | **met, automated** | `tests/smoke/export-parity.spec.ts` (runs in `verify`, no ffprobe): V1 at 2x + keyframed, 70%-opaque V2 + blur background, exported to VP9 WebM and decoded again; frames 2, 7, 12 of 15 match the preview's frames (mean difference 3 vs >= 13 for a different frame), exact length (15 frames, 0.5 s). It found and fixed a real export bug (two layers reading one media released the first picture before it was drawn). Also audit-checked by hand with ffprobe in rounds 5, 6 and 8 |
 | Field validation (owner's devices) | **pending**, does not block M2 | section 4 |
 
 **E1 numbers** (container (calibrated estimate); 1000 clips x 20 tracks; scripted pan, zoom and pan+zoom; median fps over the run):
@@ -51,7 +51,7 @@ PR #212 reported commit 3.1 ms at 1x and key-to-paint 49.5 ms at 4x on its own r
 | M2-026 pitch-keeping speed audio | done | #180 (WSOLA, preview + export) |
 | M2-027, M2-028 proxy job, adaptive preview | **M2.1** | |
 | M2-029 playback while editing (PV-06) | **partial** | no dedicated item or smoke step; edit latency and preview sync work in #205/#206/#212 (patches, coalesced sync) make edits during play cheap, but "no dropped audio during a drag on a 20-track project" is not measured |
-| M2-030 export parity on multi-track | **partial** | export uses the same `evaluate` and compositor; audit-checked (section 1); no dedicated PR or automated multi-track test; chapters in MP4 not verified |
+| M2-030 export parity on multi-track | **done** | `tests/smoke/export-parity.spec.ts` (section 1); chapters in MP4 not verified |
 | M2-031..034 queue, GIF/WebP/APNG/stills, format matrix, E3/E4 fixtures | **M2.1** | stills import/preview exists from M1 |
 | M2-040 command and shortcut registry | done | #86 |
 | M2-041 command palette | done | `apps/web/src/commands/Palette.tsx` (#169, #178), `palette.spec.ts` |
@@ -78,7 +78,7 @@ PR #212 reported commit 3.1 ms at 1x and key-to-paint 49.5 ms at 4x on its own r
 | TL-10 speed | **partial** (constant) | 008, 026 |
 | TL-12 keyframes | **partial** (no graph editor) | 004, 048 |
 | TL-13 / TL-14 transform, PiP | done | 003, 024, 047 |
-| TL-19 background fill | **in progress** (W8, stays in M2) | 003 (part), 025 |
+| TL-19 background fill | done (black / colour / blur; image is M2.1) | 003 (part), 025 |
 | TL-20 replace/extend/overwrite | **partial** (ripple delete and gap close only; rest M2.1) | 005, 010 |
 | TL-22 VFR, PM-04 formats, PM-05 proxies, PM-09 collect, EX-03 queue, EX-05 formats, PV-02 adaptive preview | **M2.1** | 4b.4a |
 | PM-08 project library | done | 051 |
@@ -91,8 +91,8 @@ PR #212 reported commit 3.1 ms at 1x and key-to-paint 49.5 ms at 4x on its own r
 Decided by the M2 lead (no longer open for the owner; the owner can still overrule in the #120 review).
 | Item | Decision |
 |---|---|
-| TL-19 background fill (M2-003 part, M2-025) | **stays in M2, being built** (black / colour / blur, per sequence; `docs/features/background.md`). Image background: M2.1 |
-| Automated export parity test (M2-030) | **stays in M2, being built** |
+| TL-19 background fill (M2-003 part, M2-025) | **stays in M2, built** (black / colour / blur, per sequence; `docs/features/background.md`). Image background: M2.1 |
+| Automated export parity test (M2-030) | **stays in M2, built** (`tests/smoke/export-parity.spec.ts`) |
 | TL-05 group/ungroup + Batch (M2-006 rest, M2-044 rest) | **moved to M2.1** |
 | AU-03 detach/attach audio as separate ops | **moved to M2.1** (Unlink already covers moving sound separately) |
 | TL-20 replace/extend/overwrite/insert (M2-010) | **moved to M2.1** |
