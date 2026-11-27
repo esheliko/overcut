@@ -184,8 +184,10 @@ test("the upload path is chosen by a micro-benchmark, and a frame step after a s
   await expect.poll(async () => (await stats()).cached, { timeout: 20_000 }).toBeGreaterThanOrEqual(3); // decode-ahead around frame 20
   await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.seek(21));
   await expect.poll(async () => (await stats()).cacheHits, { timeout: 10_000 }).toBeGreaterThan(0);
+  // Every scrub ends with both numbers (the first update lands before the exact frame, so the last scrub can still be one short for a moment).
+  await expect.poll(async () => { const x = await stats(); return x.firstUpdateMs.length - x.scrubMs.length; }, { timeout: 10_000 }).toBe(0);
   const s = await stats();
-  expect(s.firstUpdateMs.length).toBe(s.scrubMs.length); // every scrub has both numbers
+  expect(s.firstUpdateMs.length).toBe(s.scrubMs.length);
   const g = await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.gpu());
   expect(["frame", "cpu"]).toContain(g.upload?.path);
   if (g.upload?.source === "measured") {
