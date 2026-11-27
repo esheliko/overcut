@@ -104,21 +104,23 @@ Reason for the moves: low user value per cost for the first real-editing release
 ## 4. Field validation (owner's devices; does not block the M2 merge)
 | Item | State |
 |---|---|
-| Windows laptop (Intel UHD 630, WebGPU) | **numbers in, one FAIL** (see below) |
-| Android (Galaxy S24, WebGL2) | **numbers in, two FAILs, one P0** (see below) |
+| Windows laptop (Intel UHD 630, WebGPU) | **PASS** (final run 2026-11-27 20:19 IST, below) |
+| Android (Galaxy S24, WebGL2) | **PASS** (export); playback "ok" at 26.6 fps for 3 stacked 1080p layers (below) |
 | Mac and iPhone 14 | **carried to M2.1** (owner cannot arrange them now) |
 | 5-person activation test (`ACTIVATION-TEST.md`) | **carried to M2.1**; the automated proxy `tests/smoke/activation.spec.ts` passes in CI on every `verify` |
 | E3 (30 min 4K with proxies), E4 (A/V drift < 1 frame over 2 h) | **moved to M2.1** with the proxy and drift work (4b.4a) |
 
-**Device numbers 2026-11-27** (owner's devices, Chrome 158, `m2` preview; fixes are in progress, the owner re-runs afterwards; these are open, not pass):
-| Device | Check | Result | State |
-|---|---|---|---|
-| Windows laptop | Playback 3x 1080p30 | 30 fps, 0 dropped, p95 late 14 ms | PASS |
-| Windows laptop | Export | 0.58x realtime (bar >= 1x) | **FAIL**, fix in progress (W7) |
-| Windows laptop | Seek, GOP 30 | p50 60 ms | recorded |
-| Galaxy S24 | Playback | 11.2 fps, 50 dropped, 21 stalls | **FAIL**, fix in progress (W7: the upload path picks the CPU) |
-| Galaxy S24 | Export | export worker crashed | **FAIL, P0**, fix in progress (W7) |
-| Galaxy S24 | Seek, GOP 30 | p50 75 ms | recorded |
+**Device numbers, final run 2026-11-27 20:19 IST** (owner's devices, Chrome 158, `m2` preview at `f616771`, `/diagnostics`):
+| Device | Check | First run (15:53 IST) | Final run | State |
+|---|---|---|---|---|
+| Windows laptop | Playback 3x 1080p30 (WebGPU) | 30 fps, 0 dropped | 30 fps, 0 dropped, p95 late 19 ms, bound none | **PASS** |
+| Windows laptop | Export 1080p30, real clip | 0.58x realtime | **1.17x** realtime (29 ms/frame, safe_level 0) | **PASS** (bar >= 1x) |
+| Windows laptop | Seek, GOP 30 | p50 60 ms | p50 62 ms | recorded |
+| Galaxy S24 | Playback 3x 1080p30 (WebGL2) | 11.2 fps, 50 dropped | **26.6 fps**, 13 dropped, p95 late 9 ms, verdict ok | **ok**; 30 fps needs proxies (M2.1) |
+| Galaxy S24 | Export 1080p30, real clip | worker crashed (P0) | **1.16x** realtime (safe_level 0: no fallback needed) | **PASS** |
+| Galaxy S24 | Seek, GOP 30 | p50 75 ms | p50 74 ms | recorded |
+
+Fixes behind the change: #220 (export retry + error capture), #222 (one sequential decode stream instead of a keyframe restart per frame: the S24 crash), #221/#225/#231/#233 (upload-path measurement and reporting), #232 (audio shorter than the picture no longer fails the export; on `main` as #230, owner-confirmed on the S24 in production). Known gap (M2.1): the S24's cached upload measurement (`frame` 48.5 ms) is older than the player fixes, so the report's `bound` line ("gpu-upload 145 ms for 3 layers") overstates the cost; it plays at 26.6 fps. Re-measure on version change and proxies are M2.1 items.
 Issue #88 tracks the M1 and M2 device items.
 
 ## 5. ADRs
@@ -133,11 +135,11 @@ Issue #88 tracks the M1 and M2 device items.
 ## 6. Known issues (open on GitHub, 2026-11-27)
 | Issue | Blocks the merge? |
 |---|---|
-| #107 stills smoke flake | **No.** Hardened in #215 (waits on the decoder, bounded probe); not reproduced in 62 local runs (its own report). `verify` on `m2` was green on #215's head (run 446) and on #207, #206, #202, #197; red runs on #200, #203, #204, #205 were fixed by #206 per its description (I did not open each log). One green run since #215 is not "stayed green": keep it open until the next few `m2` runs pass, then close |
+| #107 stills smoke flake | **Closed** 2026-11-27 (green on every `m2` head since #215). Was: **No.** Hardened in #215 (waits on the decoder, bounded probe); not reproduced in 62 local runs (its own report). `verify` on `m2` was green on #215's head (run 446) and on #207, #206, #202, #197; red runs on #200, #203, #204, #205 were fixed by #206 per its description (I did not open each log). One green run since #215 is not "stayed green": keep it open until the next few `m2` runs pass, then close |
 | #88 M1 + M2 field validation | **No** (field validation by definition; section 4) |
 | #89 work-manager handoff, #84 main freeze | No (process; the freeze is why #120 stays unmerged) |
 | #91 Actions minutes / CI cost | No (process) |
 | #72 OpenH264 pins, #52 native-media release build | No (desktop release, not the web M2 scope) |
 | #123 deploy board, #2, #1, #3 | No (bookkeeping) |
 
-**Phone playback (S24, 2026-11-27):** 3 layers of 1080p30 play at about 24 fps (118 presented, 32 dropped, 49% stalls): decode-bound (hardware decoders), not upload-bound; `docs/features/preview.md` has the analysis. Proxies (M2.1) are the planned answer.
+**Phone playback (S24, 2026-11-27):** 3 layers of 1080p30 play at 24-27 fps (final run: 26.6 fps, 137 presented, 13 dropped): decode-bound (hardware decoders), not upload-bound; `docs/features/preview.md` has the analysis. Proxies (M2.1) are the planned answer.
