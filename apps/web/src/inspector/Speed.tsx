@@ -62,8 +62,8 @@ export function SpeedSection(): ReactNode {
         <input type="checkbox" checked={ripple} disabled={readOnly} data-testid="speed-ripple" onChange={(e) => setRipple(e.currentTarget.checked)} />
         <span>{t("speed.ripple")}</span>
       </label>
-      <p className="insp-note">{t("speed.pitch")}</p>
-      <p className="insp-note insp-warn" role="status" data-testid="speed-message">{message}</p>
+      <p className="insp-help" data-testid="speed-pitch">{t("speed.pitch")}</p>
+      <p className="insp-help insp-warn" role="status" data-testid="speed-message">{message}</p>
     </div>
   );
 }
