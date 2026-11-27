@@ -25,3 +25,4 @@
 
 ## M2 UX additions
 - Context menu key / Shift+F10 (timeline focused, a clip selected): clip menu. Palette only (no default key): "Add media at playhead", "Add as overlay on a new track".
+- M2 UX r13 (#241): speed, opacity keyframe and export are registry commands (palette, shortcut dialog, remappable, key shown in the tooltips). `T` speed 2x, `Shift+T` 0.5x (`clip.speedNormal`, back to 1x, has no default key), `Shift+D` add or remove an opacity keyframe at the playhead (`opacityKeyOps`, the Details diamond's edit; "D" for diamond), `Ctrl/Cmd+E` open Export (`EXPORT_EVENT`, handled by the Export button; with nothing to export it says so). Speed and keyframe need a selection (palette: listed disabled with the reason). `Shift+J/K/L` are swallowed by the preview panel's transport keys (`/^[jkl]$/i`), so no default uses them.

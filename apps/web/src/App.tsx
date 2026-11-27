@@ -40,6 +40,7 @@ import { VersionsDialog, useAutoSnapshots } from "./Versions";
 import { binMeta, type BinMeta } from "./media/binView";
 import { MediaBin } from "./media/MediaBin";
 import { newId, TICKS } from "./media/plan";
+import { TICKS_PER_SECOND } from "./preview/timing";
 import { mediaToAdd } from "./timeline/addMedia";
 import { buildScene } from "./timeline/scene";
 import { addTrack } from "./timeline/tracks";
@@ -86,6 +87,7 @@ type BinProps = {
   items: BinItem[];
   onImport: (s: Source[]) => void;
   onAdd: (id: string) => void;
+  onAddOverlay: (id: string) => void;
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
   onRelinkAll?: () => void;
@@ -345,10 +347,9 @@ function Editor({ store }: { store: ProjectStore }) {
     const links = new Set(mine.map((c) => c.link).filter(Boolean));
     store.setSelection(new Set(all.filter((c) => mine.includes(c) || (c.link && links.has(c.link))).map((c) => c.id)));
   }, [store]);
-  const addMediaAt = useCallback((overlay: boolean, tick: number) => {
+  /** One media item onto the timeline: on its track, or (`overlay`, not for sound) on a new video track on top. The Media card's overlay button and the timeline's command share it. */
+  const addMediaItem = useCallback((id: string, overlay: boolean, tick: number) => {
     const st = store.getState();
-    const id = mediaToAdd(st.project, st.selection, media.items);
-    if (!id) { soon(t("timeline.addMedia.none")); return; }
     const done = (ok: boolean) => { if (ok) announce(t("media.added")); };
     const kind = media.items.find((i) => i.id === id)?.kind;
     if (overlay && kind !== "audio" && st.project) { // a new video track on top, then the clip on it (two undo steps: the track, then the clip)
@@ -356,6 +357,17 @@ function Editor({ store }: { store: ProjectStore }) {
       void store.apply(addTrack(buildScene(st.project), "video", track).ops).then(() => media.addToTimeline(id, tick, track)).then((ok) => { done(ok); if (ok) selectOverlay(track); }).catch(() => soon(t("timeline.say.failed")));
     } else void media.addToTimeline(id, tick).then(done);
   }, [store, media, soon, t, selectOverlay]);
+  const addMediaAt = useCallback((overlay: boolean, tick: number) => {
+    const st = store.getState();
+    const id = mediaToAdd(st.project, st.selection, media.items);
+    if (!id) { soon(t("timeline.addMedia.none")); return; }
+    addMediaItem(id, overlay, tick);
+  }, [store, media, soon, t, addMediaItem]);
+  /** Media card: as an overlay at the playhead. */
+  const addOverlayOf = useCallback((id: string) => {
+    const r = store.getState().project?.sequences[0]?.frame_rate;
+    addMediaItem(id, true, r ? Math.round((store.getState().playhead * TICKS_PER_SECOND * r.den) / r.num) : 0);
+  }, [store, addMediaItem]);
   // History and Timing dialogs (lazy chunks in the timeline's More menu): fetched while the browser is idle once there is something to edit, so they open at once.
   const hasMedia = readyCount > 0;
   useEffect(() => {
@@ -424,6 +436,7 @@ function Editor({ store }: { store: ProjectStore }) {
     },
     onImport: (s) => void importFiles(s),
     onAdd: (id) => void media.addToTimeline(id).then((ok) => ok && announce(t("media.added"))),
+    onAddOverlay: (id) => addOverlayOf(id),
     onRemove: media.remove,
     onRelinkAll: () => void locate(),
     onRelink: (id) => void media.relink(id).then(async (ok) => {

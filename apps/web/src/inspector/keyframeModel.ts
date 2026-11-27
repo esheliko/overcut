@@ -109,6 +109,16 @@ export const PROPS_OF: Readonly<Record<string, readonly TransformProp[]>> = {
   crop_bottom: ["crop_bottom"],
 };
 
+/**
+ * "Add keyframe at playhead" from the keyboard (the opacity diamond's edit, `docs/features/keyframes.md`): a key holding the value now, or the key
+ * already at the playhead removed. Null when the playhead is outside the clip (the diamond is disabled there too).
+ */
+export function opacityKeyOps(clip: Clip, rate: Rational, playhead: number): Op[] | null {
+  const rel = relativeTicks(clip, playhead, rate);
+  if (rel < 0 || rel >= clip.duration) return null;
+  return toggleKeyOps(clip.id, clip.transform, PROPS_OF.opacity!, rel, ticksPerFrame(rate) / 2, 1);
+}
+
 /** Ops that set the key at `t` to `value` on every prop; an existing key keeps its easing, a new one is linear. */
 export function setKeyOps(clip: string, tr: ClipTransform | undefined, props: readonly TransformProp[], t: number, value: number, tol = 0): Op[] {
   return props.map((prop) => {

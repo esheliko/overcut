@@ -5,12 +5,16 @@ import { Icon } from "../icons";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { isIdentity, newGestureKey, setField, setFit, toggleFlip, valuesOf, RESET, rangeOf, type NumKey } from "./transformModel";
 import { EASING_CHOICES, PROPS_OF, easingId, easingOps, keyNear, keyState, neighbourKey, relativeTicks, setKeyOps, ticksPerFrame, ticksToFrame, toggleKeyOps, type EasingId } from "./keyframeModel";
+import { withKey } from "../commands/keymap";
 import { canvasSummary } from "../canvas";
 import { clipCount, timelineEnd } from "../media/plan";
 import { TICKS_PER_SECOND, timecodeHMS } from "../preview/timing";
 import "./inspector.css";
 
 /** The one selected video clip, or null (nothing, several, or an audio clip). */
+/** The diamond's tooltip; opacity's also names the keyboard command (`clip.keyframeAtPlayhead`). */
+const diamondTitle = (field: string, text: string): string => (field === "opacity" ? withKey(text, "clip.keyframeAtPlayhead") : text);
+
 export function selectedVideoClip(project: Project | null, selection: ReadonlySet<string>): Clip | null {
   if (!project || selection.size === 0) return null;
   const seq = project.sequences[0];
@@ -249,7 +253,7 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
           data-testid={`insp-key-${f.key}`}
           aria-pressed={state === "on"}
           aria-label={t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name })}
-          title={t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name })}
+          title={diamondTitle(f.key, t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name }))}
           disabled={readOnly || !onClip}
           onClick={() => void store.apply(toggleKeyOps(clip.id, tr, props, relativeTicks(clip, store.getState().playhead, rate), tol, DEFAULT_OF[f.key]), undefined, label)}
         >

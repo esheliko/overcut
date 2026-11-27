@@ -5,6 +5,8 @@ import { COMMANDS, type CommandDef } from "./registry";
 export const COMMAND_EVENT = "overcut:command";
 /** Asks the app to open the palette (the `palette` command, Ctrl/Cmd+K). */
 export const PALETTE_EVENT = "overcut:palette";
+/** Asks the export button to open the dialog (the `export` command, Ctrl/Cmd+E). */
+export const EXPORT_EVENT = "overcut:export";
 /** Asks the preview to play the in/out range (M2-046): `detail` is `{ start, end, loop }` in frames; it plays start to end and stops there, or loops. */
 export const PLAY_RANGE_EVENT = "overcut:play-range";
 export interface PlayRange { start: number; end: number; loop: boolean }
