@@ -32,6 +32,7 @@ test("ripple delete (More menu) removes the selected clip and undo brings it bac
   await page.goto("/?sample");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const list = page.getByTestId("tl-clip-list").locator("li");
+  await expect(list).not.toHaveCount(0); // the sample project has opened (while it opens the timeline is empty)
   const n = await list.count();
   await page.getByTestId("timeline-canvas").focus();
   await page.keyboard.press("Enter"); // pick the clip at the playhead
