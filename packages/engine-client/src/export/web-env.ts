@@ -12,8 +12,12 @@ import type { ExportStorage } from "./storage";
 import { createWebOutput } from "./web-output";
 import { ExportError, type ExportSettings } from "./types";
 
-/** How the composited frame reaches the encoder: `readback` (GPU -> RGBA bytes -> VideoFrame, deterministic, measured faster in headless Chromium: docs/features/export.md) or `canvas` (VideoFrame of the canvas). */
-const DEFAULT_CAPTURE: "readback" | "canvas" = "readback";
+/**
+ * How the composited frame reaches the encoder: `canvas` (a VideoFrame of the compositor's canvas: no readback, and a hardware encoder can take it from
+ * the GPU; the default since M2 W7) or `readback` (GPU -> RGBA bytes -> VideoFrame: byte-deterministic, independent of the canvas; the fallback when
+ * a canvas frame cannot be made, and what the determinism tests pin). docs/features/export.md.
+ */
+const DEFAULT_CAPTURE: "readback" | "canvas" = "canvas";
 
 export interface WebEnvInput {
   jobId: string;
@@ -42,6 +46,8 @@ export interface WebEnv {
   path: string;
   /** Known after `env.finish()`. */
   mime(): string;
+  /** The capture mode the frames actually used (a failed `canvas` capture switches to `readback`). */
+  capture(): "readback" | "canvas";
   /** Releases decoders; call once the job is over, success or not. */
   dispose(): void;
 }
@@ -116,7 +122,8 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
     dispose();
   };
   const seq = plan.sequence.resolution;
-  const capture = settings.capture ?? DEFAULT_CAPTURE;
+  let capture = settings.capture ?? DEFAULT_CAPTURE;
+  const spent = { decode: 0, composite: 0 };
 
   const ext = preset.container;
   const fileName = `${input.jobId}.${ext}`;
@@ -145,11 +152,23 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
         for (const layer of desc.layers) {
           const v = videoOf(layer.media);
           if (!v) continue;
+          const t = performance.now();
           const frame = await v.frame(layer.source_time);
+          spent.decode += performance.now() - t;
           drawn.push(frame);
           layers.push(layerOf(layer, frame, seq));
         }
-        return await renderExportFrame(renderer, canvas, capture, layers, seq, outputFrameTimes(plan, index));
+        const t = performance.now();
+        const times = outputFrameTimes(plan, index);
+        try {
+          return await renderExportFrame(renderer, canvas, capture, layers, seq, times);
+        } catch (e) {
+          if (capture !== "canvas") throw e;
+          capture = "readback"; // this browser cannot snapshot the canvas as a VideoFrame: the readback route always works
+          return await renderExportFrame(renderer, canvas, capture, layers, seq, times);
+        } finally {
+          spent.composite += performance.now() - t;
+        }
       } finally {
         for (const d of drawn) d.close();
       }
@@ -165,6 +184,7 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
     abort: () => output.abort(),
     now: () => performance.now(),
     peakQueue: () => output.peakQueue(),
+    timing: () => ({ decode: spent.decode, composite: spent.composite }),
   };
-  return { env, plan, preset, fileName, path: file.path, mime: () => mime, dispose: closeAll };
+  return { env, plan, preset, fileName, path: file.path, mime: () => mime, capture: () => capture, dispose: closeAll };
 }

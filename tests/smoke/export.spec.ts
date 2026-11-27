@@ -48,8 +48,9 @@ test("export: a synthetic project renders to a playable WebM, with progress, and
 });
 
 test("export is deterministic: the same project and settings give byte-identical files", async ({ page }) => {
-  const a = await run(page, { seconds: 3, settings: pinned });
-  const b = await run(page, { seconds: 3, settings: pinned });
+  // Byte determinism is a promise of the readback route (docs/features/export.md); the default `canvas` route is checked by every other test here.
+  const a = await run(page, { seconds: 3, settings: { ...pinned, capture: "readback" } });
+  const b = await run(page, { seconds: 3, settings: { ...pinned, capture: "readback" } });
   expect(a.ok && b.ok).toBe(true);
   expect(b.fileBytes).toBe(a.fileBytes);
   expect(b.sha256).toBe(a.sha256);
