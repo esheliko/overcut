@@ -263,6 +263,11 @@ enum Step {
         none: bool,
         looping: bool,
     },
+    SetBackground {
+        mode: u8,
+        colour: [u8; 3],
+        blur: u8,
+    },
     Undo,
     Redo,
 }
@@ -332,6 +337,8 @@ fn step() -> impl Strategy<Value = Step> {
         1 => any::<usize>().prop_map(|n| Step::DeleteMarker { n }),
         2 => (-1..30i8, -1..30i8, any::<bool>(), any::<bool>())
             .prop_map(|(start, end, none, looping)| Step::SetRange { start, end, none, looping }),
+        1 => (0..3u8, any::<[u8; 3]>(), 0..=120u8)
+            .prop_map(|(mode, colour, blur)| Step::SetBackground { mode, colour, blur }),
         2 => Just(Step::Undo),
         2 => Just(Step::Redo),
     ]
@@ -729,6 +736,18 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
                 end: t(i64::from(end)),
             }),
             looping,
+        },
+        Step::SetBackground { mode, colour, blur } => Op::SetBackground {
+            sequence: p.sequences[0].id,
+            background: app_model::Background {
+                mode: match mode {
+                    0 => app_model::BackgroundMode::Black,
+                    1 => app_model::BackgroundMode::Colour,
+                    _ => app_model::BackgroundMode::Blur,
+                },
+                colour,
+                blur,
+            },
         },
         Step::Undo | Step::Redo => return None,
     })
@@ -1668,7 +1687,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        35,
+        36,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -1684,7 +1703,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 35, "one example per Op variant");
+    assert_eq!(ops.len(), 36, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(
@@ -2127,6 +2146,76 @@ fn set_canvas_is_one_undoable_step_and_validates() {
     };
     assert!(h.apply(&mut p, unknown, None).is_err());
     assert_eq!(p, after);
+}
+
+#[test]
+fn set_background_is_one_undoable_step_carried_by_evaluate_and_validates() {
+    use app_model::{Background, BackgroundMode};
+    let (mut p, mut ids) = base();
+    let seq = p.sequences[0].id;
+    let before = p.clone();
+    let blur = Background {
+        mode: BackgroundMode::Blur,
+        colour: [1, 2, 3],
+        blur: 80,
+    };
+    let mut h = History::new();
+    h.apply(
+        &mut p,
+        Op::SetBackground {
+            sequence: seq,
+            background: blur,
+        },
+        None,
+    )
+    .unwrap();
+    assert_eq!(p.sequences[0].background, blur);
+    p.validate().unwrap();
+    // evaluate carries it (a frame in a gap too: the background is the sequence's, not a clip's)
+    assert_eq!(evaluate(&p.sequences[0], Time::ZERO, 0).background, blur);
+    h.undo(&mut p).unwrap();
+    assert_eq!(p, before, "undo restores the black default");
+    assert!(evaluate(&p.sequences[0], Time::ZERO, 0)
+        .background
+        .is_default());
+    h.redo(&mut p).unwrap();
+    assert_eq!(p.sequences[0].background, blur);
+    // refused without touching anything
+    let after = p.clone();
+    let too_blurry = Background { blur: 101, ..blur };
+    assert!(matches!(
+        h.apply(
+            &mut p,
+            Op::SetBackground {
+                sequence: seq,
+                background: too_blurry
+            },
+            None
+        )
+        .unwrap_err(),
+        OpError::Batch {
+            cause,
+            ..
+        } if *cause == OpError::BadBackground
+    ));
+    assert!(h
+        .apply(
+            &mut p,
+            Op::SetBackground {
+                sequence: app_model::SequenceId::new(&mut ids),
+                background: blur
+            },
+            None
+        )
+        .is_err());
+    assert_eq!(p, after);
+    // the default is not written to the file and the frame JSON omits it
+    let json = serde_json::to_string(&before).unwrap();
+    assert!(!json.contains("background"));
+    let mut e = Editor::from_project(before);
+    let fj: serde_json::Value =
+        serde_json::from_str(&e.evaluate_json(&seq.to_string(), 0, 0).unwrap()).unwrap();
+    assert!(fj.get("background").is_none());
 }
 
 // ---- Linked picture and sound (TL-05): one link id on the clips of one import ------------------------------------------------------

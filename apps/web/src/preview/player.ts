@@ -346,7 +346,7 @@ export class Player {
         if (!frame) continue;
         layers.push(await this.layer(l, frame, media, layers.length));
       }
-      this.d.renderer.render(layers, this.d.size);
+      this.d.renderer.render(layers, this.d.size, desc.background);
     } finally {
       for (const h of held) h.release();
     }
@@ -438,7 +438,7 @@ export class Player {
           }
         }
         if (this.scrubTarget || this.playing || this.disposed) return false; // stale: drop it
-        if (shown || !allowStandIns) this.d.renderer.render(layers, this.d.size);
+        if (shown || !allowStandIns) this.d.renderer.render(layers, this.d.size, desc.background);
         return shown;
       };
       const missing = wants.filter((w) => !w.exact);

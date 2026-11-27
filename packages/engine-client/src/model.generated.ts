@@ -7,6 +7,18 @@ export interface Animated {
   value: number;
 }
 
+/** The project background (TL-19): shown behind every layer, so only where the layers leave the canvas uncovered. */
+export interface Background {
+  /** Blur strength 0..=100 (50 = the default look); used by `Blur`. */
+  blur?: number;
+  /** sRGB 8-bit red, green, blue; used by `Colour`. */
+  colour?: number[];
+  mode?: BackgroundMode;
+}
+
+/** How the empty part of the canvas is filled. */
+export type BackgroundMode = "black" | "colour" | "blur";
+
 export interface Clip {
   /** Length on the timeline (source length is `duration * speed`). */
   duration: Time;
@@ -137,6 +149,8 @@ export interface Resolution {
 }
 
 export interface Sequence {
+  /** What shows where no clip covers the canvas (TL-19, `docs/features/background.md`). Absent in older files = black. */
+  background?: Background;
   frame_rate: Rational;
   id: SequenceId;
   /** True while playback loops over `range` (needs a range). Absent = false. */

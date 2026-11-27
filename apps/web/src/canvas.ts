@@ -3,7 +3,7 @@
  * No DOM, no engine. The canvas lives in the project (`Sequence.resolution` / `frame_rate` plus the `size_fixed` / `rate_fixed` flags) and changes
  * only through the `set_canvas` op, so it is undoable, journaled and saved in the `.overcut` file; preview and export read the same sequence.
  */
-import type { Op, Project, Rational, Resolution, Sequence } from "@app/engine-client";
+import type { BackgroundMode, Op, Project, Rational, Resolution, Sequence } from "@app/engine-client";
 
 export interface Shape { id: string; w: number; h: number }
 /** Aspect presets, in the order the picker shows them. `custom` is added by the dialog. */
@@ -122,6 +122,42 @@ export function canvasOp(seq: Sequence, c: CanvasChoice): Op {
     size_fixed: c.shape !== "match",
     rate_fixed: c.fps !== "match",
   };
+}
+
+/** What the dialog edits about the background (TL-19): what shows where no clip covers the canvas. */
+export interface BackgroundChoice { mode: BackgroundMode; colour: [number, number, number]; blur: number }
+export const BACKGROUND_MODES: readonly BackgroundMode[] = ["black", "colour", "blur"];
+export const DEFAULT_BLUR = 50;
+/** Preset colours of the swatch row (the design system's accents plus white and a dark grey); any other colour comes from the colour input. */
+export const BACKGROUND_SWATCHES: readonly string[] = ["#ffffff", "#1f2937", "#ef4444", "#f59e0b", "#22c55e", "#06b6d4", "#3b82f6", "#a855f7", "#ec4899"];
+
+/** The sequence's background with every default filled in (an older project has none: black). */
+export function backgroundOf(seq: Sequence): BackgroundChoice {
+  const b = seq.background;
+  const c = b?.colour;
+  return {
+    mode: b?.mode ?? "black",
+    colour: c && c.length === 3 ? [c[0]!, c[1]!, c[2]!] : [0, 0, 0],
+    blur: b?.blur ?? DEFAULT_BLUR,
+  };
+}
+/** "#rrggbb" for a colour (the colour input's and the swatches' format). */
+export const hexOf = (c: readonly number[]): string => `#${c.slice(0, 3).map((v) => Math.min(255, Math.max(0, Math.round(v))).toString(16).padStart(2, "0")).join("")}`;
+/** The colour a "#rrggbb" string means, or null when it is not one. */
+export function rgbOf(hex: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  return m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16)] : null;
+}
+/** The parts that count for the mode: a flat colour does not matter while the mode is black or blur, the blur strength only for blur. */
+const relevant = (b: BackgroundChoice): string => (b.mode === "colour" ? `c${hexOf(b.colour)}` : b.mode === "blur" ? `b${b.blur}` : "k");
+export const sameBackground = (seq: Sequence, b: BackgroundChoice): boolean => b.mode === backgroundOf(seq).mode && relevant(b) === relevant(backgroundOf(seq));
+/** The op that sets a background choice (one undo step). The values of the unused parts are kept, so switching back restores them. */
+export function backgroundOp(seq: Sequence, b: BackgroundChoice): Op {
+  return { op: "set_background", sequence: seq.id, background: { mode: b.mode, colour: [...b.colour], blur: Math.min(100, Math.max(0, Math.round(b.blur))) } };
+}
+/** Every op the dialog's choices need: the canvas one and/or the background one (a single undo step each; Apply sends them together). */
+export function canvasDialogOps(seq: Sequence, c: CanvasChoice, b: BackgroundChoice): Op[] {
+  return [...(sameCanvas(seq, c) ? [] : [canvasOp(seq, c)]), ...(sameBackground(seq, b) ? [] : [backgroundOp(seq, b)])];
 }
 
 /** Frame rate and size the first picture should set: only the parts the user has not fixed. */

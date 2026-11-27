@@ -195,6 +195,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       media: () => host.rpc({ name: "frames" }),
       gpu: () => host.rpc({ name: "gpu" }),
       parity: (f: number) => host.rpc({ name: "parity", frame: f }),
+      shot: () => host.rpc({ name: "shot" }),
       bench: (width: number, height: number, frames: number) => host.rpc({ name: "bench", width, height, frames }),
       strip: () => host.rpc({ name: "strip" }),
       rpc: (r: Parameters<typeof host.rpc>[0]) => host.rpc(r),

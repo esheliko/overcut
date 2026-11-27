@@ -4,7 +4,7 @@
  * Layer geometry is in sequence pixels and scales to the output size; the same call serves the preview (`present`) and export (`readback`).
  */
 
-import type { Fit } from "./model.generated";
+import type { Background, Fit } from "./model.generated";
 import type { TransformValues } from "./types";
 
 /** Pixels of one layer: a decoded WebCodecs frame (imported on the GPU, no CPU copy), a bitmap, or RGBA bytes (sRGB, straight alpha; read a canvas with `getImageData`). */
@@ -41,10 +41,10 @@ export interface GpuRenderer {
   readonly info: RendererInfo;
   /** Size of the canvas in pixels. */
   resize(width: number, height: number): void;
-  /** Composite `layers` (bottom first, geometry in `seq` pixels) and present into the canvas at its current size. */
-  present(layers: readonly GpuLayer[], seq: { width: number; height: number }): void;
+  /** Composite `layers` (bottom first, geometry in `seq` pixels) and present into the canvas at its current size. `background`: what shows where no layer covers the canvas (TL-19; the evaluated frame's `background`, default black). */
+  present(layers: readonly GpuLayer[], seq: { width: number; height: number }, background?: Background): void;
   /** Composite offscreen at `out` and read the frame back as RGBA8 (sRGB, tight). The array is reused by the next call: copy it out (a `VideoFrame` does). */
-  readback(layers: readonly GpuLayer[], seq: { width: number; height: number }, out: { width: number; height: number }): Promise<Uint8Array>;
+  readback(layers: readonly GpuLayer[], seq: { width: number; height: number }, out: { width: number; height: number }, background?: Background): Promise<Uint8Array>;
   /** GPU objects created so far; unchanged between steady-state frames. */
   allocStats(): { textures: number; buffers: number; bind_groups: number; /** Uncaptured GPU errors so far (a rejected copy or draw): 0 in a healthy run. */ errors: number };
   dispose(): void;
@@ -56,6 +56,7 @@ export interface RawGpuRenderer {
   alloc_stats(): string;
   resize(w: number, h: number): void;
   begin(): void;
+  set_background(mode: number, r: number, g: number, b: number, blur: number): void;
   add_rgba(rgba: Uint8Array, w: number, h: number, params: Float64Array): void;
   add_external(source: unknown, w: number, h: number, params: Float64Array): void;
   render(seqW: number, seqH: number, outW: number, outH: number, present: boolean): void;
@@ -63,13 +64,20 @@ export interface RawGpuRenderer {
   free(): void;
 }
 
+/** The compositor's code for a background mode: 0 black, 1 flat colour, 2 blurred picture (`GpuRenderer::set_background`). Unknown or absent = black. */
+export function backgroundModeCode(mode: Background["mode"]): 0 | 1 | 2 {
+  return mode === "colour" ? 1 : mode === "blur" ? 2 : 0;
+}
+
 /** Wraps the generated class: packs layer parameters into one reused array and keeps the readback buffer. Pure glue, unit tested with a fake. */
 export function wrapRenderer(raw: RawGpuRenderer, canvas: { width: number; height: number }): GpuRenderer {
   const info = JSON.parse(raw.info()) as RendererInfo;
   const params = new Float64Array(13);
   let buf = new Uint8Array(0);
-  const add = (layers: readonly GpuLayer[]): void => {
+  const add = (layers: readonly GpuLayer[], background?: Background): void => {
     raw.begin();
+    const [r, g, b] = background?.colour ?? [0, 0, 0];
+    raw.set_background(backgroundModeCode(background?.mode), r ?? 0, g ?? 0, b ?? 0, background?.blur ?? 50);
     for (const l of layers) {
       params[0] = l.center[0];
       params[1] = l.center[1];
@@ -96,12 +104,12 @@ export function wrapRenderer(raw: RawGpuRenderer, canvas: { width: number; heigh
       canvas.height = Math.max(1, Math.round(h));
       raw.resize(canvas.width, canvas.height);
     },
-    present(layers, seq) {
-      add(layers);
+    present(layers, seq, background) {
+      add(layers, background);
       raw.render(seq.width, seq.height, canvas.width, canvas.height, true);
     },
-    async readback(layers, seq, out) {
-      add(layers);
+    async readback(layers, seq, out, background) {
+      add(layers, background);
       const n = out.width * out.height * 4;
       if (buf.length !== n) buf = new Uint8Array(n);
       await raw.read_rgba8(seq.width, seq.height, out.width, out.height, buf);
@@ -206,12 +214,13 @@ export async function renderExportFrame(
   layers: readonly GpuLayer[],
   seq: { width: number; height: number },
   times: { timestamp: number; duration: number },
+  background?: Background,
 ): Promise<VideoFrame> {
   if (mode === "canvas") {
-    renderer.present(layers, seq);
+    renderer.present(layers, seq, background);
     return new VideoFrame(canvas, times);
   }
   const out = { width: canvas.width, height: canvas.height };
-  const px = await renderer.readback(layers, seq, out);
+  const px = await renderer.readback(layers, seq, out, background);
   return new VideoFrame(px, { format: "RGBA", codedWidth: out.width, codedHeight: out.height, colorSpace: SRGB_FRAME, ...times });
 }

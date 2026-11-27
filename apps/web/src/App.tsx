@@ -226,6 +226,8 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
 /** The app owns one project store; every panel below reads it. */
 export function App() {
   const [store] = useState(() => new ProjectStore());
+  // Test hook (`?e2e`): the store the panels read, so a test can edit through the same path the UI does (`window.__overcutStore.apply(ops)`).
+  useEffect(() => { if (new URLSearchParams(location.search).has("e2e")) (window as unknown as { __overcutStore: ProjectStore }).__overcutStore = store; }, [store]);
   return <ProjectStoreProvider store={store}><Editor store={store} /></ProjectStoreProvider>;
 }
 
@@ -626,9 +628,9 @@ function Editor({ store }: { store: ProjectStore }) {
     } catch (e) { fail("versions.restoreFailed", e); }
   };
   useAutoSnapshots(persistence.session);
-  const applyCanvas = (op: Op) => {
+  const applyCanvas = (ops: Op[]) => {
     setDialog(null);
-    void store.apply(op, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
+    void store.apply(ops, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
   };
   const offline = media.items.filter((i) => i.status === "offline").length;
   const locate = async () => {

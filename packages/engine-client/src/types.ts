@@ -1,5 +1,5 @@
 import type { ExportApi } from "./export/types";
-import type { Clip, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId } from "./model.generated";
+import type { Background, Clip, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
 import type { EditPatch } from "./patch";
 
@@ -283,6 +283,7 @@ export type Op =
   | { op: "set_sequence_format"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution }
   /** The project canvas (PM-01). `*_fixed` false = follows the first picture imported ("match first clip"). */
   | { op: "set_canvas"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution; size_fixed: boolean; rate_fixed: boolean }
+  | { op: "set_background"; sequence: SequenceId; background: Background }
   /** Add a track at stack position `index` (0 = bottom of the stack = drawn first; `tracks.length` = top). The id is the caller's. */
   | { op: "add_track"; sequence: SequenceId; track: Track; index: number }
   /** Remove a track and its clips (undo restores both). A locked track is refused. */
@@ -433,6 +434,8 @@ export interface FrameDescription {
   layers: VideoLayer[];
   /** Samples not covered are silence. */
   audio: AudioSegment[];
+  /** What is drawn behind `layers` (TL-19). Absent = black. */
+  background?: Background;
 }
 
 /** Input of `Editing.snap`. All times are integer ticks. */
@@ -467,7 +470,7 @@ export interface Recovery {
   validLog: string;
 }
 
-export const EXPECTED_ABI = 4;
+export const EXPECTED_ABI = 5;
 
 export function parseEngineInfo(json: string): EngineInfo {
   const v: unknown = JSON.parse(json);

@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::fmt;
 
 /// Version of the document schema. Bump (and add a migration + fixture, M1-005) on any incompatible change.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Project {
@@ -54,6 +54,57 @@ pub struct Sequence {
     /// True while playback loops over `range` (needs a range). Absent = false.
     #[serde(default, skip_serializing_if = "is_false")]
     pub loop_range: bool,
+    /// What shows where no clip covers the canvas (TL-19, `docs/features/background.md`). Absent in older files = black.
+    #[serde(default, skip_serializing_if = "Background::is_default")]
+    pub background: Background,
+}
+
+/// How the empty part of the canvas is filled.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundMode {
+    /// Opaque black (the M1 behaviour).
+    #[default]
+    Black,
+    /// One flat colour, `Background::colour`.
+    Colour,
+    /// The bottom-most picture of the frame, scaled to fill the canvas and blurred by `Background::blur`.
+    Blur,
+}
+
+/// The project background (TL-19): shown behind every layer, so only where the layers leave the canvas uncovered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Background {
+    #[serde(default)]
+    pub mode: BackgroundMode,
+    /// sRGB 8-bit red, green, blue; used by `Colour`.
+    #[serde(default)]
+    pub colour: [u8; 3],
+    /// Blur strength 0..=100 (50 = the default look); used by `Blur`.
+    #[serde(default = "default_blur")]
+    pub blur: u8,
+}
+
+/// Largest `Background::blur`.
+pub const MAX_BLUR: u8 = 100;
+fn default_blur() -> u8 {
+    50
+}
+
+impl Default for Background {
+    fn default() -> Self {
+        Self {
+            mode: BackgroundMode::Black,
+            colour: [0, 0, 0],
+            blur: default_blur(),
+        }
+    }
+}
+
+impl Background {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// Most markers one sequence may hold, and the longest marker name (characters).
@@ -308,6 +359,7 @@ impl Project {
                 markers: Vec::new(),
                 range: None,
                 loop_range: false,
+                background: Background::default(),
             }],
         }
     }
@@ -400,6 +452,9 @@ impl Project {
         }
         if s.loop_range && s.range.is_none() {
             return bad("loop_range needs a range");
+        }
+        if s.background.blur > MAX_BLUR {
+            return bad("background blur is above 100");
         }
         Ok(())
     }
@@ -501,7 +556,7 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: Project = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
-        assert!(json.contains("\"schema_version\":4"));
+        assert!(json.contains("\"schema_version\":5"));
     }
 
     #[test]
@@ -564,8 +619,8 @@ mod tests {
             p.validate().unwrap_err()
         };
         assert!(matches!(
-            edit(&|p| p.schema_version = 5),
-            ModelError::UnsupportedVersion(5)
+            edit(&|p| p.schema_version = 6),
+            ModelError::UnsupportedVersion(6)
         ));
         assert!(matches!(
             edit(&|p| p.media.clear()),

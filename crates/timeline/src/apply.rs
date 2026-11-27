@@ -66,6 +66,8 @@ pub enum OpError {
     TooManyMarkers,
     /// `SetRange` with `start < 0`, `end <= start`, or `looping` without a range.
     BadRange,
+    /// `SetBackground` with a blur above 100.
+    BadBackground,
     /// A batch step failed; earlier steps were rolled back.
     Batch {
         index: usize,
@@ -656,6 +658,24 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 sequence,
                 range: std::mem::replace(&mut s.range, range),
                 looping: std::mem::replace(&mut s.loop_range, looping),
+            };
+            Ok(Inverse(vec![undo]))
+        }
+        Op::SetBackground {
+            sequence,
+            background,
+        } => {
+            if background.blur > app_model::MAX_BLUR {
+                return Err(OpError::BadBackground);
+            }
+            let s = p
+                .sequences
+                .iter_mut()
+                .find(|s| s.id == sequence)
+                .ok_or(OpError::UnknownSequence(sequence))?;
+            let undo = Op::SetBackground {
+                sequence,
+                background: std::mem::replace(&mut s.background, background),
             };
             Ok(Inverse(vec![undo]))
         }

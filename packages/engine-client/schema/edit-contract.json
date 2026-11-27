@@ -111,6 +111,19 @@
       "rate_fixed": false
     },
     {
+      "op": "set_background",
+      "sequence": "00000000000000000000000000000008",
+      "background": {
+        "mode": "blur",
+        "colour": [
+          18,
+          52,
+          86
+        ],
+        "blur": 70
+      }
+    },
+    {
       "op": "set_link",
       "clip": "00000000000000000000000000000065",
       "link": null

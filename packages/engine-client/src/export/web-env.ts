@@ -139,7 +139,7 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
           drawn.push(frame);
           layers.push(layerOf(layer, frame, seq));
         }
-        return await renderExportFrame(renderer, canvas, capture, layers, seq, outputFrameTimes(plan, index));
+        return await renderExportFrame(renderer, canvas, capture, layers, seq, outputFrameTimes(plan, index), desc.background);
       } finally {
         for (const d of drawn) d.close();
       }
