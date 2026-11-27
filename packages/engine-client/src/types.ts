@@ -59,6 +59,14 @@ export interface OpenMediaOptions {
   gpu?: boolean;
 }
 
+/** The colour description a container declares for a video track (ISO 23001-8 code points; 0 = not given). `fullRange` is null when the container does not say. */
+export interface ColourInfo {
+  primaries: number;
+  transfer: number;
+  matrix: number;
+  fullRange: boolean | null;
+}
+
 export interface TrackInfo {
   /** WebCodecs codec string. */
   codec: string;
@@ -66,6 +74,8 @@ export interface TrackInfo {
   height: number;
   /** Clockwise degrees to apply when displaying (frames are returned in coded orientation). */
   rotation: number;
+  /** Colour primaries, transfer, matrix and range from the container (WebM `Colour`, MP4 `colr`/`vpcC`); absent when it declares none. Video only. */
+  colour?: ColourInfo | null;
   sampleRate: number;
   channels: number;
   durationTicks: number;

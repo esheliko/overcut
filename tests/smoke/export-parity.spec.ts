@@ -154,12 +154,7 @@ test("export parity: the decoded export matches the preview at three timestamps 
       return out;
     };
     const mad = (a: Float64Array, b: Float64Array): number => { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i]! - b[i]!); return s / a.length; };
-    // The in-page decoder (`engine.media`) hands VideoDecoder no colour space, so this full-range file (colour range `pc`, BT.709: ffprobe says so, and
-    // ffmpeg's decode of the same frames equals the preview within 2 codes) is read as limited range and stretched by 255/219, clipping at 0 and 255.
-    // Apply the same stretch to the preview before comparing, so the comparison is about the export and not about that decoder. A decoder that reads
-    // the range right makes `stretch` the identity: delete it then (noted in the PR as a follow-up).
-    const stretch = (rgba: ArrayLike<number>): Uint8Array => { const o = new Uint8Array(rgba.length); for (let i = 0; i < o.length; i++) o[i] = i % 4 === 3 ? rgba[i]! : Math.min(255, Math.max(0, Math.round(((rgba[i]! - 16) * 255) / 219))); return o; };
-    const prev = shots.map((s: Px) => small(stretch(s.data), s.width, s.height));
+    const prev = shots.map((s: Px) => small(s.data, s.width, s.height));
     const exp = decoded.map((d) => small(d.rgba, d.width, d.height));
     const at = frames.map((f: number) => exp[f]!);
     const band = (a: Float64Array): number => { let m = 0; for (let x = 0; x < W; x++) for (let y = 1; y < 6; y++) m = Math.max(m, a[(y * W + x) * 3]!, a[(y * W + x) * 3 + 1]!, a[(y * W + x) * 3 + 2]!); return m; };
@@ -202,7 +197,7 @@ test("export parity: the decoded export matches the preview at three timestamps 
   expect(Math.abs(r.lastPtsTicks - 14 * r.frameTicks)).toBeLessThanOrEqual(TICKS / 1000); // WebM stamps whole milliseconds
   expect(r.size).toEqual([360, 640]);
   // Same picture: the export at each timestamp is the preview at that timestamp ...
-  for (const [i, d] of r.same.entries()) expect(d, `frame ${FRAMES[i]}: mean difference preview vs export`).toBeLessThan(6);
+  for (const [i, d] of r.same.entries()) expect(d, `frame ${FRAMES[i]}: mean difference preview vs export`).toBeLessThan(4);
   // ... and clearly not the preview at another one (the overlay moved, the picture changed), so the check can tell frames apart.
   for (const [i, row] of r.other.entries()) for (const [j, d] of row.entries()) if (i !== j) expect(d, `preview ${FRAMES[i]} vs export ${FRAMES[j]}`).toBeGreaterThan(2 * r.same[i]! + 2);
   // The blurred background is in the file, not just on screen.

@@ -3,9 +3,9 @@
 //! Frames cross as small integer ids; `FrameRef` keeps the Rust frame alive, so dropping it releases (closes) the JS frame.
 
 use app_media::{
-    AudioRequest, Decoder, FrameData, FrameKind, FrameKinds, GpuFrameHandle, GpuResource,
-    HostDecoder, MediaError, PacketDecoder, PacketRef, Probe, Source, Track, VideoFrame, VideoOut,
-    VideoRequest,
+    AudioRequest, ColourInfo, Decoder, FrameData, FrameKind, FrameKinds, GpuFrameHandle,
+    GpuResource, HostDecoder, MediaError, PacketDecoder, PacketRef, Probe, Source, Track,
+    VideoFrame, VideoOut, VideoRequest,
 };
 use js_sys::{Float32Array, Promise, Reflect, Uint8Array};
 use serde_json::json;
@@ -217,8 +217,17 @@ pub struct MediaFile {
     dec: Option<HostDecoder<WebHost>>,
 }
 
+/// The container's colour description (ISO 23001-8 code points; `fullRange` is null when the container does not say), `null` when it declares nothing.
+fn json_colour(t: &Track) -> serde_json::Value {
+    let c = t.colour;
+    if c == ColourInfo::default() {
+        return serde_json::Value::Null;
+    }
+    json!({"primaries": c.primaries, "transfer": c.transfer, "matrix": c.matrix, "fullRange": c.full_range})
+}
+
 fn json_track(t: &Track) -> serde_json::Value {
-    json!({"codec": t.codec, "width": t.width, "height": t.height, "rotation": t.rotation, "sampleRate": t.sample_rate,
+    json!({"codec": t.codec, "width": t.width, "height": t.height, "rotation": t.rotation, "colour": json_colour(t), "sampleRate": t.sample_rate,
         "channels": t.channels, "timescale": t.timescale, "durationTicks": t.duration.ticks(), "packets": t.packets.len(),
         "fps": t.nominal_fps.map(|f| json!([f.num, f.den])), "vfr": t.vfr})
 }

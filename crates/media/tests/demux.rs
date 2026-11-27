@@ -392,3 +392,28 @@ fn huge_trun_count_is_rejected_without_allocating() {
     d[at + 4..at + 8].copy_from_slice(&u32::MAX.to_be_bytes());
     assert!(matches!(probe_bytes(&d), Err(MediaError::Invalid(_))));
 }
+
+#[test]
+fn the_containers_colour_description_is_carried_with_its_range() {
+    // WebM `Colour` element: full range, bt709 primaries/matrix, sRGB transfer (13).
+    let p = probe_bytes(&fixture("colour_full.webm")).unwrap();
+    assert_eq!(
+        video(&p).colour,
+        ColourInfo {
+            primaries: 1,
+            transfer: 13,
+            matrix: 1,
+            full_range: Some(true)
+        }
+    );
+    // MP4 `colr`/nclx: the full-range flag.
+    let p = probe_bytes(&fixture("colour_full.mp4")).unwrap();
+    let c = video(&p).colour;
+    assert_eq!(
+        (c.primaries, c.transfer, c.matrix, c.full_range),
+        (1, 1, 1, Some(true))
+    );
+    // A file that declares nothing declares nothing (no guessed range): this H.264 has no `colr`.
+    let p = probe_bytes(&fixture("h264_aac.mp4")).unwrap();
+    assert_eq!(video(&p).colour.full_range, None);
+}

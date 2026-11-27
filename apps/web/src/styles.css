@@ -456,6 +456,8 @@ h2, p { margin: 0; }
 /* The setup's Export button stays on screen while the settings scroll (phone 320x640 included); opaque, so the scrolled fields pass under it. */
 .export-footer { position: sticky; inset-block-end: 0; z-index: 1; margin-inline: calc(var(--space-5) * -1); margin-block-start: auto; padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)); border-block-start: 1px solid var(--line); background: var(--surface); }
 .export-footer .export-go { inline-size: 100%; }
+.export-footer.export-actions { flex-wrap: nowrap; } /* Cancel and Apply share one row, even at 320 px (a stacked pair would eat a fifth of the screen) */
+.export-footer.export-actions > * { flex: 1 1 0; min-inline-size: 0; padding-inline: var(--space-3); }
 .export-secondary { border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--fg); }
 .export-secondary:hover { background: var(--surface-3); }
 .export-go.confirm-danger { background: var(--danger); color: var(--bg); }
