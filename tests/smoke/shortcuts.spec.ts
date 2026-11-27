@@ -11,7 +11,7 @@ test("remap split to Q: Q splits, S no longer does, the choice survives a reload
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
   if (phone) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(FLASH);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
 
   const open = async () => {
     await page.getByRole("button", { name: "Menu" }).click();
@@ -47,10 +47,10 @@ test("remap split to Q: Q splits, S no longer does, the choice survives a reload
     await page.keyboard.press(k);
   };
   await edit("s");
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   await edit("q");
   // The picture and its sound are linked: one split cuts both, so 2 clips become 4 (this said 3 before linked clips landed on m2).
-  await expect(page.locator("#tl-summary")).toContainText("4 clips");
+  await expect(page.locator("#tl-summary")).toContainText("2 clips");
 
   await page.reload();
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });

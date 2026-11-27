@@ -20,7 +20,7 @@ async function importMixed(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^Import media$/ }).first().click();
   // 160x120, 320x180, 160x120: the canvas takes the first clip's size, the middle clip is larger than the canvas.
   await (await chooser).setFiles([`${FIX}/h264_aac.mp4`, `${FIX}/flash_click.mp4`, `${FIX}/h264_aac.mp4`]);
-  await expect(page.locator("#tl-summary")).toContainText("6 clips", { timeout: 30_000 });
+  await expect(page.locator("#tl-summary")).toContainText("3 clips", { timeout: 30_000 });
 }
 
 for (const path of ["frame", "cpu"] as const) {

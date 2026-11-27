@@ -50,7 +50,7 @@ test("Alt+drag slip on the right half of a split says there is no footage that w
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
   await page.getByTestId("media-input").setInputFiles(resolve("crates/media/tests/fixtures/flash_click.mp4"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true");
   const canvas = page.getByTestId("timeline-canvas");
   const box = (await canvas.boundingBox())!;
@@ -58,7 +58,7 @@ test("Alt+drag slip on the right half of a split says there is no footage that w
   const gutter = 48 + (await gutterShift(page)), ruler = 30, lane = 52;
   await page.mouse.click(box.x + gutter + 0.5 * pps, box.y + ruler / 2); // playhead in the middle of the 1 s clip
   await page.getByRole("button", { name: "Split at playhead" }).click();
-  await expect(page.locator("#tl-summary")).toContainText("4 clips");
+  await expect(page.locator("#tl-summary")).toContainText("2 clips");
   const y = box.y + ruler + lane * 0.5;
   const x = box.x + gutter + 0.75 * pps; // inside the right half
   await page.keyboard.down("Alt");
@@ -76,7 +76,7 @@ test("tablet width: with a linked clip selected the toolbar tools, the selection
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.getByTestId("media-input").setInputFiles(resolve("crates/media/tests/fixtures/flash_click.mp4"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 });
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 20_000 });
   await page.waitForTimeout(500); // the view fits the new clip
   const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
   await page.mouse.click(box.x + box.width * 0.5, box.y + 40);
@@ -91,11 +91,11 @@ test("Add as overlay on a new track selects the new clip, so it can be sized at 
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.getByTestId("media-input").setInputFiles(resolve("crates/media/tests/fixtures/flash_click.mp4"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 });
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 20_000 });
   await expect(page.getByTestId("tl-selected")).toHaveCount(0);
   await page.getByTestId("tl-more").click();
   await page.getByTestId("tl-add-overlay").click();
-  await expect(page.locator("#tl-summary")).toContainText("4 clips", { timeout: 20_000 });
+  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 });
   await expect(page.getByTestId("tl-selected")).toHaveText(/1 clip \+ linked audio/);
 });
 

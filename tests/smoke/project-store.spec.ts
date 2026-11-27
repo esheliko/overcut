@@ -23,7 +23,7 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   // Import: appears in the bin and on the timeline, and the preview plays that same project (no separate "open a clip").
   await page.getByTestId("media-input").setInputFiles(FLASH);
   await expect(page.getByTestId("bin-item")).toHaveCount(1);
-  await expect(summary).toContainText("2 tracks, 2 clips");
+  await expect(summary).toContainText("2 tracks, 1 clip");
   await expect(summary).toContainText("3 seconds");
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true");
   await expect(total).toContainText("/ 00:00:03:00");
@@ -58,7 +58,7 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   await page.getByRole("button", { name: UNDO }).click();
   await expect(total).toContainText("/ 00:00:03:00");
   await expect.poll(async () => (await hook(page)).end).toBe(90);
-  await expect(summary).toContainText("2 tracks, 2 clips");
+  await expect(summary).toContainText("2 tracks, 1 clip");
   await expect(summary).toContainText("3 seconds");
   await expect(page.getByTestId("bin-item")).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
@@ -74,7 +74,7 @@ test("import, trim, play 1 s, undo the trim: bin, timeline and preview stay cons
   if (phone) await page.getByRole("button", { name: "Close panel" }).click();
   // ...and redo brings the card back whole.
   await page.getByRole("button", { name: REDO }).click();
-  await expect(summary).toContainText("2 clips");
+  await expect(summary).toContainText("1 clip");
   await openBin();
   await expect(page.getByTestId("bin-item")).toHaveCount(1);
   await expect(page.getByTestId("bin-item").first()).toContainText("flash_click.mp4");

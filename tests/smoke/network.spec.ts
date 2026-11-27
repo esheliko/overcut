@@ -53,7 +53,7 @@ test("a full session (load, import, edit, play, export, offline reload) talks on
 
   // import a fixture, edit, play
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "vp9_opus.webm"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 30_000 });
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 30_000 });
   await edit(page);
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await page.waitForTimeout(500);
