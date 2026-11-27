@@ -4,6 +4,7 @@
 import type { Engine, MediaRef, PeaksView } from "@app/engine-client";
 import { fingerprint, type MediaCache } from "./cache";
 import type { MediaHost } from "./host";
+import { pace } from "./pace";
 import { extractPeaks } from "./peaks-job";
 
 export const TILE_COLS = 512;
@@ -157,7 +158,7 @@ export class WaveformService {
     const t0 = performance.now();
     try {
       const r = await extractPeaks({
-        engine: this.engine, host: this.host, cache: this.cache, media: e.media,
+        engine: this.engine, host: this.host, cache: this.cache, media: e.media, pace, chunkSeconds: 0.5, // short steps: a 2 s audio decode is a 50-100 ms task on a slow phone
         onFile: (file, progress) => {
           // Parse in order; a slow parse must not let an older file replace a newer one.
           publishing = publishing.then(async () => {

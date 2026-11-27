@@ -6,7 +6,7 @@ use app_model::{
     Clip, ClipId, MediaId, MediaKind, MediaRef, Project, Rational, Resolution, SeqIds, Time, Track,
     TrackId, TrackKind,
 };
-use app_timeline::{apply, evaluate_into, Edge, FrameDescription, Op};
+use app_timeline::{apply, apply_patch, diff, evaluate_into, Edge, FrameDescription, Op};
 use std::time::Instant;
 
 const U: i64 = 705_600_000 / 30;
@@ -196,6 +196,30 @@ fn main() {
         n as usize
     });
 
+    // ADR 0020: what the editor adds to every outcome: diff against the shadow copy and move the shadow forward (same nudge as above).
+    let mut shadow = p.clone();
+    let patch_ms = best_of(5, || {
+        let n = 2000;
+        for i in 0..n {
+            let start = t(k * 30 + i64::from(i % 2 == 0));
+            apply(
+                &mut p,
+                Op::SetClip {
+                    clip: victim,
+                    start,
+                    source_in: t(0),
+                    duration: t(29),
+                    speed: None,
+                },
+            )
+            .unwrap();
+            let patch = diff(&shadow, &p).unwrap();
+            apply_patch(&mut shadow, &patch).unwrap();
+        }
+        n as usize
+    });
+    assert_eq!(shadow, p);
+
     // evaluate_into: reuse the output buffer, sweep the playhead across the project.
     let mut out = FrameDescription::default();
     let seq = &p.sequences[0];
@@ -210,6 +234,6 @@ fn main() {
     let (mix5_mean, mix5_worst) = mixed(250); // 20 tracks x 250 = 5k clips: the budget size
     let (mix20_mean, mix20_worst) = mixed(1000); // 20 tracks x 1000 = 20k clips: stress
     println!(
-        "{{\"clips\":{CLIPS},\"tracks\":{TRACKS},\"ops_apply_ms\":{apply_ms:.5},\"evaluate_ms\":{eval_ms:.5},\"mix_20x250_mean_ms\":{mix5_mean:.5},\"mix_20x250_worst_ms\":{mix5_worst:.5},\"mix_20x1000_mean_ms\":{mix20_mean:.5},\"mix_20x1000_worst_ms\":{mix20_worst:.5}}}"
+        "{{\"clips\":{CLIPS},\"tracks\":{TRACKS},\"ops_apply_ms\":{apply_ms:.5},\"ops_apply_patch_ms\":{patch_ms:.5},\"evaluate_ms\":{eval_ms:.5},\"mix_20x250_mean_ms\":{mix5_mean:.5},\"mix_20x250_worst_ms\":{mix5_worst:.5},\"mix_20x1000_mean_ms\":{mix20_mean:.5},\"mix_20x1000_worst_ms\":{mix20_worst:.5}}}"
     );
 }

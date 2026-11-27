@@ -840,6 +840,211 @@ proptest! {
     }
 }
 
+proptest! {
+    /// The patch an edit reports reproduces the project: after every apply, undo and redo, applying `diff(shadow, now)` to the
+    /// previous shadow gives the project (ADR 0020), and the patch survives its JSON form.
+    #[test]
+    fn patches_reproduce_the_project_after_random_ops_undo_and_redo(steps in prop::collection::vec(step(), 1..60)) {
+        let (start, mut ids) = base();
+        let mut p = start.clone();
+        let mut shadow = start;
+        let mut h = History::new();
+        for s in &steps {
+            match s {
+                Step::Undo => { h.undo(&mut p).unwrap(); }
+                Step::Redo => { h.redo(&mut p).unwrap(); }
+                _ => {
+                    let Some(op) = resolve(s, &p, &mut ids) else { continue };
+                    let _ = h.apply(&mut p, op, None);
+                }
+            }
+            let patch = diff(&shadow, &p).expect("same project and sequences: always a patch");
+            let wire: EditPatch = serde_json::from_str(&serde_json::to_string(&patch).unwrap()).unwrap();
+            prop_assert_eq!(&wire, &patch);
+            apply_patch(&mut shadow, &wire).map_err(TestCaseError::fail)?;
+            prop_assert_eq!(&shadow, &p, "patched copy != project");
+        }
+    }
+}
+
+#[test]
+fn editor_outcomes_carry_a_patch_that_keeps_a_ui_copy_equal_to_the_project() {
+    let (p, mut ids) = base();
+    let tr = p.sequences[0].tracks[0].id;
+    let m = p.media[0].id;
+    let c = clip(&mut ids, m, 0, 0, 10);
+    let cid = c.id;
+    let new_id = ClipId::new(&mut ids);
+    let mut e = Editor::from_project(p);
+    let mut ui: Project = serde_json::from_str(&e.project_json()).unwrap();
+    let ops = [
+        serde_json::to_string(&Op::InsertClip { track: tr, clip: c }).unwrap(),
+        serde_json::to_string(&Op::Split {
+            clip: cid,
+            at: t(4),
+            new_id,
+            new_link: None,
+        })
+        .unwrap(),
+    ];
+    let mut check = |e: &Editor, json: String| -> EditOutcome {
+        let out: EditOutcome = serde_json::from_str(&json).unwrap();
+        assert!(out.changed);
+        apply_patch(&mut ui, out.patch.as_ref().expect("a patch")).unwrap();
+        assert_eq!(serde_json::to_string(&ui).unwrap(), e.project_json());
+        out
+    };
+    let j = e.apply_json(&ops[0], None).unwrap();
+    check(&e, j);
+    let j = e.apply_json(&ops[1], None).unwrap();
+    let out = check(&e, j);
+    let sp = out.patch.unwrap().sequences[0].tracks[0]
+        .splice
+        .clone()
+        .unwrap();
+    assert_eq!(
+        (sp.start, sp.remove, sp.insert.len()),
+        (0, 1, 2),
+        "a split is one splice, not the whole track"
+    );
+    let j = e.undo_json().unwrap();
+    check(&e, j);
+    let j = e.redo_json().unwrap();
+    check(&e, j);
+    // A no-op undo reports no change and no patch.
+    let mut fresh = Editor::from_project(base().0);
+    let out: EditOutcome = serde_json::from_str(&fresh.undo_json().unwrap()).unwrap();
+    assert!(!out.changed && out.patch.is_none());
+}
+
+/// `packages/engine-client/schema/patch-contract.json`: real edits with the project before, the patch the engine reports and the project after.
+/// The TypeScript `applyEditPatch` is tested against the same file (`tests/unit/edit-patch.test.ts`). Regenerate with `UPDATE_PATCH_CONTRACT=1 cargo test -p app-timeline patch_contract`.
+#[test]
+fn patch_contract_matches_the_checked_in_file() {
+    let (p, mut ids) = base();
+    let tracks: Vec<TrackId> = p.sequences[0].tracks.iter().map(|t| t.id).collect();
+    let m = p.media[0].id;
+    let (a, b) = (clip(&mut ids, m, 0, 0, 10), clip(&mut ids, m, 20, 10, 10));
+    let (aid, bid) = (a.id, b.id);
+    let (split_id, new_track) = (ClipId::new(&mut ids), TrackId::new(&mut ids));
+    let new_marker = app_model::MarkerId::new(&mut ids);
+    let mut e = Editor::from_project(p);
+    let to = |o: &Op| serde_json::to_string(o).unwrap();
+    let ops: Vec<(&str, String)> = vec![
+        (
+            "insert two clips",
+            format!(
+                "[{},{}]",
+                to(&Op::InsertClip {
+                    track: tracks[0],
+                    clip: a
+                }),
+                to(&Op::InsertClip {
+                    track: tracks[0],
+                    clip: b
+                })
+            ),
+        ),
+        (
+            "split the first clip",
+            to(&Op::Split {
+                clip: aid,
+                at: t(4),
+                new_id: split_id,
+                new_link: None,
+            }),
+        ),
+        (
+            "move the second clip to another track",
+            to(&Op::Move {
+                clip: bid,
+                track: tracks[1],
+                start: t(30),
+            }),
+        ),
+        (
+            "mute a track",
+            to(&Op::SetTrackProps {
+                track: tracks[2],
+                muted: Some(true),
+                solo: None,
+                locked: None,
+                hidden: None,
+                height: None,
+                name: None,
+                colour: None,
+            }),
+        ),
+        (
+            "add a track at the bottom",
+            to(&Op::AddTrack {
+                sequence: e.project().sequences[0].id,
+                track: Track {
+                    id: new_track,
+                    kind: TrackKind::Video,
+                    name: "V3".into(),
+                    muted: false,
+                    locked: false,
+                    hidden: false,
+                    solo: false,
+                    height: None,
+                    colour: None,
+                    clips: vec![],
+                },
+                index: 0,
+            }),
+        ),
+        (
+            "move that track to the top",
+            to(&Op::MoveTrack {
+                track: new_track,
+                index: 3,
+            }),
+        ),
+        (
+            "add a marker",
+            to(&Op::AddMarker {
+                sequence: e.project().sequences[0].id,
+                marker: app_model::Marker {
+                    id: new_marker,
+                    time: t(5),
+                    kind: app_model::MarkerKind::Marker,
+                    name: "m".into(),
+                    colour: None,
+                },
+            }),
+        ),
+        (
+            "remove the new track",
+            to(&Op::RemoveTrack { track: new_track }),
+        ),
+    ];
+    let mut cases = Vec::new();
+    for (name, op) in &ops {
+        let before: serde_json::Value = serde_json::from_str(&e.project_json()).unwrap();
+        let out: serde_json::Value =
+            serde_json::from_str(&e.apply_json(op, None).unwrap()).unwrap();
+        let after: serde_json::Value = serde_json::from_str(&e.project_json()).unwrap();
+        cases.push(serde_json::json!({ "name": name, "before": before, "patch": out["patch"], "after": after }));
+    }
+    for _ in 0..4 {
+        let before: serde_json::Value = serde_json::from_str(&e.project_json()).unwrap();
+        let out: serde_json::Value = serde_json::from_str(&e.undo_json().unwrap()).unwrap();
+        let after: serde_json::Value = serde_json::from_str(&e.project_json()).unwrap();
+        cases.push(serde_json::json!({ "name": "undo", "before": before, "patch": out["patch"], "after": after }));
+    }
+    let fresh =
+        serde_json::to_string_pretty(&serde_json::json!({ "cases": cases })).unwrap() + "\n";
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packages/engine-client/schema/patch-contract.json"
+    );
+    if std::env::var("UPDATE_PATCH_CONTRACT").is_ok() {
+        std::fs::write(path, &fresh).unwrap();
+    }
+    assert_eq!(std::fs::read_to_string(path).unwrap(), fresh, "patch contract is stale: UPDATE_PATCH_CONTRACT=1 cargo test -p app-timeline patch_contract");
+}
+
 /// (name, op, predicate the error must satisfy)
 type Case = (&'static str, Op, fn(&OpError) -> bool);
 
