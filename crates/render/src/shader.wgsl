@@ -44,12 +44,11 @@ fn decode_srgb(c: vec3<f32>) -> vec3<f32> {
     return select(hi, lo, c <= vec3(0.04045));
 }
 
-@fragment
-fn fs_layer(v: VOut) -> @location(0) vec4<f32> {
+fn shade(uv: vec2<f32>) -> vec4<f32> {
     // Sample everything unconditionally (uniform control flow); the mode only selects the result.
-    let c = textureSample(tex, samp, v.uv);
-    let cu = textureSample(tex_u, samp, v.uv).r;
-    let cv = textureSample(tex_v, samp, v.uv).r;
+    let c = textureSample(tex, samp, uv);
+    let cu = textureSample(tex_u, samp, uv).r;
+    let cv = textureSample(tex_v, samp, uv).r;
     var rgb = c.rgb;
     var a = c.a;
     if (layer.rot.w > 0.5) {
@@ -62,6 +61,27 @@ fn fs_layer(v: VOut) -> @location(0) vec4<f32> {
     }
     let o = a * layer.rot.z;
     return vec4(rgb * o, o); // premultiplied, linear
+}
+
+@fragment
+fn fs_layer(v: VOut) -> @location(0) vec4<f32> {
+    return shade(v.uv);
+}
+
+// Backdrop source (TL-19): the same layer, but each (small) target pixel averages a 10 x 10 grid of taps over the source area it covers (found from the uv
+// derivatives, so it follows the display rotation too). A single bilinear sample of a 1080p picture into a tiny target aliases into stripes.
+@fragment
+fn fs_layer_prefilter(v: VOut) -> @location(0) vec4<f32> {
+    let du = dpdx(v.uv);
+    let dv = dpdy(v.uv);
+    var acc = vec4(0.0);
+    for (var j = 0; j < 10; j = j + 1) {
+        for (var i = 0; i < 10; i = i + 1) {
+            let o = (vec2(f32(i), f32(j)) + vec2(0.5)) / 10.0 - vec2(0.5);
+            acc = acc + shade(v.uv + du * o.x + dv * o.y);
+        }
+    }
+    return acc / 100.0;
 }
 
 // Present pass: accumulation (linear, premultiplied) -> sRGB-encoded Rgba8Unorm (explicit encode, so every backend does the same maths).
@@ -96,7 +116,7 @@ struct BgParams { dir: vec2<f32>, size: vec2<f32> };
 @fragment
 fn fs_blur(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
     let uv = p.xy / bgp.size;
-    // Gaussian sigma 2 (taps 0..4), normalised.
+    // Gaussian sigma 2 taps (taps 0..4, spaced by the strength-dependent step), normalised.
     var w = array<f32, 5>(0.2042, 0.1802, 0.1238, 0.0663, 0.0276);
     var acc = textureSample(bg_tex, bg_samp, uv) * w[0];
     for (var i = 1; i < 5; i = i + 1) {
@@ -106,8 +126,49 @@ fn fs_blur(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
     return acc;
 }
 
+// Smooth (cubic B-spline, four bilinear fetches) enlargement of the small blurred target over the whole canvas: no tent/diamond artefacts of plain
+// bilinear. Then dimmed a little so the sharp picture stands out, and dithered by one 8-bit code (in sRGB steps) so the smooth gradient does not band.
+const BACKDROP_DIM: f32 = 0.7; // linear light (about 0.85 in sRGB terms)
+
+fn cubic_weights(t: vec2<f32>) -> array<vec4<f32>, 2> {
+    let t2 = t * t;
+    let t3 = t2 * t;
+    let w0 = (1.0 - t) * (1.0 - t) * (1.0 - t) / 6.0;
+    let w1 = (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0;
+    let w2 = (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0;
+    let w3 = t3 / 6.0;
+    return array<vec4<f32>, 2>(vec4(w0.x, w1.x, w2.x, w3.x), vec4(w0.y, w1.y, w2.y, w3.y));
+}
+
+fn hash12(p: vec2<f32>) -> f32 {
+    var q = fract(p * vec2(0.1031, 0.1030));
+    q = q + dot(q, q.yx + vec2(33.33));
+    return fract((q.x + q.y) * q.x);
+}
+
 @fragment
 fn fs_copy(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
-    let c = textureSample(bg_tex, bg_samp, p.xy / bgp.size);
-    return vec4(c.rgb, 1.0);
+    let dims = vec2<f32>(textureDimensions(bg_tex));
+    let x = (p.xy / bgp.size) * dims - vec2(0.5); // texel coordinates of the sample point (texel centres at integers)
+    let ix = floor(x);
+    let wt = cubic_weights(x - ix);
+    let wx = wt[0];
+    let wy = wt[1];
+    let gx0 = wx.x + wx.y;
+    let gx1 = wx.z + wx.w;
+    let gy0 = wy.x + wy.y;
+    let gy1 = wy.z + wy.w;
+    let ox0 = (ix.x - 1.0 + wx.y / gx0 + 0.5) / dims.x;
+    let ox1 = (ix.x + 1.0 + wx.w / gx1 + 0.5) / dims.x;
+    let oy0 = (ix.y - 1.0 + wy.y / gy0 + 0.5) / dims.y;
+    let oy1 = (ix.y + 1.0 + wy.w / gy1 + 0.5) / dims.y;
+    let c = textureSample(bg_tex, bg_samp, vec2(ox0, oy0)) * gx0 * gy0
+        + textureSample(bg_tex, bg_samp, vec2(ox1, oy0)) * gx1 * gy0
+        + textureSample(bg_tex, bg_samp, vec2(ox0, oy1)) * gx0 * gy1
+        + textureSample(bg_tex, bg_samp, vec2(ox1, oy1)) * gx1 * gy1;
+    let l = max(c.rgb, vec3(0.0)) * BACKDROP_DIM;
+    let n = (hash12(p.xy) - 0.5) / 255.0;
+    // gamma 2 stands in for the sRGB curve here (cheap: sqrt and a square): the noise is one code, whatever the curve's exact slope
+    let e = clamp(sqrt(l) + vec3(n), vec3(0.0), vec3(1.0));
+    return vec4(e * e, 1.0);
 }

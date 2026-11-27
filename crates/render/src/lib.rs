@@ -169,7 +169,7 @@ pub fn layer_covers_output(l: &Layer, width: u32, height: u32) -> bool {
 /// Long side of the blur targets in texels, and the blur's tap spacing in those texels for `Background::blur` 0..=100. The targets are sized from
 /// the output's *shape*, not its size (never above the output itself), so the blur is the same fraction of the picture at the preview's size and
 /// at the export's: preview and export show the same background.
-const BLUR_LONG: u32 = 128;
+const BLUR_LONG: u32 = 48;
 /// The blur targets' size for an output of `w` x `h`: the long side `BLUR_LONG` (or the output's own, when smaller), the short side by aspect.
 pub fn backdrop_size(w: u32, h: u32) -> (u32, u32) {
     let (w, h) = (w.max(1), h.max(1));
@@ -180,7 +180,7 @@ pub fn backdrop_size(w: u32, h: u32) -> (u32, u32) {
     )
 }
 fn blur_step(strength: u8) -> f32 {
-    0.4 + f32::from(strength.min(100)) / 100.0 * 2.6
+    0.3 + f32::from(strength.min(100)) / 100.0 * 1.9
 }
 
 /// The shader's uniform block for `l` drawn into an output of `width` x `height`.
@@ -314,6 +314,7 @@ pub struct Compositor {
     accum: AccumFormat,
     layer_bgl: wgpu::BindGroupLayout,
     layer_pipe: wgpu::RenderPipeline,
+    prefilter_pipe: wgpu::RenderPipeline,
     present_bgl: wgpu::BindGroupLayout,
     present_pipe: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
@@ -441,6 +442,14 @@ impl Compositor {
             accum.texture_format(),
             Some(premul),
         );
+        let prefilter_pipe = mk(
+            "backdrop source",
+            &layer_bgl,
+            "vs_layer",
+            "fs_layer_prefilter",
+            accum.texture_format(),
+            None,
+        );
         let present_pipe = mk(
             "present",
             &present_bgl,
@@ -518,6 +527,7 @@ impl Compositor {
             accum,
             layer_bgl,
             layer_pipe,
+            prefilter_pipe,
             present_bgl,
             present_pipe,
             sampler,
@@ -990,7 +1000,7 @@ impl Compositor {
                 };
             // 1. the bottom layer, cover-fit and downsampled, into A
             pass_to("backdrop source", &bd.a_view, &mut |pass| {
-                pass.set_pipeline(&self.layer_pipe);
+                pass.set_pipeline(&self.prefilter_pipe);
                 pass.set_bind_group(
                     0,
                     self.slots[0].group.as_ref().expect("bind group"),
@@ -1250,15 +1260,15 @@ mod tests {
     fn the_blur_targets_follow_the_shape_not_the_size_of_the_output() {
         // Preview and export (different sizes, one shape) blur by the same fraction of the picture.
         assert_eq!(backdrop_size(360, 640), backdrop_size(1080, 1920));
-        assert_eq!(backdrop_size(1920, 1080), (128, 72));
-        assert_eq!(backdrop_size(1080, 1920), (72, 128));
+        assert_eq!(backdrop_size(1920, 1080), (48, 27));
+        assert_eq!(backdrop_size(1080, 1920), (27, 48));
         assert_eq!(
-            backdrop_size(64, 36),
-            (64, 36),
+            backdrop_size(40, 22),
+            (40, 22),
             "never above the output itself"
         );
         assert_eq!(backdrop_size(1, 1), (1, 1));
-        assert_eq!(backdrop_size(5000, 3), (128, 1));
+        assert_eq!(backdrop_size(5000, 3), (48, 1));
     }
 
     #[test]

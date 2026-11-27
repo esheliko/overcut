@@ -67,7 +67,6 @@ export function CanvasDialog({ sequence, hasPicture, onApply, onClose }: { seque
   const num = (v: string): number => (v === "" ? 0 : Number(v.replace(/\D/g, "")) || 0);
   return (
     <Modal title={t("canvas.title")} titleId="canvas-title" testId="canvas-dialog" onClose={onClose}>
-      <p className="export-note">{t("canvas.intro")}</p>
       <div className="export-fields">
         <label>{t("canvas.shape")}
           <select value={c.shape} onChange={(e) => edit({ shape: e.target.value })} data-testid="canvas-shape">
@@ -125,12 +124,11 @@ export function CanvasDialog({ sequence, hasPicture, onApply, onClose }: { seque
           </label>
         </div>
       )}
-      <p className="export-note" data-testid="canvas-bg-note">{t(`canvas.bg.note.${bg.mode}`)}</p>
-      {hasPicture && <p className="export-note">{t("canvas.matchLocked")}</p>}
+      <p className="export-note" data-testid="canvas-bg-note">{t("canvas.bg.note")}</p>
       <p className="export-estimate" data-testid="canvas-result" aria-live="polite">
         {c.shape === "match" ? t("canvas.result.match", { size: sizeText, fps: fpsLabel(rate) }) : t("canvas.result", { size: sizeText, fps: fpsLabel(rate) })}
       </p>
-      <div className="export-actions">
+      <div className="export-actions export-footer">
         <button className="export-secondary" onClick={onClose} data-testid="canvas-cancel">{t("canvas.cancel")}</button>
         <button className="export-go" disabled={ops.length === 0} onClick={() => onApply(ops)} data-testid="canvas-apply">{t("canvas.apply")}</button>
       </div>

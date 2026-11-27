@@ -18,8 +18,8 @@ mod traits;
 
 pub use cache::{CacheStats, FrameCache};
 pub use demux::{
-    probe, ContainerFormat, MemSource, Packet, Probe, Track, TrackKind, MAX_PACKETS_PER_TRACK,
-    MAX_TRACKS,
+    probe, ColourInfo, ContainerFormat, MemSource, Packet, Probe, Track, TrackKind,
+    MAX_PACKETS_PER_TRACK, MAX_TRACKS,
 };
 pub use fake::{FakeDecoder, FakeGpuFrame};
 pub use host::{

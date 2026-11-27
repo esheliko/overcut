@@ -9,7 +9,7 @@ Milestone M2. Plan items M2-003 and M2-025. Lead decision 2026-11-27: black, fla
   - **Blur**: the bottom-most picture of the frame (V1, or the lowest visible video track), enlarged to *cover* the canvas and blurred. The CapCut-style look for vertical video.
 - It is one setting per **sequence** (a per-clip override is not built). It is behind every layer, so it is only seen where the layers leave the canvas uncovered, and through any layer that is transparent.
 - **Blur strength** 0..=100 (default 50). The blurred picture ignores the bottom layer's own transform: moving, scaling or keyframing V1 does not move the backdrop, which is the clip enlarged to the canvas. Crop and flip of that layer are ignored too.
-- **Where to set it**: the Canvas dialog (the button at the right of the player bar): "Background: Black / Colour / Blur", with the swatch row (nine design-system colours plus an "Other colour" input) for Colour and a "Blur amount" slider for Blur. Apply sends the canvas change and the background change as one batch, so **one Undo** takes back both ("Undo canvas change"). The Details panel with nothing selected shows the current background in its project summary. All controls are >= 44 px, keyboard and touch operable, in both themes.
+- **Where to set it**: the Canvas dialog (the button at the right of the player bar; Cancel and Apply are in a footer that stays on screen, down to 320 x 640, with one short line under Background): "Background: Black / Colour / Blur", with the swatch row (nine design-system colours plus an "Other colour" input) for Colour and a "Blur amount" slider for Blur. Apply sends the canvas change and the background change as one batch, so **one Undo** takes back both ("Undo canvas change"). The Details panel with nothing selected shows the current background in its project summary. All controls are >= 44 px, keyboard and touch operable, in both themes.
 - **Preview = export.** The preview presents and the exporter reads back through the same compositor call; `desc.background` of the evaluated frame is handed to both. The blur's working size follows the *shape* of the output, not its size, so the blur is the same fraction of the picture at the preview's size and at the export's (tested to within 1 code value).
 - A bottom layer that already fills the canvas at full opacity without a turn skips the blur passes (nothing could be seen of it).
 
@@ -24,10 +24,10 @@ Milestone M2. Plan items M2-003 and M2-025. Lead decision 2026-11-27: black, fla
 ## How the compositor draws it (`crates/render`)
 - `Compositor::set_background(Background)` (wasm: `GpuRenderer::set_background(mode, r, g, b, blur)`), called by `wrapRenderer` before the layers of every frame; it sticks until set again.
 - **Colour**: the accumulation target is cleared to the colour (linear light, alpha 1) instead of transparent; layers blend over it. sRGB-exact through the float accumulation, within 1-2 codes through the 8-bit fallback.
-- **Blur**: three tiny passes and one full-canvas copy, all in the accumulation format:
-  1. the bottom layer, cover-fit and bilinearly downsampled, into target A (long side 128 texels, short side by the output's aspect; never larger than the output);
-  2. a 9-tap Gaussian (sigma 2 taps) along x, A -> B; 3. along y, B -> A. The tap spacing grows with the strength (0.4 .. 3.0 texels);
-  4. A stretched over the canvas (bilinear) as the first draw of the layer pass, then the layers on top.
+- **Blur** (rewritten in M2 round 10 after the first version showed stripes and banding): four small passes and one full-canvas draw, all in the accumulation format, on targets whose long side is **48 texels** (short side by the output's aspect, never above the output), so preview and export blur by the same fraction of the picture:
+  1. **prefilter**: the bottom layer, cover-fit (centred, ignoring its own transform), into target A where every texel averages a 10 x 10 grid of taps over the source area it covers (from the uv derivatives, so display rotation is handled). A single bilinear sample of 1080p into a tiny target aliased into stripes;
+  2. a 9-tap Gaussian (sigma 2 taps) along x, A -> B; 3. along y, B -> A. The tap spacing grows with the strength (0.3 .. 2.2 texels, never wider than the Gaussian can be sampled without gaps), which is "Blur amount" = radius;
+  4. A is enlarged over the canvas with a **cubic B-spline** (four bilinear fetches; plain bilinear shows diamond artefacts), **dimmed** (x0.7 in linear light, about 15 % in sRGB terms, so the sharp picture stands out; Colour mode is not dimmed) and **dithered** by one 8-bit code (hash noise, gamma-2 steps) so the smooth gradient does not band, as the first draw of the layer pass; then the layers on top.
   Targets and bind groups are built once per output shape and size and reused (steady state allocates nothing). WGSL only, no compute: works on WebGL2 and WebGPU.
 
 ## Edge cases
@@ -35,11 +35,11 @@ Milestone M2. Plan items M2-003 and M2-025. Lead decision 2026-11-27: black, fla
 - The bottom layer is a still, a video frame or a stand-in during scrubbing: whichever picture is the bottom layer of that draw is blurred. The paused preview settles on the exact frame, like every layer.
 - The bottom layer is rotated 90/270 by the container: blurred upright (display rotation applied).
 - A bottom layer with transparency that covers the canvas still skips the blur (opaque black or the colour show through it, never the blur): put an opaque clip below it.
-- Sources are sampled sparsely when downsampled (a 1080p source into a 128-texel target): a hard, moving edge can shimmer faintly in the blur. Real footage is smooth enough that the Gaussian hides it; a better prefilter is M2.1 if it shows.
+- The prefilter is a 10 x 10 tap box over each target texel's footprint: a very sharp, high-frequency source (a test pattern) can still show a faint residue, which the Gaussian and the cubic enlargement hide.
 - Opening a project with blur on a device without float render targets uses the 8-bit accumulation like every layer.
 
 ## Cost
-Blur adds three passes over a 128 x 72 (or 72 x 128) target and one full-canvas textured draw: about one extra layer's fill cost. Numbers in the PR and `docs/PERFORMANCE.md` ("Background blur"). No per-frame allocation (`alloc_stats` unchanged after warm-up).
+Blur adds four passes over a 48 x 27 (or 27 x 48) target and one full-canvas draw with four fetches and a dither: the full-canvas draw is the cost (measured in the PR and `docs/PERFORMANCE.md`). Numbers in the PR and `docs/PERFORMANCE.md` ("Background blur"). No per-frame allocation (`alloc_stats` unchanged after warm-up).
 
 ## Test plan
 - Rust model: `a_v4_file_opens_with_a_black_background_and_the_v5_one_keeps_its_blur` (migration, defaults not written, save/reopen), schema and generated types in sync.

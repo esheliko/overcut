@@ -5,7 +5,7 @@ import { openStill } from "./still";
 import { buildFrameTable, frameIndexAt, type FrameTable } from "./frames";
 import { openFrameStream, type StreamTrack } from "./stream";
 import type { PacketJson } from "./blob-source";
-import type { DecodedFrame, FrameStream, MediaApi, MediaFileInfo, MediaHandle, OpenMediaOptions, TrackInfo } from "../types";
+import type { ColourInfo, DecodedFrame, FrameStream, MediaApi, MediaFileInfo, MediaHandle, OpenMediaOptions, TrackInfo } from "../types";
 
 /** The slice of the wasm `MediaFile` class this layer uses (see crates/wasm/src/media.rs; types in wasm-module.d.ts). */
 export interface WasmMediaFile {
@@ -32,6 +32,12 @@ export interface WasmMediaClass {
   open(source: { length: number; read(offset: number, len: number): Promise<Uint8Array> }): Promise<WasmMediaFile>;
 }
 
+function parseColour(v: unknown): ColourInfo | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  return { primaries: Number(o.primaries), transfer: Number(o.transfer), matrix: Number(o.matrix), fullRange: typeof o.fullRange === "boolean" ? o.fullRange : null };
+}
+
 function parseTrack(v: unknown): TrackInfo | undefined {
   if (!v || typeof v !== "object") return undefined;
   const o = v as Record<string, unknown>;
@@ -41,6 +47,7 @@ function parseTrack(v: unknown): TrackInfo | undefined {
     width: Number(o.width),
     height: Number(o.height),
     rotation: Number(o.rotation),
+    colour: parseColour(o.colour),
     sampleRate: Number(o.sampleRate),
     channels: Number(o.channels),
     durationTicks: Number(o.durationTicks),
@@ -73,7 +80,7 @@ export function createWebMedia(Media: WasmMediaClass): MediaApi {
         host = await WebCodecsHost.create(
           src,
           {
-            video: video && { codec: video.codec, width: video.width, height: video.height, description: mf.videoDescription() },
+            video: video && { codec: video.codec, width: video.width, height: video.height, description: mf.videoDescription(), colour: video.colour },
             audio: audio && { codec: audio.codec, sampleRate: audio.sampleRate, channels: audio.channels, description: mf.audioDescription() },
           },
           { preferGpu: opts.gpu ?? true },
@@ -82,7 +89,7 @@ export function createWebMedia(Media: WasmMediaClass): MediaApi {
         const frameKind = video && host.hasGpu() && opts.gpu !== false ? "gpu" : "cpu";
         if (video) mf.setGpu(frameKind === "gpu");
         const table = video ? buildFrameTable(JSON.parse(mf.videoPacketsJson()) as PacketJson[]) : undefined;
-        const streamTrack = video && { codec: video.codec, width: video.width, height: video.height, description: mf.videoDescription() };
+        const streamTrack = video && { codec: video.codec, width: video.width, height: video.height, description: mf.videoDescription(), colour: video.colour };
         return new Handle(mf, host, info, frameKind, audioRate, src, table, streamTrack);
       } catch (e) {
         host?.dispose();

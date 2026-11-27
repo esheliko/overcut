@@ -1,7 +1,8 @@
 import { codecName, MediaDecodeError } from "./errors";
 import { readPackets, type ByteSource } from "./blob-source";
 import { startPacket, usToTicks, type FrameTable } from "./frames";
-import type { DecodedFrame, FrameStream } from "../types";
+import type { ColourInfo, DecodedFrame, FrameStream } from "../types";
+import { colourSpaceInit } from "./colour";
 
 /** Packets read from the file per range read while streaming. */
 const READ_BATCH = 24;
@@ -13,6 +14,8 @@ export interface StreamTrack {
   width: number;
   height: number;
   description: Uint8Array;
+  /** Container colour description (range!), passed to the decoder so a full-range picture is not read as limited. */
+  colour?: ColourInfo | null;
 }
 
 /**
@@ -48,7 +51,8 @@ export function openFrameStream(src: ByteSource, track: StreamTrack, table: Fram
       wake();
     },
   });
-  dec.configure({ codec: track.codec, codedWidth: track.width, codedHeight: track.height, ...(track.description.length ? { description: track.description } : {}) });
+  const colorSpace = colourSpaceInit(track.colour);
+  dec.configure({ codec: track.codec, codedWidth: track.width, codedHeight: track.height, ...(track.description.length ? { description: track.description } : {}), ...(colorSpace ? { colorSpace } : {}) });
 
   const pump = async () => {
     try {

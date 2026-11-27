@@ -55,7 +55,7 @@ test("background: black by default, then blur and colour fill the empty bands; t
   await setBackground(page, async (p) => {
     await p.getByTestId("canvas-bg-mode").selectOption("blur");
     await expect(p.getByTestId("canvas-bg-blur")).toBeVisible();
-    await expect(p.getByTestId("canvas-bg-note")).toContainText("blurred");
+    await expect(p.getByTestId("canvas-bg-note")).toContainText("empty space");
     if (phone) {
       for (const id of ["canvas-bg-mode", "canvas-bg-blur", "canvas-apply"]) expect((await p.getByTestId(id).boundingBox())!.height, id).toBeGreaterThanOrEqual(44);
     }

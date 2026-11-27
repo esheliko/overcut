@@ -1,3 +1,5 @@
+import type { ColourInfo } from "../types";
+import { colourSpaceInit } from "./colour";
 import { codecName, MediaDecodeError, unsupported } from "./errors";
 import { readPackets, type ByteSource, type PacketJson } from "./blob-source";
 import { assemble, type AudioBlock } from "./resample";
@@ -5,7 +7,7 @@ import { avcLengthSize, packetsToDecode, readBatches } from "./seek-plan";
 
 /** Everything the host needs to open the two decoders; filled from the probe (`MediaFile.info()`, `videoDescription()`). */
 export interface HostTracks {
-  video?: { codec: string; width: number; height: number; description: Uint8Array };
+  video?: { codec: string; width: number; height: number; description: Uint8Array; colour?: ColourInfo | null };
   audio?: { codec: string; sampleRate: number; channels: number; description: Uint8Array };
 }
 
@@ -256,7 +258,8 @@ function opusPreSkip(head: Uint8Array): number {
 }
 
 function videoConfig(t: NonNullable<HostTracks["video"]>): VideoDecoderConfig {
-  return { codec: t.codec, codedWidth: t.width, codedHeight: t.height, ...(t.description.length ? { description: t.description } : {}) };
+  const colorSpace = colourSpaceInit(t.colour);
+  return { codec: t.codec, codedWidth: t.width, codedHeight: t.height, ...(t.description.length ? { description: t.description } : {}), ...(colorSpace ? { colorSpace } : {}) };
 }
 
 function audioConfig(t: NonNullable<HostTracks["audio"]>): AudioDecoderConfig {

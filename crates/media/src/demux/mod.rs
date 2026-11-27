@@ -45,6 +45,16 @@ pub struct Packet {
     pub keyframe: bool,
 }
 
+/// The colour description a container carries for a video track (WebM `Colour`, MP4 `colr`/`nclx`, VP9 `vpcC`), in the ISO 23001-8 code points
+/// WebCodecs' `VideoColorSpace` is derived from. `0` = not given; `full_range` is `None` when the container does not say (then the decoder decides).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ColourInfo {
+    pub primaries: u8,
+    pub transfer: u8,
+    pub matrix: u8,
+    pub full_range: Option<bool>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Track {
     pub id: u32,
@@ -59,6 +69,8 @@ pub struct Track {
     pub height: u32,
     /// Clockwise degrees to apply when displaying: 0, 90, 180 or 270 (from the MP4 `tkhd` matrix; WebM carries none here).
     pub rotation: u16,
+    /// Colour primaries, transfer, matrix and range the container declares (default: nothing declared; audio: always default).
+    pub colour: ColourInfo,
     pub sample_rate: u32,
     pub channels: u16,
     /// Container timescale for this track (ticks per second of the source timestamps), informational.
