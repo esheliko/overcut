@@ -139,3 +139,5 @@ Issue #88 tracks the M1 and M2 device items.
 | #91 Actions minutes / CI cost | No (process) |
 | #72 OpenH264 pins, #52 native-media release build | No (desktop release, not the web M2 scope) |
 | #123 deploy board, #2, #1, #3 | No (bookkeeping) |
+
+**Phone playback (S24, 2026-11-27):** 3 layers of 1080p30 play at about 24 fps (118 presented, 32 dropped, 49% stalls): decode-bound (hardware decoders), not upload-bound; `docs/features/preview.md` has the analysis. Proxies (M2.1) are the planned answer.

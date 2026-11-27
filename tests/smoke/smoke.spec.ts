@@ -112,6 +112,16 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
   const report = JSON.parse(await page.getByTestId("report").inputValue());
   expect(report.overcut_device_report).toBe(1);
   expect(Object.keys(report.tests)).toEqual(["decode", "seek", "gpuUpload", "fillRate", "playback", "exportSpeed"]);
+  // The test projects are built in code and must carry the CURRENT schema: UnsupportedVersion(n) means one was left behind (it happened: the export test kept schema 4).
+  for (const id of ["playback", "exportSpeed"] as const) {
+    const t = report.tests[id];
+    expect(`${id}: ${t.why ?? ""} ${t.reason ?? ""}`).not.toMatch(/UnsupportedVersion|schema/i);
+  }
+  // Where the export ran at all (this device has the codecs and a renderer) it must have succeeded, and playback must say what its upload path is.
+  if (report.tests.exportSpeed.status !== "unsupported") expect(report.tests.exportSpeed.status).toBe("ok");
+  if (report.tests.playback.status === "ok") {
+    expect(typeof report.tests.playback.bound).toBe("string");
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
   expect(outside).toEqual([]);
