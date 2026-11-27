@@ -27,7 +27,7 @@ test("add, rename and delete a marker; set, loop and clear the in/out range", as
   await expect(page.getByTestId("marker-menu")).toHaveCount(0);
   await pick("tl-marker-edit");
   await expect(page.getByTestId("marker-name-input")).toHaveValue("Intro");
-  for (const id of ["marker-chapter", "marker-delete", "marker-colour-default"]) { const b = (await page.getByTestId(id).boundingBox())!; expect(b.height).toBeGreaterThanOrEqual(44); }
+  for (const id of ["marker-chapter", "marker-delete", "marker-colour-default"]) { const b = (await page.getByTestId(id).boundingBox())!; expect(b.height).toBeGreaterThanOrEqual(test.info().project.name === "phone" ? 43.5 : 31.5); } // 44 px on touch, 32 px menu rows with a mouse (V-11)
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("marker-menu")).toHaveCount(0);
   await pick("tl-marker-edit");

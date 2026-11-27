@@ -183,15 +183,15 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
   }, [open]);
   return (
     <div className="menu" ref={ref}>
-      <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
+      <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} title={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
       {open && (
         <div className="menu-pop" role="menu">
-          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><span>{t("palette.open")}</span>{!compact && <kbd className="menu-hint">{paletteKey()}</kbd>}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><Icon name="search" size={16} className="menu-ic" /><span>{t("palette.open")}</span>{!compact && <kbd className="menu-hint">{paletteKey()}</kbd>}</button>
           {compact && (
             <>
               {/* Small phones: the theme choices are listed here (F3), not cycled. */}
               {THEME_PREFS.map((p) => (
-                <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref ? "✓" : ""}</span><span>{t(`theme.${p}`)}</span></button>
+                <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref && <Icon name="check" size={16} />}</span><span>{t(`theme.${p}`)}</span></button>
               ))}
               <div className="menu-row menu-status" role="presentation">{status}</div>
               {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
@@ -199,20 +199,20 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
             </>
           )}
           <div className="menu-group" role="presentation">{t("menu.group.project")}</div>
-          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}>{t("menu.projects")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}>{t("menu.new")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={opening(project.onOpen)}>{t("menu.openProject")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}>{t("menu.saveProject")}</button>
-          {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
-          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}>{t("menu.versions")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projects")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}><Icon name="plus" size={16} className="menu-ic" /><span>{t("menu.new")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={opening(project.onOpen)}><Icon name="upload" size={16} className="menu-ic" /><span>{t("menu.openProject")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}><Icon name="download" size={16} className="menu-ic" /><span>{t("menu.saveProject")}</span></button>
+          {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projectsFolder")}</span></button>}
+          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}><Icon name="history" size={16} className="menu-ic" /><span>{t("menu.versions")}</span></button>
           <div className="menu-group" role="presentation">{t("menu.group.view")}</div>
           <AccentPicker />
           <ScrubPrepItem />
           <div className="menu-group" role="presentation">{t("menu.group.help")}</div>
-          <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={opening(project.onShortcuts)}>{t("menu.shortcuts")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={opening(project.onPrivacy)}>{t("menu.privacy")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={opening(project.onShortcuts)}><Icon name="keyboard" size={16} className="menu-ic" /><span>{t("menu.shortcuts")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={opening(project.onPrivacy)}><Icon name="shield" size={16} className="menu-ic" /><span>{t("menu.privacy")}</span></button>
           <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
-          <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
+          <a role="menuitem" href="/diagnostics"><Icon name="activity" size={16} className="menu-ic" /><span>{t("menu.diagnostics")}</span></a>
         </div>
       )}
     </div>
@@ -706,7 +706,7 @@ function Editor({ store }: { store: ProjectStore }) {
         <div className="persist-note" role="status" data-testid="offline-note">
           <span>{t("project.offline", { count: offline })}</span>
           <button onClick={() => void locate()} data-testid="locate-files">{t("project.locate")}</button>
-          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setLocating(false)}>×</button>
+          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setLocating(false)}><Icon name="close" size={18} /></button>
         </div>
       ) : null} />
       {dialog === "versions" && persistence.session && <VersionsDialog session={persistence.session} onRestore={restoreVersion} onClose={() => setDialog(null)} />}
@@ -720,7 +720,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {refusals.length > 0 && !roomy && (
         <div className="refusal-note" data-testid="refusal-note">
           <ul>{refusals.map((m) => <li key={m}>{m}</li>)}</ul>
-          <button className="icon-btn" aria-label={t("media.refusalDismiss")} onClick={() => setRefusals([])}>×</button>
+          <button className="icon-btn" aria-label={t("media.refusalDismiss")} onClick={() => setRefusals([])}><Icon name="close" size={18} /></button>
         </div>
       )}
       <div className="toast" role="status">{toast}</div>

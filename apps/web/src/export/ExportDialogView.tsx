@@ -4,13 +4,16 @@ import { h264Percent, parseH264Failure, probeExportFormats, type DesktopCodecs, 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
-import { Icon } from "../icons";
+import { Icon, type IconName } from "../icons";
 import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
 import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, formatLabelKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
+
+/** The glyph of each preset tile: its shape (landscape, tall, square) or what it is for. */
+const PRESET_ICON: Record<PresetId, IconName> = { original: "film", youtube: "ratioLandscape", vertical: "ratioPortrait", x: "video", facebook: "ratioSquare", whatsapp: "share", discord: "upload", small: "smallFile" };
 
 const probes = new Map<string, Promise<ExportFormats>>();
 /** The browser's answer for one size and rate, asked once per page (an answer cannot change while the tab lives). */
@@ -161,10 +164,11 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
         {offered.map((id) => {
           const hint = presetHint(id, src, locale);
           return (
-            <label key={id} className="export-chip-choice" data-checked={preset === id}>
+            <label key={id} className="export-chip-choice" data-checked={preset === id} title={`${t(`export.preset.${id}`)}: ${t(hint.key, hint.values)}`}>
               <input type="radio" name="export-preset" value={id} checked={preset === id} onChange={() => pickPreset(id)} data-testid={`export-preset-${id}`} />
-              <strong>{t(`export.preset.${id}`)}</strong>
-              <span>{t(hint.key, hint.values)}</span>
+              <span className="ex-ic" aria-hidden="true"><Icon name={PRESET_ICON[id]} size={20} /></span>
+              <span className="ex-tx"><strong>{t(`export.preset.${id}`)}</strong><span>{t(hint.key, hint.values)}</span></span>
+              <span className="ex-check" aria-hidden="true"><Icon name="check" size={12} strokeWidth={3} /></span>
             </label>
           );
         })}
