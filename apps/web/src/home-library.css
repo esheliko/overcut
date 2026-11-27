@@ -22,11 +22,6 @@
 .project-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base, 14px); font-weight: 600; }
 .project-text span { color: var(--muted); font-size: var(--text-xs, 0.75rem); }
 .pill-open { position: absolute; inset-block-start: 8px; inset-inline-start: 8px; padding: 3px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: var(--text-xs, 0.75rem); font-weight: 600; pointer-events: none; }
-.project-new-tile { display: flex; min-inline-size: 0; }
-.project-new-tile button { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); min-block-size: 140px; padding: var(--space-4); border: 2px dashed var(--line-strong); border-radius: var(--radius-lg); background: none; color: var(--muted); font: inherit; font-weight: 600; transition: color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out); }
-.project-new-tile button:hover:not(:disabled), .project-new-tile button:focus-visible { color: var(--fg); border-color: var(--accent); background: var(--accent-soft); }
-.project-new-tile button:disabled { opacity: 0.5; }
-.tile-plus { display: grid; place-items: center; inline-size: 44px; block-size: 44px; border-radius: 50%; background: var(--surface-3); color: var(--accent); }
 .lib-card[data-archived="true"] .poster { opacity: 0.55; }
 .lib-more { position: absolute; inset-block-start: 4px; inset-inline-end: 4px; inline-size: var(--target, 44px); block-size: var(--target, 44px); display: grid; place-items: center; background: color-mix(in srgb, var(--surface) 78%, transparent); backdrop-filter: blur(6px); border: 0; border-radius: 50%; color: var(--fg); }
 .lib-more:hover:not(:disabled) { background: var(--surface-3); }

@@ -53,6 +53,9 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   // Split with the playhead on the clip start: a visible hint, and nothing changed.
   await page.getByRole("button", { name: "Split at playhead" }).click();
   await expect(page.locator(".toast")).toContainText("Nothing to split here");
+  // The toast never lies over the timeline (K-03): it ends above the timeline's top edge.
+  const [toastBox, timelineBox] = await Promise.all([page.locator(".toast").boundingBox(), page.locator(".timeline").first().boundingBox()]);
+  expect(toastBox && timelineBox && toastBox.y + toastBox.height <= timelineBox.y + 1).toBe(true);
   await expect(page.locator("#tl-summary")).toContainText("2 clips");
 
   // Undo names the import; using it announces and shows what was undone.

@@ -7,6 +7,7 @@ import { ConfirmDialog, Modal } from "./ProjectDialogs";
 import { ProjectMenu, type MenuItem } from "./ProjectMenu";
 import { formatDuration } from "./media/plan";
 import { validPoster } from "./posterSource";
+import { ACTION_TOAST_MS } from "./projectConfirm";
 import { isArchived, libraryView, whenLabel, type LibraryFilter } from "./projectsView";
 
 export type HomeProps = {
@@ -51,7 +52,7 @@ function RenameDialog({ shown, onApply, onClose }: { shown: string; onApply(name
 /**
  * The projects library (PM-06, PM-08): every project on this device with its real facts (name, last edit, canvas, length, clip count) and a small
  * poster (the frame at the playhead, saved with the project's row when it is left; a placeholder tinted with the first track colour until then).
- * Responsive grid of 16:9 poster cards, newest edit first, "New project" as the first tile. Per-project actions live in the card's "…" menu (a real button: touch, keyboard and mouse alike).
+ * Responsive grid of 16:9 poster cards, newest edit first. "New project" is the accent button in the header (always reachable); the empty state repeats it as the call to action. Per-project actions live in the card's "…" menu (a real button: touch, keyboard and mouse alike).
  * Archive hides a project from the main list without deleting it ("Archived" filter, Restore); Delete asks first.
  */
 export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRename, onDuplicate, onArchive, onExport, onDelete }: HomeProps) {
@@ -66,11 +67,13 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
   const closeMenu = useCallback(() => setMenu(null), []);
   const view = libraryView(entries ?? [], filter);
   // The note (with Undo) goes away by itself; a new one restarts the clock.
+  // ACTION_TOAST_MS, and it waits while the pointer or the keyboard focus is on it.
+  const [noteHeld, setNoteHeld] = useState(false);
   useEffect(() => {
-    if (!note) return;
-    const id = setTimeout(() => setNote(null), 8000);
+    if (!note || noteHeld) return;
+    const id = setTimeout(() => setNote(null), ACTION_TOAST_MS);
     return () => clearTimeout(id);
-  }, [note]);
+  }, [note, noteHeld]);
 
   const archive = (e: ProjectEntry, archived: boolean) => {
     onArchive(e, archived);
@@ -129,14 +132,6 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
         )}
         {view.shown.length > 0 && (
           <ul className="project-list" aria-label={t(filter === "archived" ? "projects.list.archived" : "projects.list")}>
-            {filter === "active" && (
-              <li className="project-new-tile">
-                <button onClick={onNew} disabled={busy} data-testid="projects-new-tile" aria-label={t("projects.new")}>
-                  <span className="tile-plus" aria-hidden="true"><Icon name="plus" size={22} /></span>
-                  <span>{t("projects.new")}</span>
-                </button>
-              </li>
-            )}
             {[...view.shown].sort((x, y) => y.modified - x.modified).map((e) => {
               const archived = isArchived(e);
               const isCurrent = e.id === current && !archived;
@@ -178,7 +173,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
       </main>
       {menu && <ProjectMenu label={t("projects.menu", { name: nameOf(menu.entry) })} items={itemsFor(menu.entry)} anchor={menu.anchor} onClose={closeMenu} />}
       {note && (
-        <div className="lib-note" role="status" data-testid="library-note">
+        <div className="lib-note" role="status" data-testid="library-note" onPointerEnter={() => setNoteHeld(true)} onPointerLeave={() => setNoteHeld(false)} onFocus={() => setNoteHeld(true)} onBlur={() => setNoteHeld(false)}>
           <span>{note.text}</span>
           {note.undo && <button onClick={note.undo} disabled={busy} data-testid="library-undo">{t("projects.undo")}</button>}
           <button onClick={() => setNote(null)} aria-label={t("projects.dismiss")}><Icon name="close" size={18} /></button>
