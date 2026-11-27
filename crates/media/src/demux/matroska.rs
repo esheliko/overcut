@@ -463,7 +463,7 @@ fn finish(st: State, format: ContainerFormat) -> Result<Probe, MediaError> {
             .track
             .packets
             .iter()
-            .map(|p| p.pts + p.duration)
+            .map(|p| Time::from_ticks(p.pts.ticks().saturating_add(p.duration.ticks())))
             .max()
             .unwrap_or(Time::ZERO);
         e.track.duration = end;
