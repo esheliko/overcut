@@ -23,6 +23,8 @@ test("remap split to Q: Q splits, S no longer does, the choice survives a reload
   const split = page.getByTestId("sc-edit.split");
   await expect(split).toContainText("S");
   const change = page.getByTestId("sc-change-edit.split");
+  // The dialog now slides in (translateY): measure once it has settled, a mid-animation box is off by a float rounding.
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
   expect((await change.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
