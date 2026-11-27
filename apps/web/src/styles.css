@@ -705,6 +705,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .zoom input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--accent); }
 .zoom input[type="range"]:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
 @media (pointer: coarse) {
+  .zoom input[type="range"] { height: 44px; } /* the 44 px rule above (.zoom input) loses to the 24 px one here: say it where it wins */
   .zoom input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7.5px; }
   .zoom input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; }
 }
