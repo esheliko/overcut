@@ -38,9 +38,9 @@ test("Open project says the same as New: a copy is kept in Versions with a sessi
   assert.match(read("apps/web/src/App.tsx"), /replaceWith\(file\.bytes, "before-open"\)/);
 });
 
-test("info toasts are short (about 2.5 s, at most 4 s)", () => {
-  assert.equal(toastDuration("Saved."), 2500);
-  assert.ok(toastDuration("x".repeat(400)) <= 4000);
+test("info toasts are short (about 3 s, at most 5 s)", () => {
+  assert.equal(toastDuration("Saved."), 3000);
+  assert.ok(toastDuration("x".repeat(400)) <= 5000);
 });
 
 test("the New project confirm button uses the danger style; other confirms keep the safe one", () => {

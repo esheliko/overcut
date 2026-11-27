@@ -99,6 +99,13 @@ test("canvas settings are a project edit (undo), survive an import, and new proj
   await (await chooser2).setFiles(junk);
   await expect(page.locator(".toast")).toContainText("could not be opened");
   await expect(page.locator("#tl-summary")).toContainText("1 clip");
+  // a11y r12: a failure stays until it is dismissed (no timer), and has a Dismiss button (44 px on touch, 36 px with a mouse)
+  await page.waitForTimeout(5500);
+  await expect(page.locator(".toast")).toContainText("could not be opened");
+  const dismiss = page.getByRole("button", { name: "Dismiss message" });
+  expect((await dismiss.boundingBox())!.height).toBeGreaterThanOrEqual(info.project.name === "phone" ? 43.5 : 35.5);
+  await dismiss.click();
+  await expect(page.locator(".toast")).toHaveText("");
 
   // 7. A new window has none of the files: opening the project shows them as not on this device, and Locate files reconnects them by name and size.
   await page.reload();

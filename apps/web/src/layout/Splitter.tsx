@@ -7,16 +7,18 @@ import { clampTimelineRow, readTimelineRow, writeTimelineRow } from "./split";
  * The draggable edge between the preview and the timeline (tablet and up). A window splitter (role="separator", focusable): drag it, use the
  * up / down arrow keys (Shift = bigger steps, Home / End = smallest / largest timeline), double-click or Enter to go back to the default.
  * The height is a CSS variable on the workspace (`--tl-row`, read by the grid rows in styles.css), so dragging re-renders nothing in React;
- * it is remembered on this device only. The hit area is 12 px with a mouse and 44 px on touch (styles.css).
+ * it is remembered on this device only. The hit area is 24 px with a mouse (WCAG 2.5.8) and 44 px on touch (styles.css).
  */
 export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | null> }) {
   const { t } = useI18n();
   const [now, setNow] = useState<number | null>(null); // the timeline row in px while a user size is set (aria-valuenow); null = default
   const drag = useRef<{ id: number; edge: number } | null>(null);
   const frame = useRef(0);
+  const [h, setH] = useState(0); // the timeline row's measured height (aria-valuenow while no user size is set)
   const [r, setR] = useState(0); // the workspace height: read in effects and the observer (clean layout), never in render (that forced a layout on every app render, i.e. after every edit)
 
   const room = useCallback(() => workspace.current?.getBoundingClientRect().height ?? 0, [workspace]);
+  const rowH = useCallback(() => workspace.current?.querySelector<HTMLElement>(".timeline")?.getBoundingClientRect().height ?? 0, [workspace]);
   const apply = useCallback((px: number | null) => {
     const el = workspace.current;
     if (!el) return;
@@ -24,7 +26,8 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
     else el.style.setProperty("--tl-row", `${px}px`);
     setNow(px);
     setR(room());
-  }, [workspace, room]);
+    setH(rowH());
+  }, [workspace, room, rowH]);
 
   useEffect(() => {
     const saved = readTimelineRow();
@@ -34,8 +37,8 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
   useEffect(() => {
     const el = workspace.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    setR(room());
-    const ro = new ResizeObserver(() => { setR(room()); setNow((cur) => {
+    setR(room()); setH(rowH());
+    const ro = new ResizeObserver(() => { setR(room()); setH(rowH()); setNow((cur) => {
       if (cur === null) return cur;
       const next = clampTimelineRow(cur, room());
       if (next !== cur) el.style.setProperty("--tl-row", `${next}px`);
@@ -43,7 +46,7 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
     }); });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [workspace, room]);
+  }, [workspace, room, rowH]);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
   const onDown = (e: RPointerEvent<HTMLDivElement>) => {
@@ -88,9 +91,10 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
     apply(px);
     writeTimelineRow(px);
   };
+  const vmin = Math.round(clampTimelineRow(0, r)), vmax = Math.round(clampTimelineRow(Infinity, r));
   return (
     <div className="splitter" role="separator" aria-orientation="horizontal" aria-label={t("splitter.label")} tabIndex={0} data-testid="splitter"
-      aria-valuemin={Math.round(clampTimelineRow(0, r))} aria-valuemax={Math.round(clampTimelineRow(Infinity, r))} aria-valuenow={now === null ? undefined : Math.round(now)}
+      aria-valuemin={vmin} aria-valuemax={vmax} aria-valuenow={Math.min(vmax, Math.max(vmin, Math.round(now ?? h)))}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDoubleClick={reset} onKeyDown={onKey}>
       <span aria-hidden="true" />
     </div>

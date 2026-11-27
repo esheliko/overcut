@@ -3,8 +3,8 @@ export function confirmBodyKey(what: "new" | "open", hasSession: boolean): strin
   return hasSession ? `project.${what}.body` : `project.${what}.bodyUnsaved`;
 }
 
-/** How long an info toast stays: about 2.5 s, a little longer for long text, at most 4 s. Toasts with an action (Undo) use `ACTION_TOAST_MS`. */
+/** How long an info toast stays: 3 s, a little longer for long text, at most 5 s (a11y r12: was 2.5 to 4 s). Toasts with an action (Undo) use `ACTION_TOAST_MS`; failures stay until dismissed (App.tsx). */
 export function toastDuration(text: string): number {
-  return Math.min(4000, 2500 + Math.max(0, text.length - 30) * 25);
+  return Math.min(5000, 3000 + Math.max(0, text.length - 30) * 25);
 }
 export const ACTION_TOAST_MS = 5000;

@@ -44,3 +44,54 @@ test("Esc on the New project confirmation puts focus back on the Menu button", a
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
   await expect(menuBtn).toBeFocused();
 });
+
+/** a11y r12 (WCAG 2.4.3): a toolbar button that its own action turns off (Delete with nothing left selected, Redo at the end) must not drop focus on the page. */
+test("Delete and Redo hand keyboard focus to the timeline instead of losing it", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "keyboard flow");
+  await ready(page);
+  const cv = page.getByTestId("timeline-canvas");
+  await cv.focus();
+  await page.keyboard.press("Enter"); // select the clip at the playhead
+  await page.getByRole("button", { name: "Delete", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#tl-summary")).toContainText("0 clips");
+  await expect(cv).toBeFocused();
+  await page.getByRole("button", { name: /^Undo/ }).focus();
+  await page.keyboard.press("Enter"); // undo the delete: Redo turns on
+  await page.getByRole("button", { name: /^Redo/ }).focus();
+  await page.keyboard.press("Enter"); // redo it: Redo turns off again
+  await expect(page.locator("#tl-summary")).toContainText("0 clips");
+  expect(await page.evaluate(() => document.activeElement !== document.body)).toBe(true);
+});
+
+/** a11y r12 (WCAG 2.4.3 / 2.4.11 / 4.1.2). */
+test("Tab leaves the app menu (focus back on its button, the page behind it is not entered)", async ({ page }) => {
+  await ready(page);
+  const menuBtn = page.getByRole("button", { name: "Menu" });
+  await menuBtn.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(menuBtn).toBeFocused();
+});
+
+test("phone: focus moving to a control the open tool sheet would cover closes the sheet", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone", "the sheet is a phone layout");
+  await ready(page);
+  await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "true");
+  await page.getByTestId("timeline-canvas").focus();
+  await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false");
+  await expect(page.getByTestId("timeline-canvas")).toBeFocused();
+});
+
+test("the splitter always has a value inside its range", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "the splitter is a tablet and desktop control");
+  await ready(page);
+  const s = page.getByTestId("splitter");
+  const [min, max, now] = await Promise.all(["aria-valuemin", "aria-valuemax", "aria-valuenow"].map((a) => s.getAttribute(a).then(Number)));
+  expect(Number.isFinite(now)).toBe(true);
+  expect(now).toBeGreaterThanOrEqual(min!);
+  expect(now).toBeLessThanOrEqual(max!);
+});

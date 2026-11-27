@@ -60,6 +60,7 @@ const PAIRS: [string, string, number, string][] = [
   ["focus-ring", "bg", 3, "focus ring"],
   ["focus-ring", "surface", 3, "focus ring"],
   ["focus-ring", "surface-2", 3, "focus ring"],
+  ["focus-ring", "surface-3", 3, "focus ring"],
   ["ok", "surface-2", 3, "status dot"],
   ["danger", "surface-2", 3, "status dot"],
   // control borders (WCAG 1.4.11, V-02): the border of a field, a toolbar dropdown, a checkbox box or a keycap must be 3:1 on every surface it sits on

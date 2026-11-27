@@ -1,4 +1,5 @@
 import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, summarizeExtra, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
+import { installKeepFocus } from "./a11y/keepFocus";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
@@ -174,6 +175,7 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
     const away = (e: Event) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") { setOpen(false); trigger.current?.focus({ preventScroll: true }); return; }
+      if (e.key === "Tab" && ref.current?.contains(document.activeElement)) { e.preventDefault(); setOpen(false); trigger.current?.focus({ preventScroll: true }); return; } // Tab leaves the menu (like Esc), it does not walk into the page behind the popover
       const list = rows();
       const at = list.indexOf(document.activeElement as HTMLElement);
       const go = e.key === "ArrowDown" ? at + 1 : e.key === "ArrowUp" ? at - 1 : e.key === "Home" ? 0 : e.key === "End" ? list.length - 1 : null;
@@ -227,6 +229,7 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
 /** The app owns one project store; every panel below reads it. */
 export function App() {
   const [store] = useState(() => new ProjectStore());
+  useEffect(() => installKeepFocus(), []); // a button that turns itself off (Delete, Redo, Reset) hands keyboard focus on instead of dropping it to the page
   // Test hook (`?e2e`): the store the panels read, so a test can edit through the same path the UI does (`window.__overcutStore.apply(ops)`).
   useEffect(() => { if (new URLSearchParams(location.search).has("e2e")) (window as unknown as { __overcutStore: ProjectStore }).__overcutStore = store; }, [store]);
   return <ProjectStoreProvider store={store}><Editor store={store} /></ProjectStoreProvider>;
@@ -254,7 +257,9 @@ function Editor({ store }: { store: ProjectStore }) {
   const [playing, setPlaying] = useState(false);
   const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
   useEffect(() => { const open = () => setPalette(true); window.addEventListener(PALETTE_EVENT, open); return () => window.removeEventListener(PALETTE_EVENT, open); }, []);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToastText] = useState<string | null>(null);
+  const [toastErr, setToastErr] = useState(false); // a failure message stays until it is dismissed (or replaced): errors must not vanish on a timer
+  const setToast = useCallback((m: string | null) => { setToastErr(false); setToastText(m); }, []);
   const [refusals, setRefusals] = useState<string[]>([]); // phone: files refused in an import, kept on screen until dismissed (the Media sheet closes after a successful one)
   // F3: the theme is picked from a small menu (System, Dark, Light, High contrast), not cycled.
   const pickTheme = (next: ThemePref) => {
@@ -284,10 +289,10 @@ function Editor({ store }: { store: ProjectStore }) {
   }, []);
 
   useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), toastDuration(toast)); // about 2.5 s; longer text a little longer, never more than 4 s
+    if (!toast || toastErr) return;
+    const t = setTimeout(() => setToast(null), toastDuration(toast)); // 3 s; longer text a little longer, never more than 5 s
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toast, toastErr, setToast]);
 
   const soon = useCallback((m: string) => setToast(m), []);
 
@@ -434,7 +439,7 @@ function Editor({ store }: { store: ProjectStore }) {
   useEffect(() => { if (project && clean.current === null) clean.current = JSON.stringify(project); }, [project]);
   const dirty = () => { const p = store.getState().project; return !!p && JSON.stringify(p) !== clean.current; };
   const markClean = () => { const p = store.getState().project; clean.current = p ? JSON.stringify(p) : null; };
-  const fail = (key: string, e: unknown) => setToast(t(key, { why: e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e) }));
+  const fail = (key: string, e: unknown) => { setToastErr(true); setToastText(t(key, { why: e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e) })) };
   /** Swap the open project for `bytes` (a `.overcut` file): the autosaving session when there is one, else the bare engine. */
   const replaceWith = async (bytes: Uint8Array, before?: SnapshotKind): Promise<Project> => {
     let next: Project;
@@ -657,6 +662,21 @@ function Editor({ store }: { store: ProjectStore }) {
     if (opening) setDetent(id === "edit" ? "peek" : "half"); // Edit starts small so the picture and the timeline stay in view
   };
   const closeSheet = useCallback(() => setSheet(false), []);
+  // WCAG 2.4.11 Focus Not Obscured: on a phone the open tool sheet is drawn over the timeline. When keyboard focus moves from the sheet to a control it
+  // would cover, the sheet steps aside (closes) instead of leaving focus on something nobody can see.
+  useEffect(() => {
+    if (roomy || !sheet) return;
+    const onFocus = (e: FocusEvent) => {
+      const el = e.target instanceof HTMLElement ? e.target : null;
+      if (!el || el.closest(".library")) return;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return;
+      const over = document.elementFromPoint(Math.min(Math.max(r.x + r.width / 2, 0), innerWidth - 1), Math.min(Math.max(r.y + r.height / 2, 0), innerHeight - 1));
+      if (over?.closest(".library")) setSheet(false);
+    };
+    document.addEventListener("focusin", onFocus);
+    return () => document.removeEventListener("focusin", onFocus);
+  }, [roomy, sheet]);
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId && shown(x)) ?? TOOLS[0]!;
   const activeLabel = t(`tool.${active.id}.label`);
@@ -758,7 +778,10 @@ function Editor({ store }: { store: ProjectStore }) {
           <button className="icon-btn" aria-label={t("media.refusalDismiss")} onClick={() => setRefusals([])}><Icon name="close" size={18} /></button>
         </div>
       )}
-      <div className="toast" role="status">{toast}</div>
+      <div className="toast" role="status" data-kind={toastErr ? "error" : undefined}>
+        {toast}
+        {toast && toastErr && <button className="icon-btn toast-close" aria-label={t("toast.dismiss")} onClick={() => setToast(null)}><Icon name="close" size={18} /></button>}
+      </div>
     </div>
   );
 }
