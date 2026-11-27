@@ -255,3 +255,68 @@ Driven like a person with Playwright against a local `npm run build` + `vite pre
 Closeout fixes in this round (all three P2s from round 7): the live status now reads the new span after a speed change ("Speed 2×: B.mp4, V1, 0:06.00 to 0:09.00"); an Alt+drag slip in the direction where a split half has no footage left now says "No more footage that way: drag the other way to slip this clip" (the other direction already worked, the drag simply clamped to 0 in silence); the phone menu needed no change.
 
 Left as is: reading `data-pps` right after clicking Fit can still show the old value for a moment (the zoom applies on the next frame): a test-timing detail, not something a person sees.
+
+## Round 9: ui-ux-pro-max pass verification (m2 at fa3b54a)
+
+Driven like a demanding user with Playwright against a local `npm run build` + `vite preview` of m2 after #200, #202, #203, #204 and #205: 1440x900 (mouse, keyboard), 820x1180, 390x844, 844x390 and 320x640 (touch), dark and light, one run with reduced motion. Journey at every size: import three clips (3 s, 1 s, 1 s), overlay with More > "Add as overlay on a new track", split, speed 2x, Opacity keyframe, marker, right-click menu (desktop), Ctrl+wheel zoom, export (MP4 saved), Menu > Projects, reopen. No page overflow at any size, no touch target under 44 px on phone, no page error. Perf numbers are container numbers, 4x = CPU throttle (phone proxy), same scripts as the audit.
+
+The full `npm run smoke` (244 steps, 3 workers) was started and stopped at 57 of 244 after 12 minutes on this container (too slow to finish; all of those passed except one that my own first polish edit broke, see the Projects header item below, reverted). Targeted run after the fixes: button-chrome, layout-ux, zoom-overview, inspector, speed, empty-hint, project-library, export-dialog and clip-menu, desktop and phone: 31 passed, 7 skipped by design, 0 failed. No flaky spec seen.
+
+**Verdict: no P0. One P1 found and fixed in this PR (320x640 transport row under the timeline). One P1 from the perf audit is not fixed (edit latency, P-4).**
+
+### P1 status of the three audit reports
+| Finding | Status | Evidence |
+|---|---|---|
+| V-01 font shipped | Fixed | Inter woff2 in `dist/assets`, timeline text matches the UI |
+| V-02 control borders 3:1 | Fixed | `--line-strong` 0.36 (dark) / 0.46 (light) alpha, M/S/lock boxes and Select/More visible in both themes |
+| V-06 light scrim | Fixed | Export dialog in light dims to grey, the app is no longer washed out |
+| V-12 selected clip | Fixed | Selected clip has a full outline and end handles, readable on light |
+| V-13 audio identity | Fixed | Audio lanes are green with their own waveform, video blue-grey |
+| V-19 overview strip | Partly, fixed here | Hidden when empty (was); still shown at 390 for a 5 s project that fits; now hidden when the clips fit in the viewport |
+| V-31 project posters | Fixed | Poster of the first frame, clip count and length on each card, "Open" badge on the current one |
+| I-01 disabled Export | Fixed | `.primary:disabled` / `.export-go:disabled` dimmed |
+| I-05 touch tabs | Fixed | Tabs 44 px on coarse pointers (no small target reported at 390/820/320) |
+| I-06 stuck drop outline | Fixed | `onDropCapture` clears it; not seen on the sample drag |
+| L-01 phone landscape | Fixed | Preview 340x255 at 844x390 (was 34x19), tools rail, timeline beside it |
+| L-02 phone portrait dead band | Fixed | Stage is as tall as the picture; timeline about 330 px at 390x844. **At 320x640 the new layout pushed the transport under the timeline: fixed here (P1 below)** |
+| L-03 phone Edit sheet | Fixed | Peek detent with a mini transport; the keyframe helper "Move the playhead onto this clip" + "Go to clip" shows on desktop and phone |
+| T-01 add a used clip again | Fixed | More > "Add media at playhead" / "Add as overlay on a new track" (palette too); the overlay lands on a new V2 and its sound on A2 in one step |
+| L-06 auto fit after import | Fixed | Three clips fill the width (0:00 to 0:05), no manual zoom |
+| I-03 shortcuts in tooltips | Fixed | Tooltips carry Home / comma / period / Space etc. |
+| T-04 wheel zoom | Fixed | Six notches of Ctrl+wheel: a few steps of zoom, not a jump to the limit |
+| I-02 touch spacing | Fixed | Toolbar groups spaced, Play 56 px |
+| T-03 clip context menu | Fixed | Right-click and Shift+F10: Split at playhead, Duplicate, Delete, Ripple delete, Unlink, Speed 0.5x to 2x |
+| P-01 / P-02 fullscreen, loop, handles | Fixed | Fullscreen and loop buttons in the transport bar; handles shown only when a clip is selected |
+| **P-1 export dialog** | **Fixed** | Open-to-usable 320 ms at 1x, 380 ms at 4x (was 562 / 1256 ms), CLS 0 (was 0.103), no Loading pill, fixed-size body |
+| **P-2 zoom re-renders the Editor** | **Fixed** | `zoomStore` + `useSyncExternalStore`: the Editor root no longer commits on a wheel tick. Main-thread busy during 30 wheel ticks at 4x: 54 % (script 13 %), 1 long task |
+| **P-3 playhead re-renders everything** | **Partly** | Playback at 4x: 28 % busy (was 44 %), script 6 %, no long tasks. Still about 27 React commits per second during playback (Timecode, Timeline shell); the cost is small but not zero |
+| **P-4 edit latency vs project size** | **Not fixed** | `?sample=2h` (2300 clips) split median 32 ms at 1x, 95 ms at 4x (undo 32 / 80 ms); budget 8 ms. `?sample` (small) 28 / 79 ms. Before #205: 42-53 ms at 1x, 118-161 ms at 4x, so a modest gain, nowhere near the budget. The patches of #205 do not yet avoid the full project JSON round trip on the UI thread (see open items) |
+
+Timeline bench (`tests/perf/timeline-bench.mjs`, 1000 clips x 20 tracks): desktop 60 fps pan, zoom and pan+zoom (p95 16.7 ms), JS draw 1.0-1.3 ms; 4x desktop 46.6 / 49.3 / 46.9 fps, p95 33 ms; phone 4x 52.6 / 56.3 / 53.1 fps; drag input-to-paint p95 3.8 ms (single) and 1.8 ms (1000 selected), 26 ms at 4x. Same as before the pass within run-to-run noise (the 4x desktop runs vary by 10 fps between runs on this container); the new timeline look cost nothing measurable.
+
+### P1 (fixed in this PR)
+- **320x640: the transport row (Play, prev, next) is covered by the timeline toolbar.** The phone-portrait grid gave the timeline `minmax(260px, 1fr)` and the picture 38 dvh, which at 640 px high adds up to more than the screen. Now, on short phones (height up to 700 px), the picture is capped at 30 dvh and the timeline minimum is 190 px. Seen before and after in `scratchpad/r9/shots/p320` and `a320`.
+
+### P2 (fixed in this PR)
+- **Details panel gaps.** `.panel-body` is a grid that stretches its rows to the panel height: with nothing selected the hint sat at the top and the project info at the bottom with a big hole between; the Speed tab rows were 120 px tall; the Video tab rows spread out when the keyframe helper was shown. Now `.insp-body { align-content: start }`: everything packs at the top with the normal 8 px gap.
+- **Phone landscape: the loop button and the timecode chip straddled the picture's bottom edge.** Moved up so they sit on the picture (844x390).
+- **Overview strip on a project that nearly fits.** The 96 px end padding counted as content, so a 5 s project at 390 px kept a full-width teal bar. It now hides when the clips fit in the viewport (end padding ignored).
+
+### P2 (open, not fixed here)
+- **Projects header has both a "New project" button and a New project tile.** Left as is: `button-chrome.spec.ts` asserts the header button is accent-filled ("main actions are accent-filled"), so demoting it is a design call plus a test change, not a nit. Suggest: keep the tile as the accent action and hide the header button at >= 720 px, in one PR that updates that spec and the smoke steps that click `projects-new`.
+- **Console: `wgpu: Validation Error ... copy_external_image_to_texture ... Copy of X 0..160 would end up overrunning the bounds of the Source texture`** repeats several times on desktop in the 3-clip journey (clips of 160x120 and 320x180 on a 160x120 canvas). Nothing visible breaks (preview and export are right) but it is a real engine/preview error: a texture upload uses the wrong source size when a clip's size differs from the previous one. Needs its own issue (preview worker, `crates/render`).
+- **P-4 above**: engine edit calls still return/serialize the whole project; target is a patch applied on both sides without `JSON.parse` of 2300 clips.
+- **Toast and the last lane**: the "Nothing to split here" toast still lays over the bottom track lane (K-03 partly); on desktop it also stays about 4 s.
+- **Playhead still causes about 27 React commits per second** in playback (P-3 remainder).
+- **Overview strip at 28 px visible on phone after zoom** looks heavy (full teal block when the window covers most of the range); a lighter fill for the bar outside the window would read better.
+
+### Works (keep it)
+- The new timeline look: lane identity colours, selection outline, track header tinting, thumbnails paced after import (no jank), the context menu and "Add as overlay" (one step from the More menu to a new V2 with its sound on A2).
+- Export dialog: opens at final size, presets in a grid, Export button pinned at the bottom on phone, light and dark; "Your video is ready" with Save / Export again / Close.
+- Projects home: posters, "Open" badge, clip count and length; one project round-trips (Menu > Projects > Open) with all 10 clips and the overlay.
+- Phone: 390x844 shows a 270 px preview, a full transport row (shape chip, prev/next, Play 56 px, full screen) and a roomy timeline; Edit sheet peeks with a mini transport.
+- Reduced motion: no animations in the journey (the `prefers-reduced-motion` block applies to everything), and nothing depends on motion to show state.
+- Light theme: contrast of control borders, selection, disabled menu rows (with the reason shown under each) all legible.
+
+### Ship readiness
+Ready to ship once this PR is in (the 320 px fix is the only blocker found). Not ready to claim: the edit-latency budget (P-4) and the wgpu console error; both are listed as open items.
