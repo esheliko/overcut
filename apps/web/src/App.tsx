@@ -571,6 +571,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const goHome = async () => {
     await flushTouch("leaving");
     try { await refreshList(); } catch (e) { return fail("projects.failed", e); }
+    setToast(null); // a message about the editor ("Nothing to split here") must not follow the user to the projects list
     setOpenId(null);
   };
   const homeTask = async (run: () => Promise<void>) => {
