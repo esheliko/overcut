@@ -59,13 +59,13 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
     }
     host.player.toggle();
     const s1 = await host.rpc<S>({ name: "stats" });
-    const gpu = await host.rpc<{ upload?: { path: string; source: string; ms?: Record<string, number> } }>({ name: "gpu" });
+    const gpu = await host.rpc<{ upload?: { path: string; source: string; ms?: Record<string, number> }; uploadState?: string }>({ name: "gpu" });
     const times = s1.times.slice(s0.times.length);
     const span = times.length > 1 ? times[times.length - 1]! - times[0]! : 0;
     const late = s1.late.slice(s0.late.length).sort((a, b) => a - b);
     const presented = s1.presented - s0.presented;
     return {
-      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a", upload_source: gpu.upload?.source ?? "n/a", upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
+      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a", upload_source: gpu.upload?.source ?? "n/a", upload_state: gpu.uploadState ?? "n/a", upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
       presented, dropped: s1.dropped - s0.dropped, stalls: s1.stalls - s0.stalls,
       fps: span ? Math.round(((times.length - 1) / span) * 10) / 10 : 0,
       p95_late_ms: Math.round(late[Math.floor(late.length * 0.95)] ?? 0),

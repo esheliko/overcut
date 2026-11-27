@@ -45,6 +45,8 @@ let upload: UploadChoice | undefined;
 let deciding: Promise<void> | undefined;
 /** The last measuring run was disturbed by playback: nothing was stored, measure again on the next idle frame. */
 let disturbed = false;
+/** Where the upload-path decision is (for `rpc gpu` and the device report): `none` until a GPU frame was drawn. */
+let uploadState = "none";
 const rgbaSlots: Uint8Array[] = [];
 const thumbs = new ThumbStore<ImageBitmap>();
 /** Background scrub strips for clips that seek slowly (`strip/`, docs/features/preview.md "Smooth scrubbing"). Waits while the player is busy. */
@@ -98,15 +100,20 @@ function decideUpload(sample: VideoFrame, width: number, height: number): Promis
 
 /** Waits for the player to be idle (400 ms without play or scrub), measures on a clone of the first GPU frame, retries when playback disturbed the run. */
 async function decideWhenIdle(f: DecodedFrame & { kind: "gpu" }): Promise<void> {
+  uploadState = "asking-cache";
   const stored = parseChoice(await requestUpload(uploadKey(gpu!.info.backend, gpu!.info.adapter, navigator.userAgent)).catch(() => null));
-  if (stored) { upload = stored; deciding = undefined; return; } // a cached choice needs no measuring, so no waiting for idle either
+  if (stored) { upload = stored; uploadState = "cached"; deciding = undefined; return; } // a cached choice needs no measuring, so no waiting for idle either
   const sample = f.frame.clone();
   try {
     for (let tries = 0; !upload && tries < 40; tries++) {
+      uploadState = `waiting-idle (try ${tries})`;
       while (!(player?.isIdle() && !player.isPlaying)) await new Promise((r) => setTimeout(r, 250));
-      const u = await decideUpload(sample, f.width, f.height).catch((): UploadChoice => ({ path: "frame", ms: {}, source: "default" }));
-      if (!disturbed) upload = u;
+      uploadState = `measuring (try ${tries})`;
+      const u = await decideUpload(sample, f.width, f.height).catch((e): UploadChoice => { uploadState = `measure-threw: ${e instanceof Error ? e.message : String(e)}`.slice(0, 120); return { path: "frame", ms: {}, source: "default" }; });
+      if (!disturbed) { upload = u; uploadState = `done (${u.source})`; }
     }
+  } catch (e) {
+    uploadState = `failed: ${e instanceof Error ? e.message : String(e)}`.slice(0, 120);
   } finally {
     sample.close();
     deciding = undefined;
@@ -244,7 +251,7 @@ async function rpc(r: PreviewRpc): Promise<unknown> {
     case "position": return { frame: player?.frame ?? 0, playing: player?.isPlaying ?? false, ticks: player?.position() ?? 0 };
     case "frames": return [...handles.values()].map((h) => h.stats());
     case "strip": return strips.stats();
-    case "gpu": return { info: gpu?.info, alloc: gpu?.allocStats(), canvas: backing, upload };
+    case "gpu": return { info: gpu?.info, alloc: gpu?.allocStats(), canvas: backing, upload, uploadState };
     case "probe": return probe(r.x, r.y);
     case "bench": return bench(r.width, r.height, r.frames);
     case "parity": return parity(r.frame);
