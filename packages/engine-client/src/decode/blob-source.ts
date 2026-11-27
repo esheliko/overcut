@@ -10,7 +10,15 @@ export function blobSource(blob: Blob): ByteSource {
     read: async (offset, len) => {
       const end = Math.min(blob.size, offset + len);
       if (offset < 0 || offset > blob.size) return new Uint8Array(0);
-      return new Uint8Array(await blob.slice(offset, end).arrayBuffer());
+      try {
+        return new Uint8Array(await blob.slice(offset, end).arrayBuffer());
+      } catch (e) {
+        // The browser's own message ("The requested file could not be read...", "Array buffer allocation failed") never says where; a device report must.
+        const inner = e instanceof Error ? e : new Error(String(e));
+        const err = new Error(`reading bytes ${offset}..${end} of ${blob.size}: ${inner.name}: ${inner.message}`);
+        err.name = inner.name; // NotReadableError stays recognisable (the file went away) for the export's "reconnect it" decision
+        throw err;
+      }
     },
   };
 }

@@ -211,6 +211,39 @@ fn audio_plan_covers_the_range_with_preroll_and_converts_to_i16() {
 }
 
 #[test]
+fn audio_asked_past_the_end_of_the_track_is_silence_not_out_of_range() {
+    // Regression: phone clips whose audio track is shorter than the video made the export fail with "out of range".
+    struct Ones(usize);
+    impl PacketDecoder for Ones {
+        fn frame_kinds(&self) -> FrameKinds {
+            FrameKinds::CPU
+        }
+        async fn decode_video(
+            &mut self,
+            _: &VideoRequest,
+            _: FrameKind,
+        ) -> Result<VideoOut, MediaError> {
+            Err(MediaError::OutOfRange)
+        }
+        async fn decode_audio(&mut self, r: &AudioRequest) -> Result<Vec<f32>, MediaError> {
+            Ok(vec![1.0; r.count * self.0])
+        }
+    }
+    let p = probe_fixture("h264_aac.mp4");
+    let ch = p.audio().unwrap().channels as usize;
+    let mut d = HostDecoder::new(Ones(ch), None, p.audio().cloned(), 48_000).unwrap();
+    let total = d.info().audio.as_ref().unwrap().sample_count;
+    let pcm = block_on(d.audio_f32(total - 100, 300)).unwrap();
+    assert_eq!(pcm.len(), 300 * ch);
+    assert!(pcm[..100 * ch].iter().all(|&v| v == 1.0));
+    assert!(pcm[100 * ch..].iter().all(|&v| v == 0.0));
+    let pcm = block_on(d.audio_f32(total, 64)).unwrap();
+    assert!(pcm.len() == 64 * ch && pcm.iter().all(|&v| v == 0.0));
+    assert!(block_on(d.audio_f32(total + 10_000_000, 64)).is_ok());
+    assert_eq!(block_on(d.audio_f32(-1, 1)), Err(MediaError::OutOfRange));
+}
+
+#[test]
 fn a_host_returning_the_wrong_amount_of_audio_is_an_error() {
     struct Short;
     impl PacketDecoder for Short {

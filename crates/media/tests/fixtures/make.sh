@@ -28,3 +28,5 @@ ffmpeg $Q -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" -c:a lib
 # Stills for tests/smoke/stills.spec.ts: a red landscape PNG and a blue portrait JPG.
 ffmpeg $Q -f lavfi -i "color=c=red:s=320x180" -frames:v 1 still_red.png
 ffmpeg $Q -f lavfi -i "color=c=0x2060ff:s=200x300" -frames:v 1 -q:v 5 still_blue_portrait.jpg
+# Phone-like: the audio track is shorter than the picture (1.5 s video, 1 s audio). Reading audio to the end of the picture used to fail with "out of range" in export.
+ffmpeg $Q -f lavfi -i testsrc=size=160x120:rate=30:duration=1.5 -f lavfi -i sine=frequency=440:sample_rate=48000:duration=1 -c:v libvpx-vp9 -b:v 100k -g 15 -c:a libopus -b:a 24k vp9_opus_short_audio.webm

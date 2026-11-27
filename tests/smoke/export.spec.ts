@@ -132,3 +132,11 @@ test("export: a real file goes through the production decoder (video and audio) 
   const luma = execFileSync("ffmpeg", ["-v", "error", "-i", file, "-vf", "select=eq(n\\,15),scale=1:1,format=gray", "-frames:v", "1", "-f", "rawvideo", "-"]);
   expect(luma[0] ?? 0).toBeGreaterThan(20);
 });
+
+test("export: a clip whose audio track is shorter than its picture exports (audio past the end is silence, not 'out of range')", async ({ page }) => {
+  const base64 = readFileSync("crates/media/tests/fixtures/vp9_opus_short_audio.webm").toString("base64"); // 1.5 s picture, 1 s of tone
+  const r = await run(page, { seconds: 2, width: 320, height: 240, realMedia: { base64, name: "short-audio.webm" }, settings: pinned });
+  expect(r.message).toBeUndefined();
+  expect(r.ok).toBe(true);
+  expect(r.stats?.frames).toBe(60);
+});
