@@ -799,3 +799,6 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .export-dialog { scroll-padding-block: 72px calc(92px + env(safe-area-inset-bottom)); }
 .edit-sheet { scroll-padding-block-start: 56px; }
 .panel-body { scroll-padding-block-end: 80px; }
+/* a11y r12: in the phone Edit sheet the 40 px drag handle overlapped the top half of the mini transport's Play button (a tap there grabbed the handle). The row sits above the handle; only its buttons take the pointer, the empty part of the row still drags the sheet. */
+.mini-transport { position: relative; z-index: 3; pointer-events: none; }
+.mini-transport > button { pointer-events: auto; }

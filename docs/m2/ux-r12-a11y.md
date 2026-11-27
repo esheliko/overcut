@@ -24,7 +24,7 @@ Dev dependency: `@axe-core/playwright` 4.14 (MPL-2.0, file-level copyleft, we mo
 | 12 | P2 | Project name field | Tab to it | Only a 1 px border colour change on focus | 2 px ring | Fixed: `:focus-visible` outline in the ring token |
 | 13 | P2 | Media search | Focus | Used `--accent`, not the focus token (high contrast: cyan instead of the 3 px white ring) | Token | Fixed |
 | 14 | P2 | Splitter, mouse | Measure | 12 px hit area (2.5.8 asks 24 px; 44 px on touch was already so) | 24 px | Fixed: 24 px, same visual position |
-| 15 | P2 | Phone tool sheet handle | Measure | 40 px tall (project rule: 44 px on touch) | 44 px | Not changed: 44 px made the handle cover the top 4 px more of the mini transport's Play button in the Edit sheet (axe `target-size`: obscured). 40 px x full width is far above the 24 px WCAG bar; moving the mini transport down is a layout change for the phone lane |
+| 15 | P2 | Phone Edit sheet | axe target-size | The 40 px sheet handle overlapped the top half of the mini transport Play button (a tap there grabbed the handle) | Play fully hittable | Fixed: the mini-transport row sits above the handle, only its buttons take the pointer (handle stays 40 px) |
 | 16 | P2 | Timeline canvas | Screen reader | Announced as "Playhead position" | Says what it is | Fixed: "Timeline, playhead position" (`aria-describedby` summary and clip list unchanged) |
 | 17 | P2 | `theme-contrast` unit test | Review | Focus ring was checked on bg / surface / surface-2 only | surface-3 too (menus, hovered rows) | Fixed: pair added, passes in 3 themes x 7 accents |
 | 18 | P2 | Project name field at rest | Look | A transparent field with no boundary: not identifiable as editable (1.4.11) until hover or focus | A visible cue | Not changed (look decision, a persistent border or underline changes the top bar): issue #242 |
@@ -50,7 +50,7 @@ Dev dependency: `@axe-core/playwright` 4.14 (MPL-2.0, file-level copyleft, we mo
 
 - Zero serious / critical axe violations on every surface in all three themes after the fixes; text contrast measured per element (own script, all text nodes, ancestors' opacity composited): nothing below 4.5:1 (3:1 for large text) on the editor, Details / Edit sheet, app menu, shortcuts, privacy, versions, canvas, export and Projects home, dark / light / high-contrast, phone and desktop. Field borders and icon-only glyphs are >= 3:1 (only the project name field fails, #18).
 - Focus ring: 2 px (3 px in high contrast), >= 3:1 on every control that a Tab walk of every surface reaches; nothing hidden under a sticky bar or the sheet after #6 and #7.
-- Targets: >= 44 px on touch everywhere (only the sheet handle is 40, #15), >= 24 px with a mouse everywhere (only the splitter was 12).
+- Targets: >= 44 px on touch everywhere >= 24 px with a mouse everywhere (only the splitter was 12).
 - Dialog focus: Esc and the dialog's own button both return focus to the invoker (shortcuts, privacy, versions, palette, canvas, export, new-project confirm), desktop and phone.
 - Keyboard-only edit journey (import by file input stand-in, Tab to timeline, `Enter` picks, `Alt+Right` playhead, `S` split, `]` trim, `Alt+Down` lane, nudge, undo, `Shift+F10` clip menu, Details fields and key buttons, palette, Export dialog): every step works and says what it did in the polite live region.
 - Live regions: toast and save state are `role="status"`; export progress, completion and failure go through the announcer (failure assertive); errors in dialogs are `role="alert"`.
