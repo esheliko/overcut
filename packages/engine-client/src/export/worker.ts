@@ -2,14 +2,20 @@ import type { FrameDescription, MediaApi } from "../types";
 import type { GpuRenderer } from "../render";
 import { runExport } from "./pipeline";
 import { opfsStorage, type ExportStorage } from "./storage";
-import { ExportError, type FromWorker, type ToWorker } from "./types";
+import { ExportError, type ExportFailureDetail, type FromWorker, type ToWorker } from "./types";
 import { createWebEnv } from "./web-env";
 
 /** The slice of a worker global this file uses (so tests can pass a fake). */
 export interface WorkerScope {
   postMessage(m: FromWorker): void;
   addEventListener(type: "message", l: (e: { data: ToWorker }) => void): void;
+  /** Optional so test fakes need not provide them: a real worker scope reports uncaught errors and rejections here. */
+  addEventListener(type: "error", l: (e: { message?: string; filename?: string; lineno?: number; colno?: number; error?: unknown }) => void): void;
+  addEventListener(type: "unhandledrejection", l: (e: { reason?: unknown }) => void): void;
 }
+
+const detailOf = (e: unknown): Pick<ExportFailureDetail, "name" | "message" | "stack"> =>
+  e instanceof Error ? { name: e.name, message: e.message, stack: e.stack?.slice(0, 1500) } : { message: String(e).slice(0, 300) };
 
 /** Loads the engine inside the worker and opens the snapshotted project (the wasm backend's `openWasmEvaluator`; tests pass a fake). */
 export type OpenEvaluator = (projectJson: string) => Promise<{ evaluate(sequence: string, ticks: number, samples: number): FrameDescription; media: MediaApi; free(): void }>;
@@ -19,6 +25,17 @@ export type OpenRenderer = (canvas: OffscreenCanvas) => Promise<GpuRenderer>;
 
 export function serveExportWorker(scope: WorkerScope, openEvaluator: OpenEvaluator, openRenderer: OpenRenderer, storage: ExportStorage = opfsStorage): void {
   const jobs = new Map<string, AbortController>();
+  let current: { jobId: string; stage: string; video?: string; audio?: string } | undefined;
+  // Anything thrown outside the job's try/catch (a wasm trap in a callback, a rejected promise nobody awaited) used to surface on the page as an
+  // empty "worker crashed". Report it with the stage, file and line instead, then let the host decide (it retries with safer settings).
+  const uncaught = (code: "encode_failed", why: ExportFailureDetail): void => {
+    if (!current) return;
+    scope.postMessage({ type: "error", jobId: current.jobId, code, message: `The export worker hit an unexpected error${why.message ? `: ${why.message}` : ""}`, detail: { stage: current.stage, video: current.video, audio: current.audio, ...why } });
+  };
+  try {
+    scope.addEventListener("error", (e) => uncaught("encode_failed", { ...detailOf(e.error ?? e.message), message: e.message || (e.error instanceof Error ? e.error.message : undefined), filename: e.filename, lineno: e.lineno, colno: e.colno }));
+    scope.addEventListener("unhandledrejection", (e) => uncaught("encode_failed", detailOf(e.reason)));
+  } catch { /* a scope without these events (tests) */ }
   scope.addEventListener("message", ({ data }) => {
     if (data.type === "cancel") jobs.get(data.jobId)?.abort();
     else if (data.type === "start") void runJob(data);
@@ -30,9 +47,16 @@ export function serveExportWorker(scope: WorkerScope, openEvaluator: OpenEvaluat
     jobs.set(jobId, ctl);
     let engine: Awaited<ReturnType<OpenEvaluator>> | undefined;
     let web: Awaited<ReturnType<typeof createWebEnv>> | undefined;
+    const cur = (current = { jobId, stage: "loading-engine" } as NonNullable<typeof current>);
+    const stage = (name: string, info?: { video?: string; audio?: string }): void => {
+      Object.assign(cur, { stage: name }, info);
+      scope.postMessage({ type: "stage", jobId, stage: name, ...info });
+    };
     try {
+      stage("loading-engine");
       engine = await openEvaluator(JSON.stringify(msg.project));
-      web = await createWebEnv({ jobId, project: msg.project, settings: msg.settings, signal: ctl.signal, storage, evaluate: engine.evaluate, media: engine.media, openRenderer });
+      web = await createWebEnv({ jobId, project: msg.project, settings: msg.settings, signal: ctl.signal, storage, evaluate: engine.evaluate, media: engine.media, openRenderer, onStage: stage });
+      stage("encoding");
       const r = await runExport(web.env, ctl.signal, (progress) => scope.postMessage({ type: "progress", jobId, progress }));
       const seconds = (web.plan.totalFrames * web.plan.fpsDen) / web.plan.fpsNum;
       scope.postMessage({
@@ -51,15 +75,19 @@ export function serveExportWorker(scope: WorkerScope, openEvaluator: OpenEvaluat
           speedVsRealtime: seconds / (r.encodeMs / 1000),
           peakEncodeQueue: r.peakEncodeQueue,
           codecs: `${web.preset.video.codec} + ${web.preset.audio.codec}`,
+          safeLevel: msg.settings.safeLevel ?? 0,
+          timingMs: r.timingMs,
+          capture: web.capture(),
         },
       });
     } catch (e) {
       const err = e instanceof ExportError ? e : new ExportError("encode_failed", e instanceof Error ? e.message : String(e));
-      scope.postMessage({ type: "error", jobId, code: err.code, message: err.message });
+      scope.postMessage({ type: "error", jobId, code: err.code, message: err.message, detail: { stage: cur.stage, video: cur.video, audio: cur.audio, ...detailOf(e), ...err.detail } });
     } finally {
       web?.dispose();
       engine?.free();
       jobs.delete(jobId);
+      if (current === cur) current = undefined;
     }
   }
 }
