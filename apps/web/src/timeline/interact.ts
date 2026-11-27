@@ -42,6 +42,9 @@ export interface Effects {
 }
 const NONE: Effects = {};
 export const SLOP = 6;
+/** A finger wobbles more than a mouse: a touch must travel this far before a press becomes a drag (a pick-up), so a tap never nudges a clip. */
+export const TOUCH_SLOP = 8;
+const slopOf = (e: PEvent): number => (e.kind === "touch" ? TOUCH_SLOP : SLOP);
 
 export type Gesture =
   | { k: "idle" }
@@ -187,11 +190,11 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
   const { scene, view } = c;
   switch (g.k) {
     case "marker": {
-      if (!g.moved && Math.abs(e.x - g.sx) <= SLOP) return { g, fx: NONE };
+      if (!g.moved && Math.abs(e.x - g.sx) <= slopOf(e)) return { g, fx: NONE };
       return { g: { ...g, moved: true, value: frameTick(scene, Math.max(0, xToTime(view, e.x)) * TPS) }, fx: NONE };
     }
     case "press": {
-      if (Math.hypot(e.x - g.sx, e.y - g.sy) <= SLOP) return { g, fx: NONE };
+      if (Math.hypot(e.x - g.sx, e.y - g.sy) <= slopOf(e)) return { g, fx: NONE };
       if (g.then === "pan") return { g: { k: "pan" }, fx: NONE };
       if (g.then === "marquee") return { g: { k: "marquee", x0: g.sx, y0: g.sy, x1: e.x, y1: e.y }, fx: NONE };
       if (g.then === "none") return { g, fx: NONE };
@@ -233,7 +236,7 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
     case "marquee":
       return { g: { ...g, x1: e.x, y1: e.y }, fx: NONE };
     case "hdr": {
-      if (Math.hypot(e.x - g.sx, e.y - g.sy) <= SLOP) return { g, fx: NONE };
+      if (Math.hypot(e.x - g.sx, e.y - g.sy) <= slopOf(e)) return { g, fx: NONE };
       if (g.touch) return { g: { k: "pan" }, fx: NONE }; // a touch drag on a header scrolls the tracks; a long press picks the header up (longPress)
       if (g.part !== "name") return { g: IDLE, fx: NONE }; // dragged off a switch: cancelled, nothing flips
       return pointerMove(c, { k: "tdrag", from: g.track, to: g.track, y: e.y }, e);

@@ -1,10 +1,10 @@
 import type { Op } from "@app/engine-client";
-import { useCallback, useEffect, useRef, type KeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useRef, type KeyboardEvent } from "react";
 import { useI18n } from "../i18n";
 import { onThemeChange } from "../theme/tokens";
-import { DARK, drawTimeline, newOverlay, paletteFromCss, type DrawStats, type Overlay, type Palette } from "./draw";
+import { DARK, drawBubble, drawPlayheadStrip, drawTimeline, HEAD_W, newOverlay, paletteFromCss, type Bubble, type DrawStats, type Overlay, type Palette } from "./draw";
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
-import { handleAt, trackAtY } from "./hit";
+import { handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart } from "./header";
 import { BIN_DRAG_TYPE } from "../media/sources";
 import { snapDrop, SNAP_PX } from "./arrange";
@@ -15,23 +15,25 @@ import { markerAt } from "./markers";
 import { COMMAND_EVENT } from "../commands/palette";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import type { Tool } from "./ripple";
-import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, viewForRange, xToTime, zoomAt, zoomKeeping, type View } from "./view";
+import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, viewForRange, wheelZoomFactor, xToTime, zoomAt, zoomKeeping, type View } from "./view";
+import { zoomStore } from "./zoomStore";
+import { timecode } from "../timecode";
 
 export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement; /** Called after a frame whose zoom, scroll or width changed (the overview bar follows it). */ onView?: () => void };
+/** Where the playhead (whole frames) comes from when it is not a prop: read on demand and subscribed to, so the timeline's parent does not re-render on every tick (P-3). */
+export type PlayheadSource = { get(): number; subscribe(cb: () => void): () => void };
 const CLIP_LIST_MAX = 200;
 const NO_SEL: ReadonlySet<string> = new Set();
 
 type Props = {
   scene: Scene;
   fps: number;
-  /** Playhead, whole frames. */
-  frame: number;
+  /** Playhead, whole frames (a static value: tests and benchmarks). `playhead` replaces it with a live source. */
+  frame?: number;
+  playhead?: PlayheadSource;
   endFrame: number;
   playing: boolean;
-  /** Pixels per second, owned by the parent so the slider and buttons stay in sync. */
-  zoom: number;
   onFrame: (f: number) => void;
-  onZoom: (pps: number) => void;
   summary: string;
   /** Selected clip ids (owned by the parent, which also applies edits). */
   selected?: ReadonlySet<string>;
@@ -53,25 +55,38 @@ type Props = {
   onTrackMenu?: (track: number, at: DOMRect) => void;
   /** A marker was long-pressed, right-clicked, or tapped while the playhead was on it: open its menu. `at` is its flag's rectangle in viewport pixels. */
   onMarkerMenu?: (id: string, at: DOMRect) => void;
+  /** Right-click (or the context-menu key) on a clip: open its menu. `at` is where the pointer was, or the clip's rectangle, in viewport pixels. */
+  onClipMenu?: (at: DOMRect) => void;
   /** The edit tool picked in the toolbar (select when absent). */
   tool?: Tool;
   /** A pointer went down on this track (its id): paste targets it. */
   onLane?: (track: string) => void;
 };
 
-const TAP_SLOP = 6;
+const TAP_SLOP = 8;
+/** Cursor for a gesture in progress (T-05): a carried clip is grabbed, an edge or the ruler scrub is a horizontal drag, a marquee crosses. */
+const cursorFor = (g: Gesture): string => g.k === "move" || g.k === "tdrag" || (g.k === "marker" && g.moved) ? "grabbing" : g.k === "trim" || g.k === "tool" || g.k === "scrub" ? "ew-resize" : g.k === "marquee" ? "crosshair" : "";
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
-export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onFrame, onZoom, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onNotice, onReady, media, onDropMedia, onTrackMenu, onMarkerMenu, tool = "select", onLane }: Props) {
+export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, endFrame, playing, onFrame, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onNotice, onReady, media, onDropMedia, onTrackMenu, onMarkerMenu, onClipMenu, tool = "select", onLane }: Props) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
-  const view = useRef<View>({ pps: zoom, scrollX: 0, scrollY: 0, width: 300, height: 150 });
+  const view = useRef<View>({ pps: zoomStore.get(), scrollX: 0, scrollY: 0, width: 300, height: 150 });
   const dpr = useRef(1);
   const palette = useRef<Palette>(DARK);
   const stats = useRef<DrawStats>({ clipsDrawn: 0, tracksDrawn: 0 });
   const raf = useRef(0);
-  const live = useRef({ scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, onMarkerMenu, tool, onLane });
-  live.current = { scene, frame, fps, endFrame, onFrame, onZoom, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, onMarkerMenu, tool, onLane };
+  const live = useRef({ scene, fps, endFrame, playing, onFrame, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, onMarkerMenu, onClipMenu, tool, onLane });
+  live.current = { scene, fps, endFrame, playing, onFrame, selected, onSelect, onEdit, onCommand, onAnnounce, onNotice, onTrackMenu, onMarkerMenu, onClipMenu, tool, onLane };
+  /** The playhead in whole frames, kept current by the subscription below (no React render per tick). */
+  const fr = useRef(playhead ? playhead.get() : frameProp);
+  const firstFrame = useRef(fr.current);
+  const pcv = useRef<HTMLCanvasElement>(null); // the time bubble's layer: a transparent canvas over the timeline, shown only while a bubble is
+  const hcv = useRef<HTMLCanvasElement>(null); // the playhead: a thin strip painted once and moved with a CSS transform (it never repaints while panning, zooming or playing)
+  const hclip = useRef<HTMLDivElement>(null); // clips the strip at the track-header column
+  const headSig = useRef({ h: 0, dpr: 0, pal: null as Palette | null, tx: NaN, vis: true, left: -1, bubble: false, bw: 0, bh: 0 });
+  const bubble = useRef<Bubble | null>(null);
+  const phRaf = useRef(0);
   const ui = useRef<Overlay>(newOverlay());
   const flags = useRef<Uint8Array>(new Uint8Array(0));
   const gest = useRef<Gesture>(IDLE);
@@ -86,8 +101,44 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const handle = useRef<CanvasHandle | null>(null);
   const lengthSec = useCallback(() => Math.max(live.current.endFrame / live.current.fps, live.current.scene.endSec), []);
 
+  const paintPlayhead = useCallback(() => {
+    const h = hcv.current, clip = hclip.current, sg = headSig.current, v = view.current;
+    if (!h || !clip) return;
+    const g = gut(v), d = dpr.current;
+    if (sg.left !== g) { sg.left = g; clip.style.left = `${g}px`; }
+    if (sg.h !== v.height || sg.dpr !== d || sg.pal !== palette.current) { // repaint the strip only when what it shows changed
+      sg.h = v.height; sg.dpr = d; sg.pal = palette.current;
+      const w = Math.round(HEAD_W * d), ht = Math.round(v.height * d);
+      if (h.width !== w || h.height !== ht) { h.width = w; h.height = ht; }
+      h.style.height = `${v.height}px`;
+      const ctx = h.getContext("2d");
+      if (ctx) drawPlayheadStrip(ctx, v.height, d, palette.current);
+    }
+    const px = timeToX(v, fr.current / live.current.fps);
+    const vis = px >= g - 8 && px <= v.width + 8;
+    if (vis !== sg.vis) { sg.vis = vis; h.style.visibility = vis ? "visible" : "hidden"; }
+    if (vis) {
+      const tx = Math.round((Math.round(px * 2) / 2 - g - HEAD_W / 2) * d) / d; // whole device pixels: the layer is moved, never resampled
+      if (tx !== sg.tx) { sg.tx = tx; h.style.transform = `translate3d(${tx}px,0,0)`; }
+    }
+    const b = bubble.current, bc = pcv.current;
+    if (bc && (b || sg.bubble)) { // the time bubble: its own transparent layer, painted only while there is one (and once more to clear it)
+      sg.bubble = b !== null;
+      if (b) {
+        const w = Math.round(v.width * d), ht = Math.round(v.height * d);
+        if (bc.width !== w || bc.height !== ht) { bc.width = w; bc.height = ht; }
+      }
+      bc.style.display = b ? "block" : "none";
+      const ctx = bc.getContext("2d");
+      if (ctx) drawBubble(ctx, v, d, palette.current, b);
+    }
+  }, []);
+  /** Touch pan: the finger's movement since the last frame, applied once at the start of the next draw (P-16: one pan per frame, however many events arrived). */
+  const panPend = useRef({ dx: 0, dy: 0 });
+  const flushPan = useCallback(() => { const q = panPend.current; if (q.dx !== 0 || q.dy !== 0) { view.current.scrollX += q.dx; view.current.scrollY += q.dy; q.dx = 0; q.dy = 0; } }, []);
   const draw = useCallback(() => {
     raf.current = 0;
+    flushPan();
     const c = canvas.current;
     const ctx = c?.getContext("2d", { alpha: false });
     if (!c || !ctx) return;
@@ -98,11 +149,17 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     c.dataset.scrollx = String(Math.round(view.current.scrollX)); // test hook: horizontal scroll (edge auto-scroll)
     // Test/diagnostic hook: how much real media has landed (smoke asserts imported clips leave the placeholder state).
     if (media) { c.dataset.waveTiles = String(media.waveforms.stats.tilesRendered); c.dataset.thumbs = String(media.thumbs.stats.generated + media.thumbs.stats.fromCache); }
-    drawTimeline(ctx, l.scene, view.current, l.frame / l.fps, dpr.current, palette.current, stats.current, ui.current, media);
+    drawTimeline(ctx, l.scene, view.current, fr.current / l.fps, dpr.current, palette.current, stats.current, ui.current, media);
+    paintPlayhead();
     const v = view.current, sig = seen.current;
     if (sig.pps !== v.pps || sig.x !== v.scrollX || sig.w !== v.width) { sig.pps = v.pps; sig.x = v.scrollX; sig.w = v.width; handle.current?.onView?.(); }
-  }, [lengthSec, media]);
+  }, [lengthSec, media, paintPlayhead, flushPan]);
   const invalidate = useCallback(() => { if (!raf.current) raf.current = requestAnimationFrame(draw); }, [draw]);
+  /** Only the playhead layer changed (playback, the time bubble): the clips, ruler and thumbnails are not repainted. */
+  const invalidatePlayhead = useCallback(() => {
+    if (raf.current || phRaf.current) return; // a full draw is queued: it paints the playhead too
+    phRaf.current = requestAnimationFrame(() => { phRaf.current = 0; paintPlayhead(); });
+  }, [paintPlayhead]);
 
   // New waveform data or thumbnails: redraw.
   useEffect(() => { if (media) media.onChange = invalidate; }, [media, invalidate]);
@@ -133,7 +190,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     const ro = new ResizeObserver(fit);
     ro.observe(c);
     window.addEventListener("resize", fit); // devicePixelRatio changes (browser zoom, moving between screens) fire resize
-    return () => { ro.disconnect(); window.removeEventListener("resize", fit); cancelAnimationFrame(raf.current); raf.current = 0; };
+    return () => { ro.disconnect(); window.removeEventListener("resize", fit); cancelAnimationFrame(raf.current); raf.current = 0; cancelAnimationFrame(phRaf.current); phRaf.current = 0; };
   }, [invalidate]);
 
   useEffect(() => {
@@ -158,23 +215,49 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     invalidate();
   }, [scene, selected, invalidate]);
 
-  // Zoom from the slider/buttons: keep the playhead (or the viewport centre) steady.
-  useEffect(() => {
-    const v = view.current;
-    if (Math.abs(v.pps - zoom) < 1e-6) return;
-    zoomKeeping(v, zoom, frame / fps);
+  // Zoom from the slider/buttons (the zoom store): keep the playhead (or the viewport centre) steady.
+  useEffect(() => zoomStore.subscribe(() => {
+    const v = view.current, z = zoomStore.get();
+    if (Math.abs(v.pps - z) < 1e-6) return; // the canvas itself made this change
+    zoomKeeping(v, z, fr.current / live.current.fps);
     invalidate();
-  }, [zoom]);
+  }), [invalidate]);
+  useEffect(() => { // a zoom set before this canvas existed (an auto-fit that ran first)
+    const v = view.current, z = zoomStore.get();
+    if (Math.abs(v.pps - z) >= 1e-6) { zoomKeeping(v, z, fr.current / live.current.fps); invalidate(); }
+  }, [invalidate]);
 
-  // Redraw on playhead/project change; follow the playhead while playing.
+  // The playhead: a live source is subscribed to (the parent does not re-render per tick); a static `frame` prop is followed too. While playing the view follows it;
+  // only the playhead layer repaints unless the view scrolls. The slider's value for assistive tech is refreshed at most twice a second during playback.
+  const ariaAt = useRef(0);
+  const tRef = useRef(t);
+  tRef.current = t;
+  const setAria = useCallback((f: number, force: boolean) => {
+    const c = canvas.current, now = performance.now();
+    if (!c || (!force && live.current.playing && now - ariaAt.current < 500)) return;
+    ariaAt.current = now;
+    c.setAttribute("aria-valuenow", String(f));
+    c.setAttribute("aria-valuetext", tRef.current("timeline.playheadText", { seconds: Math.round((f / live.current.fps) * 100) / 100 }));
+  }, []);
+  const moved = useCallback((f: number) => {
+    if (fr.current === f && ariaAt.current !== 0) return;
+    fr.current = f;
+    const v = view.current, l = live.current;
+    setAria(f, !l.playing);
+    if (gesture.current.mode === "scrub") bubble.current = { sec: f / l.fps, text: timecode(f, l.fps) };
+    if (l.playing) {
+      const px = timeToX(v, f / l.fps);
+      if (px > v.width - 48 || px < gut(v)) { v.scrollX = Math.max(0, (f / l.fps) * v.pps - 96); invalidate(); return; }
+      invalidatePlayhead();
+    } else invalidate(); // a seek or scrub: the ruler leaves the label under the head out
+  }, [invalidate, invalidatePlayhead, setAria]);
   useEffect(() => {
-    const v = view.current;
-    if (playing) {
-      const px = timeToX(v, frame / fps);
-      if (px > v.width - 48 || px < gut(v)) v.scrollX = Math.max(0, (frame / fps) * v.pps - 96);
-    }
-    invalidate();
-  }, [frame, fps, playing, scene, invalidate]);
+    if (!playhead) { moved(frameProp); return; }
+    const sync = () => moved(playhead.get());
+    sync();
+    return playhead.subscribe(sync);
+  }, [playhead, frameProp, moved]);
+  useEffect(() => { invalidate(); }, [fps, playing, scene, invalidate]);
 
   // Wheel / trackpad pinch (non-passive so we can prevent page zoom and scroll).
   useEffect(() => {
@@ -186,8 +269,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
       const dx = e.deltaX * unit, dy = e.deltaY * unit;
       if (e.ctrlKey || e.metaKey) {
         const x = e.clientX - c.getBoundingClientRect().left;
-        zoomAt(v, v.pps * Math.exp(-dy * (e.ctrlKey && !e.metaKey ? 0.01 : 0.0025)), x);
-        live.current.onZoom(v.pps);
+        zoomAt(v, v.pps * wheelZoomFactor(dy, e.ctrlKey && !e.metaKey), x);
+        zoomStore.set(v.pps, "user");
       } else {
         const vertical = !e.shiftKey && live.current.scene.trackCount * LANE > v.height - RULER && Math.abs(dy) > Math.abs(dx);
         if (vertical) v.scrollY += dy;
@@ -209,7 +292,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     l.onFrame(clamp(Math.round(xToTime(view.current, x) * l.fps), 0, l.endFrame));
   };
   const stopFling = () => { cancelAnimationFrame(gesture.current.fling); gesture.current.fling = 0; };
-  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, tool: live.current.tool, playhead: Math.round((live.current.frame / live.current.fps) * TICKS_PER_SECOND) });
+  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, tool: live.current.tool, playhead: Math.round((fr.current / live.current.fps) * TICKS_PER_SECOND) });
   /** Drag from the media bin: a guide line shows where the card will land (snapped), the drop puts it there. */
   const dropAt = (e: React.DragEvent) => {
     const l = live.current;
@@ -217,7 +300,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     const raw = Math.max(0, xToTime(view.current, x)) * TICKS_PER_SECOND;
     const row = trackAtY(l.scene, view.current, e.clientY - canvas.current!.getBoundingClientRect().top);
     const ft = TICKS_PER_SECOND / l.fps;
-    return { ...snapDrop(l.scene, raw, Math.round((l.frame / l.fps) * TICKS_PER_SECOND), (SNAP_PX / view.current.pps) * TICKS_PER_SECOND, ft), row };
+    return { ...snapDrop(l.scene, raw, Math.round((fr.current / l.fps) * TICKS_PER_SECOND), (SNAP_PX / view.current.pps) * TICKS_PER_SECOND, ft), row };
   };
   const onDragOver = (e: React.DragEvent) => {
     if (!onDropMedia || !e.dataTransfer.types.includes(BIN_DRAG_TYPE)) return;
@@ -290,8 +373,17 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
       else { o.ghosts = [i]; o.ghostDSec = g.tool === "slide" ? d : 0; o.ghostLabel = t(g.tool === "slide" ? "timeline.tool.slideLabel" : "timeline.tool.slipLabel", { amount: `${d < 0 ? "−" : "+"}${Math.abs(d).toFixed(2)}` }); }
     } else if (g.k === "marquee") o.marquee = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1 };
     else if (g.k === "tdrag") o.trackDrag = { from: g.from, to: g.to, y: g.y };
+    // The time bubble (T-06): where a carried clip's start or a trimmed edge will land, or the playhead while scrubbing the ruler.
+    const fps = live.current.fps;
+    let sec = -1;
+    if (g.k === "move" && g.sel.length > 0) sec = live.current.scene.start[g.sel[0]!]! + g.delta / TICKS_PER_SECOND;
+    else if (g.k === "trim") sec = g.value / TICKS_PER_SECOND;
+    else if (g.k === "scrub") sec = fr.current / fps;
+    bubble.current = sec >= 0 ? { sec, text: timecode(Math.round(sec * fps), fps) } : null;
+    setCursor(cursorFor(g));
     invalidate();
   };
+  const setCursor = (c: string) => { const el = canvas.current; if (el && el.style.cursor !== c) el.style.cursor = c; };
   const run = (r: { g: Gesture; fx: Effects }) => { gest.current = r.g; syncPreview(r.g); applyFx(r.fx); };
 
   // Edge auto-scroll: while an edit gesture is held near an edge of the canvas the view scrolls (and the drag follows), faster the closer to the edge.
@@ -324,7 +416,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
 
   const onDown = (e: React.PointerEvent) => {
     if (e.pointerType === "mouse" && e.button !== 0) return; // a right click opens the track menu (contextmenu), it does not press
-    stopFling();
+    stopFling(); flushPan();
     const c = canvas.current!;
     try { c.setPointerCapture(e.pointerId); } catch { /* synthetic or already-ended pointer: keep working without capture */ }
     const p = local(e);
@@ -360,7 +452,8 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         const sc = live.current.scene, v = view.current;
         const t = trackAtY(sc, v, p.y);
         const part = t >= 0 && p.x < gut(v) ? headerPart(v, p.x, p.y - RULER + v.scrollY - t * LANE, sc.trackKind[t]!) : null;
-        canvas.current!.style.cursor = part ? (part === "name" ? "grab" : "pointer") : handleAt(sc, v, flags.current, p.x, p.y, false, true) ? "ew-resize" : live.current.tool !== "select" ? "crosshair" : "";
+        const body = !part && t >= 0 && p.x >= gut(v) && !handleAt(sc, v, flags.current, p.x, p.y, false, true) && hitTest(sc, v, p.x, p.y, 0).kind === "clip";
+        setCursor(part ? (part === "name" ? "grab" : "pointer") : p.y < RULER && p.x >= gut(v) ? "pointer" : handleAt(sc, v, flags.current, p.x, p.y, false, true) ? "ew-resize" : live.current.tool !== "select" ? "crosshair" : body ? "grab" : "");
       }
       return;
     }
@@ -376,13 +469,21 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
       v.scrollX -= cx - g.cx; // two-finger pan: the content follows the centre of the fingers, then the zoom is taken around it
       zoomAt(v, v.pps * (d / g.dist), cx);
       g.dist = d; g.cx = cx;
-      live.current.onZoom(v.pps);
+      zoomStore.set(v.pps, "user");
       invalidate();
     } else if (g.mode === "pan") {
       if (Math.hypot(p.x - g.sx, p.y - g.sy) > TAP_SLOP) g.moved = true;
-      const dt = Math.max(1, e.timeStamp - g.lastT);
-      v.scrollX -= p.x - prev.x; v.scrollY -= p.y - prev.y;
-      g.vx = 0.8 * g.vx + 0.2 * (-(p.x - prev.x) / dt); g.vy = 0.8 * g.vy + 0.2 * (-(p.y - prev.y) / dt);
+      // The events the browser folded into this one (touch can report faster than frames): each feeds the velocity, the position is the last of them; the scroll itself is applied once per frame.
+      const co = e.nativeEvent.getCoalescedEvents?.();
+      const sub = co && co.length > 1 ? co : [e.nativeEvent];
+      const r = canvas.current!.getBoundingClientRect();
+      let ax = prev.x, ay = prev.y, at = g.lastT;
+      for (const s of sub) {
+        const sx = s.clientX - r.left, sy = s.clientY - r.top, dt = Math.max(1, s.timeStamp - at);
+        g.vx = 0.8 * g.vx + 0.2 * (-(sx - ax) / dt); g.vy = 0.8 * g.vy + 0.2 * (-(sy - ay) / dt);
+        ax = sx; ay = sy; at = s.timeStamp;
+      }
+      panPend.current.dx -= p.x - prev.x; panPend.current.dy -= p.y - prev.y;
       g.lastT = e.timeStamp;
       invalidate();
     } else if (g.mode === "scrub") seekAt(p.x);
@@ -397,7 +498,9 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
   const onUp = (e: React.PointerEvent) => {
     stopHold();
     const g = gesture.current;
+    flushPan();
     ptr.current.delete(e.pointerId);
+    if (g.mode === "scrub") { bubble.current = null; setCursor(""); invalidatePlayhead(); }
     if (g.mode === "edit" && ptr.current.size === 0) {
       const r = pointerUp(ctxNow(), gest.current, pev(e, local(e)));
       gest.current = IDLE; syncPreview(IDLE);
@@ -419,8 +522,9 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
     if (ptr.current.size === 0) g.mode = "none";
   };
   const onCancel = (e: React.PointerEvent) => {
-    stopHold();
+    stopHold(); flushPan();
     ptr.current.delete(e.pointerId);
+    if (gesture.current.mode === "scrub") { bubble.current = null; setCursor(""); invalidatePlayhead(); }
     gest.current = IDLE; syncPreview(IDLE);
     if (ptr.current.size === 0) gesture.current.mode = "none";
   };
@@ -447,13 +551,13 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         case "clear": if (l.tool !== "select") { l.onCommand?.({ c: "tool", tool: "select" }); break; } if (l.selected.size) { setSelection(new Set()); l.onAnnounce?.({ key: "timeline.say.cleared" }); } break;
         case "selectAll": setSelection(new Set(l.scene.id)); l.onAnnounce?.({ key: "timeline.say.selectedCount", values: { count: l.scene.clipCount } }); break;
         case "markerEdit": {
-          const m = l.scene.markers.find((x) => x.ticks === Math.round((l.frame / l.fps) * TICKS_PER_SECOND));
+          const m = l.scene.markers.find((x) => x.ticks === Math.round((fr.current / l.fps) * TICKS_PER_SECOND));
           if (m) l.onMarkerMenu?.(m.id, markerRect(m.id)); else l.onNotice?.({ key: "timeline.say.marker.none" });
           break;
         }
-        case "playhead": l.onFrame(clamp(l.frame + cmd.frames, 0, l.endFrame)); break;
+        case "playhead": l.onFrame(clamp(fr.current + cmd.frames, 0, l.endFrame)); break;
         case "pick": {
-          const sec = l.frame / l.fps;
+          const sec = fr.current / l.fps;
           for (let t = 0; t < l.scene.trackCount; t++) {
             const j = nearestClip(l.scene, t, sec);
             if (j >= 0) { selectClip(j); break; }
@@ -467,7 +571,7 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
           break;
         }
         case "step": {
-          const to = cmd.to === "start" ? 0 : cmd.to === "end" ? l.endFrame : l.frame + (cmd.frames ?? 0) + (cmd.seconds ?? 0) * l.fps;
+          const to = cmd.to === "start" ? 0 : cmd.to === "end" ? l.endFrame : fr.current + (cmd.frames ?? 0) + (cmd.seconds ?? 0) * l.fps;
           l.onFrame(clamp(to, 0, l.endFrame));
           break;
         }
@@ -477,10 +581,10 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
             let a = Infinity, b = 0;
             for (const j of sel) { a = Math.min(a, l.scene.start[j]!); b = Math.max(b, l.scene.end[j]!); }
             const nv = viewForRange(v, a, b);
-            if (nv) { v.pps = nv.pps; v.scrollX = nv.scrollX; l.onZoom(v.pps); invalidate(); l.onAnnounce?.({ key: "timeline.say.zoomedSelection" }); }
+            if (nv) { v.pps = nv.pps; v.scrollX = nv.scrollX; zoomStore.set(v.pps, "user"); invalidate(); l.onAnnounce?.({ key: "timeline.say.zoomedSelection" }); }
             break;
           }
-          l.onZoom(cmd.how === "fit" ? fitPps(v, lengthSec()) : clampPps(cmd.how === "in" ? v.pps * 1.25 : v.pps / 1.25));
+          zoomStore.set(cmd.how === "fit" ? fitPps(v, lengthSec()) : clampPps(cmd.how === "in" ? v.pps * 1.25 : v.pps / 1.25), cmd.how === "fit" ? "fit" : "user");
           break;
         }
         case "scroll": {
@@ -518,14 +622,22 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         aria-describedby="tl-summary"
         aria-valuemin={0}
         aria-valuemax={endFrame}
-        aria-valuenow={frame}
-        aria-valuetext={t("timeline.playheadText", { seconds: Math.round((frame / fps) * 100) / 100 })}
+        aria-valuenow={firstFrame.current}
+        aria-valuetext={t("timeline.playheadText", { seconds: Math.round((firstFrame.current / fps) * 100) / 100 })}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onCancel}
         onContextMenu={(e) => {
+          e.currentTarget.dataset.pointer = ""; // a mouse-opened menu must not leave the keyboard focus frame around the timeline (V-20)
           const p = local(e), v = view.current, t = trackAtY(live.current.scene, v, p.y);
+          const h = (e.nativeEvent as PointerEvent).pointerType === "touch" || t < 0 || p.x < gut(v) ? null : hitTest(live.current.scene, v, p.x, p.y, 0);
+          if (h && h.kind === "clip" && markerAt(live.current.scene, v, p.x, p.y, false) < 0) { // right-click a clip: pick it (unless it is already part of the selection), then its menu
+            e.preventDefault();
+            if (!live.current.selected.has(live.current.scene.id[h.clip]!)) setSelection(new Set([live.current.scene.id[h.clip]!]));
+            live.current.onClipMenu?.(new DOMRect(e.clientX, e.clientY, 1, 1));
+            return;
+          }
           const mi = markerAt(live.current.scene, v, p.x, p.y, false);
           if (mi >= 0) { e.preventDefault(); const id = live.current.scene.markers[mi]!.id; live.current.onMarkerMenu?.(id, markerRect(id)); return; }
           if (t >= 0 && p.x < gut(v)) { e.preventDefault(); live.current.onTrackMenu?.(t, headerRect(t)); }
@@ -533,19 +645,39 @@ export function TimelineCanvas({ scene, fps, frame, endFrame, playing, zoom, onF
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
-        onKeyDown={(e) => { if (!isModifierKey(e.key)) delete e.currentTarget.dataset.pointer; onKey(e); }}
+        onKeyDown={(e) => {
+          if (!isModifierKey(e.key)) delete e.currentTarget.dataset.pointer;
+          if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) { // the keyboard's way to the clip menu: anchored to the first selected clip
+            const sel = indicesOf(live.current.scene, live.current.selected);
+            if (sel.length === 0) return;
+            e.preventDefault();
+            const r = canvas.current!.getBoundingClientRect(), v = view.current, sc = live.current.scene, j = sel[0]!;
+            const x = Math.max(gut(v), timeToX(v, sc.start[j]!)), y = RULER + sc.clipTrack[j]! * LANE - v.scrollY;
+            live.current.onClipMenu?.(new DOMRect(r.left + x + 8, r.top + y + LANE / 2, 1, 1));
+            return;
+          }
+          onKey(e);
+        }}
         onBlur={(e) => { delete e.currentTarget.dataset.pointer; }}
       />
+      <div ref={hclip} className="tl-playhead-clip" aria-hidden="true"><canvas ref={hcv} className="tl-playhead-head" /></div>
+      <canvas ref={pcv} className="tl-playhead-layer" aria-hidden="true" style={{ display: "none" }} />
       <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>
-      {/* Text alternative to the canvas: every clip (capped) in reading order, so a screen reader can browse what the picture shows. */}
-      {scene.clipCount > 0 && (
-        <ul className="sr-only" aria-label={t("timeline.clipList")} data-testid="tl-clip-list">
-          {Array.from({ length: Math.min(scene.clipCount, CLIP_LIST_MAX) }, (_, i) => {
-            const say = describeClip(scene, i);
-            return <li key={scene.id[i]}>{t(say.key, say.values)}{selected.has(scene.id[i]!) ? ` ${t("timeline.clipSelected")}` : ""}</li>;
-          })}
-        </ul>
-      )}
+      <ClipList scene={scene} selected={selected} />
     </>
   );
 }
+
+/** Text alternative to the canvas: every clip (capped) in reading order, so a screen reader can browse what the picture shows. Memoized: it is rebuilt only when the scene or the selection changes (P-3). */
+const ClipList = memo(function ClipList({ scene, selected }: { scene: Scene; selected: ReadonlySet<string> }) {
+  const { t } = useI18n();
+  if (scene.clipCount === 0) return null;
+  return (
+    <ul className="sr-only" aria-label={t("timeline.clipList")} data-testid="tl-clip-list">
+      {Array.from({ length: Math.min(scene.clipCount, CLIP_LIST_MAX) }, (_, i) => {
+        const say = describeClip(scene, i);
+        return <li key={scene.id[i]}>{t(say.key, say.values)}{selected.has(scene.id[i]!) ? ` ${t("timeline.clipSelected")}` : ""}</li>;
+      })}
+    </ul>
+  );
+});

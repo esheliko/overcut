@@ -85,31 +85,33 @@ test("reordering stays within a kind and uses the model index of the row it take
 });
 
 test("header parts: audio has four switches, video only lock and hide (same slots), the whole compact header is one target", () => {
+  // One row (V-15): the switches are 22 px wide, right aligned, centred in the lane (y 14..36); slots at x = 72, 96, 120, 144 in the 172 px header.
   const w = view();
   assert.equal(headerPart(w, 20, 10, 1), "name");
-  assert.equal(headerPart(w, 20, 36, 1), "mute");
-  assert.equal(headerPart(w, 54, 36, 1), "solo");
-  assert.equal(headerPart(w, 90, 36, 1), "lock");
-  assert.equal(headerPart(w, 120, 36, 1), "hide");
-  assert.equal(headerPart(w, 20, 36, 0), "name", "video: no mute switch");
-  assert.equal(headerPart(w, 54, 36, 0), "name", "video: no solo switch");
-  assert.equal(headerPart(w, 90, 36, 0), "lock");
-  assert.equal(headerPart(w, 120, 36, 0), "hide");
-  assert.equal(headerPart(w, GUTTER_WIDE + 1, 36, 1), null);
+  assert.equal(headerPart(w, 20, 25, 1), "name", "the left of the row is the name");
+  assert.equal(headerPart(w, 80, 25, 1), "mute");
+  assert.equal(headerPart(w, 104, 25, 1), "solo");
+  assert.equal(headerPart(w, 128, 25, 1), "lock");
+  assert.equal(headerPart(w, 152, 25, 1), "hide");
+  assert.equal(headerPart(w, 80, 25, 0), "name", "video: no mute switch");
+  assert.equal(headerPart(w, 104, 25, 0), "name", "video: no solo switch");
+  assert.equal(headerPart(w, 128, 25, 0), "lock");
+  assert.equal(headerPart(w, 152, 25, 0), "hide");
+  assert.equal(headerPart(w, GUTTER_WIDE + 1, 25, 1), null);
   const c = view({ gutter: GUTTER_COMPACT, compact: true });
   assert.equal(headerPart(c, 20, 36, 1), "name");
   assert.equal(headerPart(c, 59, 4, 0), "name");
 });
 
 test("pointer: a tap on a switch flips it, a tap on the name opens the menu, a drag off a switch cancels", () => {
-  let r = pointerDown(ctx(), mouse(20, laneY(2, 36))); // A1's mute switch
+  let r = pointerDown(ctx(), mouse(80, laneY(2, 25))); // A1's mute switch
   assert.equal(r.g.k, "hdr");
-  const up = pointerUp(ctx(), r.g, mouse(20, laneY(2, 36)));
+  const up = pointerUp(ctx(), r.g, mouse(80, laneY(2, 25)));
   assert.deepEqual(up.fx.ops, [{ op: "set_track_props", track: scene.trackId[2], muted: true }]);
-  r = pointerDown(ctx(), mouse(60, laneY(2, 10)));
-  assert.deepEqual(pointerUp(ctx(), r.g, mouse(60, laneY(2, 10))).fx, { menu: 2 });
-  r = pointerDown(ctx(), mouse(20, laneY(2, 36)));
-  const moved = pointerMove(ctx(), r.g, mouse(20, laneY(2, 36) + 40));
+  r = pointerDown(ctx(), mouse(50, laneY(2, 10)));
+  assert.deepEqual(pointerUp(ctx(), r.g, mouse(50, laneY(2, 10))).fx, { menu: 2 });
+  r = pointerDown(ctx(), mouse(80, laneY(2, 25)));
+  const moved = pointerMove(ctx(), r.g, mouse(80, laneY(2, 25) + 40));
   assert.equal(moved.g.k, "idle");
 });
 

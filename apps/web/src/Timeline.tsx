@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Engine, Op, Project } from "@app/engine-client";
 import { importedMediaHost } from "./media/engine-host";
 import { FakeMediaHost, routeMedia } from "./media/host";
@@ -22,8 +22,11 @@ import { currentKeymap } from "./commands/keymap";
 import { sampleProject } from "./timeline/fixture";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
-import { clampPps, fitPps, ppsToSlider, sliderToPps } from "./timeline/view";
-import { TimelineCanvas, type CanvasHandle } from "./timeline/TimelineCanvas";
+import { clampPps, fitPps, gut, ppsToSlider, shouldAutoFit, sliderToPps } from "./timeline/view";
+import { zoomStore } from "./timeline/zoomStore";
+import { clipMenuItems } from "./timeline/clipMenu";
+import { clipSpan, speedOps, speedTarget, toRational, SPEED_PRESETS, formatSpeed } from "./inspector/speedModel";
+import { TimelineCanvas, type CanvasHandle, type PlayheadSource } from "./timeline/TimelineCanvas";
 import { Overview } from "./timeline/Overview";
 import { TrackMenu, type TrackAction, type TrackMenuTarget } from "./timeline/TrackMenu";
 import { addTrack, removeTrack, renameTrack, reorderTrack, toggleTrack, TRACK_SAY_KEYS } from "./timeline/tracks";
@@ -34,8 +37,6 @@ export const END_FRAME = TIMELINE_SECONDS * FPS;
 
 type Props = {
   playing: boolean;
-  zoom: number;
-  onZoom: (z: number) => void;
   /** Short visible message (toast). */
   onNotice: (what: string) => void;
   /** Benchmark/dev hook. */
@@ -51,6 +52,8 @@ type Props = {
   readyIds?: string;
   /** A media-bin card was dropped on the timeline canvas: place it at this tick. */
   onDropMedia?: (id: string, tick: number, track?: string) => void;
+  /** "Add media at playhead" / "Add as overlay on a new track" (the palette, the More menu): the app picks the media (the bin's concern) and puts it at `tick`. */
+  onAddMedia?: (overlay: boolean, tick: number) => void;
 };
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
@@ -73,7 +76,7 @@ const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 const HistoryDialog = lazy(() => import("./timeline/EditDialogs").then((m) => ({ default: m.HistoryDialog })));
 const TimingDialog = lazy(() => import("./timeline/EditDialogs").then((m) => ({ default: m.TimingDialog })));
 
-export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf, readyIds = "", onDropMedia }: Props) {
+export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf, readyIds = "", onDropMedia, onAddMedia }: Props) {
   const { t } = useI18n();
   // The sample project uses synthetic media; imported files are decoded by the engine from the bin's files (placeholders while extracting or offline).
   const fileOfRef = useRef(fileOf);
@@ -89,7 +92,6 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const canUndo = useProjectStore((s) => s.canUndo);
   const canRedo = useProjectStore((s) => s.canRedo);
   const selected = useProjectStore((s) => s.selection);
-  const frame = useProjectStore((s) => s.playhead);
   const undoLabel = useProjectStore((s) => s.undoLabel);
   const redoLabel = useProjectStore((s) => s.redoLabel);
   // Media that became readable (relink, permission restored) is asked for again; media that left the project closes its decoder handle.
@@ -112,8 +114,10 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const onFrame = store.setPlayhead;
   const speak = useCallback((s: Say) => announce(t(s.key, s.values)), [t]);
 
-  const live = useRef({ scene, selected, frame, proj });
-  live.current = { scene, selected, frame, proj };
+  const live = useRef({ scene, selected, proj });
+  live.current = { scene, selected, proj };
+  // The playhead is read on demand and handed to the canvas as a subscription: this component does not re-render on every tick of playback (P-3).
+  const playhead = useMemo<PlayheadSource>(() => ({ get: () => store.getState().playhead, subscribe: (cb) => store.subscribe(cb) }), [store]);
   const undoLabelRef = useRef(undoLabel);
   const redoLabelRef = useRef(redoLabel);
   undoLabelRef.current = undoLabel;
@@ -139,21 +143,28 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   const [markerMenu, setMarkerMenu] = useState<{ id: string; anchor: DOMRect } | null>(null);
   const closeMarkerMenu = useCallback(() => setMarkerMenu(null), []);
   const openMarkerMenu = useCallback((id: string, anchor: DOMRect) => setMarkerMenu({ id, anchor }), []);
+  const [clipMenu, setClipMenu] = useState<DOMRect | null>(null);
+  const closeClipMenu = useCallback(() => setClipMenu(null), []);
   const closeDialog = useCallback(() => setDialog(null), []); // the native dialog hands focus back to the button that opened it
   const lengthSec = Math.max(endFrame / fps, scene.endSec);
   const lengthRef = useRef(lengthSec);
   lengthRef.current = lengthSec;
-  const fit = useCallback(() => { if (canvasHandle.current) onZoom(fitPps(canvasHandle.current.view, lengthRef.current)); }, [onZoom]);
+  const fitTo = useCallback((source: "fit" | "auto") => { if (canvasHandle.current) zoomStore.set(fitPps(canvasHandle.current.view, lengthRef.current), source); }, []);
+  const fit = useCallback(() => fitTo("fit"), [fitTo]);
   const getHandle = useCallback(() => canvasHandle.current, []);
   const ready = useCallback((h: CanvasHandle) => { canvasHandle.current = h; onReady?.(h); }, [onReady]);
-  // The first clips on an empty timeline fill the width: a 1 s clip must not be 40 px on a 30 s ruler.
-  const hasClips = project !== null && scene.clipCount > 0;
-  const hadClips = useRef<boolean | null>(null); // null until the project is open: opening a project with clips keeps the zoom
+  // The first clips on an empty timeline fill the width (a 1 s clip must not be 40 px on a 30 s ruler), and an import or add that runs past the right edge
+  // fits once more, unless the person set the zoom by hand (L-06). Opening a project keeps its zoom.
+  const seen = useRef<{ clips: number; end: number } | null>(null);
   useEffect(() => {
-    if (project === null) return;
-    if (hasClips && hadClips.current === false) fit();
-    hadClips.current = hasClips;
-  }, [project, hasClips, fit]);
+    if (project === null) { seen.current = null; return; }
+    const prev = seen.current;
+    seen.current = { clips: scene.clipCount, end: scene.endSec };
+    const h = canvasHandle.current;
+    if (!prev || !h) return;
+    const v = h.view;
+    if (shouldAutoFit({ prevClips: prev.clips, clips: scene.clipCount, prevEndSec: prev.end, endSec: scene.endSec, visibleEndSec: (v.scrollX + v.width - gut(v)) / v.pps, userZoomed: zoomStore.userZoomed() })) fitTo("auto");
+  }, [project, scene, fitTo]);
 
   const commit = useCallback((ops: Op[], s: Say, after?: (out: { changed: boolean }) => void) => {
     const p = live.current.proj;
@@ -179,7 +190,8 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
   }, [speak, onNotice, t]);
 
   const run = useCallback((cmd: Command) => {
-    const { scene: sc, selected: sel, frame: f } = live.current;
+    const { scene: sc, selected: sel } = live.current;
+    const f = store.getState().playhead;
     const ft = sc.frameTicks;
     const picked = indicesOf(sc, sel);
     const mine = editable(sc, picked);
@@ -230,6 +242,7 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
         commit(ops, say("timeline.say.moved", { count: mine.length, name: sc.name[mine[0]!]! }));
         break;
       }
+      case "addMedia": onAddMedia?.(cmd.overlay, tick); break;
       case "trackToggle": {
         const row = mine.length ? sc.clipTrack[mine[0]!]! : sc.trackId.indexOf(armed.current ?? "");
         if (row < 0) { const m = say("timeline.say.noTrack"); speak(m); onNotice(t(m.key)); break; }
@@ -330,8 +343,17 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
       }
       default: break;
     }
-  }, [speak, commit, undoRedo, onNotice, t, setSelected]);
+  }, [speak, commit, undoRedo, onNotice, t, setSelected, store, onAddMedia]);
 
+  /** A speed preset from the clip menu: the same edit as the Speed inspector (one undo step, a linked sound follows). */
+  const setSpeed = useCallback((x: number) => {
+    const target = speedTarget(live.current.proj.project, live.current.selected), r = toRational(x);
+    if (!target || target.still || !r) return;
+    const label = t("speed.undoLabel");
+    live.current.proj.apply(speedOps(target.group, r, false), undefined, label)
+      .then(() => { const span = clipSpan(store.getState().project, target.clip.id); if (span) announce(t("speed.announce", { speed: formatSpeed(x), ...span })); })
+      .catch(() => onNotice(t("speed.failed")));
+  }, [store, onNotice, t]);
   const trackAction = useCallback((a: TrackAction) => {
     const sc = live.current.scene;
     const r = a.a === "toggle" ? toggleTrack(sc, a.track, a.part)
@@ -393,14 +415,11 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
           <button className="tl-pick" aria-haspopup="menu" aria-expanded={menuOpen === "more"} data-testid="tl-more" title={t("timeline.more")} onClick={(e) => openBar("more", e.currentTarget)}>
             <span>{t("timeline.more")}</span><Icon name="chevronDown" size={14} className="tl-caret" />
           </button>
-          {!none && <span className="tl-sel" data-testid="tl-selected">{withLinked ? t("timeline.selected.linked", { count: clipCount }) : t("timeline.selected", { count: clipCount })}</span>}
         </div>
-        <label className="zoom">
-          <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomOut")} title={tip(t("timeline.zoomOut"), "-")} onClick={() => onZoom(clampPps(zoom / 1.25))}><Icon name="minus" size={18} /></button>
-          <input type="range" min={0} max={1} step={0.005} value={ppsToSlider(zoom)} onChange={(e) => onZoom(sliderToPps(Number(e.target.value)))} aria-label={t("timeline.zoom")} />
-          <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomIn")} title={tip(t("timeline.zoomIn"), "+")} onClick={() => onZoom(clampPps(zoom * 1.25))}><Icon name="plus" size={18} /></button>
-          <button type="button" className="icon-btn tl-fit" aria-label={t("timeline.fit")} title={tip(t("timeline.fit"), "0")} data-testid="tl-fit" onClick={fit}><Icon name="fit" size={18} /></button>
-        </label>
+        <div className="tl-right">
+          {!none && <span className="tl-sel" data-testid="tl-selected">{withLinked ? t("timeline.selected.linked", { count: clipCount }) : t("timeline.selected", { count: clipCount })}</span>}
+          <ZoomBar onFit={fit} />
+        </div>
       </div>
       {menuOpen && bar && <ToolbarMenu name={barName} anchor={bar} onClose={closeBar} testid={menuOpen === "tool" ? "tl-tool-menu" : "tl-more-menu"}
         items={menuOpen === "tool" ? TOOLS.map((k) => ({ id: k, label: t(`timeline.tool.${k}`), hint: keyHint(`tool.${k}`), checked: tool === k, testid: `tl-tool-${k}`, onSelect: () => run({ c: "tool", tool: k }) }))
@@ -414,32 +433,59 @@ export function Timeline({ playing, zoom, onZoom, onNotice, onReady, fps = FPS, 
             { id: "gap", label: t("timeline.closeGap"), hint: KEYS.closeGap, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-close-gap", onSelect: () => run({ c: "closeGap" }) },
             { id: "timing", label: t("timeline.timing"), disabled: off || !oneClip, reason: t("timeline.why.one"), testid: "tl-timing", onSelect: () => setDialog("timing") },
             { id: "history", disabled: off, label: t("timeline.history"), testid: "tl-history", onSelect: () => setDialog("history") },
+            ...(onAddMedia ? [
+              { id: "addm", section: t("timeline.more.media"), disabled: off, label: t("timeline.addMedia.atPlayhead"), testid: "tl-add-media", onSelect: () => run({ c: "addMedia", overlay: false }) },
+              { id: "addo", disabled: off, label: t("timeline.addMedia.overlay"), testid: "tl-add-overlay", onSelect: () => run({ c: "addMedia", overlay: true }) },
+            ] : []),
             { id: "addv", section: t("timeline.more.tracks"), disabled: off, label: t("timeline.track.addVideo"), testid: "track-add-video", onSelect: () => trackAction({ a: "add", kind: "video" }) },
             { id: "adda", disabled: off, label: t("timeline.track.addAudio"), testid: "track-add-audio", onSelect: () => trackAction({ a: "add", kind: "audio" }) },
             { id: "topts", label: t("timeline.track.optionsButton"), disabled: off || oneIdx.length === 0, reason: t("timeline.why.select"), testid: "tl-track-options", onSelect: () => openMenu({ kind: "track", track: scene.clipTrack[oneIdx[0]!]! }, bar!) },
             { id: "mark", section: t("timeline.more.markers"), disabled: off, label: t("timeline.marker.add"), hint: keyHint("marker.add"), testid: "tl-marker-add", onSelect: () => run({ c: "marker" }) },
-            { id: "medit", label: t("timeline.marker.edit"), disabled: off || !scene.markers.some((m) => m.ticks === Math.round((frame * TICKS_PER_SECOND) / FPS)), reason: t("timeline.why.marker"), testid: "tl-marker-edit", onSelect: () => run({ c: "markerEdit" }) },
+            { id: "medit", label: t("timeline.marker.edit"), disabled: off || !scene.markers.some((m) => m.ticks === Math.round((store.getState().playhead * TICKS_PER_SECOND) / FPS)), reason: t("timeline.why.marker"), testid: "tl-marker-edit", onSelect: () => run({ c: "markerEdit" }) },
             { id: "rin", label: t("timeline.range.in"), disabled: off, hint: keyHint("range.in"), testid: "tl-range-in", onSelect: () => run({ c: "range", what: "in" }) },
             { id: "rout", label: t("timeline.range.out"), disabled: off, hint: keyHint("range.out"), testid: "tl-range-out", onSelect: () => run({ c: "range", what: "out" }) },
             { id: "rplay", label: t("timeline.range.play"), disabled: off || scene.clipCount === 0, reason: t("timeline.why.clips"), hint: keyHint("range.play"), testid: "tl-range-play", onSelect: () => run({ c: "range", what: "play" }) },
             { id: "rloop", label: t("timeline.range.loop"), disabled: off || !scene.range, reason: t("timeline.why.range"), testid: "tl-range-loop", onSelect: () => run({ c: "range", what: "loop" }) },
             { id: "rclear", label: t("timeline.range.clear"), disabled: off || !scene.range, reason: t("timeline.why.range"), hint: keyHint("range.clear"), testid: "tl-range-clear", onSelect: () => run({ c: "range", what: "clear" }) },
-            { id: "zin", section: t("timeline.more.view"), label: t("timeline.zoomIn"), onSelect: () => onZoom(clampPps(zoom * 1.25)) },
-            { id: "zout", label: t("timeline.zoomOut"), onSelect: () => onZoom(clampPps(zoom / 1.25)) },
+            { id: "zin", section: t("timeline.more.view"), label: t("timeline.zoomIn"), onSelect: () => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user") },
+            { id: "zout", label: t("timeline.zoomOut"), onSelect: () => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user") },
             { id: "fit", label: t("timeline.fit"), hint: "0", testid: "tl-fit-menu", onSelect: fit },
             { id: "zsel", label: t("timeline.zoomSelection"), hint: keyHint("view.zoomSelection"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-zoom-selection", onSelect: () => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { c: "zoom", how: "selection" } })) },
           ]} />}
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
         onApply={(ops, field, name) => commit(mirrorTrims(scene, ops), say("timeline.say.timed", { field, name }))} /></Suspense>}
+      {clipMenu && <ToolbarMenu name={t("timeline.clipMenu")} anchor={clipMenu} onClose={closeClipMenu} testid="tl-clip-menu"
+        items={clipMenuItems({ clips: clipCount, anyLinked, allLocked: oneIdx.length > 0 && editable(scene, oneIdx).length === 0, still: speedTarget(project, selected)?.still ?? false }).map((it) => {
+          const speed = it.id.startsWith("speed:") ? Number(it.id.slice(6)) : null;
+          const label = speed !== null ? formatSpeed(speed) : it.id === "split" ? t("timeline.split") : it.id === "duplicate" ? t("timeline.duplicate") : it.id === "delete" ? t("timeline.delete") : it.id === "rippleDelete" ? t("timeline.rippleDelete") : t("timeline.unlink");
+          const hint = it.id === "split" ? KEYS.split : it.id === "duplicate" ? KEYS.dup : it.id === "delete" ? KEYS.del : it.id === "rippleDelete" ? KEYS.rippleDel : "";
+          const cmd: Command | null = it.id === "split" ? { c: "split" } : it.id === "duplicate" ? { c: "duplicate" } : it.id === "delete" ? { c: "delete" } : it.id === "rippleDelete" ? { c: "rippleDelete" } : it.id === "unlink" ? { c: "unlink" } : null;
+          return { id: it.id, section: it.id === "split" ? t("timeline.more.clip") : speed === SPEED_PRESETS[0] ? t("timeline.speed.section") : undefined, label, hint, disabled: it.disabled, reason: it.why ? t(`timeline.why.${it.why}`) : undefined,
+            testid: `tl-clip-${it.id.replace(":", "-")}`, onSelect: () => (cmd ? run(cmd) : setSpeed(speed!)) };
+        })} />}
       {markerMenu && scene.markers.find((m) => m.id === markerMenu.id) && <MarkerMenu marker={scene.markers.find((m) => m.id === markerMenu.id)!} anchor={markerMenu.anchor} onAct={markerAction} onClose={closeMarkerMenu} />}
       {menu && <TrackMenu scene={scene} target={menu.target} anchor={menu.anchor} onAct={trackAction} onClose={closeMenu} />}
       <div className="tl-stage">
         {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t("timeline.empty")}</p>}
-        <TimelineCanvas scene={scene} fps={fps} frame={frame} endFrame={endFrame} playing={playing} zoom={zoom} onFrame={onFrame} onZoom={onZoom} summary={summary}
-          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} onMarkerMenu={openMarkerMenu} tool={tool} onLane={(id) => { armed.current = id; }} />
+        <TimelineCanvas scene={scene} fps={fps} playhead={playhead} endFrame={endFrame} playing={playing} onFrame={onFrame} summary={summary}
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} onMarkerMenu={openMarkerMenu} onClipMenu={(at) => setClipMenu(at)} tool={tool} onLane={(id) => { armed.current = id; }} />
       </div>
-      <Overview scene={scene} lengthSec={lengthSec} handle={getHandle} onZoom={onZoom} />
+      <Overview scene={scene} lengthSec={lengthSec} handle={getHandle} />
     </section>
   );
 }
+
+/** The zoom slider and buttons. Subscribed to the zoom store on its own, so a wheel or pinch zoom re-renders only this strip, not the editor (P-2). */
+const ZoomBar = memo(function ZoomBar({ onFit }: { onFit: () => void }) {
+  const { t } = useI18n();
+  const zoom = useSyncExternalStore(zoomStore.subscribe, zoomStore.get, zoomStore.get);
+  return (
+    <label className="zoom">
+      <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomOut")} title={tip(t("timeline.zoomOut"), "-")} onClick={() => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user")}><Icon name="minus" size={18} /></button>
+      <input type="range" min={0} max={1} step={0.005} value={ppsToSlider(zoom)} onChange={(e) => zoomStore.set(sliderToPps(Number(e.target.value)), "user")} aria-label={t("timeline.zoom")} />
+      <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomIn")} title={tip(t("timeline.zoomIn"), "+")} onClick={() => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user")}><Icon name="plus" size={18} /></button>
+      <button type="button" className="icon-btn tl-fit" aria-label={t("timeline.fit")} title={tip(t("timeline.fit"), "0")} data-testid="tl-fit" onClick={onFit}><Icon name="fit" size={18} /></button>
+    </label>
+  );
+});
