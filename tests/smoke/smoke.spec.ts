@@ -129,6 +129,7 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
 
 test("theme: follows the system, the toggle overrides it, the choice is remembered, and the page never scrolls sideways", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
+  await page.addInitScript(() => { try { if (!localStorage.getItem("overcut.theme")) localStorage.setItem("overcut.theme", "system"); } catch { /* ignore */ } }); // r14: a first run is dark; "follow the system" is now an explicit choice
   await page.goto("/");
   const html = page.locator("html");
   await expect(html).toHaveAttribute("data-theme", "light");

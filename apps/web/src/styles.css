@@ -129,8 +129,9 @@ h2, p { margin: 0; }
 
 /* Timeline */
 .timeline { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-top: 1px solid var(--line); }
-@container editor (min-width: 720px) { .timeline { border-top: 0; } }
+@container editor (min-width: 720px) { .timeline { border-top: 0; } } 
 .tl-bar { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 6px; min-height: 48px; border-bottom: 1px solid var(--line); }
+@container editor (min-width: 720px) { .tl-bar { padding-inline: 8px 12px; } } /* r14: flush panels, keep the toolbar off the window edge */
 .tl-group, .zoom { display: flex; align-items: center; gap: 0; }
 @media (min-width: 600px) { .tl-bar > .tl-group { flex: 0 0 auto; } } /* tablet and up: the tools never shrink into each other (a phone keeps shrinking them: the pill is hidden there and the bar must fit 320 px): the zoom slider and the selection pill give way first (820 px with a linked clip selected overlapped "More") */
 @media (pointer: coarse) and (min-width: 360px) { .tl-group, .zoom { gap: 4px; } .sep { margin: 0 2px; } } /* I-02: touch buttons do not touch */
