@@ -2,7 +2,7 @@ import type { AudioPort, VideoPort } from "./pipeline";
 import { outputSampleMicros } from "./pipeline";
 import type { ExportPlan } from "./plan";
 import { maxAudioPackets, createMuxer, type Muxer } from "./mux";
-import type { ResolvedPreset } from "./presets";
+import { describeAudioConfig, describeVideoConfig, type ResolvedPreset } from "./presets";
 import type { ExportFile } from "./storage";
 import { ExportError } from "./types";
 
@@ -26,7 +26,13 @@ export interface WebOutput {
 export async function createWebOutput(plan: ExportPlan, preset: ResolvedPreset, file: ExportFile, signal: AbortSignal, creationTime: number | undefined, makeMuxer: typeof createMuxer = createMuxer): Promise<WebOutput> {
   let failure: ExportError | null = null;
   const fail = (code: ExportError["code"], e: unknown): void => {
-    failure ??= new ExportError(code, `${code === "storage_failed" ? "Writing the file failed" : "Encoding failed"}: ${e instanceof Error ? e.message : String(e)}`);
+    failure ??= new ExportError(code, `${code === "storage_failed" ? "Writing the file failed" : "Encoding failed"}: ${e instanceof Error ? `${e.name === "Error" ? "" : `${e.name}: `}${e.message}` : String(e)}`, {
+      name: e instanceof Error ? e.name : undefined,
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+      video: describeVideoConfig(preset.video),
+      audio: describeAudioConfig(preset.audio),
+    });
   };
   const check = (): void => {
     if (failure) throw failure;
@@ -60,12 +66,25 @@ export async function createWebOutput(plan: ExportPlan, preset: ResolvedPreset, 
     output: (chunk, meta) => toMux(() => muxer.addVideo(chunk, meta)),
     error: (e) => fail("encode_failed", e),
   });
-  venc.configure(preset.video);
   const aenc = new AudioEncoder({
     output: (chunk, meta) => toMux(() => muxer.addAudio(chunk, meta)),
     error: (e) => fail("encode_failed", e),
   });
-  aenc.configure(preset.audio);
+  try {
+    venc.configure(preset.video);
+    aenc.configure(preset.audio);
+  } catch (e) {
+    // A config the encoder rejects synchronously (it passed isConfigSupported but fails here): close what exists and report which config.
+    for (const enc of [venc, aenc]) if (enc.state !== "closed") enc.close();
+    await muxer.cancel().catch(() => undefined);
+    throw new ExportError("encode_failed", `Could not start encoding: ${e instanceof Error ? e.message : String(e)}`, {
+      name: e instanceof Error ? e.name : undefined,
+      message: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+      video: describeVideoConfig(preset.video),
+      audio: describeAudioConfig(preset.audio),
+    });
+  }
 
   const aborted = new Promise<void>((r) => signal.addEventListener("abort", () => r(), { once: true }));
   const nextDequeue = (enc: VideoEncoder | AudioEncoder): Promise<void> =>
@@ -97,7 +116,12 @@ export async function createWebOutput(plan: ExportPlan, preset: ResolvedPreset, 
       ready: () => ready(venc),
       flush: async () => {
         check();
-        await venc.flush();
+        try {
+          await venc.flush();
+        } catch (e) {
+          check(); // the encoder's own error callback has the better description
+          throw e;
+        }
       },
     },
     audio: {
@@ -110,7 +134,12 @@ export async function createWebOutput(plan: ExportPlan, preset: ResolvedPreset, 
       ready: () => ready(aenc),
       flush: async () => {
         check();
-        await aenc.flush();
+        try {
+          await aenc.flush();
+        } catch (e) {
+          check(); // the encoder's own error callback has the better description
+          throw e;
+        }
       },
     },
     peakQueue: () => peak,
