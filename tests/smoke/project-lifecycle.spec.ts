@@ -97,7 +97,7 @@ test("canvas settings are a project edit (undo), survive an import, and new proj
   const chooser2 = page.waitForEvent("filechooser");
   await menu(page, "Open project…");
   await (await chooser2).setFiles(junk);
-  await expect(page.locator(".toast")).toContainText("could not be opened");
+  await expect(page.getByTestId("failure-note")).toContainText("could not be opened"); // R12: a failure stays until dismissed (it was a 4 s toast)
   await expect(page.locator("#tl-summary")).toContainText("1 clip");
 
   // 7. A new window has none of the files: opening the project shows them as not on this device, and Locate files reconnects them by name and size.

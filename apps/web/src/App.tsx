@@ -8,6 +8,8 @@ import { useI18n } from "./i18n";
 import { useIncoming } from "./incoming";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
+import { useBackClose } from "./layout/backStack";
+import { useKeyboardInset } from "./layout/useKeyboardInset";
 import { Home } from "./Home";
 import { capturePoster } from "./posterSource";
 import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects, projectBytes, setArchived } from "./projects";
@@ -250,7 +252,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const workspaceRef = useRef<HTMLElement>(null);
   const [name, setName] = useState<string | null>(null); // null = the localized default name
   const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | "shortcuts" | { title: string; body: string; confirm: string; danger: boolean; run(): Promise<void> }>(null);
-  const [locating, setLocating] = useState(false); // after opening a file: offer to reconnect media that is not on this device
+  const [offlineHidden, setOfflineHidden] = useState(false); // the "files are missing" note was dismissed for this project (it is shown whenever media is not on this device)
   const [playing, setPlaying] = useState(false);
   const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
   useEffect(() => { const open = () => setPalette(true); window.addEventListener(PALETTE_EVENT, open); return () => window.removeEventListener(PALETTE_EVENT, open); }, []);
@@ -285,7 +287,7 @@ function Editor({ store }: { store: ProjectStore }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toastDuration(toast)); // about 2.5 s; longer text a little longer, never more than 4 s
+    const t = setTimeout(() => setToast(null), toastDuration(toast)); // 3 s; longer text a little longer, never more than 5 s
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -434,7 +436,9 @@ function Editor({ store }: { store: ProjectStore }) {
   useEffect(() => { if (project && clean.current === null) clean.current = JSON.stringify(project); }, [project]);
   const dirty = () => { const p = store.getState().project; return !!p && JSON.stringify(p) !== clean.current; };
   const markClean = () => { const p = store.getState().project; clean.current = p ? JSON.stringify(p) : null; };
-  const fail = (key: string, e: unknown) => setToast(t(key, { why: e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e) }));
+  // A failure stays on screen until it is dismissed (a toast that leaves in 4 s is gone before the person has read why); successes keep the short toast.
+  const [failure, setFailure] = useState<string | null>(null);
+  const fail = (key: string, e: unknown) => setFailure(t(key, { why: e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e) }));
   /** Swap the open project for `bytes` (a `.overcut` file): the autosaving session when there is one, else the bare engine. */
   const replaceWith = async (bytes: Uint8Array, before?: SnapshotKind): Promise<Project> => {
     let next: Project;
@@ -462,7 +466,7 @@ function Editor({ store }: { store: ProjectStore }) {
       try {
         await replaceWith(await core.saveProject(newProject(t("app.untitled"))), "before-new");
         setName(null);
-        setLocating(false);
+        setOfflineHidden(false);
         announce(t("project.new.done"));
         setToast(t("project.new.done"));
       } catch (e) { fail("project.open.failed", e); }
@@ -480,7 +484,7 @@ function Editor({ store }: { store: ProjectStore }) {
         try {
           await replaceWith(file.bytes, "before-open");
           setName(label);
-          setLocating(true);
+          setOfflineHidden(false);
           announce(t("project.open.done", { name: label }));
           setToast(t("project.open.done", { name: label }));
         } catch (e) { fail("project.open.failed", e); }
@@ -514,10 +518,10 @@ function Editor({ store }: { store: ProjectStore }) {
   };
   // ---- the projects list (PM-06, docs/features/projects.md) ----
   const refreshList = async () => { const l = await (await getRegistry()).list(); setList(l); return l; };
-  const openEntry = (e: { id: string; name: string }, fromFile = false) => {
+  const openEntry = (e: { id: string; name: string }) => {
     setName(e.name || null);
     clean.current = null;
-    setLocating(fromFile);
+    setOfflineHidden(false);
     setOpenId(e.id);
     setLastId(e.id);
     void getRegistry().then((r) => r.setCurrent(e.id)).catch(() => undefined);
@@ -602,7 +606,7 @@ function Editor({ store }: { store: ProjectStore }) {
     for (let n = 2, base = label; taken.has(label); n++) label = `${base} (${n})`; // a clashing name becomes "Name (2)"
     const e = await createProject(core!, label, file.bytes);
     await refreshList();
-    openEntry(e, true);
+    openEntry(e);
     announce(t("project.open.done", { name: label }));
   });
   const homeRename = (e: ProjectEntry, next: string) => void homeTask(async () => { await (await getRegistry()).update(e.id, { name: next }); await refreshList(); });
@@ -642,7 +646,7 @@ function Editor({ store }: { store: ProjectStore }) {
     setDialog(null);
     void store.apply(ops, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
   };
-  const offline = media.items.filter((i) => i.status === "offline").length;
+  const offline = media.items.filter((i) => i.status === "offline" && !i.uri?.startsWith("fixture:")).length; // a file that is not on this device ("fixture:" is the built-in sample, not a file)
   const locate = async () => {
     const total = offline;
     try {
@@ -657,6 +661,18 @@ function Editor({ store }: { store: ProjectStore }) {
     if (opening) setDetent(id === "edit" ? "peek" : "half"); // Edit starts small so the picture and the timeline stay in view
   };
   const closeSheet = useCallback(() => setSheet(false), []);
+  // Focus goes back to the tool button that opened the sheet (a closed sheet is display:none: its focused element would otherwise drop focus to the page).
+  const sheetOpener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (roomy) return;
+    const here = document.activeElement as HTMLElement | null;
+    if (sheet) { if (!sheetOpener.current && here && here !== document.body && !here.closest(".library")) sheetOpener.current = here; return; }
+    const back = sheetOpener.current;
+    sheetOpener.current = null;
+    if (back?.isConnected && (!here || here === document.body || here.closest(".library"))) back.focus({ preventScroll: true });
+  }, [sheet, roomy]);
+  useBackClose(!roomy && sheet, closeSheet); // phone: Back / swipe-back closes the sheet before it leaves the editor
+  useKeyboardInset(true); // the sheet and the dialogs ride above the on-screen keyboard (--kb)
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId && shown(x)) ?? TOOLS[0]!;
   const activeLabel = t(`tool.${active.id}.label`);
@@ -708,6 +724,7 @@ function Editor({ store }: { store: ProjectStore }) {
           ))}
         </nav>}
 
+        {!roomy && sheet && active.id !== "edit" && <div className="sheet-scrim" data-testid="sheet-scrim" aria-hidden="true" onClick={closeSheet} />}
         <section className="library" data-open={sheet} data-detent={!roomy && sheet ? detent : undefined} data-collapsed={roomy && libCollapsed ? "true" : undefined} aria-label={activeLabel} data-testid="panel-tool">
           {!roomy && sheet && <SheetHandle detent={detent} onDetent={setDetent} onClose={closeSheet} />}
           <button className="sheet-close icon-btn" aria-label={t("panel.close")} onClick={() => setSheet(false)}><Icon name="close" size={18} /></button>
@@ -737,13 +754,20 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
       </main>
 
-      <PersistenceNotes state={persistence} extra={locating && offline > 0 ? (
+      <PersistenceNotes state={persistence} extra={(failure || (offline > 0 && !offlineHidden)) ? (<>
+        {failure && (
+          <div className="persist-note danger" role="alert" data-testid="failure-note">
+            <span>{failure}</span>
+            <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setFailure(null)}><Icon name="close" size={18} /></button>
+          </div>
+        )}
+        {offline > 0 && !offlineHidden && (
         <div className="persist-note" role="status" data-testid="offline-note">
           <span>{t("project.offline", { count: offline })}</span>
           <button onClick={() => void locate()} data-testid="locate-files">{t("project.locate")}</button>
-          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setLocating(false)}><Icon name="close" size={18} /></button>
+          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setOfflineHidden(true)}><Icon name="close" size={18} /></button>
         </div>
-      ) : null} />
+      )}</>) : null} />
       {dialog === "versions" && persistence.session && <VersionsDialog session={persistence.session} onRestore={restoreVersion} onClose={() => setDialog(null)} />}
       {dialog === "privacy" && <PrivacyDialog onClose={() => setDialog(null)} />}
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}

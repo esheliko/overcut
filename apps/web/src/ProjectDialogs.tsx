@@ -5,6 +5,7 @@ import { rememberFocus } from "./a11y/restoreFocus";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { useReturnFocus } from "./a11y/returnFocus";
+import { useBackClose } from "./layout/backStack";
 import { NetworkLog } from "./privacy/NetworkLog";
 
 /** A modal `<dialog>` that closes on Esc and starts focused on its title. Shared by the canvas settings and the confirmations. */
@@ -13,6 +14,7 @@ export function Modal({ title, titleId, testId, onClose, children, role }: { tit
   const ref = useRef<HTMLDialogElement>(null);
   const head = useRef<HTMLHeadingElement>(null);
   useReturnFocus();
+  useBackClose(true, onClose); // Back / swipe-back closes the dialog before anything else
   useEffect(() => {
     const d = ref.current;
     const back = rememberFocus();
