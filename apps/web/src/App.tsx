@@ -1,5 +1,6 @@
 import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, summarizeExtra, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
 import { installKeepFocus } from "./a11y/keepFocus";
+import { errorText, openFailureKind } from "./openError";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
@@ -441,7 +442,14 @@ function Editor({ store }: { store: ProjectStore }) {
   const markClean = () => { const p = store.getState().project; clean.current = p ? JSON.stringify(p) : null; };
   // A failure stays on screen until it is dismissed (a toast that leaves in 4 s is gone before the person has read why); successes keep the short toast.
   const [failure, setFailure] = useState<string | null>(null);
-  const fail = (key: string, e: unknown) => setFailure(t(key, { why: e instanceof Error ? e.message : typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e) }));
+  const [failureDetails, setFailureDetails] = useState<string | null>(null); // the parser's own text, behind "Show details"
+  const fail = (key: string, e: unknown) => {
+    const raw = errorText(e);
+    if (key !== "project.open.failed") { setFailureDetails(null); return setFailure(t(key, { why: raw })); }
+    const newer = t("project.open.newer");
+    setFailure(openFailureKind(raw, newer) === "newer" ? newer : t("project.open.failed.damaged"));
+    setFailureDetails(raw === newer ? null : raw);
+  };
   /** Swap the open project for `bytes` (a `.overcut` file): the autosaving session when there is one, else the bare engine. */
   const replaceWith = async (bytes: Uint8Array, before?: SnapshotKind): Promise<Project> => {
     let next: Project;
@@ -650,6 +658,7 @@ function Editor({ store }: { store: ProjectStore }) {
     void store.apply(ops, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
   };
   const offline = media.items.filter((i) => i.status === "offline" && !i.uri?.startsWith("fixture:")).length; // a file that is not on this device ("fixture:" is the built-in sample, not a file)
+  const missingMedia = useMemo(() => new Map(media.items.filter((i) => i.status === "offline" && !i.uri?.startsWith("fixture:")).map((i) => [i.id, i.name] as const)), [media.items]);
   const locate = async () => {
     const total = offline;
     try {
@@ -751,7 +760,7 @@ function Editor({ store }: { store: ProjectStore }) {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} onCollapse={() => setLibCollapsed(true)} />}
         </section>
 
-        {openId !== null ? <PreviewPanel handlesOn={roomy || (sheet && active.id === "edit")} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
+        {openId !== null ? <PreviewPanel missing={missingMedia} onRelink={binProps.onRelink} handlesOn={roomy || (sheet && active.id === "edit")} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
 
         {wide && DETAILS_READY && (
           <section className="inspector" data-collapsed={inspCollapsed ? "true" : undefined} aria-label={t("details.title")} data-testid="panel-inspector">
@@ -776,7 +785,14 @@ function Editor({ store }: { store: ProjectStore }) {
         {failure && (
           <div className="persist-note danger" role="alert" data-testid="failure-note">
             <span>{failure}</span>
-            <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setFailure(null)}><Icon name="close" size={18} /></button>
+            {failureDetails && (
+              <details className="failure-details" data-testid="failure-details">
+                <summary>{t("project.open.details")}</summary>
+                <code>{failureDetails}</code>
+                <button onClick={() => void navigator.clipboard?.writeText(failureDetails).then(() => setToast(t("project.open.details.copied"))).catch(() => undefined)} data-testid="failure-copy">{t("project.open.details.copy")}</button>
+              </details>
+            )}
+            <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => { setFailure(null); setFailureDetails(null); }}><Icon name="close" size={18} /></button>
           </div>
         )}
         {offline > 0 && !offlineHidden && (
