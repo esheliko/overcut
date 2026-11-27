@@ -1,8 +1,11 @@
 import type { LayerSource } from "../render";
-import type { DecodedFrame, MediaApi, MediaHandle } from "../types";
+import type { DecodedFrame, FrameStream, MediaApi, MediaHandle } from "../types";
 import { MediaDecodeError } from "../types";
 import { TICKS_PER_SECOND } from "./plan";
 import type { DrawableFrame, OpenedMedia } from "./media";
+
+/** Decoded frames the export keeps ahead of the one being composited. */
+const STREAM_AHEAD = 6;
 
 const rotationOf = (deg: number): 0 | 90 | 180 | 270 => (deg === 90 || deg === 180 || deg === 270 ? deg : 0);
 
@@ -33,13 +36,48 @@ export async function openBlobMedia(media: MediaApi, blob: Blob, sampleRate: num
       held?.frame.release();
       held = undefined;
     };
+    // Export asks for frame after frame in order. A `videoFrame(i)` call restarts at the keyframe every time (about half a GOP of decoding per output frame
+    // on long-GOP phone footage); one sequential stream decodes each picture once and keeps a few ahead, so decoding overlaps rendering and encoding.
+    let stream: FrameStream | undefined;
+    let streamNext = -1; // media index the stream will return next
+    const closeStream = (): void => {
+      stream?.close();
+      stream = undefined;
+      streamNext = -1;
+    };
+    let streamBroken = typeof handle.stream !== "function";
+    /** The frame at `index` from the sequential stream: restarts it when `index` is behind it or more than a second ahead; null when the stream cannot serve it. */
+    const fromStream = async (index: number): Promise<DecodedFrame | null> => {
+      if (streamBroken) return null;
+      try {
+        const jump = Math.max(30, Math.round(constant ? num / den : 30));
+        if (!stream || index < streamNext || index > streamNext + jump) {
+          closeStream();
+          stream = handle.stream(index, STREAM_AHEAD);
+          streamNext = index;
+        }
+        for (;;) {
+          const f = await stream.next();
+          if (!f) return null;
+          streamNext = f.index + 1;
+          if (f.index >= index) return f; // a frame past `index` (a gap in the stream) is the nearest one the media has
+          f.release();
+        }
+      } catch {
+        streamBroken = true; // this decoder cannot stream: the random-access path below takes over for good
+        closeStream();
+        return null;
+      }
+    };
     out.video = {
       async frame(ticks) {
         const at = Math.max(0, ticks);
         const index = Math.min(last, constant ? Number((BigInt(at) * BigInt(num)) / (TICKS_PER_SECOND * BigInt(den))) : handle.frameIndexAt(at));
         if (held?.index === index) return held.drawable;
+        // Decoding the next frame is asked for before the held one is released, so the decoder never waits on us for a free slot.
+        const streamed = held && index < held.index ? null : await fromStream(index);
         release();
-        const frame = await handle.videoFrame(index);
+        const frame = streamed ?? (await handle.videoFrame(index));
         const source: LayerSource = frame.kind === "gpu" ? frame.frame : { rgba: frame.rgba };
         // `close` is a no-op: the frame stays alive until the next index is requested (or the media closes), so a repeated frame is drawn without a second decode.
         const drawable: DrawableFrame = { source, width: frame.width, height: frame.height, rotation: rotationOf(v.rotation), close: () => undefined };
@@ -48,6 +86,7 @@ export async function openBlobMedia(media: MediaApi, blob: Blob, sampleRate: num
       },
       close: () => {
         release();
+        closeStream();
         if (!a) close();
       },
     };

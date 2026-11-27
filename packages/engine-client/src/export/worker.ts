@@ -77,6 +77,8 @@ export function serveExportWorker(scope: WorkerScope, openEvaluator: OpenEvaluat
           peakEncodeQueue: r.peakEncodeQueue,
           codecs: `${web.preset.video.codec} + ${web.preset.audio.codec}`,
           safeLevel: msg.settings.safeLevel ?? 0,
+          timingMs: r.timingMs,
+          capture: web.capture(),
         },
       });
     } catch (e) {
