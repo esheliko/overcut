@@ -231,6 +231,8 @@ test("desktop (1440x900): a card's name is whole (wraps, at most two lines) and 
   expect(await name.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true); // the name is not cut off
   const meta = card.locator(".bin-meta");
   expect((await meta.boundingBox())!.height).toBeLessThan(24); // one line
+  // The tag button appears on hover over the card, it does not keep an empty slot beside the text (R11): the meta line had room for the size, not only the resolution.
+  expect((await card.locator(".bin-text").boundingBox())!.width).toBeGreaterThanOrEqual(120);
   await expect(meta).toHaveAttribute("title", /0:01 · 160×120 · VP9 \+ OPUS · 17 KB/); // the whole meta on hover
 });
 
