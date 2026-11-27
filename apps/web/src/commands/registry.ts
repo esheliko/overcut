@@ -38,11 +38,13 @@ export type Command =
   | { c: "scroll"; how: "pageLeft" | "pageRight" | "up" | "down" }
   /** The preview (M2 UX): full-screen picture, loop playback on or off. Handled by the preview panel (it listens for COMMAND_EVENT and reads the keys itself). */
   | { c: "preview"; what: "fullscreen" | "loop" }
+  /** Move the selected picture on the preview by `px` canvas pixels (the arrows with the picture's frame focused): `dx` / `dy` are the direction. */
+  | { c: "pictureNudge"; dx: -1 | 0 | 1; dy: -1 | 0 | 1; px: number }
   /** Transport keys, handled by the preview panel. */
   | { c: "play" } | { c: "shuttle"; key: "J" | "K" | "L" } | { c: "seek"; frames: number } | { c: "seek"; to: "start" | "end" };
 
-/** Where a command is live. `global` works anywhere except typing in a field; `canvas` only with the timeline canvas focused; `transport` is the player's window-level keys. */
-export type Context = "global" | "canvas" | "transport";
+/** Where a command is live. `global` works anywhere except typing in a field; `canvas` only with the timeline canvas focused; `transport` is the player's window-level keys; `preview` only with the selected picture's frame focused on the preview. */
+export type Context = "global" | "canvas" | "transport" | "preview";
 /** `selection`: only while clips are selected (selection owns the arrows); `noSelection`: only without. */
 export type When = "selection" | "noSelection";
 
@@ -97,10 +99,10 @@ export const COMMANDS: readonly CommandDef[] = [
   D("select.right", "canvas", ["ArrowRight", "Shift+ArrowRight"], { c: "go", dir: "right" }, { when: "selection" }),
   D("select.up", "canvas", ["ArrowUp", "Shift+ArrowUp"], { c: "go", dir: "up" }, { when: "selection" }),
   D("select.down", "canvas", ["ArrowDown", "Shift+ArrowDown"], { c: "go", dir: "down" }, { when: "selection" }),
-  D("clip.nudgeBack", "canvas", ["Comma"], { c: "nudge", frames: -1 }),
-  D("clip.nudgeForward", "canvas", ["Period"], { c: "nudge", frames: 1 }),
-  D("clip.nudgeBack10", "canvas", ["Shift+Comma"], { c: "nudge", frames: -10 }),
-  D("clip.nudgeForward10", "canvas", ["Shift+Period"], { c: "nudge", frames: 10 }),
+  D("clip.nudgeBack", "canvas", ["Comma"], { c: "nudge", frames: -1 }, { when: "selection" }),
+  D("clip.nudgeForward", "canvas", ["Period"], { c: "nudge", frames: 1 }, { when: "selection" }),
+  D("clip.nudgeBack10", "canvas", ["Shift+Comma"], { c: "nudge", frames: -10 }, { when: "selection" }),
+  D("clip.nudgeForward10", "canvas", ["Shift+Period"], { c: "nudge", frames: 10 }, { when: "selection" }),
   D("clip.trimStartToPlayhead", "canvas", ["BracketLeft"], { c: "trimToPlayhead", edge: "start" }),
   D("clip.trimEndToPlayhead", "canvas", ["BracketRight"], { c: "trimToPlayhead", edge: "end" }),
   D("clip.trimEndBack", "canvas", ["Alt+Comma"], { c: "trimBy", edge: "end", frames: -1 }),
@@ -150,6 +152,15 @@ export const COMMANDS: readonly CommandDef[] = [
   D("view.pageLeft", "canvas", ["PageUp"], { c: "scroll", how: "pageLeft" }),
   D("view.tracksDown", "canvas", ["ArrowDown"], { c: "scroll", how: "down" }, { when: "noSelection" }),
   D("view.tracksUp", "canvas", ["ArrowUp"], { c: "scroll", how: "up" }, { when: "noSelection" }),
+
+  D("picture.nudgeLeft", "preview", ["ArrowLeft"], { c: "pictureNudge", dx: -1, dy: 0, px: 1 }),
+  D("picture.nudgeRight", "preview", ["ArrowRight"], { c: "pictureNudge", dx: 1, dy: 0, px: 1 }),
+  D("picture.nudgeUp", "preview", ["ArrowUp"], { c: "pictureNudge", dx: 0, dy: -1, px: 1 }),
+  D("picture.nudgeDown", "preview", ["ArrowDown"], { c: "pictureNudge", dx: 0, dy: 1, px: 1 }),
+  D("picture.nudgeLeft10", "preview", ["Shift+ArrowLeft"], { c: "pictureNudge", dx: -1, dy: 0, px: 10 }),
+  D("picture.nudgeRight10", "preview", ["Shift+ArrowRight"], { c: "pictureNudge", dx: 1, dy: 0, px: 10 }),
+  D("picture.nudgeUp10", "preview", ["Shift+ArrowUp"], { c: "pictureNudge", dx: 0, dy: -1, px: 10 }),
+  D("picture.nudgeDown10", "preview", ["Shift+ArrowDown"], { c: "pictureNudge", dx: 0, dy: 1, px: 10 }),
 
   D("transport.play", "transport", ["Space"], { c: "play" }, { fixed: true }),
   D("transport.reverse", "transport", ["J"], { c: "shuttle", key: "J" }, { fixed: true }),

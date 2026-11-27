@@ -5,6 +5,7 @@ import { firstEndingAfter, TICKS_PER_SECOND, type Scene } from "./scene";
 import { clipDetail, formatDur, formatTick, gut, LANE, MARKER_NAME_PPS, minorDivisions, RULER, tickStep, timeToX, type View } from "./view";
 import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
 import { formatSpeed } from "../inspector/speedModel";
+import { CUE_MS } from "./commitCue";
 import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
 
 export interface Palette {
@@ -141,8 +142,10 @@ export interface Overlay {
   trackDrag: { from: number; to: number; y: number } | null;
   /** A marker being dragged along the ruler: its id and where it would land (seconds). */
   markerDrag: { id: string; sec: number } | null;
+  /** The commit cue (commitCue.ts): where an edit landed and when it started (`performance.now()`); `t0 < 0` = none. One record, mutated, never reallocated. */
+  cue: { sec: number; t0: number; kind: string };
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, ghostLabel: null, lane: -1, marquee: null, guideSec: null, trackDrag: null, markerDrag: null });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, ghostLabel: null, lane: -1, marquee: null, guideSec: null, trackDrag: null, markerDrag: null, cue: { sec: 0, t0: -1, kind: "" } });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -385,6 +388,27 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       ctx.setLineDash([4, 3]);
       ctx.beginPath(); ctx.moveTo(gx, RULER); ctx.lineTo(gx, v.height); ctx.stroke();
       ctx.setLineDash([]);
+    }
+  }
+
+  if (ui.cue.t0 >= 0) { // commit cue: two hairlines open away from the edit and fade (a ripple / gap close: a soft band), so the eye lands on what changed
+    const k = Math.min(1, (performance.now() - ui.cue.t0) / CUE_MS);
+    const cx = timeToX(v, ui.cue.sec);
+    if (k < 1 && cx >= gut(v) - 20 && cx <= v.width + 20) {
+      const fade = (1 - k) * (1 - k);
+      ctx.fillStyle = p.accent;
+      if (ui.cue.kind === "ripple" || ui.cue.kind === "gap") {
+        ctx.globalAlpha = 0.32 * fade;
+        ctx.fillRect(Math.round(cx - 14), RULER, 28, v.height - RULER);
+      } else {
+        const d = 2 + 12 * (1 - fade); // the lines drift apart: the cut "opens"
+        ctx.globalAlpha = 0.16 * fade;
+        ctx.fillRect(Math.round(cx - d), RULER, Math.round(d * 2), v.height - RULER);
+        ctx.globalAlpha = 0.95 * fade;
+        ctx.fillRect(Math.round(cx - d - 1), RULER, 2, v.height - RULER);
+        ctx.fillRect(Math.round(cx + d - 1), RULER, 2, v.height - RULER);
+      }
+      ctx.globalAlpha = 1;
     }
   }
 

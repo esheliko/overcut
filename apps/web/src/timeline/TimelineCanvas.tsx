@@ -13,6 +13,9 @@ import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
 import { markerAt } from "./markers";
 import { COMMAND_EVENT } from "../commands/palette";
+import { toolCursor } from "./cursors";
+import { CUE_MS, onCue } from "./commitCue";
+import { haptic } from "./haptics";
 import { TICKS_PER_SECOND, type Scene } from "./scene";
 import type { Tool } from "./ripple";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, viewForRange, wheelZoomFactor, xToTime, zoomAt, zoomKeeping, type View } from "./view";
@@ -65,7 +68,7 @@ type Props = {
 
 const TAP_SLOP = 8;
 /** Cursor for a gesture in progress (T-05): a carried clip is grabbed, an edge or the ruler scrub is a horizontal drag, a marquee crosses. */
-const cursorFor = (g: Gesture): string => g.k === "move" || g.k === "tdrag" || (g.k === "marker" && g.moved) ? "grabbing" : g.k === "trim" || g.k === "tool" || g.k === "scrub" ? "ew-resize" : g.k === "marquee" ? "crosshair" : "";
+const cursorFor = (g: Gesture): string => g.k === "move" || g.k === "tdrag" || (g.k === "marker" && g.moved) ? "grabbing" : g.k === "tool" ? toolCursor(g.tool) : g.k === "trim" || g.k === "scrub" ? "ew-resize" : g.k === "marquee" ? "crosshair" : "";
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
 export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, endFrame, playing, onFrame, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onNotice, onReady, media, onDropMedia, onTrackMenu, onMarkerMenu, onClipMenu, tool = "select", onLane }: Props) {
@@ -352,15 +355,31 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     if (fx.ops) l.onEdit?.(fx.ops, fx.say ?? { key: "timeline.say.edited" });
     else if (fx.say) { l.onAnnounce?.(fx.say); if (fx.visible) l.onNotice?.(fx.say); }
   };
+  const snapped = useRef<number | null>(null);
+  /** Commit cue: an edit landed at `sec`; the overlay record is painted for CUE_MS (one rAF-driven redraw per frame, then it stops). */
+  useEffect(() => onCue((c) => {
+    const q = ui.current.cue;
+    q.sec = c.sec; q.kind = c.kind; q.t0 = performance.now();
+    if (canvas.current) canvas.current.dataset.cue = c.kind; // test hook: a cue is showing
+    const step = () => {
+      if (performance.now() - q.t0 >= CUE_MS) { q.t0 = -1; if (canvas.current) delete canvas.current.dataset.cue; invalidate(); return; }
+      invalidate();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }), [invalidate]);
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
     const o = ui.current;
+    if (g.k !== "move") snapped.current = null;
     o.ghosts = null; o.ghostTracks = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
     markPreview(flags.current, g);
     if (g.k === "press" && g.lifted && g.tapClip >= 0) { o.ghosts = [g.tapClip]; o.ghostDSec = 0; } // a long press on touch lifts the clip: the same ghost a drag shows, so the pick-up is visible without a buzz
     else if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTracks = g.to; o.lane = g.mv ? g.track : -1;
       o.guideSec = g.guide != null ? g.guide / TICKS_PER_SECOND : null;
+      if (g.guide != null && g.guide !== snapped.current) haptic(); // a snap engaging under the finger (one tick per new snap point)
+      snapped.current = g.guide ?? null;
     } else if (g.k === "trim") {
       o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND;
     } else if (g.k === "tool") {
@@ -440,7 +459,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       hold.current = window.setTimeout(() => {
         hold.current = 0;
         const lp = longPress(ctxNow(), gest.current);
-        if (lp) { run(lp); try { navigator.vibrate?.(12); } catch { /* no haptics */ } }
+        if (lp) { run(lp); haptic(); }
       }, 380);
     }
     c.dataset.pointer = ""; // focus by pointer: no focus frame (keyboard focus shows it, see .tl-canvas:focus-visible)
@@ -454,7 +473,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
         const t = trackAtY(sc, v, p.y);
         const part = t >= 0 && p.x < gut(v) ? headerPart(v, p.x, p.y - RULER + v.scrollY - t * LANE, sc.trackKind[t]!) : null;
         const body = !part && t >= 0 && p.x >= gut(v) && !handleAt(sc, v, flags.current, p.x, p.y, false, true) && hitTest(sc, v, p.x, p.y, 0).kind === "clip";
-        setCursor(part ? (part === "name" ? "grab" : "pointer") : p.y < RULER && p.x >= gut(v) ? "pointer" : handleAt(sc, v, flags.current, p.x, p.y, false, true) ? "ew-resize" : live.current.tool !== "select" ? "crosshair" : body ? "grab" : "");
+        setCursor(part ? (part === "name" ? "grab" : "pointer") : p.y < RULER && p.x >= gut(v) ? "pointer" : handleAt(sc, v, flags.current, p.x, p.y, false, true) ? (live.current.tool !== "select" ? toolCursor(live.current.tool) : "ew-resize") : live.current.tool !== "select" ? (hitTest(sc, v, p.x, p.y, 0).kind === "clip" ? toolCursor(live.current.tool) : "crosshair") : body ? "grab" : "");
       }
       return;
     }

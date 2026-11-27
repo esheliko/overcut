@@ -302,8 +302,8 @@ h2, p { margin: 0; }
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { .loop-btn { inset-block-end: 80px; } .tc { inset-block-end: 82px; } }
 /* Phone: the loop button and the time chip sit on the picture's corners, where an overlay's corner handles are; while the handles are up they fade out (120 ms; the global reduced-motion rule makes it instant) and come back with the deselect or playback. */
 @container editor ((max-width: 719px) and (min-height: 501px)) or ((orientation: landscape) and (max-height: 500px) and (max-width: 1000px)) {
-  .loop-btn, .tc { transition: opacity 120ms ease, visibility 0s linear 0s; }
-  .stage[data-handles="on"] .loop-btn, .stage[data-handles="on"] .tc { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 120ms ease, visibility 0s linear 120ms; }
+  .loop-btn, .tc { transition: opacity var(--dur-menu) var(--ease-out), visibility 0s linear 0s; }
+  .stage[data-handles="on"] .loop-btn, .stage[data-handles="on"] .tc { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--dur-menu) var(--ease-out), visibility 0s linear var(--dur-menu); }
 }
 /* Small phones: the shape chip keeps only its icon so the row never overflows at 320 px */
 @container editor (max-width: 389px) { .ratio span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); } .ratio { padding: 0; justify-content: center; } .transport { gap: 0; } }

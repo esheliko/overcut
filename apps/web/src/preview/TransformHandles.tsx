@@ -1,6 +1,9 @@
-import { useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent } from "react";
 import type { Clip } from "@app/engine-client";
 import { placeLayer } from "@app/engine-client";
+import { useI18n } from "../i18n";
+import { currentKeymap } from "../commands/keymap";
+import { resolveKey } from "../commands/registry";
 import { newGestureKey, setFields, snapMove, snapRotation, valuesOf, type NumKey, type SnapGuides } from "../inspector/transformModel";
 import "../inspector/inspector.css";
 
@@ -37,7 +40,11 @@ interface Props {
  * handle to rotate. Targets are 44 px. One drag is one undo step (one coalescing key). Math is in `inspector/transformModel`.
  */
 export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }: Props) {
+  const { t: tr18 } = useI18n();
   const drag = useRef<Drag | null>(null);
+  /** An arrow-key burst: the values it started from, the total moved (canvas px) and the gesture key, so a run of presses is one undo step. It ends after a short pause. */
+  const burst = useRef<{ key: number; v: ReturnType<typeof valuesOf>; x: number; y: number; timer: number } | null>(null);
+  useEffect(() => () => { if (burst.current) window.clearTimeout(burst.current.timer); }, []);
   const [guides, setGuides] = useState<SnapGuides>({});
   const tr = clip.transform;
   const v = valuesOf(tr, rel);
@@ -80,6 +87,7 @@ export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }:
     if (!box || e.button > 0) return;
     e.preventDefault();
     e.stopPropagation();
+    if (mode === "move") e.currentTarget.focus({ preventScroll: true }); // the arrows then nudge this picture
     e.currentTarget.setPointerCapture(e.pointerId);
     const pivotX = box.left + (0.5 + v.position_x) * box.width;
     const pivotY = box.top + (0.5 + v.position_y) * box.height;
@@ -112,6 +120,17 @@ export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }:
     }
     onEdit(setFields(tr, patch), d.key);
   };
+  const nudge = (e: RKeyboardEvent<HTMLElement>) => {
+    const cmd = resolveKey(e.nativeEvent, "preview", currentKeymap())?.command;
+    if (cmd?.c !== "pictureNudge") return;
+    e.preventDefault();
+    e.stopPropagation(); // the transport (arrows step the playhead) and the timeline keys must not also act on this press
+    const b = burst.current ?? (burst.current = { key: newGestureKey(), v, x: 0, y: 0, timer: 0 });
+    window.clearTimeout(b.timer);
+    b.timer = window.setTimeout(() => { burst.current = null; }, 600);
+    b.x += cmd.dx * cmd.px; b.y += cmd.dy * cmd.px;
+    onEdit(setFields(tr, { position_x: b.v.position_x + b.x / canvas.width, position_y: b.v.position_y + b.y / canvas.height }), b.key);
+  };
   const end = () => { drag.current = null; setGuides((g) => (g.x === undefined && g.y === undefined ? g : {})); };
   const evt = { onPointerMove: move, onPointerUp: end, onPointerCancel: end };
   const pc = (x: number, total: number) => `${(x / total) * 100}%`;
@@ -121,7 +140,7 @@ export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }:
     {guides.x !== undefined && <div className="th-guide th-guide-v" data-testid="snap-guide-x" style={{ left: pc(guides.x * canvas.width, canvas.width) }} />}
     {guides.y !== undefined && <div className="th-guide th-guide-h" data-testid="snap-guide-y" style={{ top: pc(guides.y * canvas.height, canvas.height) }} />}
     <div className="th" aria-hidden={false} style={{ left: pc(cxs, canvas.width), top: pc(cys, canvas.height), width: pc(vw, canvas.width), height: pc(vh, canvas.height), transform: `translate(-50%, -50%) rotate(${p.angle}rad)` }}>
-      <div className="th-body" data-testid="transform-body" onPointerDown={start("move")} {...evt} />
+      <div className="th-body" data-testid="transform-body" role="group" tabIndex={0} aria-label={tr18("preview.pictureFrame")} onKeyDown={nudge} onPointerDown={start("move")} {...evt} />
       {(["nw", "ne", "se", "sw"] as const).map((k) => (
         <span key={k} className={`th-h th-${k}`} data-testid={`transform-scale-${k}`} style={kept(corner[k][0] * kw, corner[k][1] * kh)} onPointerDown={start("scale")} {...evt} />
       ))}
