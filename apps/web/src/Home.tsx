@@ -5,7 +5,9 @@ import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { ConfirmDialog, Modal } from "./ProjectDialogs";
 import { ProjectMenu, type MenuItem } from "./ProjectMenu";
-import { isArchived, libraryView, shapeBox, whenLabel, type LibraryFilter } from "./projectsView";
+import { formatDuration } from "./media/plan";
+import { validPoster } from "./posterSource";
+import { isArchived, libraryView, whenLabel, type LibraryFilter } from "./projectsView";
 
 export type HomeProps = {
   /** `null` while the list is loading. */
@@ -47,9 +49,9 @@ function RenameDialog({ shown, onApply, onClose }: { shown: string; onApply(name
 }
 
 /**
- * The projects library (PM-06, PM-08): every project on this device with its real facts (name, last edit, canvas, clip count). No thumbnails: the
- * preview frame of a project that is not open would have to be rendered, so the card draws only its canvas shape. Phone: one column of
- * cards; wide screens: a grid. Per-project actions live in the card's "…" menu (a real button: touch, keyboard and mouse alike).
+ * The projects library (PM-06, PM-08): every project on this device with its real facts (name, last edit, canvas, length, clip count) and a small
+ * poster (the frame at the playhead, saved with the project's row when it is left; a placeholder tinted with the first track colour until then).
+ * Responsive grid of 16:9 poster cards, newest edit first, "New project" as the first tile. Per-project actions live in the card's "…" menu (a real button: touch, keyboard and mouse alike).
  * Archive hides a project from the main list without deleting it ("Archived" filter, Restore); Delete asks first.
  */
 export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRename, onDuplicate, onArchive, onExport, onDelete }: HomeProps) {
@@ -88,19 +90,24 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
     <div className="home" data-testid="projects-home">
       <header className="home-head">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong></div>
-        <h1>{t("projects.title")}</h1>
         <div className="home-actions">
           <button className="export-secondary" onClick={onOpenFile} disabled={busy} title={t("projects.openFile.hint")} data-testid="projects-open-file"><Icon name="upload" size={18} />{t("projects.openFile")}</button>
           <button className="export-go" onClick={onNew} disabled={busy} data-testid="projects-new"><Icon name="plus" size={18} />{t("projects.new")}</button>
         </div>
       </header>
       <main className="home-body">
+        <div className="home-title">
+          <h1>{t("projects.title")}</h1>
+          {entries && entries.length > 0 && <span className="home-count" data-testid="projects-count">{view.active}</span>}
+        </div>
         {entries === null && <p className="export-note" role="status">{t("projects.loading")}</p>}
         {entries?.length === 0 && (
-          <div className="empty" data-testid="projects-empty">
-            <span className="empty-icon"><Icon name="film" size={26} /></span>
+          <div className="empty home-empty" data-testid="projects-empty">
             <strong>{t("projects.empty.title")}</strong>
             <p>{t("projects.empty.text")}</p>
+            <div className="lib-empty-actions">
+              <button className="export-go" onClick={onNew} disabled={busy} data-testid="projects-empty-new"><Icon name="plus" size={18} />{t("projects.new")}</button>
+            </div>
           </div>
         )}
         {entries && entries.length > 0 && (view.archived > 0 || filter === "archived") && (
@@ -111,7 +118,6 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
         )}
         {entries && entries.length > 0 && view.shown.length === 0 && (
           <div className="empty" data-testid={filter === "archived" ? "archived-empty" : "active-empty"}>
-            <span className="empty-icon"><Icon name={filter === "archived" ? "archive" : "film"} size={26} /></span>
             <strong>{t(filter === "archived" ? "projects.emptyArchived.title" : "projects.allArchived.title")}</strong>
             <p>{t(filter === "archived" ? "projects.emptyArchived.text" : "projects.allArchived.text")}</p>
             <div className="lib-empty-actions">
@@ -123,21 +129,38 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
         )}
         {view.shown.length > 0 && (
           <ul className="project-list" aria-label={t(filter === "archived" ? "projects.list.archived" : "projects.list")}>
-            {view.shown.map((e) => {
-              const box = shapeBox(e.width, e.height);
+            {filter === "active" && (
+              <li className="project-new-tile">
+                <button onClick={onNew} disabled={busy} data-testid="projects-new-tile" aria-label={t("projects.new")}>
+                  <span className="tile-plus" aria-hidden="true"><Icon name="plus" size={22} /></span>
+                  <span>{t("projects.new")}</span>
+                </button>
+              </li>
+            )}
+            {[...view.shown].sort((x, y) => y.modified - x.modified).map((e) => {
               const archived = isArchived(e);
-              const facts = [e.width && e.height ? `${e.width} × ${e.height}` : null, e.clips !== undefined ? t("projects.clips", { count: e.clips }) : null].filter(Boolean).join(" · ");
+              const isCurrent = e.id === current && !archived;
+              const facts = [
+                e.width && e.height ? `${e.width} × ${e.height}` : null,
+                e.ticks ? formatDuration(e.ticks) : null,
+                e.clips !== undefined ? t("projects.clips", { count: e.clips }) : null,
+              ].filter(Boolean).join(" · ");
               return (
                 <li key={e.id} className="project-card lib-card" data-testid="project-card" data-id={e.id} data-current={e.id === current} data-archived={archived}>
                   <button className="project-open" onClick={() => onOpen(e)} disabled={busy} data-testid="project-open" aria-label={t("projects.open", { name: nameOf(e) })}>
-                    <span className="project-shape" aria-hidden="true"><span style={{ inlineSize: box.w, blockSize: box.h }} /></span>
+                    <span className="poster" aria-hidden="true" data-poster={validPoster(e.poster)} style={e.colour ? ({ ["--tint" as string]: e.colour }) : undefined}>
+                      {validPoster(e.poster)
+                        ? <img src={e.poster} alt="" width={320} height={180} decoding="async" loading="lazy" draggable={false} />
+                        : <span className="poster-empty"><Icon name="film" size={28} /></span>}
+                    </span>
                     <span className="project-text">
                       <strong data-testid="project-name">{nameOf(e)}</strong>
-                      <span>{t("projects.edited", { when: whenLabel(e.modified, now, locale, t("projects.justNow")) })}</span>
                       {facts && <span>{facts}</span>}
+                      <span>{t("projects.edited", { when: whenLabel(e.modified, now, locale, t("projects.justNow")) })}</span>
                       {archived && <span data-testid="project-archived-label">{t("projects.archivedWhen", { when: whenLabel(e.archived!, now, locale, t("projects.justNow")) })}</span>}
                     </span>
                   </button>
+                  {isCurrent && <span className="pill-open" data-testid="project-current">{t("projects.current")}</span>}
                   <button
                     className="lib-more"
                     disabled={busy}
