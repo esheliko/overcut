@@ -286,8 +286,8 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       let handled = true;
       if (e.code === "Space") { if (onButton || e.repeat) return; p.toggle(); }
       else if (/^[jkl]$/i.test(k)) { if (e.repeat) return; p.key(k.toUpperCase() as "J" | "K" | "L"); }
-      else if (k === "," || (k === "ArrowLeft" && !onSlider && !onButton)) p.step(-1);
-      else if (k === "." || (k === "ArrowRight" && !onSlider && !onButton)) p.step(1);
+      else if ((k === "," && !e.defaultPrevented) || (k === "ArrowLeft" && !onSlider && !onButton)) p.step(-1); // `,` `.` with a clip selected nudge the clip (the timeline took the key): the playhead stays
+      else if ((k === "." && !e.defaultPrevented) || (k === "ArrowRight" && !onSlider && !onButton)) p.step(1);
       else if (k === "Home" && !onSlider) p.seek(0);
       else if (k === "End" && !onSlider) p.seek(p.endFrame);
       else handled = false;

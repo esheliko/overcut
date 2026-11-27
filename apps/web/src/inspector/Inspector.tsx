@@ -122,7 +122,7 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
   });
   const edit = useTransformEdit();
   const key = useRef<number | undefined>(undefined);
-  const drag = useRef<{ x: number; v: number; moved: boolean } | null>(null); // a label drag-scrub in progress
+  const drag = useRef<{ x: number; v: number; moved: boolean; off(): void } | null>(null); // a drag-scrub in progress (`off` removes its Escape listener)
   const [clamped, setClamped] = useState<{ key: NumKey; text: string } | null>(null); // F-01: the field a typed number was limited on, and why
   const tr = clip.transform;
   const tol = ticksPerFrame(rate) / 2;
@@ -164,28 +164,47 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
       setClamped(raw > b ? { key: f.key, text: t("inspector.clamp.max", { value: String(b), unit: f.unit }) } : raw < a ? { key: f.key, text: t("inspector.clamp.min", { value: String(a), unit: f.unit }) } : null);
       set(f, raw / f.mul);
     };
-    // Drag the label sideways to scrub the value: 4 px = one step, Shift x10, Alt x0.1. One drag is one undo step.
-    const scrub = {
-      onPointerDown: (e: PointerEvent<HTMLSpanElement>) => {
-        if (readOnly || e.button !== 0) return;
+    // Drag the label OR the number sideways to scrub the value: 4 px = one step, Shift x10, Alt x0.1, Escape puts the old value back. One drag is one undo step.
+    // On the number the drag only starts while the field is not being typed in (a focused field keeps its caret and text selection); a plain click still focuses it.
+    const cancel = () => {
+      const d = drag.current;
+      if (!d) return;
+      d.off();
+      if (d.moved) typed(d.v);
+      key.current = undefined;
+      drag.current = null;
+    };
+    const scrub = (onNumber: boolean) => ({
+      onPointerDown: (e: PointerEvent<HTMLElement>) => {
+        if (readOnly || e.button !== 0 || (onNumber && document.activeElement === e.currentTarget)) return;
         e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { x: e.clientX, v: shown, moved: false };
+        const esc = (ev: KeyboardEvent) => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); cancel(); } };
+        window.addEventListener("keydown", esc, true);
+        drag.current = { x: e.clientX, v: shown, moved: false, off: () => window.removeEventListener("keydown", esc, true) };
         key.current = newGestureKey();
       },
-      onPointerMove: (e: PointerEvent<HTMLSpanElement>) => {
+      onPointerMove: (e: PointerEvent<HTMLElement>) => {
         const d = drag.current;
         if (!d || !e.currentTarget.hasPointerCapture(e.pointerId) || (!d.moved && Math.abs(e.clientX - d.x) < 3)) return;
         d.moved = true;
         const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
         typed(Math.round((d.v + ((e.clientX - d.x) / 4) * f.step * mult) * 100) / 100);
       },
-      onPointerUp: () => { if (drag.current) key.current = undefined; },
+      onPointerUp: (e: PointerEvent<HTMLElement>) => {
+        const d = drag.current;
+        if (!d) return;
+        d.off();
+        key.current = undefined;
+        if (onNumber && !d.moved) { drag.current = null; e.currentTarget.focus(); (e.currentTarget as HTMLInputElement).select(); } // a tap: type a value
+      },
+      onPointerCancel: cancel,
+      onLostPointerCapture: () => { if (drag.current && !drag.current.moved) { drag.current.off(); drag.current = null; } },
       onClick: (e: React.MouseEvent) => { if (drag.current?.moved) e.preventDefault(); drag.current = null; }, // a drag is not a click: do not focus the field
-    };
+    });
     return (
       <div key={f.key} className="insp-field" data-keystate={state}>
         <label className="insp-fl">
-          <span className="insp-name" {...scrub}>{name}</span>
+          <span className="insp-name" {...scrub(false)}>{name}</span>
           <input
             type="number"
             inputMode="decimal"
@@ -195,6 +214,16 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
             min={lo * f.mul}
             max={hi * f.mul}
             value={shown}
+            {...scrub(true)}
+            onMouseDown={(e) => { if (document.activeElement !== e.currentTarget) e.preventDefault(); }} // no caret flash before we know whether this is a tap or a scrub
+            onKeyDown={(e) => {
+              // Arrows nudge by the step; Shift x10, Alt x0.1 (the browser's own stepping ignores both).
+              if ((e.key === "ArrowUp" || e.key === "ArrowDown") && (e.shiftKey || e.altKey)) {
+                e.preventDefault();
+                const dir = e.key === "ArrowUp" ? 1 : -1;
+                typed(Math.round((Number(e.currentTarget.value) + dir * f.step * (e.shiftKey ? 10 : 0.1)) * 100) / 100);
+              }
+            }}
             onFocus={() => (key.current = newGestureKey())}
             onBlur={() => { key.current = undefined; setClamped(null); }}
             onChange={(e) => e.currentTarget.value !== "" && typed(Number(e.currentTarget.value))}
@@ -220,6 +249,7 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
           data-testid={`insp-key-${f.key}`}
           aria-pressed={state === "on"}
           aria-label={t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name })}
+          title={t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name })}
           disabled={readOnly || !onClip}
           onClick={() => void store.apply(toggleKeyOps(clip.id, tr, props, relativeTicks(clip, store.getState().playhead, rate), tol, DEFAULT_OF[f.key]), undefined, label)}
         >
@@ -228,7 +258,7 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
         <span className="insp-note" role="status" aria-live="polite" data-testid={`insp-note-${f.key}`}>{clamped?.key === f.key ? clamped.text : ""}</span>
         {state !== "none" && (
           <div className="insp-sub">
-            <button type="button" className="insp-kbtn" data-testid={`insp-prevkey-${f.key}`} aria-label={t("inspector.prevKey", { name })} disabled={neighbourKey(anim, rel, tol, -1) === undefined} onClick={() => step(f, -1)}><Icon name="chevronLeft" size={18} /></button>
+            <button type="button" className="insp-kbtn" data-testid={`insp-prevkey-${f.key}`} aria-label={t("inspector.prevKey", { name })} title={t("inspector.prevKey", { name })} disabled={neighbourKey(anim, rel, tol, -1) === undefined} onClick={() => step(f, -1)}><Icon name="chevronLeft" size={18} /></button>
             {near ? (
               <select
                 className="insp-ease"
@@ -247,7 +277,7 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
             ) : (
               <span className="insp-between">{t("inspector.betweenKeys")}</span>
             )}
-            <button type="button" className="insp-kbtn" data-testid={`insp-nextkey-${f.key}`} aria-label={t("inspector.nextKey", { name })} disabled={neighbourKey(anim, rel, tol, 1) === undefined} onClick={() => step(f, 1)}><Icon name="chevronRight" size={18} /></button>
+            <button type="button" className="insp-kbtn" data-testid={`insp-nextkey-${f.key}`} aria-label={t("inspector.nextKey", { name })} title={t("inspector.nextKey", { name })} disabled={neighbourKey(anim, rel, tol, 1) === undefined} onClick={() => step(f, 1)}><Icon name="chevronRight" size={18} /></button>
           </div>
         )}
       </div>

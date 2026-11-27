@@ -12,7 +12,7 @@ export interface PlayRange { start: number; end: number; loop: boolean }
 export const RECENT_MAX = 8;
 
 /** What the palette lists: every command except the player's own keys (the preview panel owns those) and the palette itself. */
-export const PALETTE_COMMANDS: readonly CommandDef[] = COMMANDS.filter((d) => d.context !== "transport" && d.command.c !== "palette");
+export const PALETTE_COMMANDS: readonly CommandDef[] = COMMANDS.filter((d) => d.context !== "transport" && d.context !== "preview" && d.command.c !== "palette");
 
 /** Words typed so far must ALL appear (any order, any case) in the label. */
 const matches = (label: string, q: string): boolean => {

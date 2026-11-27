@@ -22,6 +22,9 @@ Extends the projects list (`projects.md`, PM-06). Same screen (`Home.tsx`), same
 - Export of a project that was never edited exports its empty project. Two projects with the same name export to the same file name; the browser/OS disambiguates.
 - Menu near the bottom/right edge flips above / stays inside the viewport; works at 320 px.
 
+## Phone layout (R12)
+Under 600 px each project is a compact 76 px row (poster 112 px on the left, text, the "…" menu on the right) so four to six projects fit one screen; from 600 px it is the 16:9 poster grid. Closing Rename / Delete returns focus to the card's "…" button. Measured (container, 4x CPU): 50 rows scroll at 16.7 ms per frame, 0 frames over 33 ms. `tests/smoke/phone-r12.spec.ts`.
+
 ## Tests
 `tests/unit/projects.test.ts` (archive round-trip, damaged value, `libraryView`, `startScreen`), `tests/unit/rename-icon.test.ts`; `tests/smoke/project-library.spec.ts` (keyboard menu, archive/Undo/restore, Archived filter + empty state, survives reload, export is a zip, import round-trip, delete confirm; phone 44 px and no overflow); `projects.spec.ts` now drives actions through the menu.
 

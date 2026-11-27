@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { rememberFocus } from "../a11y/restoreFocus";
+import { useBackClose } from "../layout/backStack";
 import { useI18n } from "../i18n";
 import { useProjectStore } from "../store/projectStore";
 import { clipboardState, whyNot } from "./availability";
@@ -12,6 +13,7 @@ const isApple = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|i
 /** Command palette (M2-041): type to find any editing command, Enter runs it. Recently used commands come first. A full-width sheet on phones. */
 export function Palette({ onClose }: { onClose(): void }) {
   const { t } = useI18n();
+  useBackClose(true, onClose);
   const dlg = useRef<HTMLDialogElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const [q, setQ] = useState("");

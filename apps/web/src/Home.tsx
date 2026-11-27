@@ -66,6 +66,9 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
   const now = Date.now();
   const nameOf = (e: ProjectEntry) => e.name || t("app.untitled");
   const closeMenu = useCallback(() => setMenu(null), []);
+  // The menu row that opened Rename / Delete is gone by the time the dialog closes: focus goes back to the card's "…" button, not to the page.
+  const moreBtn = useRef<HTMLElement | null>(null);
+  const focusMore = () => requestAnimationFrame(() => { if (moreBtn.current?.isConnected) moreBtn.current.focus({ preventScroll: true }); });
   const view = libraryView(entries ?? [], filter);
   // The note (with Undo) goes away by itself; a new one restarts the clock.
   // ACTION_TOAST_MS, and it waits while the pointer or the keyboard focus is on it.
@@ -165,7 +168,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
                     aria-expanded={menu?.entry.id === e.id}
                     aria-label={t("projects.menu", { name: nameOf(e) })}
                     data-testid="project-more"
-                    onClick={(ev) => setMenu(menu?.entry.id === e.id ? null : { entry: e, anchor: ev.currentTarget.getBoundingClientRect() })}
+                    onClick={(ev) => { moreBtn.current = ev.currentTarget; setMenu(menu?.entry.id === e.id ? null : { entry: e, anchor: ev.currentTarget.getBoundingClientRect() }); }}
                   ><Icon name="more" size={20} /></button>
                 </li>
               );
@@ -181,14 +184,14 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
           <button onClick={() => setNote(null)} aria-label={t("projects.dismiss")}><Icon name="close" size={18} /></button>
         </div>
       )}
-      {renaming && <RenameDialog shown={nameOf(renaming)} onClose={() => setRenaming(null)} onApply={(name) => { const e = renaming; setRenaming(null); onRename(e, name); }} />}
+      {renaming && <RenameDialog shown={nameOf(renaming)} onClose={() => { setRenaming(null); focusMore(); }} onApply={(name) => { const e = renaming; setRenaming(null); onRename(e, name); focusMore(); }} />}
       {deleting && (
         <ConfirmDialog
           title={t("projects.delete.title", { name: nameOf(deleting) })}
           body={t("projects.delete.body")}
           confirm={t("projects.delete.confirm")}
-          onClose={() => setDeleting(null)}
-          onConfirm={() => { const e = deleting; setDeleting(null); onDelete(e); }}
+          onClose={() => { setDeleting(null); focusMore(); }}
+          onConfirm={() => { const e = deleting; setDeleting(null); onDelete(e); focusMore(); }}
         />
       )}
     </div>

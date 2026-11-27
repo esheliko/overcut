@@ -8,6 +8,8 @@ export interface MenuItem {
   label: string;
   /** Section heading shown above the first item of each section. */
   section?: string;
+  /** A plain-language line under the label (what the row does, for someone who has never met the word). */
+  sub?: string;
   /** Keys, shown at the end of the row. */
   hint?: string;
   /** Why the item is unavailable (shown under it; the row stays focusable so a keyboard user can hear it). */
@@ -75,7 +77,7 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
             <button className="menu-row" role={radio ? "menuitemradio" : "menuitem"} aria-checked={radio ? !!it.checked : undefined} aria-disabled={it.disabled || undefined}
               data-testid={it.testid} onClick={() => { if (it.disabled) return; it.onSelect(); onClose(); back(); }}>
               {radio && <span className="menu-check" aria-hidden="true">{it.checked && <Icon name="check" size={16} />}</span>}
-              <span className="menu-label">{it.label}{why && <small className="menu-why">{why}</small>}</span>
+              <span className="menu-label">{it.label}{why ? <small className="menu-why">{why}</small> : it.sub && <small className="menu-why">{it.sub}</small>}</span>
               {it.hint && <kbd className="menu-hint">{it.hint}</kbd>}
             </button>
           </div>
