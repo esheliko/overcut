@@ -124,7 +124,7 @@ h2, p { margin: 0; }
 .timeline { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-top: 1px solid var(--line); }
 .tl-bar { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 6px; min-height: 48px; border-bottom: 1px solid var(--line); }
 .tl-group, .zoom { display: flex; align-items: center; gap: 0; }
-.tl-bar > .tl-group { flex: 0 0 auto; } /* the tools never shrink into each other: the zoom slider and the selection pill give way first (820 px with a linked clip selected overlapped "More") */
+@media (min-width: 600px) { .tl-bar > .tl-group { flex: 0 0 auto; } } /* tablet and up: the tools never shrink into each other (a phone keeps shrinking them: the pill is hidden there and the bar must fit 320 px): the zoom slider and the selection pill give way first (820 px with a linked clip selected overlapped "More") */
 @media (pointer: coarse) and (min-width: 360px) { .tl-group, .zoom { gap: 4px; } .sep { margin: 0 2px; } } /* I-02: touch buttons do not touch */
 .zoom { min-width: 0; flex: 0 1 auto; }
 .tl-right { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
