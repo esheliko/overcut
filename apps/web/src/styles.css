@@ -61,10 +61,10 @@ h2, p { margin: 0; }
 
 /* Tool panel: a bottom sheet on a phone */
 .library { display: none; flex-direction: column; min-height: 0; background: var(--surface); }
-.library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: 0; bottom: calc(env(safe-area-inset-bottom) + 68px); height: var(--sheet-h, min(52dvh, 440px)); padding-top: 18px; border-radius: 18px 18px 0 0; transition: height var(--dur-base) ease-out; border: 1px solid var(--line); border-bottom: 0; box-shadow: var(--shadow); animation: rise var(--dur-base) ease-out; }
+.library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: 0; bottom: max(calc(env(safe-area-inset-bottom) + 68px), var(--kb, 0px)); height: var(--sheet-h, min(52dvh, 440px)); max-block-size: calc(var(--vvh, 100dvh) - var(--top, 52px) - env(safe-area-inset-top) - 8px); padding-top: 18px; border-radius: 18px 18px 0 0; transition: height var(--dur-base) ease-out; border: 1px solid var(--line); border-bottom: 0; box-shadow: var(--shadow); animation: rise var(--dur-base) ease-out; }
 .library[data-dragging="true"] { transition: none; }
-/* The grab handle of the phone sheet (layout/SheetHandle.tsx): a 40 px tall touch target, the visible bar is the span. */
-.sheet-handle { position: absolute; z-index: 2; inset-block-start: 0; inset-inline: 0; block-size: 40px; display: grid; place-items: start center; padding-block-start: 8px; touch-action: none; cursor: grab; border-radius: 18px 18px 0 0; }
+/* The grab handle of the phone sheet (layout/SheetHandle.tsx): a 44 px tall touch target, the visible bar is the span. */
+.sheet-handle { position: absolute; z-index: 2; inset-block-start: 0; inset-inline: 0; block-size: 44px; display: grid; place-items: start center; padding-block-start: 8px; touch-action: none; cursor: grab; border-radius: 18px 18px 0 0; }
 .sheet-handle > span { inline-size: 40px; block-size: 5px; border-radius: 3px; background: var(--line-strong); transition: background var(--dur-fast); }
 .sheet-handle:active > span, .library[data-dragging="true"] .sheet-handle > span { background: var(--muted); }
 .sheet-handle:focus-visible { outline-offset: -3px; }
@@ -74,6 +74,8 @@ h2, p { margin: 0; }
 .mini-transport .play { inline-size: 44px; block-size: 44px; }
 .mini-transport > button { flex: none; } /* at 320 px the row is tight: the buttons keep their 44 px instead of giving way (Play was 43) */
 .sheet-close { position: absolute; z-index: 3; top: 12px; inset-inline-end: 8px; }
+/* Tap outside the Media sheet to close it: dims the picture and the timeline, leaves the top bar (Export) and the tool bar (switch tool) usable. */
+.sheet-scrim { position: fixed; z-index: 19; inset-inline: 0; inset-block: calc(var(--top, 52px) + env(safe-area-inset-top)) calc(68px + env(safe-area-inset-bottom)); background: var(--scrim); animation: scrim-in var(--dur-base) var(--ease-out); }
 @keyframes rise { from { transform: translateY(24px); opacity: 0; } }
 
 .panel-head { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 var(--panel-pad); } /* Media and Details share one header height and one inset (V-08) */
@@ -175,6 +177,10 @@ h2, p { margin: 0; }
   .persist-note > span { grid-column: 1; align-self: center; text-align: start; }
   .persist-note > .icon-btn { grid-column: 2; grid-row: 1; }
   .persist-note > button:not(.icon-btn) { grid-column: 1 / -1; justify-self: start; }
+  /* The missing-media note stays until it is fixed or dismissed, so it is a slim row just above the tool bar (not a card over the tracks): text, the one action, close. */
+  .persist-notes, .refusal-note { bottom: calc(env(safe-area-inset-bottom) + 76px); }
+  .persist-note[data-testid="offline-note"] { display: flex; flex-wrap: wrap; justify-content: flex-start; padding: 4px 4px 4px 12px; }
+  .persist-note[data-testid="offline-note"] > span { flex: 1 1 auto; }
 }
 @media (min-width: 720px) { .persist-notes { bottom: 72px; } }
 
@@ -279,6 +285,7 @@ h2, p { margin: 0; }
   .library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: auto; inset-inline-start: calc(80px + env(safe-area-inset-left)); bottom: calc(env(safe-area-inset-bottom) + 4px); top: calc(var(--top) + env(safe-area-inset-top)); width: min(340px, 52%); height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); animation: slide-in var(--dur-base) ease-out; transition: none; }
   .sheet-handle, .mini-transport { display: none; }
   .sheet-close { display: inline-grid; top: 6px; }
+  .sheet-scrim { inset-block-end: 0; inset-inline-start: calc(72px + env(safe-area-inset-left)); } /* no bottom tool bar on its side: the backdrop reaches the bottom and leaves the rail usable */
   .persist-notes { bottom: 12px; }
   .stage { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; padding-block-end: 0; }
   .panel-collapse { display: none; }
@@ -391,7 +398,7 @@ h2, p { margin: 0; }
 .bin-thumb { position: relative; flex: none; display: grid; place-items: center; width: 72px; height: 44px; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-3); color: var(--muted); }
 .bin-card:hover .bin-thumb { background: var(--surface-2); }
 .bin-dur { position: absolute; inset-block-end: 2px; inset-inline-end: 2px; padding: 1px 4px; border-radius: 3px; background: var(--media-badge-bg); color: var(--media-badge-fg); font: 500 var(--text-2xs)/1.3 var(--font-mono); font-variant-numeric: tabular-nums; }
-.bin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; animation: scrim-in var(--dur-base) var(--ease-out); } /* the poster fades in over the placeholder: the slot never changes size, so nothing jumps */
 .bin-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-xs); color: var(--muted); }
 .bin-text strong { color: var(--fg); font-size: var(--text-sm); font-weight: 600; line-height: var(--lh-ui); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } /* the name wraps (at most a few lines); the full name is also the tooltip */
 .bin-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; } /* the meta is one line; the whole line is the tooltip */
@@ -475,7 +482,7 @@ h2, p { margin: 0; }
 .export-facts dt { color: var(--muted); font-size: var(--text-sm); }
 .export-facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .export-facts div:first-child { grid-column: 1 / -1; } /* the file name gets the whole row: "OverCut export 2026-11-27.mp4" broke before the day in a half-width cell */
-.pj-dialog { inline-size: min(480px, calc(100vw - 24px)); max-block-size: min(92dvh, 760px); margin: auto; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--elev-3); overflow: auto; }
+.pj-dialog { inline-size: min(480px, calc(100vw - 24px)); max-block-size: min(92dvh, 760px, calc(var(--vvh, 100dvh) - 16px)); margin: auto; translate: 0 calc(var(--kb, 0px) / -2); padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--elev-3); overflow: auto; }
 .pj-dialog h2 { font-size: var(--text-lg); font-weight: 600; outline: none; }
 .export-fields input { min-block-size: var(--target); padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); font-size: var(--text-base); min-inline-size: 0; }
 @media (max-width: 719px) {

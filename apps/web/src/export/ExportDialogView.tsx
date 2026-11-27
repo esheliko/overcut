@@ -4,6 +4,7 @@ import { h264Percent, parseH264Failure, probeExportFormats, type DesktopCodecs, 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
+import { useBackClose } from "../layout/backStack";
 import { Icon, type IconName } from "../icons";
 import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
@@ -71,6 +72,7 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
 
   // Esc and the close button: while exporting they tuck the dialog away (the export goes on); otherwise they close it.
   const dismiss = () => (running ? onTuck() : onClose());
+  useBackClose(true, dismiss); // Back / swipe-back is the phone's close: a running export goes to the background, as with the X
   const start = (s: ReturnType<typeof buildSettings>) => { lastSettings.current = s; onStart(s); };
 
   let body: ReactNode;

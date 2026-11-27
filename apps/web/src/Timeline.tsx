@@ -32,6 +32,8 @@ import { haptic } from "./timeline/haptics";
 import { TrackMenu, type TrackAction, type TrackMenuTarget } from "./timeline/TrackMenu";
 import { addTrack, removeTrack, renameTrack, reorderTrack, toggleTrack, TRACK_SAY_KEYS } from "./timeline/tracks";
 import { useProjectStore, useStore } from "./store/projectStore";
+/** Touch screens have nothing to drop files from: the empty-timeline hint only mentions what they can do. */
+const coarsePointer = (): boolean => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
 export const TIMELINE_SECONDS = 60;
 export const END_FRAME = TIMELINE_SECONDS * FPS;
@@ -426,7 +428,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
         </div>
       </div>
       {menuOpen && bar && <ToolbarMenu name={barName} anchor={bar} onClose={closeBar} testid={menuOpen === "tool" ? "tl-tool-menu" : "tl-more-menu"}
-        items={menuOpen === "tool" ? TOOLS.map((k) => ({ id: k, label: t(`timeline.tool.${k}`), hint: keyHint(`tool.${k}`), checked: tool === k, testid: `tl-tool-${k}`, onSelect: () => run({ c: "tool", tool: k }) }))
+        items={menuOpen === "tool" ? TOOLS.map((k) => ({ id: k, label: t(`timeline.tool.${k}`), sub: t(`timeline.tool.${k}.sub`), hint: keyHint(`tool.${k}`), checked: tool === k, testid: `tl-tool-${k}`, onSelect: () => run({ c: "tool", tool: k }) }))
           : [
             { id: "duplicate", section: t("timeline.more.clip"), label: t("timeline.duplicate"), hint: KEYS.dup, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-duplicate", onSelect: () => run({ c: "duplicate" }) },
             { id: "copy", label: t("timeline.copy"), hint: KEYS.copy, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-copy", onSelect: () => run({ c: "copy" }) },
@@ -471,7 +473,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       {markerMenu && scene.markers.find((m) => m.id === markerMenu.id) && <MarkerMenu marker={scene.markers.find((m) => m.id === markerMenu.id)!} anchor={markerMenu.anchor} onAct={markerAction} onClose={closeMarkerMenu} />}
       {menu && <TrackMenu scene={scene} target={menu.target} anchor={menu.anchor} onAct={trackAction} onClose={closeMenu} />}
       <div className="tl-stage">
-        {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t("timeline.empty")}</p>}
+        {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t(coarsePointer() ? "timeline.empty.touch" : "timeline.empty")}</p>}
         <TimelineCanvas scene={scene} fps={fps} playhead={playhead} endFrame={endFrame} playing={playing} onFrame={onFrame} summary={summary}
           selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} onMarkerMenu={openMarkerMenu} onClipMenu={(at) => setClipMenu(at)} tool={tool} onLane={(id) => { armed.current = id; }} />
       </div>

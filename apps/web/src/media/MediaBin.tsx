@@ -179,7 +179,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onRemove
         <button className="dropzone dropzone-big" onClick={open} data-testid="import-empty">
           <span className="drop-icon"><Icon name="upload" size={30} /></span>
           <strong>{t("media.import")}</strong>
-          <span>{t("media.importHint")}</span>
+          <span>{t(typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? "media.importHint.touch" : "media.importHint")}</span>
         </button>
       </>
     );

@@ -16,7 +16,7 @@
 .project-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .project-open:disabled { opacity: 0.5; }
 .poster { position: relative; display: block; inline-size: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: var(--surface-3); border-block-end: 1px solid var(--line); }
-.poster img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; }
+.poster img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; animation: scrim-in var(--dur-base) var(--ease-out); }
 .poster-empty { position: absolute; inset: 0; display: grid; place-items: center; color: color-mix(in srgb, var(--tint, var(--accent)) 70%, var(--fg)); background: linear-gradient(135deg, color-mix(in srgb, var(--tint, var(--accent)) 38%, var(--surface-3)), var(--surface-3) 80%); }
 .project-text { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; padding: var(--space-3) var(--space-4) var(--space-4); }
 .project-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base, 14px); font-weight: 600; }
@@ -38,3 +38,15 @@
 .lib-note > span { min-inline-size: 0; overflow-wrap: anywhere; }
 .lib-note button { min-block-size: 44px; min-inline-size: 44px; padding: 0 var(--space-3); border: 0; border-radius: 8px; background: none; color: var(--accent); font: inherit; font-weight: 600; }
 .lib-note button:hover:not(:disabled) { background: var(--surface-3); }
+
+/* Phone (R12): a compact row per project, poster on the left, so four to six projects fit one screen instead of two (the 16:9 poster card is for wider screens). */
+@media (max-width: 599px) {
+  .project-list { grid-template-columns: 1fr; gap: var(--space-2, 8px); }
+  .project-card { flex-direction: row; min-block-size: 76px; }
+  .project-open { flex-direction: row; align-items: stretch; padding-inline-end: 52px; }
+  .poster { flex: none; inline-size: 112px; aspect-ratio: auto; border-block-end: 0; border-inline-end: 1px solid var(--line); }
+  .project-text { flex: 1; justify-content: center; padding: var(--space-2, 8px) var(--space-3, 12px); }
+  .pill-open { inset-block-start: 4px; inset-inline-start: 4px; padding: 1px 8px; }
+  .lib-more { inset-block-start: 50%; inset-inline-end: 4px; transform: translateY(-50%); background: none; backdrop-filter: none; }
+}
+@media (max-width: 359px) { .poster { inline-size: 88px; } }

@@ -25,7 +25,8 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   // 1. Import: on a phone the Media sheet is a tab, on desktop it is already open.
   if (phone) await hit(() => nav.getByRole("button", { name: "Media" }).click());
   const chooser = page.waitForEvent("filechooser");
-  await hit(() => button(/^Import media$/).first().click());
+  // On a phone the open Media sheet has a backdrop (R12), so the preview's own Import button is behind it: the sheet's big "Import media" is the one to tap.
+  await hit(() => (phone ? page.getByTestId("import-empty") : button(/^Import media$/).first()).click());
   await (await chooser).setFiles(CLIP);
   await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 30_000 });
 
