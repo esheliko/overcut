@@ -166,7 +166,9 @@ async function webgpuWorks(wasm: { GpuRenderer: typeof GpuRendererClass }): Prom
     return false;
   } finally {
     frame?.close();
-    r?.dispose();
+    // A probe that failed mid-readback can leave the Rust object borrowed; freeing it then throws, and a throw from `finally` would replace the
+    // "WebGPU does not work, use WebGL2" answer with an error that kills the preview and export (seen headless: "take ownership ... while it was borrowed").
+    try { r?.dispose(); } catch { /* leaked probe, harmless */ }
   }
 }
 

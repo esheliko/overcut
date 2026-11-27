@@ -50,7 +50,7 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
     mark("t_open_ms");
     host.player.seek(0);
     // First frame drawn: the preview measures its upload path once the player is idle (about 1 to 3 s on a phone); wait for it so it is not inside the timed run.
-    for (let i = 0; i < 100 && !(await host.rpc<{ upload?: unknown }>({ name: "gpu" })).upload; i++) await sleep(100);
+    for (let i = 0; i < 300 && !(await host.rpc<{ upload?: unknown }>({ name: "gpu" })).upload; i++) await sleep(100);
     mark("t_upload_wait_ms");
     const pre = await host.rpc<{ uploadState?: string }>({ name: "gpu" });
     const preStats = await host.rpc<{ scrubMs?: number[] }>({ name: "stats" });
@@ -73,11 +73,12 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
     const late = s1.late.slice(s0.late.length).sort((a, b) => a - b);
     const presented = s1.presented - s0.presented;
     return {
-      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a", upload_source: gpu.upload?.source ?? "n/a", upload_state: gpu.uploadState ?? "n/a", upload_state_before_play: pre.uploadState ?? "n/a", scrubs_before_play: preStats.scrubMs?.length ?? -1, upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
+      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "NOT MEASURED", upload_source: gpu.upload?.source ?? "NOT MEASURED", upload_state: gpu.uploadState ?? "n/a", upload_state_before_play: pre.uploadState ?? "n/a", scrubs_before_play: preStats.scrubMs?.length ?? -1, upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
       ...lap.ms, presented, dropped: s1.dropped - s0.dropped, stalls: s1.stalls - s0.stalls,
       // stalls count layers whose next picture was not decoded yet when a frame was drawn: share of all layer draws (3 layers x frames wanted), so 222 can be read.
       stall_pct: Math.round((100 * (s1.stalls - s0.stalls)) / Math.max(1, 3 * (presented + s1.dropped - s0.dropped))),
       fps: span ? Math.round(((times.length - 1) / span) * 10) / 10 : 0,
+      bound: boundBy(gpu.upload, stallPct(s0, s1, presented)),
       p95_late_ms: Math.round(late[Math.floor(late.length * 0.95)] ?? 0),
     };
   } finally {
@@ -86,11 +87,20 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
   }
 }
 
+const stallPct = (s0: { stalls: number; dropped: number }, s1: { stalls: number; dropped: number }, presented: number): number => Math.round((100 * (s1.stalls - s0.stalls)) / Math.max(1, 3 * (presented + s1.dropped - s0.dropped)));
+/** What limits playback, in words: no measurement, upload too slow for 3 layers in 33 ms, or the decoder not keeping up (stalls with a fast upload). */
+function boundBy(upload: { path: string; ms?: Record<string, number> } | undefined, stalls: number): string {
+  if (!upload) return "unknown: upload path NOT measured (see upload_state)";
+  const ms = upload.ms?.[upload.path];
+  if (typeof ms === "number" && ms * 3 > 33) return `gpu-upload: ${Math.round(ms * 3)} ms for 3 layers > 33 ms`;
+  return stalls > 5 ? "decode: frames not ready in time while the upload fits the budget" : "none";
+}
+
 /** One export through `engine.export`, flat numbers. `real` = the shipped clip through the production decoder; otherwise the synthetic test pattern. */
 async function exportOnce(engine: Awaited<ReturnType<typeof createEngine>>, real: File | null, progress: (f: number) => void): Promise<Record<string, number | string>> {
   const project = real
     ? ({
-        id: hex(1), name: "device export test", schema_version: 4,
+        id: hex(1), name: "device export test", schema_version: PROJECT_SCHEMA_VERSION,
         media: [{ id: hex(2), kind: "video", name: real.name, uri: `file:${real.name}` }],
         sequences: [{ id: hex(3), name: "main", frame_rate: { num: 30, den: 1 }, resolution: { width: 1920, height: 1080 }, sample_rate: 48000, tracks: [{ id: hex(4), kind: "video", locked: false, muted: false, name: "V1", clips: [{ id: hex(10), media: hex(2), start: 0, source_in: 0, duration: 5 * TICKS_PER_SECOND }] }] }],
       } as unknown as Project)
