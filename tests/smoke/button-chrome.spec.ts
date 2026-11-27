@@ -27,7 +27,7 @@ test("no button falls back to the browser's grey style; main actions are accent-
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "vp9_opus.webm"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 30_000 });
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 30_000 });
   const phone = (page.viewportSize()?.width ?? 0) < 720;
   const mediaTab = page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" });
   if (phone && !(await page.getByTestId("bin-tag-edit").first().isVisible())) await mediaTab.click(); // the sheet closes after an import on a phone

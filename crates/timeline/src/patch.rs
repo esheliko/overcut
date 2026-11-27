@@ -91,6 +91,7 @@ fn seq_shell(s: &Sequence) -> Sequence {
         markers,
         range,
         loop_range,
+        background,
     } = s;
     Sequence {
         id: *id,
@@ -104,6 +105,7 @@ fn seq_shell(s: &Sequence) -> Sequence {
         markers: markers.clone(),
         range: *range,
         loop_range: *loop_range,
+        background: *background,
     }
 }
 

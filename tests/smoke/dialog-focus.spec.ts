@@ -9,7 +9,7 @@ async function ready(page: Page) {
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "vp9_opus.webm"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 30_000 });
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 30_000 });
 }
 
 test("Esc on the Export dialog puts focus back on the Export button", async ({ page }) => {

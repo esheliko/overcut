@@ -11,6 +11,7 @@ function fakeRaw() {
     alloc_stats: () => JSON.stringify({ textures: 1, buffers: 2, bind_groups: 3, errors: 0 }),
     resize: (w, h) => calls.push(["resize", w, h]),
     begin: () => calls.push(["begin"]),
+    set_background: (...a) => calls.push(["bg", ...a]),
     add_rgba: (rgba, w, h, p) => calls.push(["rgba", rgba.length, w, h, [...p]]),
     add_external: (_s, w, h, p) => calls.push(["external", w, h, [...p]]),
     render: (...a) => calls.push(["render", ...a]),
@@ -30,12 +31,27 @@ test("present: layers are packed in order with clamped opacity and drawn at the 
   assert.deepEqual(calls, [
     ["resize", 320, 180],
     ["begin"],
+    ["bg", 0, 0, 0, 0, 50],
     ["rgba", 16, 2, 2, [10, 20, 1.5, 2, 0.5, 1, 90, 0, 0, 0, 0, 0, 0]],
     ["external", 2, 2, [10, 20, 1.5, 2, 0.5, 0, 90, 0, 0, 0, 0, 0, 0]],
     ["render", 1920, 1080, 320, 180, true],
   ]);
   assert.equal(r.info.backend, "webgl2");
   assert.deepEqual(r.allocStats(), { textures: 1, buffers: 2, bind_groups: 3, errors: 0 });
+});
+
+test("the background (TL-19) is set before the layers of every frame: black by default, colour and blur with their values", async () => {
+  const { raw, calls } = fakeRaw();
+  const r = wrapRenderer(raw, { width: 8, height: 8 });
+  const bgCalls = () => calls.filter((c) => c[0] === "bg").map((c) => c.slice(1));
+  r.present([layer()], { width: 90, height: 160 });
+  r.present([layer()], { width: 90, height: 160 }, { mode: "colour", colour: [200, 40, 90], blur: 10 });
+  r.present([layer()], { width: 90, height: 160 }, { mode: "blur", blur: 80 });
+  await r.readback([layer()], { width: 90, height: 160 }, { width: 8, height: 8 }, { mode: "blur" });
+  assert.deepEqual(bgCalls(), [[0, 0, 0, 0, 50], [1, 200, 40, 90, 10], [2, 0, 0, 0, 80], [2, 0, 0, 0, 50]]);
+  const at = calls.findIndex((c) => c[0] === "bg");
+  assert.equal(calls[at - 1]![0], "begin");
+  assert.equal(calls[at + 1]![0], "rgba", "the background is set before the first layer is added");
 });
 
 test("readback reuses one buffer per output size and does not touch the canvas", async () => {

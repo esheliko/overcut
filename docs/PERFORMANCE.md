@@ -113,6 +113,11 @@ The 4x CPU throttle approximates a phone but is not one; a throttled-container n
 - The engine reports what an edit changed (`EditOutcome.patch`); the UI no longer re-reads and re-parses the whole project after each edit, and the preview Worker's project JSON is built from cached per-clip and per-track strings. Cost of the patch itself: `ops_apply_patch_ms` in the op bench (apply one op, diff against the shadow copy, advance the shadow) 0.18 ms native at 5k clips on 5 tracks, against 0.003 ms for the bare apply; the budget is <= 8 ms apply + patch on the low phone.
 - Measured in the browser (`/?sample=2h`, 2300 clips, split then undo, key press to the Undo button state and a painted frame, median of 10, container Chromium with software GL): see the PR for the before/after table; what is left at 4x is mostly React commit, layout and paint, not project size.
 
+## Background blur (TL-19, `docs/features/background.md`)
+- Cost: three passes over a 128 x 72 (or 72 x 128) target and one full-canvas textured draw, i.e. about one extra layer's fill; no per-frame allocation (targets are built once per output shape and size). It is skipped when the bottom layer already covers the canvas.
+- Measured 2026-11-27 in the container (4 shared vCPU, **software rasteriser** llvmpipe, GL backend, release; `cargo test -p app-render --test golden --release blur_background_cost -- --ignored --nocapture`): one 1080p layer on a 1080 x 1920 canvas, GPU work only: black 21-23 ms, colour 20-22 ms, **blur +4 to +8 ms** (27-29 ms; run-to-run noise on a shared machine). A software rasteriser is orders of magnitude slower per pixel than the reference laptop's GPU and the blur's share is one extra full-canvas pass, so on the laptop it is a fraction of a millisecond; **the 60 fps bar (16.7 ms) for one layer with blur is a laptop field number, not proven here** (same status as the other 60 fps rows: field validation).
+- The 3-layer compositor bench (`bench` in the preview Worker) is unchanged: it draws on a black background.
+
 ## Design rules that keep it fast
 1. Nothing heavy on the UI thread; engine in a Worker (web) / dedicated threads (native).
 2. GPU-resident frames end to end where the platform allows; avoid CPU readbacks except at export.

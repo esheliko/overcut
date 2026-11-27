@@ -30,7 +30,7 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   const before = await pps();
   if (phone) await rail.first().click();
   await page.getByTestId("media-input").setInputFiles(FLASH);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
 
   // Phone: the Media sheet closed itself, so the Split / Undo toolbar is reachable.
   if (phone) await expect(page.getByTestId("panel-tool")).toBeHidden();
@@ -56,7 +56,7 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   // The toast never lies over the timeline (K-03): it ends above the timeline's top edge.
   const [toastBox, timelineBox] = await Promise.all([page.locator(".toast").boundingBox(), page.locator(".timeline").first().boundingBox()]);
   expect(toastBox && timelineBox && toastBox.y + toastBox.height <= timelineBox.y + 1).toBe(true);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
 
   // Undo names the import; using it announces and shows what was undone.
   const undo = page.getByRole("button", { name: "Undo import of flash_click.mp4" });

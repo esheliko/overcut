@@ -195,6 +195,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       media: () => host.rpc({ name: "frames" }),
       gpu: () => host.rpc({ name: "gpu" }),
       parity: (f: number) => host.rpc({ name: "parity", frame: f }),
+      shot: () => host.rpc({ name: "shot" }),
       bench: (width: number, height: number, frames: number) => host.rpc({ name: "bench", width, height, frames }),
       strip: () => host.rpc({ name: "strip" }),
       rpc: (r: Parameters<typeof host.rpc>[0]) => host.rpc(r),
@@ -338,7 +339,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   const badge = rateLabel(playing ? speed : 1);
 
   return (
-    <section className="stage" ref={stageRef} data-fs={fs === "off" ? undefined : fs} aria-label={t("preview.label")} data-testid="panel-preview">
+    <section className="stage" ref={stageRef} data-fs={fs === "off" ? undefined : fs} data-handles={showHandles && !playing ? "on" : undefined} aria-label={t("preview.label")} data-testid="panel-preview">
       <div className="stage-view">
         <div ref={boxRef} className={showHandles && !playing ? "canvas framed" : "canvas"} style={{ ["--ar" as string]: ar, aspectRatio: String(ar) }} data-loaded={view.has} onDoubleClick={view.has ? toggleFullscreen : undefined}>
           <canvas ref={canvasRef} className="preview-canvas" data-testid="preview-canvas" aria-label={t("preview.canvas")} role="img" />

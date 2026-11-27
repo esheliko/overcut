@@ -382,7 +382,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     return () => window.removeEventListener("keydown", onKey);
   }, [run]);
 
-  const summary = t("timeline.summary", { name: source.name, tracks: scene.trackCount, clips: scene.clipCount, seconds: Math.round(scene.endSec), sample: proj.project ? "no" : "yes" });
+  const summary = t("timeline.summary", { name: source.name, tracks: scene.trackCount, clips: groupReps(scene, [...Array(scene.clipCount).keys()]).length, seconds: Math.round(scene.endSec), sample: proj.project ? "no" : "yes" });
   const off = !proj.ready;
   const undoText = undoLabel && proj.canUndo ? t("timeline.undo.what", { what: undoLabel }) : t("timeline.undo");
   const redoText = redoLabel && proj.canRedo ? t("timeline.redo.what", { what: redoLabel }) : t("timeline.redo");

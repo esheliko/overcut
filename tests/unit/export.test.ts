@@ -462,16 +462,44 @@ test("decoder adapter: ticks map to the media's own frame (floor), repeat withou
   const m = fakeMedia({ fps: { num: 24, den: 1 }, packets: 48 });
   const opened = await openBlobMedia(m.api, new Blob(["x"]), 48000, "clip");
   const at = (s: number) => Math.round(s * T);
-  const f1 = await opened.video!.frame(at(1)); // frame 24
+  const draw = async (ticks: number) => { const f = await opened.video!.frame(ticks); f.close(); return f; }; // what the export loop does: ask, draw, close
+  const f1 = await draw(at(1)); // frame 24
   assert.equal(f1.rotation, 90);
-  await opened.video!.frame(at(1) + 5); // same frame: no new decode
-  await opened.video!.frame(at(1 + 1 / 24) + 1); // frame 25
-  await opened.video!.frame(at(100)); // clamps to the last frame (47)
+  await draw(at(1) + 5); // same frame: no new decode
+  await draw(at(1 + 1 / 24) + 1); // frame 25
+  await draw(at(100)); // clamps to the last frame (47)
   assert.deepEqual(m.asked, [24, 25, 47]);
   assert.equal(m.counts().released, 2, "each replaced frame was released once");
   opened.video!.close();
   opened.audio!.close();
   assert.deepEqual(m.counts(), { released: 3, closed: 1 });
+});
+
+test("decoder adapter: two layers of one frame may read the same media at different times, and neither picture is released under the other", async () => {
+  const m = fakeMedia({ fps: { num: 30, den: 1 }, packets: 60 });
+  const opened = await openBlobMedia(m.api, new Blob(["x"]), 48000, "clip");
+  const at = (frame: number) => Math.round((frame * T) / 30);
+  for (let k = 0; k < 3; k++) {
+    // V1 reads source frame 24 + 2k (a 2x clip), V2 reads frame 12 + k (the same file at 1x): both are open while the compositor draws
+    const v1 = await opened.video!.frame(at(24 + 2 * k));
+    const v2 = await opened.video!.frame(at(12 + k));
+    assert.equal(m.counts().released, Math.max(0, 2 * k - 1), `frame ${k}: nothing the compositor still needs was released`);
+    v1.close();
+    v2.close();
+  }
+  assert.deepEqual(m.asked, [24, 12, 26, 13, 28, 14]);
+  // a picture asked for twice in one frame is decoded once and held until both users close it
+  const a = await opened.video!.frame(at(40));
+  const b = await opened.video!.frame(at(40));
+  assert.equal(a, b);
+  const before = m.counts().released;
+  a.close();
+  const c = await opened.video!.frame(at(41));
+  assert.equal(m.counts().released, before, "still held by the second user");
+  b.close();
+  c.close();
+  opened.video!.close();
+  assert.equal(m.asked.length, 8);
 });
 
 test("decoder adapter: sequential export decodes through one stream (each picture once), skips frames it does not need, restarts for a backward or far jump, and falls back when streaming fails", async () => {
@@ -491,7 +519,7 @@ test("decoder adapter: sequential export decodes through one stream (each pictur
   };
   const opened = await openBlobMedia({ open: async () => h } as MediaApi, new Blob(["x"]), 48000, "clip");
   const at = (frame: number) => Math.round((frame / 30) * T);
-  for (const f of [0, 1, 2, 4, 5]) await opened.video!.frame(at(f)); // frame 3 is skipped (a speed-up): pulled and released
+  for (const f of [0, 1, 2, 4, 5]) (await opened.video!.frame(at(f))).close(); // (ask, draw, close) frame 3 is skipped (a speed-up): pulled and released
   assert.deepEqual(starts, [0], "one stream for the whole forward run");
   assert.deepEqual(m.asked, [], "no random-access decode");
   assert.equal(streamReleased, 5, "skipped and replaced frames are released (the last one is still held)");

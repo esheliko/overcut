@@ -61,7 +61,7 @@ function rng(seed: number) {
 }
 const clip = (id: string, start: number): Clip => ({ id, media: "m", start, source_in: 0, duration: 10, speed: { num: 1, den: 1 } } as unknown as Clip);
 const track = (id: string, n: number): Track => ({ id, kind: "video", name: id, muted: false, locked: false, clips: Array.from({ length: n }, (_, i) => clip(`${id}c${i}`, i * 20)) });
-const mk = (tracks: Track[]): Project => ({ schema_version: 4, id: "p", name: "P", media: [], sequences: [{ id: "s", name: "S", frame_rate: { num: 30, den: 1 }, resolution: { width: 1, height: 1 }, sample_rate: 48000, tracks }] }) as unknown as Project;
+const mk = (tracks: Track[]): Project => ({ schema_version: 5, id: "p", name: "P", media: [], sequences: [{ id: "s", name: "S", frame_rate: { num: 30, den: 1 }, resolution: { width: 1, height: 1 }, sample_rate: 48000, tracks }] }) as unknown as Project;
 
 const strip = (t: Track): Omit<Track, "clips"> => { const c: Partial<Track> = { ...t }; delete c.clips; return c as Omit<Track, "clips">; };
 

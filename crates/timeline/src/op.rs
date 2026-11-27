@@ -2,8 +2,9 @@
 //! id they create (the host supplies fresh ids), so applying the same op list to the same project is deterministic.
 
 use app_model::{
-    Clip, ClipId, ClipTransform, Easing, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId,
-    MediaRef, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId, TransformProp,
+    Background, Clip, ClipId, ClipTransform, Easing, Keyframe, LinkId, Marker, MarkerId,
+    MarkerKind, MediaId, MediaRef, Rational, Resolution, SequenceId, Time, TimeRange, Track,
+    TrackId, TransformProp,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -188,6 +189,12 @@ pub enum Op {
         range: Option<TimeRange>,
         #[serde(default, skip_serializing_if = "is_false")]
         looping: bool,
+    },
+    /// Set the sequence's background (TL-19): what shows where no clip covers the canvas (`black`, a flat `colour`, or the picture `blur`red).
+    /// `BadBackground` when `blur` is above 100. Inverse: the old background.
+    SetBackground {
+        sequence: SequenceId,
+        background: Background,
     },
     /// Set where a media file is found and its content fingerprint (`b3-64k:...`, `docs/features/project-file.md`).
     /// Used by import (record the fingerprint) and relink (the file moved); clips are untouched.

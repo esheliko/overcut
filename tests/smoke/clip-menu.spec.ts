@@ -9,7 +9,7 @@ test("right-click a clip: menu with Split, Duplicate, Delete, Speed; the context
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "h264_aac.mp4"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   const cv = page.getByTestId("timeline-canvas");
   const box = (await cv.boundingBox())!;
   const g = Number(await cv.getAttribute("data-gutter"));

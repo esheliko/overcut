@@ -1,7 +1,7 @@
 /** Export harness: open `/#export-harness`. Drives `engine.export` end to end on a synthetic project (the `test:pattern` media: a flash frame and a click
  *  on every second) and exposes `window.__exportHarness` for the smoke test and for manual measurement. Not linked from the UI; the export dialog is M1-035. */
 import { useEffect, useState } from "react";
-import { ExportError, createEngine, type Engine, type ExportSettings, type ExportStats, type Project } from "@app/engine-client";
+import { PROJECT_SCHEMA_VERSION, ExportError, createEngine, type Engine, type ExportSettings, type ExportStats, type Project } from "@app/engine-client";
 
 const TICKS = 705_600_000;
 const hex = (n: number) => n.toString(16).padStart(32, "0");
@@ -12,7 +12,7 @@ export function patternProject(seconds: number, opts: { fps?: [number, number]; 
   return {
     id: hex(1),
     name: "export harness",
-    schema_version: 4,
+    schema_version: PROJECT_SCHEMA_VERSION,
     media: [{ id: hex(2), kind: "video", name: "test pattern", uri: `test:pattern?w=${opts.width ?? 1280}&h=${opts.height ?? 720}` }],
     sequences: [
       {

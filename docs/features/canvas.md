@@ -8,6 +8,8 @@
 - **Changing the canvas is one edit operation** (`set_canvas`, ADR 0006): undoable ("Undo canvas change"), redoable, journaled, recovered after a crash. Clips are untouched: time is integer ticks (ADR 0010), so a new frame rate only changes how often the picture is sampled. The undo step is announced to screen readers.
 - Before any picture the preview shows the chosen canvas (empty); with "match" it shows the 16:9 idle sample. The canvas button reads "Canvas: 9:16 · 1080 × 1920 · 25 fps" to assistive technology.
 
+- **Background (TL-19)**: the same dialog sets what shows where no clip covers the canvas: Black (default), Colour or Blur of the clip itself. Apply sends the canvas and background changes as one batch (one Undo). `docs/features/background.md`.
+
 ## Project lifecycle (PM-07, in the app menu)
 - **Save project as…** writes the current project as a `.overcut` file: the system Save dialog in the desktop app (`desktop_save_project`, atomic write), the File System Access save picker in Chromium, otherwise a download. The name offered is the project name. The file is made by the engine (`saveProject`) over the file the session began from, so fields this version does not know survive.
 - **Open project…** reads a `.overcut` file (desktop dialog `desktop_open_project`, open picker, or file input), checks it with the engine first (a damaged file or one from a newer app version is refused with a message; nothing changes), then **replaces** the open project (`ProjectSession.replaceProject`: the file becomes the stored base, the old journal and checkpoint are dropped, undo history starts empty). If the open project has changes not saved to a file since it was loaded, opened, created or last saved, the app asks first.

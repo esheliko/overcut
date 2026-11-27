@@ -161,11 +161,11 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
         const t = performance.now();
         const times = outputFrameTimes(plan, index);
         try {
-          return await renderExportFrame(renderer, canvas, capture, layers, seq, times);
+          return await renderExportFrame(renderer, canvas, capture, layers, seq, times, desc.background);
         } catch (e) {
           if (capture !== "canvas") throw e;
           capture = "readback"; // this browser cannot snapshot the canvas as a VideoFrame: the readback route always works
-          return await renderExportFrame(renderer, canvas, capture, layers, seq, times);
+          return await renderExportFrame(renderer, canvas, capture, layers, seq, times, desc.background);
         } finally {
           spent.composite += performance.now() - t;
         }

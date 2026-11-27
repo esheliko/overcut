@@ -26,7 +26,7 @@ test("empty project shows one big import target; the first import lands on the t
   await expect(card).toContainText("×"); // resolution
   await expect(card.locator("img")).toHaveCount(1); // poster from the first frame
   // picture + sound = two clips on two tracks, and the sample clips are gone
-  await expect(summary(page)).toContainText("2 tracks, 2 clips");
+  await expect(summary(page)).toContainText("2 tracks, 1 clip");
   // the canvas has a text alternative: one list item per clip, named with its track and times
   const list = page.getByRole("list", { name: "Clips on the timeline" });
   await expect(list.getByRole("listitem")).toHaveCount(2);
@@ -38,20 +38,20 @@ test("empty project shows one big import target; the first import lands on the t
 test("add from the bin with the + button (44 px), keyboard reachable; a second file stays in the bin until added", async ({ page }) => {
   await ready(page);
   await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4"));
-  await expect(summary(page)).toContainText("2 clips");
+  await expect(summary(page)).toContainText("1 clip");
   if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // the sheet closed itself after the import (wait for that: clicking earlier would toggle it shut)
   await page.getByTestId("import-more").click({ trial: true });
   await page.getByTestId("media-input").setInputFiles(file("vp9_opus.webm"));
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
   if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // closed again after this import (same wait)
-  await expect(summary(page)).toContainText("2 clips"); // only the first import auto-adds
+  await expect(summary(page)).toContainText("1 clip"); // only the first import auto-adds
   const add = page.getByRole("button", { name: "Add vp9_opus.webm to the timeline" });
   // The phone sheet rises with an animation (translate): measured mid-way a 44 px button reads 43.99997. Measure once it has settled.
   await page.getByTestId("panel-tool").evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
   expect((await add.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await add.focus();
   await page.keyboard.press("Enter");
-  await expect(summary(page)).toContainText("4 clips");
+  await expect(summary(page)).toContainText("2 clips");
   await expect(page.locator("[data-announcer=polite]")).toContainText("Added to the timeline");
 });
 
@@ -99,7 +99,7 @@ test("dropping files anywhere and pasting both import", async ({ page }) => {
   await page.getByTestId("panel-preview").dispatchEvent("drop", { dataTransfer: dropped });
   await expect(page.getByTestId("drop-overlay")).toBeHidden();
   await expect(page.getByTestId("bin-item").first()).toContainText("dropped.webm");
-  await expect(summary(page)).toContainText("2 clips"); // dropped onto an empty project: on the timeline at 0
+  await expect(summary(page)).toContainText("1 clip"); // dropped onto an empty project: on the timeline at 0
   const pasted = await dt("pasted.webm");
   await page.evaluate((d) => window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: d, bubbles: true, cancelable: true })), pasted);
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
@@ -111,15 +111,15 @@ test("dragging a bin item onto the timeline adds it", async ({ page }, info) => 
   await ready(page);
   await page.getByTestId("media-input").setInputFiles([file("h264_aac.mp4"), file("vp9_opus.webm")]);
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
-  await expect(summary(page)).toContainText("4 clips"); // both files of the first drop go on the timeline in order
+  await expect(summary(page)).toContainText("2 clips"); // both files of the first drop go on the timeline in order
   await page.getByTestId("bin-item").first().dragTo(page.getByTestId("panel-timeline"), { targetPosition: { x: 400, y: 80 } });
-  await expect(summary(page)).toContainText("6 clips");
+  await expect(summary(page)).toContainText("3 clips");
 });
 
 test("an imported clip's waveform is real, not a placeholder (M1-013)", async ({ page }) => {
   await ready(page);
   await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4"));
-  await expect(summary(page)).toContainText("2 clips");
+  await expect(summary(page)).toContainText("1 clip");
   const canvas = page.getByTestId("timeline-canvas");
   await expect(canvas).toHaveAttribute("data-wave-tiles", /^[1-9]\d*$/, { timeout: 30_000 }); // waveform tiles rendered from the engine's peaks
   await expect(canvas).toHaveAttribute("data-thumbs", /^[1-9]\d*$/, { timeout: 30_000 }); // filmstrip frames decoded
@@ -132,7 +132,7 @@ test("phone: a refusal in a batch that also imported stays visible after the Med
     { name: "clip.mp4", mimeType: "video/mp4", buffer: readFileSync(file("h264_aac.mp4")) },
     { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("hello") },
   ]);
-  await expect(summary(page)).toContainText("2 clips", { timeout: 30_000 });
+  await expect(summary(page)).toContainText("1 clip", { timeout: 30_000 });
   const note = page.getByTestId("refusal-note");
   await expect(note).toBeVisible();
   await expect(note).toContainText("notes.txt is not a video, audio or image file");
@@ -184,7 +184,7 @@ test("the kind, sort and tag controls sit behind one 44 px \"Filter and sort\" b
 test("a clip already on the timeline keeps its \"+\" (add it again, T-01); the tag button says Tags; one Import control once media is in the bin", async ({ page }) => {
   await ready(page);
   await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4")); // the first import is added to the timeline
-  await expect(summary(page)).toContainText("2 clips");
+  await expect(summary(page)).toContainText("1 clip");
   if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // the sheet closes itself after an import: wait for that, clicking earlier would toggle it shut
   const first = page.getByTestId("bin-item").filter({ hasText: "h264_aac.mp4" });
   await expect(first.getByTestId("bin-on-timeline")).toHaveText("On the timeline");
@@ -198,7 +198,7 @@ test("a clip already on the timeline keeps its \"+\" (add it again, T-01); the t
   await expect(second.getByRole("button", { name: "Add vp9_opus.webm to the timeline" })).toBeVisible();
   await expect(second.getByTestId("bin-on-timeline")).toHaveCount(0);
   await second.getByRole("button", { name: "Add vp9_opus.webm to the timeline" }).click();
-  await expect(summary(page)).toContainText("4 clips");
+  await expect(summary(page)).toContainText("2 clips");
   await expect(page.getByRole("button", { name: /Add vp9_opus\.webm/ })).toHaveCount(1); // still there: a second click adds it again
 });
 

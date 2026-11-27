@@ -299,6 +299,11 @@ h2, p { margin: 0; }
 }
 /* Phone landscape: the picture runs to the bar's top edge, so the corner chips sit on it (not across its edge) */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { .loop-btn { inset-block-end: 80px; } .tc { inset-block-end: 82px; } }
+/* Phone: the loop button and the time chip sit on the picture's corners, where an overlay's corner handles are; while the handles are up they fade out (120 ms; the global reduced-motion rule makes it instant) and come back with the deselect or playback. */
+@container editor ((max-width: 719px) and (min-height: 501px)) or ((orientation: landscape) and (max-height: 500px) and (max-width: 1000px)) {
+  .loop-btn, .tc { transition: opacity 120ms ease, visibility 0s linear 0s; }
+  .stage[data-handles="on"] .loop-btn, .stage[data-handles="on"] .tc { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 120ms ease, visibility 0s linear 120ms; }
+}
 /* Small phones: the shape chip keeps only its icon so the row never overflows at 320 px */
 @container editor (max-width: 389px) { .ratio span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); } .ratio { padding: 0; justify-content: center; } .transport { gap: 0; } }
 /* Phone portrait: the stage is as tall as its picture (no dead band above and below it) and the timeline gets everything else */
@@ -756,3 +761,13 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .insp-info { align-self: start; align-content: start; }
 .insp-body { align-content: start; } /* hint, then project info, packed at the top (the grid used to stretch its rows: a big gap, tall Speed rows) */
 .insp-info > div { align-items: baseline; }
+
+/* TL-19: the canvas dialog's background row: the mode and blur amount are ordinary fields; the colour swatches reuse .swatch (44 px targets). */
+.bg-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+.bg-fields .bg-range { padding: 0; accent-color: var(--accent); }
+.bg-colours { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding-block-end: var(--space-2); }
+.bg-colours .swatch { cursor: pointer; }
+.bg-colours .swatch[aria-checked="true"] { background: var(--surface-3); outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+.bg-custom { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-sm); }
+.bg-custom input[type="color"] { inline-size: 44px; block-size: 44px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
+@media (max-width: 480px) { .bg-fields { grid-template-columns: minmax(0, 1fr); } }

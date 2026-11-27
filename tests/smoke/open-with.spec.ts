@@ -32,7 +32,7 @@ test("a file shared to the installed app (share target) lands in the media bin, 
   const foreign: string[] = [];
   context.on("request", (r) => { if (!r.url().startsWith("data:") && !r.url().startsWith("blob:") && new URL(r.url()).host !== new URL(landed).host) foreign.push(r.url()); });
   await page.goto(landed);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 60_000 });
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 60_000 });
   await expect(page).toHaveURL(/\/$/); // the one-time address is tidied away
   expect(foreign).toEqual([]);
 });

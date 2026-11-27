@@ -5,7 +5,7 @@ import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { longSampleProject, sampleProject } from "./timeline/fixture";
 
-type Hook = { session: ProjectSession; kill(): void; storageKind: string };
+type Hook = { session: ProjectSession; engine: Engine; kill(): void; storageKind: string };
 
 /**
  * Opens (or recovers) the project and keeps it saved: every edit is in durable storage right after it is made, a crash is repaired on the next
@@ -28,7 +28,7 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
     let release: (() => void) | undefined;
     let current: ProjectSession | undefined;
     let terminate: (() => void) | undefined;
-    const e2e = new URLSearchParams(location.search).has("e2e"); // test hook: exposes the session as window.__overcut
+    const e2e = new URLSearchParams(location.search).has("e2e"); // test hook: exposes the session as window.__overcut (`?e2e` also seeds one offline media item; `?e2e=bare` does not)
     const sampleParam = new URLSearchParams(location.search).get("sample");
     const sample = sampleParam !== null; // `?sample=2h` is a two-hour project (zoom and overview tests)
     void (async () => {
@@ -42,7 +42,7 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
           createProject: () => {
             // A new project is empty: the first import fills it (M1-032). `?sample` (tests, demos) starts with sample clips instead.
             const p = sample ? { ...(sampleParam === "2h" ? longSampleProject() : sampleProject()), name: "Untitled project" } : newProject("Untitled project");
-            if (e2e) p.media.push({ id: "00000000000000000000000000000e2e", kind: "video", name: "e2e.mp4", uri: "media/e2e.mp4", hash: null, duration: 600 * 705_600_000 });
+            if (e2e && new URLSearchParams(location.search).get("e2e") !== "bare") p.media.push({ id: "00000000000000000000000000000e2e", kind: "video", name: "e2e.mp4", uri: "media/e2e.mp4", hash: null, duration: 600 * 705_600_000 });
             return p;
           },
           onStatus: (s, err) => {
@@ -58,7 +58,7 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
         setSession(opened.session);
         reportSaveStatus("saved");
         setRecovered(opened.recovered);
-        if (e2e) (window as unknown as { __overcut: Hook }).__overcut = { session: opened.session, kill: () => terminate?.(), storageKind: storage.kind };
+        if (e2e) (window as unknown as { __overcut: Hook }).__overcut = { session: opened.session, engine, kill: () => terminate?.(), storageKind: storage.kind };
       } catch (err) {
         reportSaveStatus("error");
         if (alive) setProblem(err instanceof Error ? err.message : String(err));

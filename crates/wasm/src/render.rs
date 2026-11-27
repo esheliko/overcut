@@ -222,6 +222,20 @@ impl GpuRenderer {
         self.entries.clear();
     }
 
+    /// The project background for the frames rendered next (TL-19): `mode` 0 = black, 1 = flat colour (`r`, `g`, `b`, sRGB 0..=255), 2 = the bottom
+    /// layer blurred (`blur` 0..=100). Call it every frame, before `render`: it sticks until set again, so preview and export draw the same pixels.
+    pub fn set_background(&mut self, mode: u8, r: u8, g: u8, b: u8, blur: u8) {
+        self.comp.set_background(app_model::Background {
+            mode: match mode {
+                1 => app_model::BackgroundMode::Colour,
+                2 => app_model::BackgroundMode::Blur,
+                _ => app_model::BackgroundMode::Black,
+            },
+            colour: [r, g, b],
+            blur: blur.min(app_model::MAX_BLUR),
+        });
+    }
+
     /// Next layer (bottom first) from RGBA bytes (sRGB, straight alpha), `w * h * 4` of them.
     pub fn add_rgba(&mut self, rgba: &[u8], w: u32, h: u32, params: &[f64]) -> Result<(), String> {
         let e = entry(w, h, params)?;

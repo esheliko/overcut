@@ -226,11 +226,12 @@ function startPlayer(c: PreviewConfig): void {
     strip: (id, index) => strips.picture(id, index),
     onSeek: (id, ms) => strips.noteSeek(id, ms),
     renderer: {
-      render: (layers, seq) => {
-        g.present(layers, seq);
+      render: (layers, seq, background) => {
+        g.present(layers, seq, background);
         // A probe asked for the pixels: the bitmap is taken right after the present, in the same task (a canvas is cleared once it is shown).
         const want = pendingCapture;
         if (want) { pendingCapture = undefined; want(createImageBitmap(canvas!)); }
+        if (settled) { void settled.last?.then((b) => b.close(), () => undefined); settled.last = createImageBitmap(canvas!); } // `shot`: keep the latest, the exact one
       },
       dispose: () => undefined,
     },
@@ -256,6 +257,7 @@ async function rpc(r: PreviewRpc): Promise<unknown> {
     case "strip": return strips.stats();
     case "gpu": return { info: gpu?.info, alloc: gpu?.allocStats(), canvas: backing, upload, uploadState };
     case "probe": return probe(r.x, r.y);
+    case "shot": { const d = await settledShot(); return { width: d.width, height: d.height, data: d.data }; }
     case "bench": return bench(r.width, r.height, r.frames);
     case "parity": return parity(r.frame);
     case "poster": return poster();
@@ -354,8 +356,8 @@ async function capture(): Promise<ImageData> {
 
 let pendingCapture: ((bmp: Promise<ImageBitmap>) => void) | undefined;
 
-/** Pixel of what the preview presents (test only): the player draws the current frame again and the canvas is read the moment it is presented. */
-async function probe(x: number, y: number): Promise<number[]> {
+/** What the preview presents (test only): the player draws the current frame again and the canvas is read the moment it is presented. */
+async function presented(): Promise<ImageData> {
   // Bounded: a probe runs on the message chain, so one whose draw never presents (a failed decode, a draw superseded and dropped) would hold up every
   // message behind it (media, config, the next probe) for good. After 2 s it gives up with an error and the caller asks again.
   const bmp = await new Promise<ImageBitmap>((resolve, reject) => {
@@ -367,7 +369,40 @@ async function probe(x: number, y: number): Promise<number[]> {
   const g = c.getContext("2d", { willReadFrequently: true })!;
   g.drawImage(bmp, 0, 0);
   bmp.close();
-  const d = g.getImageData(0, 0, c.width, c.height);
+  return g.getImageData(0, 0, c.width, c.height);
+}
+
+let settled: { last?: Promise<ImageBitmap> } | undefined;
+
+/**
+ * The picture the preview settles on (test only): the player draws the current frame again (stand-ins first where an exact frame is not cached, as when
+ * two layers read one media), and the canvas is read after the LAST present of that draw, the exact frame, which `scrubMs` reports done.
+ */
+async function settledShot(): Promise<ImageData> {
+  if (!player) throw new Error("open a project first");
+  const n = player.stats.scrubMs.length;
+  const mine: { last?: Promise<ImageBitmap> } = {};
+  settled = mine;
+  try {
+    player.seek(player.frame);
+    const until = performance.now() + 10_000;
+    while (player.stats.scrubMs.length <= n && performance.now() < until) await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 50)); // the exact present is the last one: let it land
+    const bmp = await mine.last;
+    if (!bmp) throw new Error("the preview presented no frame");
+    const c = new OffscreenCanvas(bmp.width, bmp.height);
+    const g = c.getContext("2d", { willReadFrequently: true })!;
+    g.drawImage(bmp, 0, 0);
+    bmp.close();
+    return g.getImageData(0, 0, c.width, c.height);
+  } finally {
+    if (settled === mine) settled = undefined;
+  }
+}
+
+/** Pixel of what the preview presents (test only). */
+async function probe(x: number, y: number): Promise<number[]> {
+  const d = await presented();
   const i = (Math.min(d.height - 1, y) * d.width + Math.min(d.width - 1, x)) * 4;
   return [d.data[i]!, d.data[i + 1]!, d.data[i + 2]!];
 }
@@ -391,7 +426,7 @@ async function parity(frame: number): Promise<unknown> {
       layers.push(layerOf(l, { source: f.kind === "gpu" ? f.frame : { rgba: f.rgba }, width: f.width, height: f.height, rotation: h.info.video.rotation }, a.size));
     }
     const times = { timestamp: 0, duration: 1 };
-    gpu.present(layers, a.size);
+    gpu.present(layers, a.size, desc.background);
     const shown = (await capture()).data;
     // The exporter has its own compositor on its own canvas (a worker of its own in the app); a renderer that has presented cannot read back on
     // WebGPU in Chromium, so each export mode gets a fresh one here too.
@@ -400,7 +435,7 @@ async function parity(frame: number): Promise<unknown> {
       const r = await openRenderer(c, gpu!.info.backend);
       try {
         r.resize(c.width, c.height);
-        const vf = await renderExportFrame(r, c, mode, layers, a.size, times);
+        const vf = await renderExportFrame(r, c, mode, layers, a.size, times, desc.background);
         const out = new Uint8Array(vf.allocationSize({ format: "RGBA" }));
         await vf.copyTo(out, { format: "RGBA" });
         vf.close();
