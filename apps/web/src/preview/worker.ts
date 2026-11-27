@@ -144,7 +144,7 @@ setInterval(() => {
  * lost on a real device; the measurement waits for an idle player so it does not compete with decoding and playback.
  */
 async function uploadSource(f: DecodedFrame, slot: number): Promise<LayerSource> {
-  if (f.kind === "cpu") return { rgba: f.rgba };
+  if (f.kind === "cpu") { if (uploadState === "none") uploadState = "cpu-frames: decoder delivers RGBA, no GPU upload path to measure"; return { rgba: f.rgba }; }
   if (!upload && !deciding) deciding = decideWhenIdle(f);
   if (!upload || upload.path === "frame") return f.frame;
   try {
