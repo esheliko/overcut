@@ -46,7 +46,7 @@ test("export parity: the decoded export matches the preview at three timestamps 
   await page.waitForFunction(() => !!(window as unknown as { __overcut?: unknown }).__overcut, undefined, { timeout: 30_000 });
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.getByTestId("media-input").setInputFiles(CLIP);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true", { timeout: 20_000 });
   await expect.poll(() => page.evaluate(async () => (await (window as unknown as { __overcutPreview: { media(): Promise<unknown[]> } }).__overcutPreview.media()).length), { timeout: 20_000 }).toBeGreaterThan(0);
 
