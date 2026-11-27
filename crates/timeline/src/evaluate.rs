@@ -6,7 +6,7 @@
 //! selection from a source time is the decoder's (`Time::frame_index(media_fps)` = floor).
 
 use app_model::{
-    ClipId, MediaId, Rational, Sequence, Time, TrackId, TrackKind, TransformValues,
+    Background, ClipId, MediaId, Rational, Sequence, Time, TrackId, TrackKind, TransformValues,
     TICKS_PER_SECOND,
 };
 use serde::Serialize;
@@ -75,6 +75,9 @@ pub struct FrameDescription {
     pub layers: Vec<VideoLayer>,
     /// Track order, then time. Samples not covered by any segment are silence.
     pub audio: Vec<AudioSegment>,
+    /// The sequence's background (TL-19): what the compositor draws behind `layers`. Absent from the JSON while black (the default).
+    #[serde(skip_serializing_if = "Background::is_default")]
+    pub background: Background,
 }
 
 /// `source_in + floor(delta * speed)`; `None` on overflow.
@@ -101,6 +104,7 @@ fn ceil_sample(t: i64, rate: u32) -> i64 {
 pub fn evaluate_into(seq: &Sequence, t: Time, audio_samples: u32, out: &mut FrameDescription) {
     out.layers.clear();
     out.audio.clear();
+    out.background = seq.background;
     out.time = t;
     out.audio_samples = audio_samples;
     let fps = seq.frame_rate;

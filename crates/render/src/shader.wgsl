@@ -85,3 +85,29 @@ fn fs_present(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
     let c = textureLoad(acc, vec2<i32>(p.xy), 0); // premultiplied over opaque black
     return vec4(encode_srgb(c.rgb), 1.0);
 }
+
+// Background pass (TL-19): `fs_blur` is one direction of a separable 9-tap Gaussian over a small render target; `fs_copy` draws that target stretched over the
+// whole canvas (bilinear). Both read `bgp`: dir = tap step in uv units (x or y), size = the target's size in pixels (uv = pixel / size).
+struct BgParams { dir: vec2<f32>, size: vec2<f32> };
+@group(0) @binding(0) var bg_tex: texture_2d<f32>;
+@group(0) @binding(1) var bg_samp: sampler;
+@group(0) @binding(2) var<uniform> bgp: BgParams;
+
+@fragment
+fn fs_blur(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
+    let uv = p.xy / bgp.size;
+    // Gaussian sigma 2 (taps 0..4), normalised.
+    var w = array<f32, 5>(0.2042, 0.1802, 0.1238, 0.0663, 0.0276);
+    var acc = textureSample(bg_tex, bg_samp, uv) * w[0];
+    for (var i = 1; i < 5; i = i + 1) {
+        let o = bgp.dir * f32(i);
+        acc = acc + (textureSample(bg_tex, bg_samp, uv + o) + textureSample(bg_tex, bg_samp, uv - o)) * w[i];
+    }
+    return acc;
+}
+
+@fragment
+fn fs_copy(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
+    let c = textureSample(bg_tex, bg_samp, p.xy / bgp.size);
+    return vec4(c.rgb, 1.0);
+}

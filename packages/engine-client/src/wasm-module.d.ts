@@ -82,6 +82,7 @@ declare module "@app/wasm-pkg-gpu" {
     alloc_stats(): string;
     resize(w: number, h: number): void;
     begin(): void;
+    set_background(mode: number, r: number, g: number, b: number, blur: number): void;
     add_rgba(rgba: Uint8Array, w: number, h: number, params: Float64Array): void;
     add_external(source: unknown, w: number, h: number, params: Float64Array): void;
     render(seqW: number, seqH: number, outW: number, outH: number, present: boolean): void;

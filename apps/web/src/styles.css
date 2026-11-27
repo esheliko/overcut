@@ -761,3 +761,13 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .insp-info { align-self: start; align-content: start; }
 .insp-body { align-content: start; } /* hint, then project info, packed at the top (the grid used to stretch its rows: a big gap, tall Speed rows) */
 .insp-info > div { align-items: baseline; }
+
+/* TL-19: the canvas dialog's background row: the mode and blur amount are ordinary fields; the colour swatches reuse .swatch (44 px targets). */
+.bg-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }
+.bg-fields .bg-range { padding: 0; accent-color: var(--accent); }
+.bg-colours { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); padding-block-end: var(--space-2); }
+.bg-colours .swatch { cursor: pointer; }
+.bg-colours .swatch[aria-checked="true"] { background: var(--surface-3); outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+.bg-custom { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-sm); }
+.bg-custom input[type="color"] { inline-size: 44px; block-size: 44px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
+@media (max-width: 480px) { .bg-fields { grid-template-columns: minmax(0, 1fr); } }

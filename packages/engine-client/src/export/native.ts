@@ -193,7 +193,7 @@ export async function createNativeEnv(
           drawn.push(frame);
           layers.push(layerOf(layer, frame, seq));
         }
-        const rgba = await renderer.readback(layers, seq, { width: plan.width, height: plan.height });
+        const rgba = await renderer.readback(layers, seq, { width: plan.width, height: plan.height }, desc.background);
         return { rgba, close: () => undefined };
       } finally {
         for (const d of drawn) d.close();

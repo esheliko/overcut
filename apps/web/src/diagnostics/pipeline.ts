@@ -3,7 +3,7 @@
  * "playback" drives the preview Worker (PreviewHost: decode, compositor, player) on a hidden canvas; "exportSpeed" drives `engine.export`.
  * Both fail soft (unsupported / error / timeout with a reason) and report flat numbers like the Worker tests.
  */
-import { createEngine, ExportError, type ExportFailureDetail, type Project } from "@app/engine-client";
+import { PROJECT_SCHEMA_VERSION, createEngine, ExportError, type ExportFailureDetail, type Project } from "@app/engine-client";
 import { patternProject } from "../ExportHarness";
 import { PreviewHost } from "../preview/host";
 import { TICKS_PER_SECOND } from "../preview/timing";
@@ -17,7 +17,7 @@ const LIMIT_MS = 90_000;
 function layeredProject(seconds: number): Project {
   const clip = (n: number) => ({ id: hex(10 + n), media: hex(2), start: 0, source_in: 0, duration: seconds * TICKS_PER_SECOND });
   return {
-    id: hex(1), name: "device playback test", schema_version: 4,
+    id: hex(1), name: "device playback test", schema_version: PROJECT_SCHEMA_VERSION,
     media: [{ id: hex(2), kind: "video", name: "clip-gop30.mp4", uri: "file:clip-gop30.mp4" }],
     sequences: [{
       id: hex(3), name: "main", frame_rate: { num: 30, den: 1 }, resolution: { width: 1920, height: 1080 }, sample_rate: 48000,

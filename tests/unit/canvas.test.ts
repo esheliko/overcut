@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SIZE, FPS_CHOICES, SHAPES, adoptedFormat, canvasOp, canvasSummary, choiceOf, fpsLabel, qualityOf, ratioLabel, resolutionOf, sameCanvas, shapeOf, sizeOf, frameRateOf } from "../../apps/web/src/canvas";
+import { BACKGROUND_SWATCHES, DEFAULT_SIZE, FPS_CHOICES, backgroundOf, backgroundOp, canvasDialogOps, hexOf, rgbOf, sameBackground, SHAPES, adoptedFormat, canvasOp, canvasSummary, choiceOf, fpsLabel, qualityOf, ratioLabel, resolutionOf, sameCanvas, shapeOf, sizeOf, frameRateOf } from "../../apps/web/src/canvas";
 import { importOps } from "../../apps/web/src/media/plan";
 import { nameOfFile, projectFileName } from "../../apps/web/src/projectName";
 import type { Project, Sequence } from "../../packages/engine-client/src/model.generated";
@@ -98,4 +98,42 @@ test("the canvas chip names the ratio (capitalised, never 'custom'), else shows 
   assert.equal(ratioLabel({ width: 160, height: 90 }), "16:9");
   for (const s of SHAPES) assert.equal(ratioLabel(sizeOf(s, 1080)), s.id);
   for (const r of [{ width: 1000, height: 777 }, { width: 160, height: 120 }]) assert.notEqual(ratioLabel(r), "custom");
+});
+
+test("background choice: older projects read as black, an op carries the whole choice, unused parts do not count as a change", () => {
+  const seq = seqOf(newProject("t"));
+  assert.deepEqual(backgroundOf(seq), { mode: "black", colour: [0, 0, 0], blur: 50 });
+  const blur = { mode: "blur" as const, colour: [10, 20, 30] as [number, number, number], blur: 80 };
+  assert.deepEqual(backgroundOp(seq, blur), { op: "set_background", sequence: seq.id, background: { mode: "blur", colour: [10, 20, 30], blur: 80 } });
+  assert.equal(sameBackground(seq, backgroundOf(seq)), true);
+  assert.equal(sameBackground(seq, { ...backgroundOf(seq), colour: [9, 9, 9], blur: 3 }), true, "colour and blur do not matter while black");
+  assert.equal(sameBackground(seq, blur), false);
+  // a sequence that has one: the same choice is no change, another colour is one only in colour mode
+  const withBg: Sequence = { ...seq, background: { mode: "colour", colour: [200, 40, 90], blur: 50 } };
+  assert.equal(sameBackground(withBg, backgroundOf(withBg)), true);
+  assert.equal(sameBackground(withBg, { ...backgroundOf(withBg), blur: 99 }), true);
+  assert.equal(sameBackground(withBg, { ...backgroundOf(withBg), colour: [1, 2, 3] }), false);
+  // out-of-range blur is clamped before it is sent
+  assert.equal((backgroundOp(seq, { ...blur, blur: 400 }) as { background: { blur: number } }).background.blur, 100);
+});
+
+test("the dialog sends only what changed: the canvas op, the background op, both, or nothing", () => {
+  const seq = seqOf(newProject("t"));
+  const same = choiceOf(seq);
+  const bg = backgroundOf(seq);
+  assert.deepEqual(canvasDialogOps(seq, same, bg), []);
+  const vertical = { ...same, shape: "9:16" };
+  assert.deepEqual(canvasDialogOps(seq, vertical, bg).map((o) => o.op), ["set_canvas"]);
+  assert.deepEqual(canvasDialogOps(seq, same, { ...bg, mode: "blur" }).map((o) => o.op), ["set_background"]);
+  assert.deepEqual(canvasDialogOps(seq, vertical, { ...bg, mode: "colour" }).map((o) => o.op), ["set_canvas", "set_background"]);
+});
+
+test("colour helpers: hex <-> rgb round trip, bad input is refused, every swatch is a valid colour", () => {
+  assert.equal(hexOf([200, 40, 90]), "#c8285a");
+  assert.deepEqual(rgbOf("#c8285a"), [200, 40, 90]);
+  assert.deepEqual(rgbOf("#C8285A"), [200, 40, 90]);
+  assert.equal(rgbOf("red"), null);
+  assert.equal(rgbOf("#12345"), null);
+  assert.equal(hexOf([300, -5, 0.4]), "#ff0000");
+  for (const h of BACKGROUND_SWATCHES) assert.equal(hexOf(rgbOf(h)!), h);
 });

@@ -100,6 +100,7 @@ function ProjectInfo({ project }: { project: Project }) {
   return (
     <dl className="insp-info" data-testid="insp-project-info">
       <div><dt>{t("inspector.info.canvas")}</dt><dd>{canvasSummary(seq.resolution, seq.frame_rate)}</dd></div>
+      <div><dt>{t("inspector.info.background")}</dt><dd data-testid="insp-background">{t(`canvas.bg.${seq.background?.mode ?? "black"}`)}</dd></div>
       <div><dt>{t("inspector.info.length")}</dt><dd>{timecodeHMS(frames, seq.frame_rate)}</dd></div>
       <div><dt>{t("inspector.info.clips")}</dt><dd>{clipCount(project)}</dd></div>
     </dl>

@@ -28,9 +28,10 @@ pub use ids::{
     ClipId, Id, IdSource, LinkId, MarkerId, MediaId, ProjectId, SeqIds, SequenceId, TrackId,
 };
 pub use project::{
-    is_track_colour, marker_props_ok, Clip, Marker, MarkerKind, MediaKind, MediaRef, ModelError,
-    Project, Resolution, Sequence, TimeRange, Track, TrackKind, MAX_MARKERS, MAX_MARKER_NAME,
-    MAX_TRACK_HEIGHT, MAX_TRACK_NAME, MIN_TRACK_HEIGHT, SCHEMA_VERSION,
+    is_track_colour, marker_props_ok, Background, BackgroundMode, Clip, Marker, MarkerKind,
+    MediaKind, MediaRef, ModelError, Project, Resolution, Sequence, TimeRange, Track, TrackKind,
+    MAX_BLUR, MAX_MARKERS, MAX_MARKER_NAME, MAX_TRACK_HEIGHT, MAX_TRACK_NAME, MIN_TRACK_HEIGHT,
+    SCHEMA_VERSION,
 };
 pub use time::{Rational, Time, TICKS_PER_SECOND};
 pub use transform::{ClipTransform, Fit, TransformError, TransformProp, TransformValues};
