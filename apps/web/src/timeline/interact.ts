@@ -51,7 +51,7 @@ export type Gesture =
   | { k: "scrub" }
   | { k: "pan" }
   /** Pointer is down but has not moved far enough to know what it is: a tap, or a drag that becomes `then`. */
-  | { k: "press"; sx: number; sy: number; then: "move" | "pan" | "marquee" | "none"; tapClip: number; collapse: boolean; clearOnTap: boolean }
+  | { k: "press"; sx: number; sy: number; then: "move" | "pan" | "marquee" | "none"; tapClip: number; collapse: boolean; clearOnTap: boolean; /** A touch long press picked the clip up: it is drawn lifted (as its move ghost) until the finger lets go or drags. */ lifted?: boolean }
   | { k: "move"; sx: number; sel: number[]; room: { left: number; right: number }; delta: number; track: number; from: number; mv: LaneMove | null; to: number[] | null; plan?: LanePlan | null;
       /** Clips jumped over (reorder): > 0 to the right, < 0 to the left. */ hop?: number;
       /** Tick the selection snapped to or landed against: the painter draws a guide line there. */ guide?: number | null }
@@ -93,6 +93,7 @@ type R = { g: Gesture; fx: Effects };
 export function markPreview(f: Uint8Array, g: Gesture): void {
   for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
   if (g.k === "move") for (const i of g.sel) f[i] = 2;
+  else if (g.k === "press" && g.lifted && g.tapClip >= 0 && f[g.tapClip] !== undefined) f[g.tapClip] = 2; // picked up by a long press: the lifted copy (a ghost) is drawn over it
   else if (g.k === "trim") f[g.clip] = 2;
   else if (g.k === "tool" && (g.tool === "slip" || g.tool === "slide")) f[g.clip] = 2;
 }
@@ -255,7 +256,7 @@ export function longPress(c: Ctx, g: Gesture): R | null {
   if (g.k !== "press" || g.tapClip < 0 || g.then !== "pan") return null;
   const i = g.tapClip;
   if (c.scene.trackLocked[c.scene.clipTrack[i]!]) return null;
-  return { g: { ...g, then: "move" }, fx: { select: { mode: "set", ids: [c.scene.id[i]!] }, say: describeClip(c.scene, i) } };
+  return { g: { ...g, then: "move", lifted: true }, fx: { select: { mode: "set", ids: [c.scene.id[i]!] }, say: describeClip(c.scene, i) } };
 }
 
 export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {

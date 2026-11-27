@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { hopOps, planHop, snapDrop, snapMove, SNAP_PX } from "../../apps/web/src/timeline/arrange";
 import { moveRoom } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
-import { IDLE, longPress, pointerDown, pointerMove, pointerUp, type Ctx, type PEvent } from "../../apps/web/src/timeline/interact";
+import { IDLE, longPress, markPreview, pointerDown, pointerMove, pointerUp, type Ctx, type PEvent } from "../../apps/web/src/timeline/interact";
 import { buildScene, TICKS_PER_SECOND as TPS } from "../../apps/web/src/timeline/scene";
 import { flagsOf } from "../../apps/web/src/timeline/edit";
 import { timeToX, RULER, LANE, type View } from "../../apps/web/src/timeline/view";
@@ -121,6 +121,13 @@ test("long press picks up an unselected clip for a touch; other gestures are unt
   const lp = longPress(c, down.g)!;
   assert.deepEqual(lp.fx.select, { mode: "set", ids: [scene.id[1]!] });
   assert.equal(lp.g.k === "press" ? lp.g.then : "", "move");
+  assert.equal(lp.g.k === "press" ? lp.g.lifted : false, true); // drawn lifted (as its ghost) until the finger moves or lets go
+  assert.ok(!(down.g.k === "press" && down.g.lifted)); // a plain press is not
+  const flags = new Uint8Array(scene.id.length);
+  markPreview(flags, lp.g);
+  assert.equal(flags[1], 2);
+  markPreview(flags, IDLE);
+  assert.equal(flags[1], 1); // settled: a lifted 2 goes back to 1 (visible, selected)
   assert.equal(longPress(c, IDLE), null);
 });
 

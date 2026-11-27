@@ -357,7 +357,8 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     const o = ui.current;
     o.ghosts = null; o.ghostTracks = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
     markPreview(flags.current, g);
-    if (g.k === "move") {
+    if (g.k === "press" && g.lifted && g.tapClip >= 0) { o.ghosts = [g.tapClip]; o.ghostDSec = 0; } // a long press on touch lifts the clip: the same ghost a drag shows, so the pick-up is visible without a buzz
+    else if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTracks = g.to; o.lane = g.mv ? g.track : -1;
       o.guideSec = g.guide != null ? g.guide / TICKS_PER_SECOND : null;
     } else if (g.k === "trim") {
