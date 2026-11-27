@@ -75,6 +75,8 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
     return {
       layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a", upload_source: gpu.upload?.source ?? "n/a", upload_state: gpu.uploadState ?? "n/a", upload_state_before_play: pre.uploadState ?? "n/a", scrubs_before_play: preStats.scrubMs?.length ?? -1, upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
       ...lap.ms, presented, dropped: s1.dropped - s0.dropped, stalls: s1.stalls - s0.stalls,
+      // stalls count layers whose next picture was not decoded yet when a frame was drawn: share of all layer draws (3 layers x frames wanted), so 222 can be read.
+      stall_pct: Math.round((100 * (s1.stalls - s0.stalls)) / Math.max(1, 3 * (presented + s1.dropped - s0.dropped))),
       fps: span ? Math.round(((times.length - 1) / span) * 10) / 10 : 0,
       p95_late_ms: Math.round(late[Math.floor(late.length * 0.95)] ?? 0),
     };
