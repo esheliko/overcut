@@ -130,8 +130,12 @@ test("JKL shuttle: L doubles the speed, K stops", async ({ page }, info) => {
   await expect(page.locator(".rate-badge")).toHaveText("2×");
   await page.keyboard.press("k");
   await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
-  const open = await page.evaluate(async () => (await (window as unknown as { __overcutPreview: { media(): Promise<{ open: number }[]> } }).__overcutPreview.media())[0]!.open);
-  expect(open).toBeLessThanOrEqual(2); // no leaked VideoFrames after stopping (at most the frame on the compositor path)
+  // No leaked VideoFrames after stopping: every decoded frame still open is either in the paused-playhead cache (the decode-ahead around the stop frame
+  // legitimately holds up to a dozen, and how many are there depends on timing: the old fixed `<= 2` was racy) or the one on the compositor path.
+  await expect.poll(async () => page.evaluate(async () => {
+    const hook = (window as unknown as { __overcutPreview: { media(): Promise<{ open: number }[]>; stats(): Promise<{ cached: number }> } }).__overcutPreview;
+    return (await hook.media())[0]!.open - (await hook.stats()).cached;
+  }), { timeout: 5_000 }).toBeLessThanOrEqual(2);
 });
 
 type Parity = { width: number; height: number; layers: number; previewVsReadback: number; previewVsCanvasCapture: number; lit: boolean; error?: string };

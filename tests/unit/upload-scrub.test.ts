@@ -124,7 +124,7 @@ test("thumbnail store returns the nearest in time and forgets a media item", () 
 const T = 705_600_000;
 const STEP = T / 30;
 
-function setup(opts: { thumb?: boolean; strip?: boolean } = {}) {
+function setup(opts: { thumb?: boolean; strip?: boolean; layers?: number } = {}) {
   const closed: number[] = [];
   const seeks: [string, number][] = [];
   const calls: number[] = [];
@@ -145,7 +145,7 @@ function setup(opts: { thumb?: boolean; strip?: boolean } = {}) {
   const renders: { scale: number[]; first: number | "bitmap" }[] = [];
   const player = new Player({
     rate: { num: 30, den: 1 }, size: { width: 1920, height: 1080 }, endTicks: 10 * T, sequence: "s",
-    evaluate: async (ticks, n) => ({ time: ticks, frame: 0, video_time: ticks, sample: 0, audio_samples: n, audio: [], layers: [{ clip: "c", media: "m", source_time: ticks, opacity: 1, transform: { center: [960, 540], scale: [1, 1], rotation: 0 } }] }) as never,
+    evaluate: async (ticks, n) => ({ time: ticks, frame: 0, video_time: ticks, sample: 0, audio_samples: n, audio: [], layers: Array.from({ length: opts.layers ?? 1 }, (_, i) => ({ clip: `c${i}`, media: "m", source_time: ticks, opacity: 1, transform: { center: [960, 540], scale: [1, 1], rotation: 0 } })) }) as never,
     media: () => media as never,
     renderer: { render: (layers) => void renders.push({ scale: [...layers[0]!.scale], first: "rgba" in layers[0]!.source ? (layers[0]!.source as { rgba: Uint8Array }).rgba[0]! : "bitmap" }), dispose: () => undefined },
     fallbackClock: { now: () => 0 },
@@ -175,6 +175,20 @@ test("scrub shows the nearest filmstrip thumbnail at once, scaled to the clip, t
   assert.equal(s.renders[1]!.first, 30, "then the exact frame");
   assert.deepEqual(s.renders[1]!.scale, [1, 1]);
   assert.deepEqual([s.player.stats.standIns, s.player.stats.thumbStandIns, s.player.stats.scrubMs.length], [1, 1, 1]);
+  s.player.dispose();
+});
+
+test("S24 regression: three layers of the same picture are decoded once, so the scrub reaches its exact frame (the handle cancels all but the latest request)", async () => {
+  const s = setup({ layers: 3 });
+  s.player.seek(30);
+  await settle();
+  assert.deepEqual(s.calls, [30], "one decode for three layers showing the same frame of the same media");
+  s.finish(30);
+  await settle();
+  assert.equal(s.player.stats.scrubMs.length, 1, "the scrub finished (before the fix every layer cancelled the others and it never did)");
+  assert.equal(s.player.isIdle(), false);
+  await new Promise((r) => setTimeout(r, 450));
+  assert.equal(s.player.isIdle(), true, "and the player becomes idle, so the upload path can be measured");
   s.player.dispose();
 });
 
