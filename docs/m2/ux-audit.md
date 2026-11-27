@@ -342,7 +342,7 @@ Fixes (behaviour unchanged):
 
 Verdict: apply + patch is within the 8 ms budget (3.1 ms at 1x, 12.9 ms at 4x which is the phone proxy); key->paint is at the aim at 1x (13-16 ms against < 16) and at 4x (47-50 ms against < 50), both close to the line, so a noisy run can land a little over. Not done: the preview Worker still receives the whole project JSON (built from cached per-track strings, now after the paint, about 5 ms per edit at 4x on the main thread) and the UI still parses the engine's project on load only. A patch binding (`apply_patch` in wasm + Tauri + both clients) would remove that; it needs its own PR and is not on the key->paint path any more.
 
-## Round 10: final audit (m2 at 6a21494)
+## Round 10: final audit (m2 at 63ff521)
 
 Who: W5. Method: `npm run build` + `vite preview`, Playwright driving Chromium at 1440x900 (mouse + keyboard), 820x1180 (touch), 390x844 (touch), 844x390 landscape and 320x640, dark and light. Scripted per size: empty app, import of 3 files (video+sound, a second video, a still), selection, Details/Edit sheet, More menu, command palette (Ctrl+K), shortcuts (`?`), Export dialog, Projects home; plus the creator path at desktop and phone (import, **Add as overlay on a new track**, Speed tab, marker, palette). Every step checks horizontal overflow, console errors/warnings and (touch sizes) targets under 44 px; screenshots were read at each size. Journeys that already have a smoke spec with real assertions (trim modes, snapping, opacity keyframes with easing, loop, remap, .overcut round-trip, archive/restore) were not re-driven by hand; they ran green in CI and are marked "covered by smoke" below. Final before/after images: `docs/features/img/m2-r10/audit-*`.
 
