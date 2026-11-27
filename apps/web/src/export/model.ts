@@ -1,6 +1,6 @@
 /** Export dialog logic with no React and no DOM: presets, sizes, bitrates, the size estimate, formatting, the remembered choice, and error mapping.
  *  Unit-tested in tests/unit/export-dialog.test.ts. Rules: docs/features/export-dialog.md. */
-import { ExportError, type DesktopCodecs, type ExportErrorCode, type ExportFormatId, type ExportFormatOption, type ExportFormats, type ExportSettings } from "@app/engine-client";
+import { ExportError, type DesktopCodecs, type ExportErrorCode, type ExportFormatId, type ExportFormatOption, type ExportFailureDetail, type ExportFormats, type ExportSettings } from "@app/engine-client";
 
 export type PresetId = "original" | "youtube" | "vertical" | "x" | "facebook" | "whatsapp" | "discord" | "small";
 export type QualityId = "high" | "medium" | "low";
@@ -255,6 +255,7 @@ export function errorKey(e: unknown): string {
     case "encode_failed": return "export.err.encode";
     case "unsupported": return "export.err.unsupported";
     case "media_unavailable": return "export.err.media";
+    case "media_failed": return "export.err.mediaFailed";
     case "empty_sequence": return "export.err.empty";
     case "not_yet": return "export.err.notYet";
     default: return "export.err.unknown";
@@ -298,3 +299,32 @@ export function desktopFormats(c: DesktopCodecs): ExportFormats {
 
 /** True when MP4 is missing and the person can switch it on (the explicit "Enable MP4" button): never downloads by itself. */
 export const canOfferH264Download = (c: DesktopCodecs): boolean => c.h264 === "none" && c.canEnableH264;
+
+/** The full failure for the "Technical details" box: code, name, message, stage, clip and position, encoder configs, stack and every earlier attempt. One line per fact so a screenshot of it is enough. */
+export function describeFailure(e: unknown): string {
+  const lines: string[] = [];
+  const add = (label: string, v: unknown): void => { if (v !== undefined && v !== "") lines.push(`${label}: ${String(v)}`); };
+  const detail = (d: ExportFailureDetail, indent: string): void => {
+    const put = (label: string, v: unknown): void => { if (v !== undefined && v !== "") lines.push(`${indent}${label}: ${String(v)}`); };
+    put("error", [d.name, d.message].filter(Boolean).join(": "));
+    put("stage", d.stage);
+    put("clip", d.clip);
+    put("at", d.at);
+    put("frames encoded", d.frames);
+    put("compatibility level", d.level);
+    put("video", d.video);
+    put("audio", d.audio);
+    if (d.filename) put("source", `${d.filename}:${d.lineno ?? 0}:${d.colno ?? 0}`);
+    put("stack", d.stack?.split("\n").slice(0, 6).join(" | "));
+  };
+  if (e instanceof ExportError) {
+    add("code", e.code);
+    add("message", e.message);
+    if (e.detail) detail(e.detail, "");
+    e.detail?.attempts?.forEach((a, i) => { lines.push(`attempt ${i + 1} (failed earlier):`); detail(a, "  "); });
+  } else if (e instanceof Error) {
+    add("error", `${e.name}: ${e.message}`);
+    add("stack", e.stack?.split("\n").slice(0, 6).join(" | "));
+  } else add("error", String(e));
+  return lines.join("\n");
+}

@@ -437,6 +437,7 @@ test("Tauri backend: export is a typed 'not yet' until native encoding exists", 
 });
 
 // ---- the production decoder adapter ----
+import { MediaDecodeError } from "../../packages/engine-client/src/types";
 import { openBlobMedia } from "../../packages/engine-client/src/export/blob-media";
 import type { MediaApi, MediaHandle } from "../../packages/engine-client/src/types";
 
@@ -590,4 +591,24 @@ test("audio ends with the picture: the encoder's padding packet is dropped and a
     for (let i = 0; i < packets; i++) kept += fitAudioPacket((i * 960) / 48_000, 960 / 48_000, samples / 48_000) ?? 0;
     assert.ok(Math.abs(kept - samples / 48_000) < 1e-9, `${seconds} s: ${kept}`);
   }
+});
+
+test("decoder adapter: a decode failure names the clip and where in it (code media_failed, not 'reconnect it')", async () => {
+  const m = fakeMedia({ channels: 2 });
+  const h = await m.api.open(new Blob(["x"]));
+  (h as unknown as { audio: unknown }).audio = async () => { throw new MediaDecodeError("out_of_range", "out of range"); };
+  (h as unknown as { videoFrame: unknown }).videoFrame = async () => { throw new RangeError("Array buffer allocation failed"); };
+  const opened = await openBlobMedia({ open: async () => h } as MediaApi, new Blob(["x"]), 48000, "PXL_0001.mp4");
+  await assert.rejects(opened.audio!.read(96000, 2048, [new Float32Array(2048), new Float32Array(2048)]), (e: unknown) =>
+    e instanceof ExportError && e.code === "media_failed" && e.detail?.clip === "PXL_0001.mp4" && /audio samples 96000\.\.98048/.test(e.detail.at ?? "") && /out_of_range/.test(e.detail.name ?? "") && e.detail.message === "out of range");
+  await assert.rejects(opened.video!.frame(Number(T) * 2), (e: unknown) =>
+    e instanceof ExportError && e.code === "media_failed" && /video frame 29 of 30 \(source 2\.000 s\)/.test(e.detail?.at ?? "") && e.detail?.name === "RangeError");
+});
+
+test("decoder adapter: a file the browser can no longer read stays media_unavailable (reconnect is true there)", async () => {
+  const m = fakeMedia();
+  const h = await m.api.open(new Blob(["x"]));
+  (h as unknown as { videoFrame: unknown }).videoFrame = async () => { throw new DOMException("gone", "NotReadableError"); };
+  const opened = await openBlobMedia({ open: async () => h } as MediaApi, new Blob(["x"]), 48000, "a.mp4");
+  await assert.rejects(opened.video!.frame(0), (e: unknown) => e instanceof ExportError && e.code === "media_unavailable");
 });
