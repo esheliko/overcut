@@ -64,7 +64,17 @@ export function reportFatal(source: string, error: unknown): void { fatalListene
 /** Test-only (`?e2e&force-error=<ms>`): throws while rendering after a delay, so smoke tests and screenshots can see the screen with the app running. */
 export function ForcedError({ delay }: { delay: number }): null {
   const [boom, setBoom] = useState(false);
-  useEffect(() => { const id = setTimeout(() => setBoom(true), delay); return () => clearTimeout(id); }, [delay]);
+  // The clock starts once the engine is up (it starts after the first paint, so on a slow machine that is later than page load): the screen is seen with the app running, as the tests expect.
+  useEffect(() => {
+    let id = 0;
+    const began = Date.now();
+    const wait = window.setInterval(() => {
+      if (!document.querySelector("[data-testid=engine][data-backend]") && Date.now() - began < 20_000) return;
+      window.clearInterval(wait);
+      id = window.setTimeout(() => setBoom(true), delay);
+    }, 50);
+    return () => { window.clearInterval(wait); window.clearTimeout(id); };
+  }, [delay]);
   if (boom) throw new Error("Forced test error (force-error)");
   return null;
 }
