@@ -117,8 +117,8 @@ export class WaveformService {
       const g = c.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
       g.fillStyle = st.color;
       const mid = h / 2, k = (h / 2 - 1) / 32768;
-      // Mirrored bars (the loudest side of each column, drawn symmetrically about the middle line) at 85% of the height, every other column: a 1 px bar and a 1 px gap.
-      for (let i = 0; i < TILE_COLS; i += 2) {
+      // Mirrored bars (the loudest side of each column, drawn symmetrically about the middle line) at 85% of the height, every column: a filled shape, not a dotted line (r14).
+      for (let i = 0; i < TILE_COLS; i++) {
         const lo = cols[i * 2]!, hi = cols[i * 2 + 1]!;
         if (lo > hi) continue; // no data yet
         const amp = Math.max(1, Math.max(hi, -lo) * k * 0.85);

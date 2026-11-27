@@ -55,7 +55,7 @@ test("Alt+drag slip on the right half of a split says there is no footage that w
   const canvas = page.getByTestId("timeline-canvas");
   const box = (await canvas.boundingBox())!;
   const pps = Number(await canvas.getAttribute("data-pps"));
-  const gutter = 48 + (await gutterShift(page)), ruler = 30, lane = 52;
+  const gutter = 48 + (await gutterShift(page)), ruler = 30, lane = 60;
   await page.mouse.click(box.x + gutter + 0.5 * pps, box.y + ruler / 2); // playhead in the middle of the 1 s clip
   await page.getByRole("button", { name: "Split at playhead" }).click();
   await expect(page.locator("#tl-summary")).toContainText("2 clips");

@@ -11,10 +11,10 @@ export const TOGGLES: readonly Toggle[] = ["mute", "solo", "lock", "hide"];
 export const togglesFor = (kind: number): readonly Toggle[] => (kind === 1 ? TOGGLES : TOGGLES.slice(2));
 
 /** Switch rectangles of the wide header, relative to the lane's top-left: one row, right aligned, centred in the lane (V-15). Slot `i` of `TOGGLES` in a header `g` px wide. */
-export const SW = { w: 22, h: 22, gap: 2, y: 14, padR: 6 } as const;
+export const SW = { w: 22, h: 22, gap: 2, y: 19, padR: 6 } as const;
 export const switchX = (i: number, g: number) => g - SW.padR - (TOGGLES.length - i) * (SW.w + SW.gap) + SW.gap;
 /** Indicator slots of the compact header (state glyphs under the name). */
-export const IND = { x0: 8, size: 12, gap: 3, y: 33 } as const;
+export const IND = { x0: 8, size: 12, gap: 3, y: 38 } as const;
 
 /** Which part of a header is at (x, yInLane), or null outside the header column. */
 export function headerPart(v: View, x: number, yInLane: number, kind: number): HeaderPart | null {

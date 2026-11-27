@@ -24,9 +24,9 @@ test("dragging a clip up onto the new V2 lane puts its picture there (its sound 
   const dg = await gutterShift(page);
   // V2 is the top row (0), V1 row 1, A1 row 2; the imported picture starts at 0:00 on V1.
   const x = box.x + dg + 48 + 40;
-  await page.mouse.move(x, box.y + 30 + 52 + 26);
+  await page.mouse.move(x, box.y + 30 + 60 + 26);
   await page.mouse.down();
-  await page.mouse.move(x + 10, box.y + 30 + 52 + 10, { steps: 4 });
+  await page.mouse.move(x + 10, box.y + 30 + 60 + 10, { steps: 4 });
   await page.mouse.move(x + 10, box.y + 30 + 26, { steps: 6 });
   await page.mouse.up();
   await expect(onV2(page)).toHaveCount(1);
@@ -75,9 +75,9 @@ test("two selected pictures change lane together: both on V2, their sounds stay 
   const box = (await canvas.boundingBox())!;
   const dg = await gutterShift(page);
   const x = box.x + dg + 48 + 40;
-  await page.mouse.move(x, box.y + 30 + 52 + 26);
+  await page.mouse.move(x, box.y + 30 + 60 + 26);
   await page.mouse.down();
-  await page.mouse.move(x + 10, box.y + 30 + 52 + 10, { steps: 4 });
+  await page.mouse.move(x + 10, box.y + 30 + 60 + 10, { steps: 4 });
   await page.mouse.move(x + 10, box.y + 30 + 26, { steps: 6 });
   await page.mouse.up();
   await expect(onV2(page)).toHaveCount(2);
@@ -104,10 +104,10 @@ test("a lane change that also moves in time lands where dropped; the sound that 
   const dg = await gutterShift(page);
   // Pick up the right half on V1 near its far end, carry it up to V2 and back in time over the first half's range on A1.
   const x = box.x + dg + 48 + 300;
-  await page.mouse.click(x, box.y + 30 + 52 + 26);
-  await page.mouse.move(x, box.y + 30 + 52 + 26);
+  await page.mouse.click(x, box.y + 30 + 60 + 26);
+  await page.mouse.move(x, box.y + 30 + 60 + 26);
   await page.mouse.down();
-  await page.mouse.move(x - 40, box.y + 30 + 52 + 10, { steps: 4 });
+  await page.mouse.move(x - 40, box.y + 30 + 60 + 10, { steps: 4 });
   await page.mouse.move(x - 120, box.y + 30 + 26, { steps: 6 });
   await page.mouse.up();
   await expect(onV2(page)).toHaveCount(1);
