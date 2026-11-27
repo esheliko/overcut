@@ -59,11 +59,25 @@ interface Props {
   handlesOn?: boolean;
 }
 
-/** The playhead time. Its own component so a playhead tick re-renders this one text, not the whole preview panel. */
+/** The playhead time. Not a React subscription: a tick writes the text node directly (P-3: playback was ~29 React commits/s for this one string). It re-renders only when the rate or the length change. */
 function Timecode({ rate, endFrame, label }: { rate: Rate; endFrame: number; label: string }) {
-  const frame = useProjectStore((s) => s.playhead);
+  const store = useStore();
+  const now = useRef<HTMLSpanElement>(null);
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
+  useEffect(() => {
+    let shown = Number.NaN;
+    const show = () => {
+      const f = store.getState().playhead;
+      if (f === shown && rateRef.current === rate) return;
+      shown = f;
+      if (now.current) now.current.textContent = timecodeHMS(f, rateRef.current);
+    };
+    show();
+    return store.subscribe(show);
+  }, [store, rate]);
   return (
-    <div className="tc" aria-label={label} data-testid="timecode"><span>{timecodeHMS(frame, rate)}</span><span className="tc-total"> / {timecodeHMS(endFrame, rate)}</span></div>
+    <div className="tc" aria-label={label} data-testid="timecode"><span ref={now}>{timecodeHMS(store.getState().playhead, rate)}</span><span className="tc-total"> / {timecodeHMS(endFrame, rate)}</span></div>
   );
 }
 
@@ -209,7 +223,8 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       pending.current = null;
       if (c) c.host.configure({ project: c.has && c.project ? projectToJson(c.project) : "", sequence: c.sequence, rate: c.rate, size: c.size, endTicks: c.endTicks });
     };
-    t.raf = window.requestAnimationFrame(flush);
+    // After the frame that shows the edit has painted (animation frame, then a task), so stringifying and posting the project never delays that paint.
+    t.raf = window.requestAnimationFrame(() => { t.timer = window.setTimeout(flush, 0); });
     t.timer = window.setTimeout(flush, 80); // a hidden tab has no animation frames
   }, [project, hostVersion, rate.num, rate.den, size.width, size.height, endTicks, view.sequence, view.has]);
   useEffect(() => () => { const t = flushTimers.current; window.cancelAnimationFrame(t.raf); window.clearTimeout(t.timer); t.raf = 0; t.timer = 0; pending.current = null; }, []);

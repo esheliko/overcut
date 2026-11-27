@@ -21,6 +21,7 @@ export const Overview = memo(function Overview({ scene, lengthSec, handle }: { s
   const pal = useRef<Palette>(DARK);
   const drag = useRef<Drag | null>(null);
   const [shown, setShown] = useState(false);
+  const size = useRef<{ w: number; h: number } | null>(null); // the canvas's CSS size, read where layout is clean (ResizeObserver), not on every paint (that forced a layout after each edit)
   const live = useRef({ scene, lengthSec });
   live.current = { scene, lengthSec };
 
@@ -32,9 +33,10 @@ export const Overview = memo(function Overview({ scene, lengthSec, handle }: { s
     const hide = sc.clipCount === 0 || fitsView(v, Math.min(len, Math.max(sc.endSec, 1)));
     setShown((s) => (s === !hide ? s : !hide));
     if (hide) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2), H = Math.max(16, Math.round(c.clientHeight));
+    if (!size.current || size.current.w === 0) size.current = { w: c.clientWidth, h: c.clientHeight };
+    const dpr = Math.min(window.devicePixelRatio || 1, 2), H = Math.max(16, Math.round(size.current.h));
     const band = Math.min(H, 32), top = Math.round((H - band) / 2); // the visible bar is 28-32 px; on touch the canvas around it is the 44 px hit area
-    const w = Math.max(1, Math.round(c.clientWidth));
+    const w = Math.max(1, Math.round(size.current.w));
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(H * dpr); }
     const ctx = c.getContext("2d");
     if (!ctx) return;
@@ -48,12 +50,26 @@ export const Overview = memo(function Overview({ scene, lengthSec, handle }: { s
       b.setTransform(dpr, 0, 0, dpr, 0, 0);
       const span = overviewSpan(v, len);
       const rows = Math.max(1, sc.trackCount), rh = Math.max(1, (band - 8) / rows);
+      // One pass into a coverage mask (rows x pixel columns), then one fillRect per run of covered columns: a 2300-clip project is a few hundred rects, not 2300.
+      const bw = Math.max(1, Math.round(w)), rowsN = rows * 2;
+      const mask = new Uint8Array(bw * rowsN);
+      for (let i = 0; i < sc.clipCount; i++) {
+        const row = sc.clipTrack[i]! * 2 + (sc.trackKind[sc.clipTrack[i]!] === 1 ? 1 : 0);
+        const x0 = Math.min(bw - 1, Math.max(0, Math.floor((sc.start[i]! / span) * w)));
+        const x1 = Math.min(bw, Math.max(x0 + 1, Math.ceil((sc.end[i]! / span) * w)));
+        mask.fill(1, row * bw + x0, row * bw + x1);
+      }
       for (let k = 0; k < 2; k++) {
         b.fillStyle = k === 0 ? p.videoStrip : p.audioStrip;
-        for (let i = 0; i < sc.clipCount; i++) {
-          if ((sc.trackKind[sc.clipTrack[i]!] === 1 ? 1 : 0) !== k) continue;
-          const x = (sc.start[i]! / span) * w, cw = Math.max(1, ((sc.end[i]! - sc.start[i]!) / span) * w);
-          b.fillRect(x, top + 4 + sc.clipTrack[i]! * rh, cw, Math.max(1, rh - 0.5));
+        for (let tr = 0; tr < rows; tr++) {
+          const base = (tr * 2 + k) * bw, y = top + 4 + tr * rh, hh = Math.max(1, rh - 0.5);
+          for (let x = 0; x < bw;) {
+            if (!mask[base + x]) { x++; continue; }
+            let e = x + 1;
+            while (e < bw && mask[base + e]) e++;
+            b.fillRect(x, y, e - x, hh);
+            x = e;
+          }
         }
       }
       layer.current = { scene: sc, key, bmp };
@@ -86,7 +102,7 @@ export const Overview = memo(function Overview({ scene, lengthSec, handle }: { s
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => paint());
+    const ro = new ResizeObserver(() => { size.current = null; paint(); });
     ro.observe(el);
     return () => ro.disconnect();
   }, [paint, shown]);

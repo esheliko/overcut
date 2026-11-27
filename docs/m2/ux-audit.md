@@ -320,3 +320,24 @@ Timeline bench (`tests/perf/timeline-bench.mjs`, 1000 clips x 20 tracks): deskto
 
 ### Ship readiness
 Ready to ship once this PR is in (the 320 px fix is the only blocker found). Not ready to claim: the edit-latency budget (P-4) and the wgpu console error; both are listed as open items.
+
+## Round 10 perf: edit latency (#208) and P-3
+
+Script: `tests/perf/edit-latency.mjs` (Playwright, `?sample=2h` = 2300 clips, 1280x800, median of N split / undo / redo, CDP CPU throttle 1x and 4x; `EDIT_PROFILE=1` prints the main-thread self time). Two numbers per edit: **commit** = key press until the new project is in the DOM (engine apply + patch + store + React), **key->paint** = until the end of the next animation frame (includes the canvas redraw and the display's frame wait). Container numbers.
+
+| | commit 1x | key->paint 1x | commit 4x | key->paint 4x |
+|---|---|---|---|---|
+| before (m2 at 8855660), split | 7.6 ms | 17.3 ms | 38.0 ms | 75.6 ms |
+| after, split | 3.1 ms | 15.8 ms | 12.9 ms | 49.5 ms |
+| after, undo / redo | | 13.3 / 13.6 ms | | 48.6 / 47.1 ms |
+
+Where it went (4x profile, self time per edit): the overview bar rebuilt its clip bitmap with 2300 `fillRect` and read `clientWidth` after each React commit (forced layout); the `Splitter` read `getBoundingClientRect` in render, so every app render forced a layout; the sr-only clip list ran 200 `describeClip` + i18n calls inside the edit's commit; the preview project JSON was stringified and posted before the frame painted.
+
+Fixes (behaviour unchanged):
+- Overview: the clip layer is built from a per-pixel-column coverage mask and drawn as runs (a few hundred rects, not 2300); the bar's CSS size comes from its ResizeObserver, not from a read per paint.
+- `Splitter`: the workspace height is state set from effects and its observer, never read in render.
+- Clip list (`TimelineCanvas`): rendered from `useDeferredValue` of the scene and selection, so it follows the edit at low priority; same content, still complete (capped as before).
+- Preview sync (`PreviewPanel`): the flush runs in a task after the frame that shows the edit has painted.
+- **P-3:** `Timecode` is no longer a store subscription that renders per tick: it writes its text node from `store.subscribe`. React commits during playback of `?sample`: 29.3 per second -> 0.3 per second (counted with a devtools-hook commit counter over 3 s; only `Timecode` re-rendered before).
+
+Verdict: apply + patch is within the 8 ms budget (3.1 ms at 1x, 12.9 ms at 4x which is the phone proxy); key->paint is at the aim at 1x (13-16 ms against < 16) and at 4x (47-50 ms against < 50), both close to the line, so a noisy run can land a little over. Not done: the preview Worker still receives the whole project JSON (built from cached per-track strings, now after the paint, about 5 ms per edit at 4x on the main thread) and the UI still parses the engine's project on load only. A patch binding (`apply_patch` in wasm + Tauri + both clients) would remove that; it needs its own PR and is not on the key->paint path any more.
