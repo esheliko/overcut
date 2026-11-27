@@ -1,5 +1,5 @@
 import type { Op } from "@app/engine-client";
-import { memo, useCallback, useEffect, useRef, type KeyboardEvent } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useRef, type KeyboardEvent } from "react";
 import { useI18n } from "../i18n";
 import { onThemeChange } from "../theme/tokens";
 import { DARK, drawBubble, drawPlayheadStrip, drawTimeline, HEAD_W, newOverlay, paletteFromCss, type Bubble, type DrawStats, type Overlay, type Palette } from "./draw";
@@ -663,9 +663,14 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       <div ref={hclip} className="tl-playhead-clip" aria-hidden="true"><canvas ref={hcv} className="tl-playhead-head" /></div>
       <canvas ref={pcv} className="tl-playhead-layer" aria-hidden="true" style={{ display: "none" }} />
       <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>
-      <ClipList scene={scene} selected={selected} />
+      <ClipListDeferred scene={scene} selected={selected} />
     </>
   );
+}
+
+/** The list is rebuilt at low priority (after the edit has painted): a screen reader reads it on request, nobody waits for it. */
+function ClipListDeferred({ scene, selected }: { scene: Scene; selected: ReadonlySet<string> }) {
+  return <ClipList scene={useDeferredValue(scene)} selected={useDeferredValue(selected)} />;
 }
 
 /** Text alternative to the canvas: every clip (capped) in reading order, so a screen reader can browse what the picture shows. Memoized: it is rebuilt only when the scene or the selection changes (P-3). */

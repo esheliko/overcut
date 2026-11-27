@@ -14,6 +14,7 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
   const [now, setNow] = useState<number | null>(null); // the timeline row in px while a user size is set (aria-valuenow); null = default
   const drag = useRef<{ id: number; edge: number } | null>(null);
   const frame = useRef(0);
+  const [r, setR] = useState(0); // the workspace height: read in effects and the observer (clean layout), never in render (that forced a layout on every app render, i.e. after every edit)
 
   const room = useCallback(() => workspace.current?.getBoundingClientRect().height ?? 0, [workspace]);
   const apply = useCallback((px: number | null) => {
@@ -22,7 +23,8 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
     if (px === null) el.style.removeProperty("--tl-row");
     else el.style.setProperty("--tl-row", `${px}px`);
     setNow(px);
-  }, [workspace]);
+    setR(room());
+  }, [workspace, room]);
 
   useEffect(() => {
     const saved = readTimelineRow();
@@ -32,12 +34,13 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
   useEffect(() => {
     const el = workspace.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => setNow((cur) => {
+    setR(room());
+    const ro = new ResizeObserver(() => { setR(room()); setNow((cur) => {
       if (cur === null) return cur;
       const next = clampTimelineRow(cur, room());
       if (next !== cur) el.style.setProperty("--tl-row", `${next}px`);
       return next;
-    }));
+    }); });
     ro.observe(el);
     return () => ro.disconnect();
   }, [workspace, room]);
@@ -85,7 +88,6 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
     apply(px);
     writeTimelineRow(px);
   };
-  const r = room();
   return (
     <div className="splitter" role="separator" aria-orientation="horizontal" aria-label={t("splitter.label")} tabIndex={0} data-testid="splitter"
       aria-valuemin={Math.round(clampTimelineRow(0, r))} aria-valuemax={Math.round(clampTimelineRow(Infinity, r))} aria-valuenow={now === null ? undefined : Math.round(now)}

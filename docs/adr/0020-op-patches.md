@@ -1,5 +1,5 @@
 # 0020 Edits report what they changed (op patches)
-**Status**: proposed (engineering; implemented additively, no ABI bump)
+**Status**: accepted (engineering; implemented additively, no ABI bump). Bars met in Round 10 (`docs/m2/ux-audit.md`): edit commit 3.1 ms at 1x on 2300 clips. Open: the preview Worker is still sent the whole project JSON (cached pieces, off the paint path); a patch binding is the follow-up.
 
 **Context.** After every edit the UI called `Engine.editing.project()` (the whole project as JSON), `JSON.parse`d it on the UI thread, rebuilt its scene from it, and re-stringified the whole project for the preview worker. Split on `/?sample=2h` (2300 clips) took 42 ms at 1x and 180 ms at 4x CPU throttle against the budget of <= 8 ms apply + patch at 5k clips (`docs/PERFORMANCE.md`). ADR 0006 already says "applying an op returns ... a patch for the UI"; until now only `changed` and the undo flags came back.
 
