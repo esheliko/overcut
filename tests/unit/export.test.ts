@@ -436,3 +436,22 @@ test("mixer: a clip whose speed is not 1 plays its pre-stretched audio (pitch ke
   await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 5, layers: [], audio: [seg] }, 5, new Float32Array(10));
   assert.equal(reads.length, 1, "the stretched clip is cached");
 });
+
+test("audio ends with the picture: the encoder's padding packet is dropped and a straddling one is cut back (#138)", async () => {
+  const { fitAudioPacket } = await import("../../packages/engine-client/src/export/mux");
+  const end = 2; // a 2 s edit: 96 000 samples, 100 Opus packets of 20 ms
+  assert.equal(fitAudioPacket(0, 0.02, end), 0.02);
+  assert.equal(fitAudioPacket(1.98, 0.02, end), 0.02, "the last real packet ends exactly at the end");
+  assert.equal(fitAudioPacket(2.0, 0.02, end), null, "the 101st, padded packet starts at the end: dropped");
+  assert.equal(fitAudioPacket(2.02, 0.02, end), null);
+  assert.ok(Math.abs((fitAudioPacket(1.99, 0.02, end) ?? 0) - 0.01) < 1e-12, "a packet that straddles the end is cut back to it");
+  assert.equal(fitAudioPacket(5, 0.02, undefined), 0.02, "no end: unchanged");
+  // Whatever the length, the kept packets add up to the edit's length within one packet (here: exactly).
+  for (const seconds of [0.5, 2, 7, 61.7]) {
+    const samples = Math.round(seconds * 48_000);
+    const packets = Math.ceil(samples / 960) + 1; // the encoder's flush adds one more
+    let kept = 0;
+    for (let i = 0; i < packets; i++) kept += fitAudioPacket((i * 960) / 48_000, 960 / 48_000, samples / 48_000) ?? 0;
+    assert.ok(Math.abs(kept - samples / 48_000) < 1e-9, `${seconds} s: ${kept}`);
+  }
+});
