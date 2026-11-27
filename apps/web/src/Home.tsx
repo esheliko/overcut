@@ -2,6 +2,7 @@ import type { ProjectEntry } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./home-library.css";
 import { useI18n } from "./i18n";
+import { VisuallyHidden } from "./a11y/VisuallyHidden";
 import { Icon } from "./icons";
 import { ConfirmDialog, Modal } from "./ProjectDialogs";
 import { ProjectMenu, type MenuItem } from "./ProjectMenu";
@@ -145,7 +146,8 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
               ].filter(Boolean).join(" · ");
               return (
                 <li key={e.id} className="project-card lib-card" data-testid="project-card" data-id={e.id} data-current={e.id === current} data-archived={archived}>
-                  <button className="project-open" onClick={() => onOpen(e)} disabled={busy} data-testid="project-open" aria-label={t("projects.open", { name: nameOf(e) })}>
+                  <button className="project-open" onClick={() => onOpen(e)} disabled={busy} data-testid="project-open">
+                    <VisuallyHidden>{t("projects.openVerb")}</VisuallyHidden>
                     <span className="poster" aria-hidden="true" data-poster={validPoster(e.poster)} style={e.colour ? ({ ["--tint" as string]: e.colour }) : undefined}>
                       {validPoster(e.poster)
                         ? <img src={e.poster} alt="" width={320} height={180} decoding="async" loading="lazy" draggable={false} />

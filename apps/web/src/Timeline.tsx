@@ -12,7 +12,7 @@ import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, 
 import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { clipboardState } from "./commands/availability";
 import { COMMAND_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
-import { addMarkerPlan, clearRangePlan, loopPlan, rangePlan } from "./timeline/markers";
+import { addMarkerPlan, clearRangePlan, frameTick, loopPlan, markerAtTick, moveMarkerPlan, rangePlan } from "./timeline/markers";
 import { MarkerMenu, type MarkerAction } from "./timeline/MarkerMenu";
 import { deleteMarkerOp, newProject, setMarkerPropsOp } from "@app/engine-client";
 import { hopStep } from "./timeline/arrange";
@@ -371,9 +371,19 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     if (r) commit(r.ops, r.say);
   }, [commit, speak, onNotice, t]);
   const markerAction = useCallback((a: MarkerAction) => {
+    if (a.a === "toPlayhead") { // the menu way to drag a marker: it jumps to the playhead (a marker already there: said, not moved)
+      const sc = live.current.scene;
+      const at = frameTick(sc, Math.round((store.getState().playhead * TICKS_PER_SECOND) / FPS));
+      const from = sc.markers.find((m) => m.id === a.id);
+      if (!from || from.ticks === at) { speak(say("timeline.say.marker.stays")); onNotice(t("timeline.say.marker.stays")); return; }
+      if (markerAtTick(sc, at) >= 0) { speak(say("timeline.say.marker.exists")); onNotice(t("timeline.say.marker.exists")); return; }
+      const plan = moveMarkerPlan(sc, a.id, at);
+      commit(plan.ops, plan.say);
+      return;
+    }
     const op = a.a === "rename" ? setMarkerPropsOp(a.id, { name: a.name }) : a.a === "colour" ? setMarkerPropsOp(a.id, { colour: a.colour }) : a.a === "chapter" ? setMarkerPropsOp(a.id, { kind: a.chapter ? "chapter" : "marker" }) : deleteMarkerOp(a.id);
     commit([op], say(a.a === "delete" ? "timeline.say.marker.deleted" : "timeline.say.marker.edited"));
-  }, [commit]);
+  }, [commit, speak, onNotice, t]);
   const openMenu = useCallback((target: TrackMenuTarget, anchor: DOMRect) => setMenu({ target, anchor }), []);
 
   // Shortcuts that work anywhere except while typing in a field.

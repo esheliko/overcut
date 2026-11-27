@@ -8,7 +8,7 @@ test("accent: pick a colour in the menu, it applies at once, is remembered after
   await page.getByRole("button", { name: "Menu" }).click();
   const picker = page.getByTestId("accent-picker");
   await expect(picker).toBeVisible();
-  const swatches = picker.getByRole("radio");
+  const swatches = picker.getByRole("menuitemradio");
   await expect(swatches).toHaveCount(7);
   for (const s of await swatches.all()) expect((await s.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   const before = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());

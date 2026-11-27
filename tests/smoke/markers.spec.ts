@@ -44,3 +44,24 @@ test("add, rename and delete a marker; set, loop and clear the in/out range", as
   await pick("tl-range-clear");
   await expect(live).toContainText("cleared");
 });
+
+// M2 UX r12 a11y (WCAG 2.5.7): dragging a marker has a single-pointer / keyboard way: its menu's "Move to playhead".
+test("a marker moves to the playhead from its menu (no drag)", async ({ page }, info) => {
+  test.skip(info.project.name === "phone", "right-click on the flag; the phone opens the same menu by a long press");
+  await page.goto("/?sample");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  const live = page.locator('[data-announcer="polite"]');
+  await page.getByTestId("tl-more").click();
+  await page.getByTestId("tl-marker-add").click();
+  await expect(live).toContainText("Marker added");
+  for (let i = 0; i < 5; i++) await page.getByRole("button", { name: "Next frame" }).click();
+  const cv = page.getByTestId("timeline-canvas");
+  const box = (await cv.boundingBox())!;
+  const g = Number(await cv.getAttribute("data-gutter"));
+  await page.mouse.click(box.x + g + 3, box.y + 8, { button: "right" }); // the flag of the marker at 0
+  await expect(page.getByTestId("marker-menu")).toBeVisible();
+  await page.getByTestId("marker-to-playhead").click();
+  await expect(live).toContainText("Marker moved");
+  await page.getByTestId("tl-more").click();
+  await expect(page.getByTestId("tl-marker-edit")).not.toHaveAttribute("aria-disabled", "true"); // the playhead is on a marker now
+});

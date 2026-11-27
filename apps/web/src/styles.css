@@ -25,7 +25,8 @@ h2, p { margin: 0; }
 .logo { display: grid; place-items: center; width: 26px; height: 26px; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-ink); }
 .project-name { width: min(46vw, 260px); height: var(--target); padding: 0 12px; text-align: center; font-weight: 600; background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); text-overflow: ellipsis; }
 .project-name:hover { background: var(--surface-2); }
-.project-name:focus { background: var(--surface-2); border-color: var(--line-strong); outline: none; }
+.project-name:focus { background: var(--surface-2); border-color: var(--line-strong); }
+.project-name:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; } /* a11y r12: the shared 2 px ring (the border change alone was a 1 px cue) */
 .top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
 .chip { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 10px; color: var(--muted); font-size: var(--text-xs); border-radius: 999px; background: var(--surface-2); }
 .chip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -84,7 +85,7 @@ h2, p { margin: 0; }
 .search { display: flex; align-items: center; gap: 8px; margin: 4px var(--panel-pad) 8px; padding: 0 12px; height: max(40px, var(--target)); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--muted); }
 .search input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: none; color: var(--fg); }
 .search input::placeholder { color: var(--muted); }
-.search:focus-within { box-shadow: 0 0 0 2px var(--accent); }
+.search:focus-within { box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring); }
 .search input:disabled { opacity: 0.5; }
 .panel-body { flex: 1; min-height: 0; overflow: auto; padding: 8px var(--panel-pad) 16px; display: grid; }
 .dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 160px; padding: 20px; text-align: center; background: var(--surface-2); border: 1.5px dashed var(--line-strong); border-radius: var(--radius); color: var(--muted); transition: border-color var(--dur-fast), background var(--dur-fast); }
@@ -150,7 +151,7 @@ h2, p { margin: 0; }
 .tl-rename label { display: grid; gap: 4px; color: var(--muted); font-size: var(--text-xs); }
 .tl-rename input { min-height: 44px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); width: 100%; min-width: 0; box-sizing: border-box; font: inherit; font-size: var(--text-md); }
 .tl-menu-note { padding: 4px 12px 8px; margin: 0; }
-.tl-stage:has(.tl-canvas:focus-visible:not([data-pointer]))::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 50%, transparent); } /* keyboard focus only: a slimmer, softened inset frame in the focus token (an inset shadow is not drawn on a canvas itself) */
+.tl-stage:has(.tl-canvas:focus-visible:not([data-pointer]))::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring); } /* keyboard focus only: the shared 2 px ring in the focus token as an inset frame (an inset shadow is not drawn on a canvas itself; a11y r12: was 1 px at 50%, below the 3:1 / 2 px bar) */
 
 .toast { position: fixed; z-index: 40; left: 50%; top: calc(env(safe-area-inset-top) + var(--top, 52px) + 8px); transform: translate(-50%, -8px); width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface-3); color: var(--fg); box-shadow: var(--elev-2); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity var(--dur-toast) var(--ease-out), transform var(--dur-toast) var(--ease-out); }
 /* On the Projects home there is no timeline: the notice goes back to the bottom so it never covers the header buttons. */
@@ -229,8 +230,8 @@ h2, p { margin: 0; }
   .library::before, .library[data-open="true"]::before, .sheet-close { display: none; }
   /* One tool (Media) and its panel always open: no rail, its column goes to the panels */
   .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
-  .splitter { display: block; grid-area: timeline; align-self: start; justify-self: stretch; position: relative; z-index: 6; block-size: 12px; margin-block-start: -9px; cursor: row-resize; touch-action: none; border-radius: 6px; }
-  .splitter > span { position: absolute; inset-block-start: 4px; inset-inline-start: 50%; inline-size: 48px; block-size: 4px; margin-inline-start: -24px; border-radius: 2px; background: var(--line-strong); opacity: 0; transition: opacity var(--dur-fast), background var(--dur-fast); }
+  .splitter { display: block; grid-area: timeline; align-self: start; justify-self: stretch; position: relative; z-index: 6; block-size: 24px; margin-block-start: -15px; cursor: row-resize; touch-action: none; border-radius: 6px; }
+  .splitter > span { position: absolute; inset-block-start: 10px; inset-inline-start: 50%; inline-size: 48px; block-size: 4px; margin-inline-start: -24px; border-radius: 2px; background: var(--line-strong); opacity: 0; transition: opacity var(--dur-fast), background var(--dur-fast); }
   .splitter:hover > span, .splitter:focus-visible > span, .splitter:active > span { opacity: 1; }
   .splitter:active > span, .splitter:focus-visible > span { background: var(--accent); }
   .splitter:focus-visible { outline: none; }
@@ -792,3 +793,12 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .bg-custom { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--text-sm); }
 .bg-custom input[type="color"] { inline-size: 44px; block-size: 44px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; }
 @media (max-width: 480px) { .bg-fields { grid-template-columns: minmax(0, 1fr); } }
+
+/* a11y r12 (WCAG 2.4.11 Focus Not Obscured): where a scroller has a sticky header or footer, a focused control scrolls into view clear of it, not underneath it.
+   Heights: export footer = 12 + 44 + 12 (+ the bottom inset), head about 60, the sticky Reset row of the inspector about 68. */
+.export-dialog { scroll-padding-block: 72px calc(92px + env(safe-area-inset-bottom)); }
+.edit-sheet { scroll-padding-block-start: 56px; }
+.panel-body { scroll-padding-block-end: 80px; }
+/* a11y r12: in the phone Edit sheet the 40 px drag handle overlapped the top half of the mini transport's Play button (a tap there grabbed the handle). The row sits above the handle; only its buttons take the pointer, the empty part of the row still drags the sheet. */
+.mini-transport { position: relative; z-index: 3; pointer-events: none; }
+.mini-transport > button { pointer-events: auto; }

@@ -9,6 +9,7 @@ export type MarkerAction =
   | { a: "rename"; id: string; name: string }
   | { a: "colour"; id: string; colour: string | null }
   | { a: "chapter"; id: string; chapter: boolean }
+  | { a: "toPlayhead"; id: string }
   | { a: "delete"; id: string };
 
 type Props = { marker: SceneMarker; anchor: DOMRect; onAct: (a: MarkerAction) => void; onClose: () => void };
@@ -67,6 +68,8 @@ export function MarkerMenu({ marker, anchor, onAct, onClose }: Props) {
       <button className="menu-row" role="menuitemcheckbox" aria-checked={marker.chapter} data-testid="marker-chapter" onClick={() => act({ a: "chapter", id: marker.id, chapter: !marker.chapter })}>
         <span className="menu-check" aria-hidden="true">{marker.chapter && <Icon name="check" size={16} />}</span><span>{t("marker.chapter")}</span>
       </button>
+      {/* The single-pointer alternative to dragging the flag (WCAG 2.5.7): park the playhead, then move the marker there. */}
+      <button className="menu-row" role="menuitem" data-testid="marker-to-playhead" onClick={() => act({ a: "toPlayhead", id: marker.id })}>{t("marker.toPlayhead")}</button>
       <button className="menu-row" role="menuitem" data-danger="true" data-testid="marker-delete" onClick={() => act({ a: "delete", id: marker.id })}>{t("marker.delete")}</button>
     </div>
   );

@@ -66,7 +66,7 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
   return (
     <div ref={box} className={sheet ? "menu-pop tl-menu tl-sheet" : "menu-pop tl-menu"} role="menu" aria-label={name} data-testid={testid ?? "toolbar-menu"} onKeyDown={onKey}
       style={sheet ? undefined : { left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}>
-      {sheet && <div className="tl-sheet-title">{name}<button className="icon-btn" aria-label={t("timeline.close")} onClick={close}><Icon name="close" size={18} /></button></div>}
+      {sheet && <div className="tl-sheet-title">{name}<button className="icon-btn" role="menuitem" aria-label={t("timeline.close")} onClick={close}><Icon name="close" size={18} /></button></div>}
       {items.map((it) => {
         const head = it.section && it.section !== section ? <div key={`s-${it.id}`} className="menu-group" role="presentation">{it.section}</div> : null;
         section = it.section ?? section;

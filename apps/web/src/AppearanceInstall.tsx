@@ -7,7 +7,7 @@ import { useInstall } from "./install";
 import { loadScrubPrep, saveScrubPrep } from "./preview/strip/setting";
 import { ACCENTS, ACCENT_SWATCH, applyAccent, loadAccent, saveAccent, type Accent } from "./theme/theme";
 
-/** A radio group of colour swatches (44 px targets). The choice is stored on this device only. */
+/** A group of colour swatches (menuitemradio: it lives inside the app menu, whose only allowed children are menu items and groups) (44 px targets). The choice is stored on this device only. */
 export function AccentPicker() {
   const { t } = useI18n();
   const [accent, setAccent] = useState<Accent>(loadAccent);
@@ -18,11 +18,11 @@ export function AccentPicker() {
     announce(t("accent.changed", { accent: t(`accent.${a}`) }));
   };
   return (
-    <div className="menu-accent" role="radiogroup" aria-label={t("accent.label")} data-testid="accent-picker">
+    <div className="menu-accent" role="group" aria-label={t("accent.label")} data-testid="accent-picker">
       <span className="menu-accent-title" aria-hidden="true">{t("accent.label")}</span>
       <div className="menu-accent-row">
         {ACCENTS.map((a) => (
-          <button key={a} role="radio" aria-checked={accent === a} aria-label={t(`accent.${a}`)} title={t(`accent.${a}`)} className="swatch" data-testid={`accent-${a}`} data-checked={accent === a} onClick={() => pick(a)}>
+          <button key={a} role="menuitemradio" aria-checked={accent === a} aria-label={t(`accent.${a}`)} title={t(`accent.${a}`)} className="swatch" data-testid={`accent-${a}`} data-checked={accent === a} onClick={() => pick(a)}>
             <span className="swatch-dot" style={{ background: ACCENT_SWATCH[a] }} aria-hidden="true" />
           </button>
         ))}
