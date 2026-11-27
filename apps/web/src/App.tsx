@@ -193,7 +193,8 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
           <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><Icon name="search" size={16} className="menu-ic" /><span>{t("palette.open")}</span>{!compact && <kbd className="menu-hint">{paletteKey()}</kbd>}</button>
           {compact && (
             <>
-              {/* Small phones: the theme choices are listed here (F3), not cycled. */}
+              {/* Small phones: the theme choices are listed here (F3), not cycled; a heading says what the three rows are. */}
+              <div className="menu-group" role="presentation">{t("theme.label")}</div>
               {THEME_PREFS.map((p) => (
                 <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref && <Icon name="check" size={16} />}</span><span>{t(`theme.${p}`)}</span></button>
               ))}

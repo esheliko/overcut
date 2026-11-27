@@ -94,7 +94,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
       <header className="home-head">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong></div>
         <div className="home-actions">
-          <button className="export-secondary" onClick={onOpenFile} disabled={busy} title={t("projects.openFile.hint")} data-testid="projects-open-file"><Icon name="upload" size={18} />{t("projects.openFile")}</button>
+          <button className="export-secondary" onClick={onOpenFile} disabled={busy} title={t("projects.openFile.hint")} data-testid="projects-open-file"><Icon name="upload" size={18} /><span className="home-btn-label">{t("projects.openFile")}</span></button>
           <button className="export-go" onClick={onNew} disabled={busy} data-testid="projects-new"><Icon name="plus" size={18} />{t("projects.new")}</button>
         </div>
       </header>
