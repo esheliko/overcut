@@ -67,11 +67,10 @@ jobs:
             echo "$out"
             fail "$(echo "$out" | grep -iE 'error|limit|refus|api-' | head -3 | tr '\n' ' ')"
           fi
-          url=$(echo "$out" | tail -1)
-          case "$url" in https://*) ;; *) echo "$out"; fail "Vercel returned no deployment URL" ;; esac
+          url=$(echo "$out" | node scripts/vercel-url.mjs) || { echo "$out"; fail "Vercel returned no deployment URL"; }
           slug=$(echo "$BRANCH" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]\+/-/g; s/^-//; s/-$//' | cut -c1-40 | sed 's/-$//')
           alias="${GITHUB_REPOSITORY#*/}-${slug}.vercel.app"
           if npx --yes vercel@66 alias set "$url" "$alias" --token "$VERCEL_TOKEN"; then link="https://$alias"; else echo "::warning::alias failed, using the plain preview URL"; link="$url"; fi
           echo "### Preview for \`$BRANCH\`: $link" >> "$GITHUB_STEP_SUMMARY"
-          body="Preview for \`$BRANCH\` (commit ${SHA::7}): $link"
+          body="Preview for \`$BRANCH\` (commit ${SHA::7}): $link (needs a Vercel sign-in: Deployment Protection is on)"
           gh pr comment "$PR" --edit-last --create-if-none --body "$body" || gh pr comment "$PR" --body "$body"
