@@ -502,6 +502,37 @@ test("decoder adapter: two layers of one frame may read the same media at differ
   assert.equal(m.asked.length, 8);
 });
 
+test("decoder adapter: sequential export decodes through one stream (each picture once), skips frames it does not need, restarts for a backward or far jump, and falls back when streaming fails", async () => {
+  const m = fakeMedia({ fps: { num: 30, den: 1 }, packets: 600 });
+  const h = (await m.api.open(new Blob(["x"]))) as unknown as MediaHandle & { stream?: unknown };
+  const starts: number[] = [];
+  let streamReleased = 0;
+  let fail = false;
+  h.stream = (start: number) => {
+    starts.push(start);
+    let i = start;
+    return {
+      next: async () => { if (fail) throw new Error("no stream"); return { kind: "gpu", index: i++, ptsTicks: 0, width: 160, height: 120, frame: {} as VideoFrame, release: () => void streamReleased++ }; },
+      buffered: () => 0,
+      close: () => undefined,
+    };
+  };
+  const opened = await openBlobMedia({ open: async () => h } as MediaApi, new Blob(["x"]), 48000, "clip");
+  const at = (frame: number) => Math.round((frame / 30) * T);
+  for (const f of [0, 1, 2, 4, 5]) (await opened.video!.frame(at(f))).close(); // (ask, draw, close) frame 3 is skipped (a speed-up): pulled and released
+  assert.deepEqual(starts, [0], "one stream for the whole forward run");
+  assert.deepEqual(m.asked, [], "no random-access decode");
+  assert.equal(streamReleased, 5, "skipped and replaced frames are released (the last one is still held)");
+  await opened.video!.frame(at(400)); // far ahead: restart there instead of decoding 400 frames
+  assert.deepEqual(starts, [0, 400]);
+  await opened.video!.frame(at(10)); // backward: random access, the stream is left alone
+  assert.deepEqual(m.asked, [10]);
+  fail = true;
+  await opened.video!.frame(at(401)); // stream breaks: this and every later frame use random access
+  await opened.video!.frame(at(402));
+  assert.deepEqual(m.asked, [10, 401, 402]);
+});
+
 test("decoder adapter: mono audio fills both channels, stereo deinterleaves", async () => {
   const mono = await openBlobMedia(fakeMedia({ channels: 1 }).api, new Blob(["x"]), 48000, "m");
   const out = [new Float32Array(3), new Float32Array(3)];

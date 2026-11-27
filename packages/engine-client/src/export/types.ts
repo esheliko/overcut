@@ -112,6 +112,10 @@ export interface ExportStats {
   peakEncodeQueue: number;
   /** Codec strings actually used, e.g. "avc1.640028 + mp4a.40.2". */
   codecs: string;
+  /** Where the time went, ms summed over the run: `evaluate`, `render`, `decode` and `composite` (parts of `render`), `encode`, `audio`, `wait` (waiting for the encoder). Whatever dominates is what to speed up. */
+  timingMs?: Record<string, number>;
+  /** How frames reached the encoder: `canvas` (VideoFrame of the compositor's canvas, no readback) or `readback`. */
+  capture?: string;
   /** Compatibility level that finally worked (0 = the normal preset; see `ExportSettings.safeLevel`). */
   safeLevel?: number;
   /** Attempts that failed before this one worked (empty or absent when the first one did). */
