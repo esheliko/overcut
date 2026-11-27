@@ -19,6 +19,10 @@
 .th-se { left: 100%; top: 100%; cursor: nwse-resize; } .th-sw { left: 0; top: 100%; cursor: nesw-resize; }
 .th-rot { left: 50%; top: -30px; cursor: grab; }
 .th-rot::after { background: var(--accent); box-shadow: 0 0 0 2px #fff; }
+/* Snap guides while a move catches the canvas centre or an edge (preview/TransformHandles.tsx): a hairline across the frame, outlined so it reads on any picture. */
+.th-guide { position: absolute; z-index: 3; pointer-events: none; background: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--stage) 55%, transparent); }
+.th-guide-v { top: 0; bottom: 0; inline-size: 1px; margin-inline-start: -0.5px; }
+.th-guide-h { left: 0; right: 0; block-size: 1px; margin-block-start: -0.5px; }
 
 /* The handles' 44 px hit areas can poke past the canvas edge: never let them widen the page. */
 .stage-view { overflow: clip; }

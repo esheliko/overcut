@@ -72,6 +72,7 @@ h2, p { margin: 0; }
 .mini-transport { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding-block: 0; padding-inline: 16px 60px; min-block-size: 52px; border-block-end: 1px solid var(--line); }
 .mini-tc { margin-inline-end: auto; direction: ltr; font: 600 15px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
 .mini-transport .play { inline-size: 44px; block-size: 44px; }
+.mini-transport > button { flex: none; } /* at 320 px the row is tight: the buttons keep their 44 px instead of giving way (Play was 43) */
 .sheet-close { position: absolute; z-index: 3; top: 12px; inset-inline-end: 8px; }
 @keyframes rise { from { transform: translateY(24px); opacity: 0; } }
 
@@ -433,12 +434,12 @@ h2, p { margin: 0; }
 .export-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; padding: 0; border: 0; min-inline-size: 0; }
 .export-presets legend { grid-column: 1 / -1; padding: 0 0 var(--space-2); font-weight: 600; font-size: var(--text-sm); color: var(--muted); }
 @media (max-width: 420px) { .export-presets { grid-template-columns: minmax(0, 1fr); } }
-.export-chip-choice { position: relative; display: flex; align-items: center; gap: var(--space-3); block-size: 72px; padding: 0 var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); cursor: pointer; min-inline-size: 0; transition: border-color var(--dur-fast), background var(--dur-fast); }
+.export-chip-choice { position: relative; display: flex; align-items: center; gap: var(--space-3); min-block-size: 72px; padding: var(--space-2) var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); cursor: pointer; min-inline-size: 0; transition: border-color var(--dur-fast), background var(--dur-fast); }
 .export-chip-choice:hover { background: var(--surface-3); }
 .ex-ic { flex: none; display: grid; place-items: center; inline-size: 36px; block-size: 36px; border-radius: var(--radius-sm); background: var(--surface-3); color: var(--muted); }
 .ex-tx { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; flex: 1; }
 .ex-tx strong { font-size: var(--text-base); font-weight: 600; line-height: var(--lh-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ex-tx span { color: var(--muted); font-size: var(--text-xs); line-height: var(--lh-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-tx span { color: var(--muted); font-size: var(--text-xs); line-height: var(--lh-ui); overflow-wrap: anywhere; } /* the hint says what the preset does (size cap, black bars): it wraps in full (the tile grows), it is not cut off with an ellipsis */
 .ex-check { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; display: none; place-items: center; inline-size: 18px; block-size: 18px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
 .export-chip-choice[data-checked="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
 .export-chip-choice[data-checked="true"] .ex-ic { background: var(--accent); color: var(--accent-ink); }
@@ -473,6 +474,7 @@ h2, p { margin: 0; }
 .export-facts div { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-2); min-inline-size: 0; }
 .export-facts dt { color: var(--muted); font-size: var(--text-sm); }
 .export-facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.export-facts div:first-child { grid-column: 1 / -1; } /* the file name gets the whole row: "OverCut export 2026-11-27.mp4" broke before the day in a half-width cell */
 .pj-dialog { inline-size: min(480px, calc(100vw - 24px)); max-block-size: min(92dvh, 760px); margin: auto; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--elev-3); overflow: auto; }
 .pj-dialog h2 { font-size: var(--text-lg); font-weight: 600; outline: none; }
 .export-fields input { min-block-size: var(--target); padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); font-size: var(--text-base); min-inline-size: 0; }
@@ -762,7 +764,8 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .library[data-detent="peek"] .insp > .insp-row:last-child { position: static; margin-block-end: 0; padding-block: 0; }
 .insp-info { align-self: start; align-content: start; }
 .insp-body { align-content: start; } /* hint, then project info, packed at the top (the grid used to stretch its rows: a big gap, tall Speed rows) */
-.insp-info > div { align-items: baseline; }
+.insp-info > div { align-items: baseline; flex-wrap: wrap; }
+.insp-info dd { margin-inline-start: auto; white-space: nowrap; max-inline-size: 100%; overflow: hidden; text-overflow: ellipsis; } /* "16:9 · 320 × 180 · 30 fps" stays one line: it drops under its label rather than breaking before "fps" */
 
 /* TL-19: the canvas dialog's background row: the mode and blur amount are ordinary fields; the colour swatches reuse .swatch (44 px targets). */
 .bg-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; }

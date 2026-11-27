@@ -90,5 +90,51 @@ test("inspector: fields edit the selected clip's transform, undo reverts, reset 
     await page.getByRole("button", { name: UNDO }).click();
     await expect(x).toHaveValue("0");
     await expect(page.getByTestId("insp-position_y")).toHaveValue("0");
+
+    // Snapping: a drag that ends a few pixels from the canvas centre lands on it (0 %, guide lines shown while it holds); Alt moves freely.
+    const c = (await body.boundingBox())!;
+    const [cx, cy] = [c.x + c.width / 2, c.y + c.height / 2];
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 80, cy + 50, { steps: 4 });
+    await expect(page.getByTestId("snap-guide-x")).toHaveCount(0); // far from every line: no guide
+    await page.mouse.move(cx + 3, cy + 2, { steps: 4 });
+    await expect(page.getByTestId("snap-guide-x")).toBeVisible();
+    await expect(page.getByTestId("snap-guide-y")).toBeVisible();
+    await page.mouse.up();
+    await expect(page.getByTestId("snap-guide-x")).toHaveCount(0);
+    await expect(x).toHaveValue("0");
+    await expect(page.getByTestId("insp-position_y")).toHaveValue("0");
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.keyboard.down("Alt");
+    await page.mouse.move(cx + 80, cy + 50, { steps: 4 });
+    await page.mouse.move(cx + 3, cy + 2, { steps: 4 });
+    await page.mouse.up();
+    await page.keyboard.up("Alt");
+    await expect(x).not.toHaveValue("0");
+  }
+});
+
+test("phone Edit sheet at 320 px: the mini transport keeps 44 px buttons", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone", "phone sheet only");
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto("/");
+  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
+  await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
+  await page.getByTestId("media-input").setInputFiles(FLASH);
+  await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true");
+  await page.getByRole("button", { name: "Close panel" }).click({ timeout: 3000 }).catch(() => undefined); // the Media sheet may have closed itself
+  const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
+  const dg = await gutterShift(page);
+  await page.touchscreen.tap(box.x + dg + 68, box.y + 56);
+  await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
+  const strip = page.getByTestId("mini-transport");
+  await expect(strip).toBeVisible();
+  for (const b of await strip.getByRole("button").all()) {
+    const r = (await b.boundingBox())!;
+    expect(r.width).toBeGreaterThanOrEqual(44);
+    expect(r.height).toBeGreaterThanOrEqual(44);
   }
 });
