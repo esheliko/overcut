@@ -1,7 +1,7 @@
-import { useRef, type PointerEvent as RPointerEvent } from "react";
+import { useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import type { Clip } from "@app/engine-client";
 import { placeLayer } from "@app/engine-client";
-import { newGestureKey, setFields, snapRotation, valuesOf, type NumKey } from "../inspector/transformModel";
+import { newGestureKey, setFields, snapMove, snapRotation, valuesOf, type NumKey, type SnapGuides } from "../inspector/transformModel";
 import "../inspector/inspector.css";
 
 type Mode = "move" | "scale" | "rotate";
@@ -15,6 +15,8 @@ interface Drag {
   cy: number;
   v: ReturnType<typeof valuesOf>;
   box: DOMRect;
+  /** The picture's axis-aligned box in canvas pixels when the drag began (centre and half sizes): what a move snaps. */
+  rc: { cx: number; cy: number; hw: number; hh: number };
 }
 
 interface Props {
@@ -36,6 +38,7 @@ interface Props {
  */
 export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }: Props) {
   const drag = useRef<Drag | null>(null);
+  const [guides, setGuides] = useState<SnapGuides>({});
   const tr = clip.transform;
   const v = valuesOf(tr, rel);
   const display = picture ?? canvas;
@@ -80,14 +83,22 @@ export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }:
     e.currentTarget.setPointerCapture(e.pointerId);
     const pivotX = box.left + (0.5 + v.position_x) * box.width;
     const pivotY = box.top + (0.5 + v.position_y) * box.height;
-    drag.current = { mode, key: newGestureKey(), px: e.clientX, py: e.clientY, cx: pivotX, cy: pivotY, v, box };
+    drag.current = { mode, key: newGestureKey(), px: e.clientX, py: e.clientY, cx: pivotX, cy: pivotY, v, box, rc: { cx: cxs, cy: cys, hw: (Math.abs(vw * c) + Math.abs(vh * s)) / 2, hh: (Math.abs(vw * s) + Math.abs(vh * c)) / 2 } };
   };
   const move = (e: RPointerEvent<HTMLElement>) => {
     const d = drag.current;
     if (!d) return;
     let patch: Partial<Record<NumKey, number>>;
     if (d.mode === "move") {
-      patch = { position_x: d.v.position_x + (e.clientX - d.px) / d.box.width, position_y: d.v.position_y + (e.clientY - d.py) / d.box.height };
+      let [px, py] = [d.v.position_x + (e.clientX - d.px) / d.box.width, d.v.position_y + (e.clientY - d.py) / d.box.height];
+      // Pull the picture onto the canvas centre / edges within 6 screen px (hold Alt to move freely); the guide lines show what it caught.
+      let hit: SnapGuides = {};
+      if (!e.altKey) {
+        const sn = snapMove({ cx: d.rc.cx + (px - d.v.position_x) * canvas.width, cy: d.rc.cy + (py - d.v.position_y) * canvas.height, hw: d.rc.hw, hh: d.rc.hh }, canvas, (6 * canvas.width) / d.box.width);
+        px += sn.dx / canvas.width; py += sn.dy / canvas.height; hit = sn.guides;
+      }
+      setGuides((g) => (g.x === hit.x && g.y === hit.y ? g : hit));
+      patch = { position_x: px, position_y: py };
     } else if (d.mode === "scale") {
       const d0 = Math.hypot(d.px - d.cx, d.py - d.cy) || 1;
       const k = Math.hypot(e.clientX - d.cx, e.clientY - d.cy) / d0;
@@ -101,11 +112,14 @@ export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }:
     }
     onEdit(setFields(tr, patch), d.key);
   };
-  const end = () => { drag.current = null; };
+  const end = () => { drag.current = null; setGuides((g) => (g.x === undefined && g.y === undefined ? g : {})); };
   const evt = { onPointerMove: move, onPointerUp: end, onPointerCancel: end };
   const pc = (x: number, total: number) => `${(x / total) * 100}%`;
 
   return (
+    <>
+    {guides.x !== undefined && <div className="th-guide th-guide-v" data-testid="snap-guide-x" style={{ left: pc(guides.x * canvas.width, canvas.width) }} />}
+    {guides.y !== undefined && <div className="th-guide th-guide-h" data-testid="snap-guide-y" style={{ top: pc(guides.y * canvas.height, canvas.height) }} />}
     <div className="th" aria-hidden={false} style={{ left: pc(cxs, canvas.width), top: pc(cys, canvas.height), width: pc(vw, canvas.width), height: pc(vh, canvas.height), transform: `translate(-50%, -50%) rotate(${p.angle}rad)` }}>
       <div className="th-body" data-testid="transform-body" onPointerDown={start("move")} {...evt} />
       {(["nw", "ne", "se", "sw"] as const).map((k) => (
@@ -113,5 +127,6 @@ export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }:
       ))}
       <span className="th-rot" data-testid="transform-rotate" style={kept(0, -kh - 30)} onPointerDown={start("rotate")} {...evt} />
     </div>
+    </>
   );
 }

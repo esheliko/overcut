@@ -37,6 +37,9 @@ test("one click on Export (the smart default) makes a file and saves it", async 
   for (const c of await chips.all()) expect((await c.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(page.getByTestId("export-preset-original")).toBeChecked();
   await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
+  // R11: a tile's hint says what the preset does (size cap, black bars): it wraps, it is never cut off by an ellipsis.
+  const cut = await page.locator(".ex-tx span").evaluateAll((els) => els.filter((e) => e.scrollHeight > e.clientHeight + 1 || getComputedStyle(e).whiteSpace === "nowrap").map((e) => e.textContent));
+  expect(cut).toEqual([]);
   expect(await noOverflow(page)).toBeLessThanOrEqual(0);
   const box = (await dialog.boundingBox())!;
   if ((page.viewportSize()?.width ?? 0) < 720) expect(box.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 1); // full-screen sheet
@@ -46,6 +49,7 @@ test("one click on Export (the smart default) makes a file and saves it", async 
   await expect(page.getByTestId("export-done")).toBeVisible({ timeout: 90_000 });
   expect(Number((await page.getByTestId("export-filesize").innerText()).replace(/[^\d.]/g, ""))).toBeGreaterThan(0);
   await expect(page.getByTestId("export-filename")).toHaveText(/\.(mp4|webm)$/);
+  expect((await page.getByTestId("export-filename").boundingBox())!.height).toBeLessThan(30); // R11: the file name is one line, not broken mid-date
   expect(await noOverflow(page)).toBeLessThanOrEqual(0);
 
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("export-save").click()]);

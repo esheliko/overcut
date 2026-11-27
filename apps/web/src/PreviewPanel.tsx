@@ -354,7 +354,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
               )}
             </div>
           )}
-          {showHandles && handled && <HandlesLayer clip={handled} rate={rate} size={size} boxRef={boxRef} picture={pictureOf?.(handled.media)} hidden={playing} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
+          {showHandles && !playing && handled && <HandlesLayer clip={handled} rate={rate} size={size} boxRef={boxRef} picture={pictureOf?.(handled.media)} hidden={playing} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
           {prep !== null && <span className="scrub-prep" role="status" data-testid="scrub-prep">{t("scrub.preparing", { percent: prep })}</span>}
         </div>

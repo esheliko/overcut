@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { EASE_IN_OUT, LINEAR, HOLD, clipKeyTimes, easingId, easingOps, evalAnimated, keyState, neighbourKey, setKeyOps, toggleKeyOps } from "../../apps/web/src/inspector/keyframeModel";
-import { isIdentity, snapRotation, valuesOf } from "../../apps/web/src/inspector/transformModel";
+import { isIdentity, snapMove, snapRotation, valuesOf } from "../../apps/web/src/inspector/transformModel";
 
 const anim = { value: 0, keys: [{ t: 0, v: 0, easing: LINEAR }, { t: 1000, v: 100, easing: HOLD }, { t: 2000, v: 50 }] };
 
@@ -74,4 +74,21 @@ test("snapRotation: right angles within 3 degrees, Shift for 15 degree steps", (
   assert.equal(snapRotation(268.9, false), 270);
   assert.equal(snapRotation(100, true), 105);
   assert.equal(snapRotation(Number.NaN, false), Number.NaN);
+});
+
+test("snapMove: centre and canvas edges pull in within the tolerance, each axis on its own, nothing outside it", () => {
+  const canvas = { width: 1000, height: 500 };
+  // Centre 4 px right of the canvas centre: snaps back (dx -4), vertical far from anything.
+  const a = snapMove({ cx: 504, cy: 100, hw: 100, hh: 50 }, canvas, 6);
+  assert.deepEqual([a.dx, a.dy, a.guides], [-4, 0, { x: 0.5 }]);
+  // Left edge 3 px inside the canvas edge: snaps to it (dx -3); bottom edge 2 px short of the bottom: snaps (dy +2).
+  const b = snapMove({ cx: 203, cy: 448, hw: 200, hh: 50 }, canvas, 6);
+  assert.deepEqual([b.dx, b.dy, b.guides], [-3, 2, { x: 0, y: 1 }]);
+  // Right edge 5 px past the canvas edge.
+  assert.deepEqual(snapMove({ cx: 805, cy: 100, hw: 200, hh: 20 }, canvas, 6).dx, -5);
+  // Nothing within reach: no shift, no guides. The nearer of two candidates wins.
+  assert.deepEqual(snapMove({ cx: 300, cy: 120, hw: 50, hh: 30 }, canvas, 6), { dx: 0, dy: 0, guides: {} });
+  assert.equal(snapMove({ cx: 499, cy: 250, hw: 499.5, hh: 10 }, canvas, 6).dx, 0.5); // centre is 1 off, the left edge 0.5 off, the right edge 1.5 off: the closest wins
+  // A picture as wide as the canvas: centre and both edges tie, the centre guide is the one shown.
+  assert.deepEqual(snapMove({ cx: 503, cy: 250, hw: 500, hh: 250 }, canvas, 6).guides, { x: 0.5, y: 0.5 });
 });

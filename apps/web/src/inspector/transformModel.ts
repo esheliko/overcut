@@ -101,3 +101,26 @@ export function snapRotation(deg: number, shift: boolean): number {
   const near = Math.round(deg / 90) * 90 || 0; // `|| 0` keeps -0 out
   return Math.abs(deg - near) <= 3 ? near : deg;
 }
+
+/** Guide lines to draw while a move snaps, as fractions of the canvas (0 = left / top edge, 0.5 = centre, 1 = right / bottom edge). */
+export interface SnapGuides { x?: number; y?: number }
+
+/**
+ * Moving a picture on the preview: pull its visible box onto the canvas centre or edges. `box` is the axis-aligned bounding box of the picture at the
+ * position the pointer asks for (centre and half sizes, canvas pixels); within `tol` canvas pixels its centre lands on the canvas centre, or its left /
+ * right / top / bottom edge on the matching canvas edge. Returns the shift to add and the guides to draw. Pure; each axis snaps on its own.
+ */
+export function snapMove(box: { cx: number; cy: number; hw: number; hh: number }, canvas: { width: number; height: number }, tol: number): { dx: number; dy: number; guides: SnapGuides } {
+  const axis = (c: number, h: number, size: number): { d: number; at?: number } => {
+    let best: { d: number; at?: number } = { d: 0 };
+    let bestAbs = tol + 1e-9; // a tie (a picture as big as the canvas has its centre and its edges all on one line) keeps the centre, the first candidate
+    for (const [value, at] of [[c, 0.5], [c - h, 0], [c + h, 1]] as const) {
+      const d = at * size - value;
+      if (Math.abs(d) < bestAbs) { best = { d, at }; bestAbs = Math.abs(d); }
+    }
+    return best;
+  };
+  const x = axis(box.cx, box.hw, canvas.width);
+  const y = axis(box.cy, box.hh, canvas.height);
+  return { dx: x.d, dy: y.d, guides: { ...(x.at !== undefined ? { x: x.at } : {}), ...(y.at !== undefined ? { y: y.at } : {}) } };
+}

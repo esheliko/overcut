@@ -113,7 +113,13 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
   const store = useStore();
   const readOnly = useProjectStore((s) => s.readOnly);
   const pad = 2 * ticksPerFrame(rate); // two frames of margin keep the "on a key" tolerance exact next to the clip
-  const rel = useProjectStore((s) => Math.min(clip.duration + pad, Math.max(-pad, relativeTicks(clip, s.playhead, rate))));
+  // Follows the playhead frame by frame only when a property is animated (its value, key state and neighbours change with time). Otherwise the fields only
+  // need "is the playhead on the clip", so the selector answers 0 / -1 and the form stays put during playback (a key click reads the exact time itself).
+  const animated = Object.values(PROPS_OF).flat().some((p) => clip.transform?.[p]?.keys?.length);
+  const rel = useProjectStore((s) => {
+    const r = relativeTicks(clip, s.playhead, rate);
+    return animated ? Math.min(clip.duration + pad, Math.max(-pad, r)) : r >= 0 && r < clip.duration ? 0 : -1;
+  });
   const edit = useTransformEdit();
   const key = useRef<number | undefined>(undefined);
   const drag = useRef<{ x: number; v: number; moved: boolean } | null>(null); // a label drag-scrub in progress
@@ -215,7 +221,7 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
           aria-pressed={state === "on"}
           aria-label={t(state === "on" ? "inspector.removeKey" : "inspector.addKey", { name })}
           disabled={readOnly || !onClip}
-          onClick={() => void store.apply(toggleKeyOps(clip.id, tr, props, rel, tol, DEFAULT_OF[f.key]), undefined, label)}
+          onClick={() => void store.apply(toggleKeyOps(clip.id, tr, props, relativeTicks(clip, store.getState().playhead, rate), tol, DEFAULT_OF[f.key]), undefined, label)}
         >
           <Diamond filled={state === "on"} />
         </button>
