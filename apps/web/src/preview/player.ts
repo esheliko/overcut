@@ -149,6 +149,8 @@ export class Player {
   get isPlaying(): boolean { return this.playing; }
 
   /** True when nobody is playing or scrubbing and nothing happened for 400 ms: background work (the scrub strip) may run. */
+  /** Why `isIdle` is false, for the device report. */
+  idleState(): string { return `playing=${this.playing} scrubbing=${this.scrubbing} target=${!!this.scrubTarget} quietMs=${Math.round(performance.now() - this.lastActive)}`; }
   isIdle(): boolean { return !this.playing && !this.scrubbing && !this.scrubTarget && performance.now() - this.lastActive > 400; }
   get speed(): number { return this.rate; }
   get endFrame(): number { return Math.ceil((this.d.endTicks * this.d.rate.num) / (TICKS_PER_SECOND * this.d.rate.den)); }

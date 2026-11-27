@@ -107,7 +107,10 @@ async function decideWhenIdle(f: DecodedFrame & { kind: "gpu" }): Promise<void> 
   try {
     for (let tries = 0; !upload && tries < 40; tries++) {
       uploadState = `waiting-idle (try ${tries})`;
-      while (!(player?.isIdle() && !player.isPlaying)) await new Promise((r) => setTimeout(r, 250));
+      while (!(player?.isIdle() && !player.isPlaying)) {
+        uploadState = `waiting-idle (try ${tries}) ${player?.idleState() ?? "no player"}`;
+        await new Promise((r) => setTimeout(r, 250));
+      }
       uploadState = `measuring (try ${tries})`;
       const u = await decideUpload(sample, f.width, f.height).catch((e): UploadChoice => { uploadState = `measure-threw: ${e instanceof Error ? e.message : String(e)}`.slice(0, 120); return { path: "frame", ms: {}, source: "default" }; });
       if (!disturbed) { upload = u; uploadState = `done (${u.source})`; }
