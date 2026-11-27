@@ -16,7 +16,7 @@ test("inspector: fields edit the selected clip's transform, undo reverts, reset 
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
   if (phone) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(FLASH);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true");
 
   // Select the picture clip (its linked sound goes with it).

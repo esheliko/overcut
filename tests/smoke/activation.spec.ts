@@ -27,7 +27,7 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   const chooser = page.waitForEvent("filechooser");
   await hit(() => button(/^Import media$/).first().click());
   await (await chooser).setFiles(CLIP);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 30_000 });
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 30_000 });
 
   // 2. Trim: put the playhead 1 s in (click the ruler), Split, then select the first part and Delete it: the picture and its sound are linked, so ONE select and ONE Delete cover both.
   const canvas = page.getByTestId("timeline-canvas");
@@ -40,11 +40,11 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   const pointer = async (p: { x: number; y: number }) => (phone ? page.touchscreen.tap(p.x, p.y) : page.mouse.click(p.x, p.y));
   await hit(() => pointer({ x: box.x + gutter + 1 * pps, y: box.y + ruler / 2 }));
   await hit(() => button("Split at playhead").click());
-  await expect(page.locator("#tl-summary")).toContainText("4 clips");
+  await expect(page.locator("#tl-summary")).toContainText("2 clips");
   await hit(() => pointer(at(0.5, 0)));
   await expect(page.getByTestId("tl-selected")).toHaveText("1 clip + linked audio"); // one click is one clip; its sound came along
   await hit(() => button("Delete").and(page.locator('[title^="Delete"]')).click());
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   await expect(page.locator("#tl-summary")).toContainText("2 seconds"); // 3 s minus the 1 s cut off the front, and no empty stretch left in front
 
   // 3. Export with the defaults, then save.

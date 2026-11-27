@@ -13,7 +13,7 @@ test("empty timeline shows the start hint, hides it once a clip is in", async ({
   await page.screenshot({ path: "/tmp/claude-0/-home-user-overcut/d1542f7e-6dcf-52b8-b7c1-efef7b6b1a0e/scratchpad/empty-" + info.project.name + ".png" });
   if (info.project.name === "phone") await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(resolve("crates/media/tests/fixtures/flash_click.mp4"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   await expect(hint).toHaveCount(0);
 });
 

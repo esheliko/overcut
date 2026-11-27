@@ -50,7 +50,7 @@ test("canvas settings are a project edit (undo), survive an import, and new proj
   // 2. First import with a chosen canvas: the clip does not overwrite it.
   if (phone) await page.getByRole("navigation", { name: "Tools" }).getByRole("button").first().click();
   await page.getByTestId("media-input").setInputFiles(FLASH);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   await expect(open).toHaveAccessibleName(/^Canvas: 9:16 · 1080 × 1920 · 25 fps/);
   expect(await isTall(page)).toBe(true);
   // With a picture in the project "match first clip" is no longer offered as a new choice.
@@ -75,7 +75,7 @@ test("canvas settings are a project edit (undo), survive an import, and new proj
   await expect(page.getByTestId("confirm-dialog")).toBeVisible();
   await expect(page.getByTestId("confirm-ok")).toHaveClass(/confirm-danger/); // F2: the destructive button looks destructive
   await page.getByTestId("confirm-cancel").click();
-  await expect(page.locator("#tl-summary")).not.toContainText("2 clips"); // still the project with the undone import
+  await expect(page.locator("#tl-summary")).not.toContainText("1 clip"); // still the project with the undone import
   await menu(page, "New project…");
   await page.getByTestId("confirm-ok").click();
   await expect(page.locator("#tl-summary")).toContainText("0 clips");
@@ -86,7 +86,7 @@ test("canvas settings are a project edit (undo), survive an import, and new proj
   const chooser = page.waitForEvent("filechooser");
   await menu(page, "Open project…");
   await (await chooser).setFiles(path);
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
   await expect(open).toHaveAccessibleName(/^Canvas: 9:16 · 1080 × 1920 · 25 fps/);
   await expect.poll(() => isTall(page)).toBe(true);
   await expect(page.getByTestId("confirm-dialog")).toHaveCount(0);
@@ -98,12 +98,12 @@ test("canvas settings are a project edit (undo), survive an import, and new proj
   await menu(page, "Open project…");
   await (await chooser2).setFiles(junk);
   await expect(page.locator(".toast")).toContainText("could not be opened");
-  await expect(page.locator("#tl-summary")).toContainText("2 clips");
+  await expect(page.locator("#tl-summary")).toContainText("1 clip");
 
   // 7. A new window has none of the files: opening the project shows them as not on this device, and Locate files reconnects them by name and size.
   await page.reload();
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 }); // autosave brought the project back
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 20_000 }); // autosave brought the project back
   const chooser3 = page.waitForEvent("filechooser");
   await menu(page, "Open project…");
   await (await chooser3).setFiles(path);
