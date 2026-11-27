@@ -31,3 +31,5 @@ ffmpeg $Q -f lavfi -i "color=c=0x2060ff:s=200x300" -frames:v 1 -q:v 5 still_blue
 # Full-range colour declared by the container (the shape of our own exports and most screen recordings): WebM `Colour` (range 2, bt709) and MP4 `colr`/nclx. Video only.
 ffmpeg $Q $V -c:v libvpx-vp9 -b:v 60k -g 15 -pix_fmt yuv420p -color_range pc -colorspace bt709 -color_primaries bt709 -color_trc iec61966-2-1 colour_full.webm
 ffmpeg $Q $V -c:v libx264 -g 15 -bf 0 -pix_fmt yuv420p -color_range pc -colorspace bt709 -color_primaries bt709 -color_trc bt709 colour_full.mp4
+# Phone-like: the audio track is shorter than the picture (1.5 s video, 1 s audio). Reading audio to the end of the picture used to fail with "out of range" in export.
+ffmpeg $Q -f lavfi -i testsrc=size=160x120:rate=30:duration=1.5 -f lavfi -i sine=frequency=440:sample_rate=48000:duration=1 -c:v libvpx-vp9 -b:v 100k -g 15 -c:a libopus -b:a 24k vp9_opus_short_audio.webm

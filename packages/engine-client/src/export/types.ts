@@ -66,6 +66,7 @@ export type ExportErrorCode =
   | "empty_sequence"
   | "unsupported"
   | "media_unavailable"
+  | "media_failed"
   | "encode_failed"
   | "storage_failed"
   | "not_yet";
@@ -81,6 +82,9 @@ export interface ExportFailureDetail {
   name?: string;
   message?: string;
   stack?: string;
+  /** The clip (file name) whose read or decode failed, and where in it: `video frame 812 (source 13.533 s)` / `audio samples 650240..652288 (48000 Hz)` / `bytes 1048576..2097152 of 3221225472`. */
+  clip?: string;
+  at?: string;
   /** From the worker's error event (`ErrorEvent.filename/lineno/colno`). */
   filename?: string;
   lineno?: number;

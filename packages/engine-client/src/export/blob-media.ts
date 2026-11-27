@@ -1,11 +1,22 @@
 import type { LayerSource } from "../render";
 import type { DecodedFrame, FrameStream, MediaApi, MediaHandle } from "../types";
 import { MediaDecodeError } from "../types";
+import { ExportError } from "./types";
 import { TICKS_PER_SECOND } from "./plan";
 import type { DrawableFrame, OpenedMedia } from "./media";
 
 /** Decoded frames the export keeps ahead of the one being composited. */
 const STREAM_AHEAD = 6;
+
+/** A failure while reading or decoding one clip, with the clip and the position in it, so a device report says exactly what was being read (not "can't be read"). */
+function clipFailure(clip: string, at: string, e: unknown): ExportError {
+  if (e instanceof ExportError) return e;
+  const kind = e instanceof MediaDecodeError ? `${e.name}(${e.kind})` : e instanceof Error ? e.name : "Error";
+  const message = e instanceof Error ? e.message : String(e);
+  // A file the browser can no longer open (permission revoked, file moved or deleted) is the one case where "reconnect it" is true.
+  const gone = e instanceof DOMException && ["NotFoundError", "NotReadableError", "SecurityError"].includes(e.name);
+  return new ExportError(gone ? "media_unavailable" : "media_failed", `"${clip}" failed at ${at}: ${message}`, { name: kind, message, clip, at, stack: e instanceof Error ? e.stack?.slice(0, 1500) : undefined });
+}
 
 const rotationOf = (deg: number): 0 | 90 | 180 | 270 => (deg === 90 || deg === 180 || deg === 270 ? deg : 0);
 
@@ -99,7 +110,12 @@ export async function openBlobMedia(media: MediaApi, blob: Blob, sampleRate: num
         }
         // A frame behind the stream (the second layer of a frame reading the same media earlier in it) is decoded by random access and leaves the stream alone.
         const streamed = index < streamNext ? null : await fromStream(index);
-        const frame = streamed ?? (await handle.videoFrame(index));
+        let frame: DecodedFrame;
+        try {
+          frame = streamed ?? (await handle.videoFrame(index));
+        } catch (e) {
+          throw clipFailure(name, `video frame ${index} of ${v.packets} (source ${(at / Number(TICKS_PER_SECOND)).toFixed(3)} s)`, e);
+        }
         const source: LayerSource = frame.kind === "gpu" ? frame.frame : { rgba: frame.rgba };
         const entry: Held = { frame, users: 1, drawable: undefined as unknown as DrawableFrame };
         // `close` gives the picture back: it is released once nobody holds it and a newer one has arrived.
@@ -119,7 +135,12 @@ export async function openBlobMedia(media: MediaApi, blob: Blob, sampleRate: num
     const channels = Math.max(1, a.channels);
     out.audio = {
       async read(start, count, planar) {
-        const pcm = await handle.audio(start, count);
+        let pcm: Float32Array;
+        try {
+          pcm = await handle.audio(start, count);
+        } catch (e) {
+          throw clipFailure(name, `audio samples ${start}..${start + count} (${sampleRate} Hz, clip is ${(Number(handle.info.durationTicks) / Number(TICKS_PER_SECOND)).toFixed(3)} s)`, e);
+        }
         const l = planar[0];
         const r = planar[1];
         for (let i = 0; i < count; i++) {

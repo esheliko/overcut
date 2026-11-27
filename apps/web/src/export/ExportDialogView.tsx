@@ -9,7 +9,7 @@ import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
-import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, errorKey, formatLabelKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
+import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, describeFailure, errorKey, formatLabelKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
 
 /** The glyph of each preset tile: its shape (landscape, tall, square) or what it is for. */
@@ -355,11 +355,11 @@ function Done({ state, src, locale, onClose, onAgain }: { state: Extract<ExportS
 // ---- 4. failed ----
 function Failed({ error, onRetry, onBack }: { error: unknown; onRetry(): void; onBack(): void }) {
   const { t } = useI18n();
-  const detail = error instanceof Error ? error.message : String(error);
+  const detail = describeFailure(error);
   return (
     <>
       <p className="export-error" role="alert" data-testid="export-error">{t(errorKey(error))}</p>
-      <details className="export-adv"><summary>{t("export.details")}</summary><p className="export-note" data-testid="export-error-detail">{detail}</p></details>
+      <details className="export-adv"><summary>{t("export.details")}</summary><p className="export-note" data-testid="export-error-detail" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", userSelect: "text" }}>{detail}</p></details>
       <div className="export-actions">
         <button className="primary export-go" onClick={onRetry} data-testid="export-retry"><span>{t("export.retry")}</span></button>
         <button className="export-secondary" onClick={onBack} data-testid="export-back">{t("export.back")}</button>

@@ -239,16 +239,27 @@ impl<H: PacketDecoder> HostDecoder<H> {
         start_sample: i64,
         count: usize,
     ) -> Result<Vec<f32>, MediaError> {
-        let req = self.plan_audio(start_sample, count)?;
+        // Silence past the end of the stream (the contract of `MediaHandle.audio`): phone clips routinely carry an audio track a few frames shorter than the
+        // video, and the export asks for audio up to the end of the picture. Only the part inside the stream is decoded; the rest is zeros.
+        let total = self.info.audio.as_ref().map_or(0, |i| i.sample_count);
         let channels = self.info.audio.as_ref().map_or(2, |a| a.channels) as usize;
-        let pcm = self.host.decode_audio(&req).await?;
-        if pcm.len() != count * channels {
+        if self.audio.is_none() || start_sample < 0 {
+            return Err(MediaError::OutOfRange);
+        }
+        let avail = (total.saturating_sub(start_sample)).clamp(0, count as i64) as usize;
+        if avail == 0 {
+            return Ok(vec![0.0; count * channels]);
+        }
+        let req = self.plan_audio(start_sample, avail)?;
+        let mut pcm = self.host.decode_audio(&req).await?;
+        if pcm.len() != avail * channels {
             return Err(MediaError::Io(format!(
                 "host returned {} samples, expected {}",
                 pcm.len(),
-                count * channels
+                avail * channels
             )));
         }
+        pcm.resize(count * channels, 0.0);
         Ok(pcm)
     }
 }
