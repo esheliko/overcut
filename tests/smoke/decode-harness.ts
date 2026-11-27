@@ -4,7 +4,8 @@ import init, { MediaFile } from "@app/wasm-pkg";
 import { createWebMedia, type WasmMediaClass } from "../../packages/engine-client/src/decode/media";
 import { WebCodecsHost } from "../../packages/engine-client/src/decode/host";
 import { blobSource } from "../../packages/engine-client/src/decode/blob-source";
-import type { MediaHandle } from "../../packages/engine-client/src/types";
+import type { ColourInfo, MediaHandle } from "../../packages/engine-client/src/types";
+import { colourSpaceInit } from "../../packages/engine-client/src/decode/colour";
 
 interface Input { wasm: ArrayBuffer; fixtures: Record<string, ArrayBuffer> }
 
@@ -21,10 +22,12 @@ async function linearReference(bytes: ArrayBuffer): Promise<string[]> {
   const src = blobSource(blob);
   const mf = await MediaFile.open(src);
   const packets = JSON.parse(mf.videoPacketsJson()) as { offset: number; size: number; key: boolean; ts: number; dur: number }[];
-  const info = JSON.parse(mf.info()).video as { codec: string; width: number; height: number };
+  const info = JSON.parse(mf.info()).video as { codec: string; width: number; height: number; colour: ColourInfo | null };
   const frames: VideoFrame[] = [];
   const dec = new VideoDecoder({ output: (f) => frames.push(f), error: (e) => { throw e; } });
-  dec.configure({ codec: info.codec, codedWidth: info.width, codedHeight: info.height, description: mf.videoDescription() });
+  // Still independent of the host's seek logic, but configured like the production decoder: with the container's colour (a full-range file must not be read as limited).
+  const colorSpace = colourSpaceInit(info.colour);
+  dec.configure({ codec: info.codec, codedWidth: info.width, codedHeight: info.height, description: mf.videoDescription(), ...(colorSpace ? { colorSpace } : {}) });
   for (const p of packets) dec.decode(new EncodedVideoChunk({ type: p.key ? "key" : "delta", timestamp: p.ts, duration: p.dur, data: await src.read(p.offset, p.size) }));
   await dec.flush();
   dec.close();
