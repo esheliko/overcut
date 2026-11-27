@@ -65,6 +65,12 @@ test("a project whose media is missing says so, with the one action that fixes i
   await expect(note).toBeVisible({ timeout: 20_000 });
   await expect(note).toContainText("1 file is missing");
   await expect(page.getByTestId("locate-files")).toBeVisible();
+  // r13 #247: the picture itself says which file is missing and offers the way out (not plain black).
+  const frame = page.getByTestId("media-missing");
+  await expect(frame).toBeVisible();
+  await expect(frame).toContainText("Media missing");
+  await expect(frame).toContainText("flash_click");
+  expect((await page.getByTestId("media-missing-choose").boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await note.getByRole("button", { name: "Dismiss" }).click();
   await expect(note).toHaveCount(0);
 });
@@ -115,7 +121,7 @@ test("a failure stays on screen until it is dismissed; an info toast does not", 
   await (await chooser).setFiles({ name: "broken.overcut", mimeType: "application/octet-stream", buffer: Buffer.from("not a project") });
   const failure = page.getByTestId("failure-note");
   await expect(failure).toBeVisible({ timeout: 10_000 });
-  await expect(failure).toContainText("could not be opened");
+  await expect(failure).toContainText("not an OverCut project"); // r13 #243: plain words (the stale "could not be opened" copy changed)
   await page.waitForTimeout(6_000); // longer than any toast
   await expect(failure).toBeVisible();
   await failure.getByRole("button", { name: "Dismiss" }).click();

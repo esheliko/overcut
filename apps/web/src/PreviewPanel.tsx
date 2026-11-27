@@ -57,6 +57,10 @@ interface Props {
   pictureOf?(id: string): { width: number; height: number } | undefined;
   /** Whether the transform handles may show. On a phone they only do while the Edit sheet is open (they cover the picture otherwise). Default true. */
   handlesOn?: boolean;
+  /** Media whose file is not on this device (id -> file name). The frame says so, with the way out, instead of staying plain black. */
+  missing?: ReadonlyMap<string, string>;
+  /** Choose the file again for one missing media item. */
+  onRelink?(id: string): void;
 }
 
 /** The playhead time. Not a React subscription: a tick writes the text node directly (P-3: playback was ~29 React commits/s for this one string). It re-renders only when the rate or the length change. */
@@ -78,6 +82,28 @@ function Timecode({ rate, endFrame, label }: { rate: Rate; endFrame: number; lab
   }, [store, rate]);
   return (
     <div className="tc" aria-label={label} data-testid="timecode"><span ref={now}>{timecodeHMS(store.getState().playhead, rate)}</span><span className="tc-total"> / {timecodeHMS(endFrame, rate)}</span></div>
+  );
+}
+
+/** Words on the picture when the clip under the playhead has no file on this device: its name and the one action that fixes it. Renders nothing otherwise. */
+function MissingFrame({ missing, rate, onRelink }: { missing: ReadonlyMap<string, string>; rate: Rate; onRelink(id: string): void }) {
+  const { t } = useI18n();
+  // A string selector: the panel re-renders when the answer changes, not on every playhead tick.
+  const id = useProjectStore((s) => {
+    if (missing.size === 0 || !s.project) return "";
+    const now = (s.playhead * TICKS_PER_SECOND * rate.den) / rate.num;
+    for (const tr of s.project.sequences[0]?.tracks ?? []) for (const c of tr.clips) if (missing.has(c.media) && now >= c.start && now < c.start + c.duration) return c.media;
+    return "";
+  });
+  if (!id) return null;
+  const name = missing.get(id) ?? "";
+  return (
+    <div className="media-missing" data-testid="media-missing">
+      <Icon name="film" size={28} />
+      <strong>{t("preview.missing")}</strong>
+      <span className="media-missing-name">{name}</span>
+      <button className="chip-btn" onClick={() => onRelink(id)} data-testid="media-missing-choose">{t("media.relink")}</button>
+    </div>
   );
 }
 
@@ -110,7 +136,7 @@ const onClipAt = (clip: Clip | null, frame: number, rate: Rate): boolean => {
  * The player, the GPU compositor and the decoders live in the preview Worker (`preview/worker.ts`); this component sends it the project, the files and
  * the transport commands, and shows the playhead it reports.
  */
-export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying, pictureOf, handlesOn = true }: Props) {
+export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying, pictureOf, handlesOn = true, missing, onRelink }: Props) {
   const { t } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
@@ -354,6 +380,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
               )}
             </div>
           )}
+          {missing && missing.size > 0 && onRelink && !playing && <MissingFrame missing={missing} rate={rate} onRelink={onRelink} />}
           {showHandles && !playing && handled && <HandlesLayer clip={handled} rate={rate} size={size} boxRef={boxRef} picture={pictureOf?.(handled.media)} hidden={playing} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
           {prep !== null && <span className="scrub-prep" role="status" data-testid="scrub-prep">{t("scrub.preparing", { percent: prep })}</span>}
