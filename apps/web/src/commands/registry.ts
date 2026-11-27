@@ -36,6 +36,8 @@ export type Command =
   /** Put a media item on the timeline at the playhead (the selected clip's media, else the newest in the bin): on its track, or as an overlay on a new video track. */
   | { c: "addMedia"; overlay: boolean }
   | { c: "scroll"; how: "pageLeft" | "pageRight" | "up" | "down" }
+  /** The preview (M2 UX): full-screen picture, loop playback on or off. Handled by the preview panel (it listens for COMMAND_EVENT and reads the keys itself). */
+  | { c: "preview"; what: "fullscreen" | "loop" }
   /** Transport keys, handled by the preview panel. */
   | { c: "play" } | { c: "shuttle"; key: "J" | "K" | "L" } | { c: "seek"; frames: number } | { c: "seek"; to: "start" | "end" };
 
@@ -138,6 +140,8 @@ export const COMMANDS: readonly CommandDef[] = [
   D("view.secondForward", "canvas", ["Shift+ArrowRight"], { c: "step", seconds: 1 }, { when: "noSelection" }),
   D("view.toStart", "canvas", ["Home"], { c: "step", to: "start" }),
   D("view.toEnd", "canvas", ["End"], { c: "step", to: "end" }),
+  D("view.fullscreen", "global", ["F"], { c: "preview", what: "fullscreen" }),
+  D("view.loop", "global", ["R"], { c: "preview", what: "loop" }),
   D("view.zoomIn", "canvas", ["+", "="], { c: "zoom", how: "in" }),
   D("view.zoomOut", "canvas", ["-", "_"], { c: "zoom", how: "out" }),
   D("view.zoomFit", "canvas", ["0"], { c: "zoom", how: "fit" }),

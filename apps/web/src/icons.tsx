@@ -52,6 +52,11 @@ const PATHS = {
   closeGap: "M3 5v14M21 5v14M6 12h4M18 12h-4M9 9l3 3-3 3M15 9l-3 3 3 3",
   archive: "M3 5h18v4H3zM5 9v10h14V9M10 13h4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
+  fullscreen: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
+  fullscreenExit: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
+  loop: "M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4",
+  chevronLeft: "M15 5l-7 7 7 7",
+  chevronRight: "M9 5l7 7-7 7",
 } as const;
 
 /** The path data of every icon, by name (tests pin an icon's shape through it). */

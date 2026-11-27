@@ -1,5 +1,5 @@
 import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { reportAppInfo } from "./errorScreen/crash";
@@ -23,7 +23,7 @@ import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
 import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { ThemeMenu } from "./ThemeMenu";
 import { ExportControl } from "./export/ExportDialog";
-import { ShortcutsDialog } from "./commands/ShortcutsDialog";
+const ShortcutsDialog = lazy(() => import("./commands/ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 import { Palette } from "./commands/Palette";
 import { PALETTE_EVENT } from "./commands/palette";
 import { currentKeymap } from "./commands/keymap";
@@ -39,6 +39,11 @@ import { buildScene } from "./timeline/scene";
 import { addTrack } from "./timeline/tracks";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickMany, pickOne, setDesktop, setNativeMedia, type Source } from "./media/sources";
 import { useShellProfile } from "./layout/useShellProfile";
+import { Splitter } from "./layout/Splitter";
+import { SheetHandle } from "./layout/SheetHandle";
+import { MiniTransport } from "./layout/MiniTransport";
+import { useCollapsed } from "./layout/useCollapsed";
+import type { Detent } from "./layout/sheet";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
 
 type EngineState = { status: "loading" } | { status: "ready"; info: EngineInfo; backend: EngineBackend; engine: Engine } | { status: "error"; message: string };
@@ -82,7 +87,13 @@ type BinProps = {
   onTags: (id: string, tags: readonly string[]) => void;
 };
 
-function Library({ tool, bin }: { tool: Tool; bin: BinProps }) {
+/** The header button that folds a docked side panel into a slim strip (tablet and up; phones use a sheet with its own close button). */
+function CollapseButton({ panel, onClick }: { panel: string; onClick(): void }) {
+  const { t, dir } = useI18n();
+  return <button className="icon-btn panel-collapse" aria-label={t("panel.collapse", { panel })} title={t("panel.collapse", { panel })} onClick={onClick} data-testid="panel-collapse"><Icon name={dir === "rtl" ? "chevronRight" : "chevronLeft"} size={18} /></button>;
+}
+
+function Library({ tool, bin, onCollapse }: { tool: Tool; bin: BinProps; onCollapse(): void }) {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const label = t(`tool.${tool.id}.label`);
@@ -92,6 +103,7 @@ function Library({ tool, bin }: { tool: Tool; bin: BinProps }) {
       <header className="panel-head">
         <h2>{label}</h2>
         {tool.soon && <span className="pill">{t("panel.coming", { milestone: tool.soon })}</span>}
+        <CollapseButton panel={label} onClick={onCollapse} />
       </header>
       <label className="search">
         <Icon name="search" size={18} />
@@ -110,7 +122,7 @@ function Library({ tool, bin }: { tool: Tool; bin: BinProps }) {
 
 /** Only tabs with real content. Animation lives inline in Video (keyframes); Audio and Adjust come back when they are built. Speed shows only while a clip is selected. */
 type DetailTab = "video" | "speed";
-function Details() {
+function Details({ onCollapse }: { onCollapse?: () => void }) {
   const { t, dir } = useI18n();
   const hasSelection = useProjectStore((s) => s.selection.size > 0);
   const tabs: readonly DetailTab[] = hasSelection ? ["video", "speed"] : ["video"];
@@ -119,7 +131,7 @@ function Details() {
   const roving = useRovingTabindex(tabs.length, { rtl: dir === "rtl", onMove: (i) => setTab(tabs[i]!) });
   return (
     <>
-      <header className="panel-head"><h2>{t("details.title")}</h2></header>
+      <header className="panel-head"><h2>{t("details.title")}</h2>{onCollapse && <CollapseButton panel={t("details.title")} onClick={onCollapse} />}</header>
       {/* One tab is no choice: a plain heading above is enough, the tab bar appears with the second tab (a clip is selected). */}
       {tabs.length > 1 && (
         <div className="segmented" role="tablist" aria-label={t("details.tabs")}>
@@ -227,6 +239,10 @@ function Editor({ store }: { store: ProjectStore }) {
   const persistence = usePersistence(core, openId);
   const [tool, setTool] = useState("media");
   const [sheet, setSheet] = useState(false); // phone only: tool panel open above the bottom bar
+  const [detent, setDetent] = useState<Detent>("half"); // phone only: how tall that sheet is (small / half / full)
+  const [libCollapsed, setLibCollapsed] = useCollapsed("library");
+  const [inspCollapsed, setInspCollapsed] = useCollapsed("inspector");
+  const workspaceRef = useRef<HTMLElement>(null);
   const [name, setName] = useState<string | null>(null); // null = the localized default name
   const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | "shortcuts" | { title: string; body: string; confirm: string; danger: boolean; run(): Promise<void> }>(null);
   const [locating, setLocating] = useState(false); // after opening a file: offer to reconnect media that is not on this device
@@ -250,11 +266,16 @@ function Editor({ store }: { store: ProjectStore }) {
 
   useEffect(() => {
     let alive = true;
+    // After the shell has painted (not inside the first frame's work): the engine's download and compile start on the next task.
+    let timer = 0;
+    const raf = requestAnimationFrame(() => { timer = window.setTimeout(start, 0); });
+    function start() {
     createEngine()
       .then(async (e) => ({ info: await e.info(), backend: e.backend, engine: e }))
       .then(({ engine: e, ...r }) => alive && (reportAppInfo({ version: r.info.version, backend: r.backend }), setDesktop(e.desktop), setNativeMedia(e.desktop ? e.media : undefined), setEngine({ status: "ready", engine: e, ...r }), setCore(e)))
       .catch((e: unknown) => alive && (setEngine({ status: "error", message: e instanceof Error ? e.message : String(e) }), reportFatal("engine-start", e)));
-    return () => { alive = false; };
+    }
+    return () => { alive = false; cancelAnimationFrame(raf); window.clearTimeout(timer); };
   }, []);
 
   useEffect(() => {
@@ -315,6 +336,16 @@ function Editor({ store }: { store: ProjectStore }) {
       void store.apply(addTrack(buildScene(st.project), "video", track).ops).then(() => media.addToTimeline(id, tick, track)).then(done).catch(() => soon(t("timeline.say.failed")));
     } else void media.addToTimeline(id, tick).then(done);
   }, [store, media, soon, t]);
+  // History and Timing dialogs (lazy chunks in the timeline's More menu): fetched while the browser is idle once there is something to edit, so they open at once.
+  const hasMedia = readyCount > 0;
+  useEffect(() => {
+    if (!hasMedia) return;
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (h: number) => void };
+    const load = () => { void import("./timeline/EditDialogs").catch(() => undefined); void import("./commands/ShortcutsDialog").catch(() => undefined); };
+    if (w.requestIdleCallback) { const h = w.requestIdleCallback(load, { timeout: 5000 }); return () => w.cancelIdleCallback?.(h); }
+    const h = window.setTimeout(load, 2500);
+    return () => window.clearTimeout(h);
+  }, [hasMedia]);
   const [dragging, setDragging] = useState(false);
   const [tlOver, setTlOver] = useState(false);
   // The dashed drop outline must never outlive a drag: the canvas handles the drop itself (and stops it), a drag can end elsewhere or be cancelled (I-06).
@@ -590,7 +621,13 @@ function Editor({ store }: { store: ProjectStore }) {
       setToast(t("project.located", { done, total }));
     } catch (e) { fail("project.open.failed", e); }
   };
-  const pick = (id: string) => { setSheet(id === tool ? !sheet : true); setTool(id); };
+  const pick = (id: string) => {
+    const opening = id !== tool || !sheet;
+    setSheet(id === tool ? !sheet : true);
+    setTool(id);
+    if (opening) setDetent(id === "edit" ? "peek" : "half"); // Edit starts small so the picture and the timeline stay in view
+  };
+  const closeSheet = useCallback(() => setSheet(false), []);
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId && shown(x)) ?? TOOLS[0]!;
   const activeLabel = t(`tool.${active.id}.label`);
@@ -632,7 +669,7 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
       </header>
 
-      <main className="workspace" data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined}>
+      <main className="workspace" ref={workspaceRef} data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined} data-lib={roomy && libCollapsed ? "collapsed" : undefined} data-insp={inspCollapsed ? "collapsed" : undefined}>
         {!railHidden && <nav className="tools" aria-label={t("tools.nav")}>
           {rail.map((x) => (
             <button key={x.id} className="tool" aria-pressed={activeId === x.id && (roomy || sheet)} onClick={() => pick(x.id)}>
@@ -642,14 +679,23 @@ function Editor({ store }: { store: ProjectStore }) {
           ))}
         </nav>}
 
-        <section className="library" data-open={sheet} aria-label={activeLabel} data-testid="panel-tool">
+        <section className="library" data-open={sheet} data-detent={!roomy && sheet ? detent : undefined} data-collapsed={roomy && libCollapsed ? "true" : undefined} aria-label={activeLabel} data-testid="panel-tool">
+          {!roomy && sheet && <SheetHandle detent={detent} onDetent={setDetent} onClose={closeSheet} />}
           <button className="sheet-close icon-btn" aria-label={t("panel.close")} onClick={() => setSheet(false)}><Icon name="close" size={18} /></button>
-          {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} />}
+          {roomy && libCollapsed && <button className="icon-btn panel-expand" aria-label={t("panel.expand", { panel: activeLabel })} title={t("panel.expand", { panel: activeLabel })} onClick={() => setLibCollapsed(false)} data-testid="panel-expand"><Icon name="chevronRight" size={18} /></button>}
+          {!roomy && sheet && active.id === "edit" && detent === "peek" && <MiniTransport playing={playing} />}
+          {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} onCollapse={() => setLibCollapsed(true)} />}
         </section>
 
-        <PreviewPanel engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} />
+        {openId !== null ? <PreviewPanel handlesOn={roomy || (sheet && active.id === "edit")} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
 
-        {wide && DETAILS_READY && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
+        {wide && DETAILS_READY && (
+          <section className="inspector" data-collapsed={inspCollapsed ? "true" : undefined} aria-label={t("details.title")} data-testid="panel-inspector">
+            {inspCollapsed && <button className="icon-btn panel-expand" aria-label={t("panel.expand", { panel: t("details.title") })} title={t("panel.expand", { panel: t("details.title") })} onClick={() => setInspCollapsed(false)} data-testid="panel-expand"><Icon name="chevronLeft" size={18} /></button>}
+            <Details onCollapse={() => setInspCollapsed(true)} />
+          </section>
+        )}
+        {roomy && <Splitter workspace={workspaceRef} />}
 
         <div className="tl-drop" data-over={tlOver} onDropCapture={() => setTlOver(false)} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
           const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
@@ -672,7 +718,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {dialog === "versions" && persistence.session && <VersionsDialog session={persistence.session} onRestore={restoreVersion} onClose={() => setDialog(null)} />}
       {dialog === "privacy" && <PrivacyDialog onClose={() => setDialog(null)} />}
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
-      {dialog === "shortcuts" && <ShortcutsDialog onClose={() => setDialog(null)} />}
+      {dialog === "shortcuts" && <Suspense fallback={null}><ShortcutsDialog onClose={() => setDialog(null)} /></Suspense>}
       {palette && <Palette onClose={() => setPalette(false)} />}
       {dialog && typeof dialog === "object" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} danger={dialog.danger} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}

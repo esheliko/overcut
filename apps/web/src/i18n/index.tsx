@@ -4,20 +4,19 @@ import { createTranslator, DEFAULT_LOCALE, negotiateLocale, pseudoLocalize, type
 
 export const EN: Catalog = en;
 /** Shipped catalogs. Real translations land here as `<tag>.json` imports (UX-07, M9). */
-const CATALOGS: Record<string, Catalog> = {
-  en: EN,
-  "en-XA": pseudoLocalize(EN, "accent"),
-  "en-XB": pseudoLocalize(EN, "bidi"),
-};
+const CATALOGS: Record<string, Catalog> = { en: EN };
+/** The test-only pseudo-locales are built on first use (a click in the language menu), not at startup. */
+const PSEUDO: Record<string, "accent" | "bidi"> = { "en-XA": "accent", "en-XB": "bidi" };
+const catalogOf = (l: string): Catalog => CATALOGS[l] ?? (PSEUDO[l] ? (CATALOGS[l] = pseudoLocalize(EN, PSEUDO[l]!)) : EN);
 /** Pseudo-locales are for testing layout; they are never picked by negotiation, only by an explicit override. */
-export const LOCALES = Object.keys(CATALOGS);
+export const LOCALES = ["en", ...Object.keys(PSEUDO)];
 const NEGOTIABLE = LOCALES.filter((l) => !l.startsWith("en-X"));
 const STORE_KEY = "overcut.locale";
 
 function readOverride(): string | null {
   try {
     const v = localStorage.getItem(STORE_KEY);
-    return v && v in CATALOGS ? v : null;
+    return v && LOCALES.includes(v) ? v : null;
   } catch {
     return null;
   }
@@ -29,7 +28,7 @@ export function initialLocale(): string {
 }
 
 export function applyLocale(locale: string, root: HTMLElement = document.documentElement): void {
-  const tr = createTranslator(locale, CATALOGS[locale] ?? EN, EN);
+  const tr = createTranslator(locale, catalogOf(locale), EN);
   root.lang = locale;
   root.dir = tr.dir;
 }
@@ -47,7 +46,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     } catch { /* private mode: the choice just lasts this session */ }
     setLoc(l ?? initialLocale());
   }, []);
-  const value = useMemo<Ctx>(() => ({ ...createTranslator(locale, CATALOGS[locale] ?? EN, EN), setLocale }), [locale, setLocale]);
+  const value = useMemo<Ctx>(() => ({ ...createTranslator(locale, catalogOf(locale), EN), setLocale }), [locale, setLocale]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
