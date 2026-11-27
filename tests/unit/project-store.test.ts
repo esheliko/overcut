@@ -183,3 +183,95 @@ test("a recovered history shows one 'earlier edits' row; read-only projects refu
   s.setReadOnly(true);
   assert.equal(await s.jumpTo(0), null);
 });
+
+// ---- Op patches (ADR 0020): the store applies the engine's patch to its copy instead of re-reading the whole project ----
+
+/** An engine whose outcomes carry a patch; counts `project()` reads. Revisions count changes like the real one. */
+function patched(opts: { patches?: boolean; skipRevision?: boolean } = {}) {
+  const { patches = true } = opts;
+  let clips = [{ id: "a", start: 0, duration: 10 }, { id: "b", start: 20, duration: 10 }];
+  const other = { id: "t2", clips: [{ id: "z", start: 0, duration: 5 }] };
+  let rev = 0;
+  const past: (typeof clips)[] = [];
+  const future: (typeof clips)[] = [];
+  const stats = { reads: 0 };
+  const project = () => ({ sequences: [{ id: "s", tracks: [{ id: "t", clips }, other] }], media: [] }) as unknown as Project;
+  const patchOf = (from: typeof clips, to: typeof clips) => {
+    let p = 0;
+    while (p < from.length && p < to.length && from[p] === to[p]) p++;
+    let s = 0;
+    while (s < from.length - p && s < to.length - p && from[from.length - 1 - s] === to[to.length - 1 - s]) s++;
+    return { sequences: [{ id: "s", tracks: [{ id: "t", splice: { start: p, remove: from.length - p - s, insert: to.slice(p, to.length - s) } }] }] };
+  };
+  const out = (changed: boolean, from: typeof clips): EditOutcome => ({ changed, revision: rev, can_undo: past.length > 0, can_redo: future.length > 0, ...(changed && patches ? { patch: patchOf(from, clips) } : {}) }) as unknown as EditOutcome;
+  const ed = {
+    open: async () => undefined,
+    project: async () => (stats.reads++, project()),
+    apply: async (ops: Op | Op[]) => { const from = clips; past.push(clips); future.length = 0; clips = (ops as unknown as { clips: typeof clips }).clips; rev += opts.skipRevision ? 2 : 1; return out(true, from); },
+    undo: async () => { const p = past.pop(); if (!p) return out(false, clips); const from = clips; future.push(clips); clips = p; rev++; return out(true, from); },
+    redo: async () => { const f = future.pop(); if (!f) return out(false, clips); const from = clips; past.push(clips); clips = f; rev++; return out(true, from); },
+  } as unknown as Editing;
+  return { ed, stats, other, get clips() { return clips; } };
+}
+const edit = (clips: unknown[]) => ({ clips }) as unknown as Op;
+const idsOf = (s: ProjectStore) => s.getState().project!.sequences[0]!.tracks[0]!.clips.map((c) => c.id);
+
+test("with a patch the store does not re-read the project, and untouched tracks and clips keep their identity", async () => {
+  const e = patched();
+  const s = new ProjectStore();
+  await s.attach(e.ed);
+  assert.equal(e.stats.reads, 1);
+  const before = s.getState().project!;
+  const [a, b] = e.clips;
+  await s.apply(edit([a, { id: "c", start: 10, duration: 5 }, b]));
+  assert.equal(e.stats.reads, 1, "no project() read after the edit");
+  assert.deepEqual(idsOf(s), ["a", "c", "b"]);
+  const after = s.getState().project!;
+  assert.notEqual(after, before);
+  assert.equal(after.sequences[0]!.tracks[1], before.sequences[0]!.tracks[1], "the other track is the same object");
+  assert.equal(after.sequences[0]!.tracks[0]!.clips[0], before.sequences[0]!.tracks[0]!.clips[0], "an untouched clip is the same object");
+  await s.undo();
+  await s.redo();
+  assert.equal(e.stats.reads, 1);
+  assert.deepEqual(idsOf(s), ["a", "c", "b"]);
+});
+
+test("the store re-reads when an outcome has no patch, when revisions skip (the engine changed behind us), or when the patch does not fit", async () => {
+  const none = patched({ patches: false });
+  const s1 = new ProjectStore();
+  await s1.attach(none.ed);
+  await s1.apply(edit([none.clips[0]]));
+  assert.equal(none.stats.reads, 2);
+  assert.deepEqual(idsOf(s1), ["a"]);
+
+  const skip = patched({ skipRevision: true });
+  const s2 = new ProjectStore();
+  await s2.attach(skip.ed);
+  await s2.apply(edit([skip.clips[0]])); // first outcome after a read: nothing to compare with, trusted
+  await s2.apply(edit([])); // revision jumped by 2: re-read
+  assert.equal(skip.stats.reads, 3 - 1, "one re-read for the second edit");
+  assert.deepEqual(idsOf(s2), []);
+
+  const bad = patched();
+  const s3 = new ProjectStore();
+  await s3.attach(bad.ed);
+  const orig = bad.ed.apply;
+  bad.ed.apply = async (o, c) => { const r = await orig(o, c); return { ...r, patch: { sequences: [{ id: "gone", tracks: [] }] } }; };
+  await s3.apply(edit([bad.clips[0]]));
+  assert.deepEqual(idsOf(s3), ["a"], "fell back to the engine's project");
+});
+
+test("jumpTo applies every step's patch and reads nothing", async () => {
+  const e = patched();
+  const s = new ProjectStore();
+  await s.attach(e.ed);
+  const [a, b] = e.clips;
+  await s.apply(edit([a]), undefined, "one");
+  await s.apply(edit([]), undefined, "two");
+  await s.apply(edit([b]), undefined, "three");
+  await s.jumpTo(0);
+  assert.deepEqual(idsOf(s), ["a", "b"]);
+  await s.jumpTo(3);
+  assert.deepEqual(idsOf(s), ["b"]);
+  assert.equal(e.stats.reads, 1);
+});

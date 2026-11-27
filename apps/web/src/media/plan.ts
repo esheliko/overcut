@@ -61,8 +61,9 @@ export const clipCount = (p: Project): number => p.sequences.reduce((n, s) => n 
 
 /** End of the last clip on any track of the first sequence, in ticks. */
 export function timelineEnd(p: Project): number {
+  // Clips of a track are sorted and never overlap (`Project::validate`), so the last one ends last: O(tracks), not O(clips) (called on every render).
   let end = 0;
-  for (const t of p.sequences[0]?.tracks ?? []) for (const c of t.clips) end = Math.max(end, c.start + c.duration);
+  for (const t of p.sequences[0]?.tracks ?? []) { const c = t.clips[t.clips.length - 1]; if (c) end = Math.max(end, c.start + c.duration); }
   return end;
 }
 

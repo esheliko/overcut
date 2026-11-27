@@ -1,6 +1,7 @@
 import type { ExportApi } from "./export/types";
 import type { Clip, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
+import type { EditPatch } from "./patch";
 
 export * from "./capabilities";
 
@@ -330,6 +331,8 @@ export interface EditOutcome {
   can_redo: boolean;
   /** False for an undo/redo that had nothing to do. */
   changed: boolean;
+  /** What this edit changed (ADR 0020). Absent when nothing changed or the engine could not express the change as a patch: then re-read `project()`. */
+  patch?: EditPatch;
 }
 
 export interface Editing {

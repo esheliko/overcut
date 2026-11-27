@@ -16,10 +16,12 @@ export function useWorkerMedia(host: PreviewHost | null, project: Project | null
   fileRef.current = fileOf;
   const last = useRef<PreviewHost | null>(null);
 
+  // Only the media list matters (an edit patch keeps its identity, so a split or a move does not run this).
+  const mediaList = project?.media ?? null;
   useEffect(() => {
-    if (!host || !project) return;
+    if (!host || !mediaList) return;
     if (last.current !== host) { last.current = host; sent.current.clear(); asking.current.clear(); }
-    const wanted = new Set(project.media.map((m) => m.id));
+    const wanted = new Set(mediaList.map((m) => m.id));
     for (const id of [...sent.current]) {
       if (wanted.has(id)) continue;
       sent.current.delete(id);
@@ -36,7 +38,7 @@ export function useWorkerMedia(host: PreviewHost | null, project: Project | null
             sent.current.add(id);
             // A file that stays on disk (desktop) cannot be cloned into the Worker: it opens the path through the UI thread's native decoder.
             const path = pathOf(file);
-            const ref = project.media.find((m) => m.id === id);
+            const ref = mediaList.find((m) => m.id === id);
             host.send(path ? { type: "media-native", id, path } : { type: "media", id, file, fp: `${ref ? fingerprint(ref) : `n-${file.name}`}-${file.size}` });
           }
         } catch {
@@ -46,5 +48,5 @@ export function useWorkerMedia(host: PreviewHost | null, project: Project | null
         }
       })();
     }
-  }, [host, project, hostVersion, readyIds]); // readyIds: a relink changes no project data but makes a file available
+  }, [host, mediaList, hostVersion, readyIds]); // readyIds: a relink changes no project data but makes a file available
 }

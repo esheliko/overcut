@@ -4,12 +4,13 @@
 use crate::evaluate::{evaluate_into, FrameDescription};
 use crate::history::{journal_to_jsonl, History};
 use crate::op::Op;
+use crate::patch::{apply_patch, diff, EditPatch};
 use crate::recovery::Record;
 use app_model::{Id, Project, Time};
 use serde::{Deserialize, Serialize};
 
 /// What the UI learns after every edit (the full patch stream arrives with the timeline UI, M1-034).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EditOutcome {
     /// Counts state changes; the UI re-reads the project when it moved.
     pub revision: u64,
@@ -17,6 +18,10 @@ pub struct EditOutcome {
     pub can_redo: bool,
     /// False for an undo/redo with nothing to do.
     pub changed: bool,
+    /// What changed, so the UI can update its copy of the project without re-reading it (ADR 0020). Absent when nothing changed or the
+    /// change cannot be expressed as a patch (the first edit after a recovery, a new project id): then the UI re-reads the project.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch: Option<EditPatch>,
 }
 
 /// One op, or a list applied atomically as one undo step.
@@ -37,6 +42,8 @@ pub struct Editor {
     seq: u64,
     /// Records not yet handed to the host by `take_log`.
     pending: String,
+    /// The project as the UI last saw it (the previous outcome's patch applied), the base of the next patch. `None` = rebuild it from the project.
+    shadow: Option<Project>,
 }
 
 impl Editor {
@@ -49,6 +56,7 @@ impl Editor {
 
     pub fn from_project(project: Project) -> Editor {
         Editor {
+            shadow: Some(project.clone()),
             project,
             history: History::new(),
             revision: 0,
@@ -91,6 +99,7 @@ impl Editor {
         revision: u64,
     ) -> Editor {
         Editor {
+            shadow: Some(project.clone()),
             project,
             history,
             revision,
@@ -101,7 +110,13 @@ impl Editor {
     }
 
     pub(crate) fn parts_mut(&mut self) -> (&mut Project, &mut History) {
+        self.shadow = None;
         (&mut self.project, &mut self.history)
+    }
+
+    /// Declares the current project as what the UI sees (after a recovery, which the UI reads in full).
+    pub(crate) fn rebase_shadow(&mut self) {
+        self.shadow = Some(self.project.clone());
     }
 
     pub(crate) fn revision_hint(&self) -> u64 {
@@ -121,13 +136,30 @@ impl Editor {
         &self.history
     }
 
-    fn outcome(&self, changed: bool) -> EditOutcome {
+    fn outcome(&mut self, changed: bool) -> EditOutcome {
+        let patch = if changed { self.take_patch() } else { None };
         EditOutcome {
             revision: self.revision,
             can_undo: self.history.can_undo(),
             can_redo: self.history.can_redo(),
             changed,
+            patch,
         }
+    }
+
+    /// The patch from what the UI last saw to the project now; moves the shadow forward. `None` re-bases the shadow (the UI re-reads).
+    fn take_patch(&mut self) -> Option<EditPatch> {
+        let patch = self.shadow.take().and_then(|mut sh| {
+            let p = diff(&sh, &self.project)?;
+            apply_patch(&mut sh, &p).ok()?;
+            debug_assert!(sh == self.project, "patch did not reproduce the project");
+            self.shadow = Some(sh);
+            Some(p)
+        });
+        if patch.is_none() {
+            self.shadow = Some(self.project.clone());
+        }
+        patch
     }
 
     /// Applies an op (or an array of ops as one step) given as JSON. `coalesce` merges consecutive edits sharing it into one undo step.
@@ -169,7 +201,7 @@ impl Editor {
         Ok(self.outcome_json(changed))
     }
 
-    fn outcome_json(&self, changed: bool) -> String {
+    fn outcome_json(&mut self, changed: bool) -> String {
         serde_json::to_string(&self.outcome(changed)).expect("EditOutcome always serializes")
     }
 

@@ -3,6 +3,7 @@
 import type { MediaRef } from "@app/engine-client";
 import type { MediaCache } from "./cache";
 import type { MediaHost } from "./host";
+import { pace } from "./pace";
 import { emitThumb } from "./thumbBus";
 
 export const THUMB_W = 160;
@@ -65,6 +66,7 @@ export class ThumbService {
         try { bmp = await createImageBitmap(new Blob([stored as unknown as BlobPart], { type: "image/webp" })); this.stats.fromCache++; } catch { bmp = null; }
       }
       if (!bmp) {
+        await pace(); // decoding a frame runs on this thread: give the event loop back first, and wait while the user plays or drags (a cached frame is cheap and does not wait)
         bmp = await this.host.thumbnail(media, k * INTERVALS[iv]!, THUMB_W, THUMB_H);
         this.stats.generated++;
         void this.store(blobKey, bmp);

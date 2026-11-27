@@ -12,6 +12,8 @@ import { canvasBackingSize } from "./preview/layout";
 import { COMMAND_EVENT, PLAY_RANGE_EVENT, type PlayRange } from "./commands/palette";
 import { currentKeymap } from "./commands/keymap";
 import { resolveKey } from "./commands/registry";
+import { setPlaybackBusy } from "./media/pace";
+import { projectToJson } from "./preview/projectJson";
 import { acquirePreviewHost, type PlayerProxy, type PreviewHost } from "./preview/host";
 import { rateLabel, TICKS_PER_SECOND, timecodeHMS, type Rate } from "./preview/timing";
 import { TransformHandles } from "./preview/TransformHandles";
@@ -152,7 +154,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
     const c = canvasRef.current;
     if (!c) return;
     const { host, release } = acquirePreviewHost(c, { onFrame: emit, onState: (pl, r) => {
-      cb.current.onPlaying(pl); setSpeed(r || 1);
+      cb.current.onPlaying(pl); setSpeed(r || 1); setPlaybackBusy(pl);
       const rr = rangeRun.current; if (rr) { if (pl) rr.seen = true; else if (rr.seen) rangeRun.current = null; }
       // Loop playback: the player stopped at the end, so start over.
       const pp = playerRef.current;
@@ -183,11 +185,27 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   useWorkerMedia(hostRef.current, project, fileOf, hostVersion, readyIds);
 
   // The shared project (or the sequence settings) changed: the Worker re-reads it and the same player takes the new length, rate and clips.
+  // At most one message per animation frame (a drag sends many edits; only the last one is shown), and the project JSON is built from
+  // cached per-clip/per-track pieces (`projectToJson`), so an edit costs what it changed, not the size of the project.
+  const pending = useRef<{ host: PreviewHost; project: Project | null; has: boolean; sequence: string; rate: Rate; size: { width: number; height: number }; endTicks: number } | null>(null);
+  const flushTimers = useRef<{ raf: number; timer: number }>({ raf: 0, timer: 0 });
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    host.configure({ project: view.has && project ? JSON.stringify(project) : "", sequence: view.sequence, rate, size, endTicks });
+    pending.current = { host, project, has: view.has, sequence: view.sequence, rate, size, endTicks };
+    const t = flushTimers.current;
+    if (t.raf || t.timer) return;
+    const flush = () => {
+      window.cancelAnimationFrame(t.raf); window.clearTimeout(t.timer);
+      t.raf = 0; t.timer = 0;
+      const c = pending.current;
+      pending.current = null;
+      if (c) c.host.configure({ project: c.has && c.project ? projectToJson(c.project) : "", sequence: c.sequence, rate: c.rate, size: c.size, endTicks: c.endTicks });
+    };
+    t.raf = window.requestAnimationFrame(flush);
+    t.timer = window.setTimeout(flush, 80); // a hidden tab has no animation frames
   }, [project, hostVersion, rate.num, rate.den, size.width, size.height, endTicks, view.sequence, view.has]);
+  useEffect(() => () => { const t = flushTimers.current; window.cancelAnimationFrame(t.raf); window.clearTimeout(t.timer); t.raf = 0; t.timer = 0; pending.current = null; }, []);
 
   // The timeline (or anything else) moved the playhead: show that frame. A store subscription, not a render dependency: a tick does not re-render this panel.
   useEffect(() => {

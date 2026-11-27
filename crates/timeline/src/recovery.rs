@@ -136,7 +136,8 @@ impl Editor {
                 best = Some((ed, n, false));
             }
         }
-        let (ed, n, full_history) = best.ok_or("no usable base project or checkpoint")?;
+        let (mut ed, n, full_history) = best.ok_or("no usable base project or checkpoint")?;
+        ed.rebase_shadow();
         let valid_log: String = records
             .iter()
             .take(n)
