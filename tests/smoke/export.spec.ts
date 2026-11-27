@@ -166,3 +166,29 @@ for (const [num, den] of [[2, 1], [1, 2]] as const) {
     expect(out.maxAbsOffsetFrames).toBeLessThan(1); // the bar: under one frame
   });
 }
+
+// esheliko/overcut#138: the audio track must end where the video ends (the encoder's last, padded Opus packet used to run 20 ms past it).
+for (const [container, videoCodec, ext] of [["webm", "vp9", "webm"], ["mp4", "h264", "mp4"]] as const) {
+  for (const seconds of [2, 7]) {
+    test(`export: audio and video end together (${container}, ${seconds} s)`, async ({ page }, info) => {
+      let ffprobe = true;
+      try {
+        execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
+      } catch {
+        ffprobe = false;
+      }
+      test.skip(!ffprobe, "ffprobe is not installed here");
+      const r = await run(page, { seconds, settings: { container, videoCodec, creationTime: 1_700_000_000_000 } }, true);
+      test.skip(!r.ok && r.code === "unsupported", `this browser cannot encode ${videoCodec} here`);
+      expect(r.ok).toBe(true);
+      const file = info.outputPath(`av-${seconds}.${ext}`);
+      writeFileSync(file, Buffer.concat((r.slices ?? []).map((s) => Buffer.from(s, "base64"))));
+      const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,duration:format=duration", "-of", "json", file]).toString()) as { streams: { codec_type: string; duration?: string }[]; format: { duration: string } };
+      const dur = (kind: string) => Number(probe.streams.find((s) => s.codec_type === kind)?.duration ?? probe.format.duration);
+      console.log(`${container} ${seconds}s:`, JSON.stringify({ video: dur("video"), audio: dur("audio"), format: probe.format.duration }));
+      expect(dur("video")).toBeCloseTo(seconds, 2);
+      expect(dur("audio") - dur("video")).toBeLessThan(0.0025); // within a sample or two of the video, not a whole 20 ms Opus frame
+      expect(dur("audio") - dur("video")).toBeGreaterThan(-0.021); // and never more than one audio frame short
+    });
+  }
+}

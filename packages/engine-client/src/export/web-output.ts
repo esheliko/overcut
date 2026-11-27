@@ -40,6 +40,7 @@ export async function createWebOutput(plan: ExportPlan, preset: ResolvedPreset, 
     frameRate: plan.fpsNum / plan.fpsDen,
     maxVideoPackets: plan.totalFrames + 8,
     maxAudioPackets: maxAudioPackets(plan.totalSamples),
+    endSeconds: plan.totalSamples / plan.sampleRate,
     creationTime: creationTime === undefined ? undefined : new Date(creationTime),
     target: file.writable,
   });
