@@ -1,4 +1,4 @@
-import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
+import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, summarizeExtra, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
@@ -9,6 +9,7 @@ import { useIncoming } from "./incoming";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
 import { Home } from "./Home";
+import { capturePoster } from "./posterSource";
 import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects, projectBytes, setArchived } from "./projects";
 import { isArchived, startScreen } from "./projectsView";
 import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
@@ -516,11 +517,25 @@ function Editor({ store }: { store: ProjectStore }) {
   const touchBase = useRef<Project | null>(null);
   const pendingTouch = useRef<{ id: string; project: Project } | null>(null);
   const touchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const flushTouch = (): Promise<void> => {
+  const lastPoster = useRef(0);
+  /**
+   * Writes the row's facts (and, at most every few seconds, a small poster of the frame at the playhead). `leaving` = the project is about to be
+   * closed (the preview is still there for this one call): the poster is also taken when the row has none yet. The pagehide path never waits
+   * for a poster. A poster that cannot be had (no frame, black frame, timeout) leaves the old one in place.
+   */
+  const flushTouch = async (mode: "idle" | "leaving" | "hide" = "idle"): Promise<void> => {
+    const leaving = mode === "leaving";
     clearTimeout(touchTimer.current);
     const p = pendingTouch.current;
     pendingTouch.current = null;
-    return p ? getRegistry().then((r) => r.update(p.id, { modified: Date.now(), ...summarize(p.project) })).catch(() => undefined) : Promise.resolve();
+    const id = p?.id ?? openId;
+    const live = p?.project ?? store.getState().project;
+    if (!id || !live) return;
+    const needsPoster = leaving && !list?.find((x) => x.id === id)?.poster && (summarize(live).clips ?? 0) > 0;
+    if (!p && !needsPoster) return;
+    const poster = mode !== "hide" && (leaving || Date.now() - lastPoster.current > 4000) ? await capturePoster() : null;
+    if (poster) lastPoster.current = Date.now();
+    await getRegistry().then((r) => r.update(id, { ...(p ? { modified: Date.now(), ...summarize(live), ...summarizeExtra(live) } : {}), ...(poster ? { poster } : {}) })).catch(() => undefined);
   };
   useEffect(() => {
     if (!project || !openId) { touchBase.current = null; return; }
@@ -530,9 +545,9 @@ function Editor({ store }: { store: ProjectStore }) {
     clearTimeout(touchTimer.current);
     touchTimer.current = setTimeout(() => void flushTouch(), 1500);
   }, [project, openId]);
-  useEffect(() => { const f = () => void flushTouch(); addEventListener("pagehide", f); return () => removeEventListener("pagehide", f); }, []);
+  useEffect(() => { const f = () => void flushTouch("hide"); addEventListener("pagehide", f); return () => removeEventListener("pagehide", f); }, []);
   const goHome = async () => {
-    await flushTouch();
+    await flushTouch("leaving");
     try { await refreshList(); } catch (e) { return fail("projects.failed", e); }
     setOpenId(null);
   };

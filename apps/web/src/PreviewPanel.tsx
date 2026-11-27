@@ -6,6 +6,7 @@ import { Icon } from "./icons";
 import { clipCount, timelineEnd } from "./media/plan";
 import { useImportPicker } from "./media/MediaBin";
 import type { Source } from "./media/sources";
+import { setPosterSource } from "./posterSource";
 import { canvasSummary, ratioLabel } from "./canvas";
 import { canvasBackingSize } from "./preview/layout";
 import { COMMAND_EVENT, PLAY_RANGE_EVENT, type PlayRange } from "./commands/palette";
@@ -163,6 +164,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
     }, onError: (m) => setProblem(m), onStrip: (p) => setPrep(p === null ? null : Math.min(99, Math.floor(p * 100))) });
     hostRef.current = host;
     playerRef.current = host.player;
+    setPosterSource(() => host.rpc<Blob | null>({ name: "poster" }));
     setHostVersion((v) => v + 1);
     void host.ready.catch(() => setProblem(noGpu.current));
     const hook = window as unknown as { __overcutPreview?: unknown };
@@ -178,7 +180,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       strip: () => host.rpc({ name: "strip" }),
       rpc: (r: Parameters<typeof host.rpc>[0]) => host.rpc(r),
     };
-    return () => { release(); if (hostRef.current === host) { hostRef.current = null; playerRef.current = null; } };
+    return () => { setPosterSource(null); release(); if (hostRef.current === host) { hostRef.current = null; playerRef.current = null; } };
   }, [emit]);
 
   // The decoders the player reads: the Worker opens its own, from the bin's files.

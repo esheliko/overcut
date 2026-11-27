@@ -595,6 +595,7 @@
   "projects.empty.text": "Start a new project or open a .overcut file. Everything is kept on this device.",
   "projects.open": "Open {name}",
   "projects.edited": "Edited {when}",
+  "projects.current": "Open",
   "projects.justNow": "just now",
   "projects.clips": "{count, plural, one {# clip} other {# clips}}",
   "projects.rename.short": "Rename",

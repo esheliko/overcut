@@ -195,6 +195,44 @@ async function rpc(r: PreviewRpc): Promise<unknown> {
     case "probe": return probe(r.x, r.y);
     case "bench": return bench(r.width, r.height, r.frames);
     case "parity": return parity(r.frame);
+    case "poster": return poster();
+  }
+}
+
+const POSTER_W = 320, POSTER_H = 180, POSTER_MAX = 15_000;
+/**
+ * The project card's poster: the frame on the canvas right now (re-presented once, in the same task as the capture), fitted into 320x180 and
+ * encoded as JPEG (quality 0.7, lowered until it is under 15 KB). `null` for an all-black picture (an empty spot of the timeline: the card keeps its
+ * old poster or its placeholder) or when no frame arrives within a second. Runs in this Worker, never on the UI thread.
+ */
+async function poster(): Promise<Blob | null> {
+  if (!player || !canvas) return null;
+  const bmp = await new Promise<ImageBitmap | null>((resolve) => {
+    const timer = setTimeout(() => { pendingCapture = undefined; resolve(null); }, 1000);
+    pendingCapture = (p) => void p.then((b) => { clearTimeout(timer); resolve(b); }, () => { clearTimeout(timer); resolve(null); });
+    if (player && !player.isPlaying) player.seek(player.frame);
+  });
+  if (!bmp) return null;
+  try {
+    const c = new OffscreenCanvas(POSTER_W, POSTER_H);
+    const g = c.getContext("2d", { willReadFrequently: true })!;
+    g.fillStyle = "#0b0b0d";
+    g.fillRect(0, 0, POSTER_W, POSTER_H);
+    const k = Math.min(POSTER_W / bmp.width, POSTER_H / bmp.height);
+    const w = bmp.width * k, h = bmp.height * k;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(bmp, (POSTER_W - w) / 2, (POSTER_H - h) / 2, w, h);
+    const d = g.getImageData(0, 0, POSTER_W, POSTER_H).data;
+    let lit = false;
+    for (let i = 0; i < d.length; i += 64) if (d[i]! > 24 || d[i + 1]! > 24 || d[i + 2]! > 24) { lit = true; break; }
+    if (!lit) return null;
+    for (const quality of [0.7, 0.55, 0.4, 0.28]) {
+      const blob = await c.convertToBlob({ type: "image/jpeg", quality });
+      if (blob.size <= POSTER_MAX) return blob;
+    }
+    return null;
+  } finally {
+    bmp.close();
   }
 }
 
