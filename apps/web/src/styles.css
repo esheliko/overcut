@@ -128,7 +128,9 @@ h2, p { margin: 0; }
 .tl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; cursor: default; background: var(--surface); }
 .tl-empty { position: absolute; inset-inline: calc(var(--gutter-w, 48px) + 12px) 12px; inset-block-start: 30px; margin: 0; z-index: 1; display: grid; place-items: center; min-block-size: 51px; padding: 8px 12px; border: 0; color: var(--muted); font-size: 13px; text-align: center; pointer-events: none; }
 .tl-canvas:focus-visible { outline: none; }
-.tl-playhead-layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; } /* the playhead and its time bubble: a transparent layer over the timeline canvas */
+.tl-playhead-layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; } /* the time bubble: a transparent layer over the timeline canvas (display none unless a bubble is shown) */
+.tl-playhead-clip { position: absolute; top: 0; bottom: 0; right: 0; overflow: hidden; pointer-events: none; contain: strict; } /* the playhead's window: right of the track headers */
+.tl-playhead-head { position: absolute; top: 0; left: 0; width: 20px; display: block; will-change: transform; } /* the playhead strip: painted once, moved by transform */
 .tl-menu { width: min(240px, calc(100vw - 16px)); position: fixed; inset-inline-end: auto; inset-block-start: auto; z-index: 60; min-width: min(240px, calc(100vw - 16px)); }
 .tl-menu .menu-row[data-danger] { color: var(--danger); }
 .tl-menu .menu-row:disabled { opacity: 0.4; }

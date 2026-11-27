@@ -2,7 +2,7 @@ import type { Op } from "@app/engine-client";
 import { memo, useCallback, useEffect, useRef, type KeyboardEvent } from "react";
 import { useI18n } from "../i18n";
 import { onThemeChange } from "../theme/tokens";
-import { DARK, drawPlayhead, drawTimeline, newOverlay, paletteFromCss, type Bubble, type DrawStats, type Overlay, type Palette } from "./draw";
+import { DARK, drawBubble, drawPlayheadStrip, drawTimeline, HEAD_W, newOverlay, paletteFromCss, type Bubble, type DrawStats, type Overlay, type Palette } from "./draw";
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart } from "./header";
@@ -81,7 +81,10 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
   /** The playhead in whole frames, kept current by the subscription below (no React render per tick). */
   const fr = useRef(playhead ? playhead.get() : frameProp);
   const firstFrame = useRef(fr.current);
-  const pcv = useRef<HTMLCanvasElement>(null); // the playhead layer: a transparent canvas over the timeline
+  const pcv = useRef<HTMLCanvasElement>(null); // the time bubble's layer: a transparent canvas over the timeline, shown only while a bubble is
+  const hcv = useRef<HTMLCanvasElement>(null); // the playhead: a thin strip painted once and moved with a CSS transform (it never repaints while panning, zooming or playing)
+  const hclip = useRef<HTMLDivElement>(null); // clips the strip at the track-header column
+  const headSig = useRef({ h: 0, dpr: 0, pal: null as Palette | null, tx: NaN, vis: true, left: -1, bubble: false, bw: 0, bh: 0 });
   const bubble = useRef<Bubble | null>(null);
   const phRaf = useRef(0);
   const ui = useRef<Overlay>(newOverlay());
@@ -99,12 +102,43 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
   const lengthSec = useCallback(() => Math.max(live.current.endFrame / live.current.fps, live.current.scene.endSec), []);
 
   const paintPlayhead = useCallback(() => {
-    const c = pcv.current, ctx = c?.getContext("2d");
-    if (!c || !ctx) return;
-    drawPlayhead(ctx, view.current, fr.current / live.current.fps, dpr.current, palette.current, bubble.current);
+    const h = hcv.current, clip = hclip.current, sg = headSig.current, v = view.current;
+    if (!h || !clip) return;
+    const g = gut(v), d = dpr.current;
+    if (sg.left !== g) { sg.left = g; clip.style.left = `${g}px`; }
+    if (sg.h !== v.height || sg.dpr !== d || sg.pal !== palette.current) { // repaint the strip only when what it shows changed
+      sg.h = v.height; sg.dpr = d; sg.pal = palette.current;
+      const w = Math.round(HEAD_W * d), ht = Math.round(v.height * d);
+      if (h.width !== w || h.height !== ht) { h.width = w; h.height = ht; }
+      h.style.height = `${v.height}px`;
+      const ctx = h.getContext("2d");
+      if (ctx) drawPlayheadStrip(ctx, v.height, d, palette.current);
+    }
+    const px = timeToX(v, fr.current / live.current.fps);
+    const vis = px >= g - 8 && px <= v.width + 8;
+    if (vis !== sg.vis) { sg.vis = vis; h.style.visibility = vis ? "visible" : "hidden"; }
+    if (vis) {
+      const tx = Math.round((Math.round(px * 2) / 2 - g - HEAD_W / 2) * d) / d; // whole device pixels: the layer is moved, never resampled
+      if (tx !== sg.tx) { sg.tx = tx; h.style.transform = `translate3d(${tx}px,0,0)`; }
+    }
+    const b = bubble.current, bc = pcv.current;
+    if (bc && (b || sg.bubble)) { // the time bubble: its own transparent layer, painted only while there is one (and once more to clear it)
+      sg.bubble = b !== null;
+      if (b) {
+        const w = Math.round(v.width * d), ht = Math.round(v.height * d);
+        if (bc.width !== w || bc.height !== ht) { bc.width = w; bc.height = ht; }
+      }
+      bc.style.display = b ? "block" : "none";
+      const ctx = bc.getContext("2d");
+      if (ctx) drawBubble(ctx, v, d, palette.current, b);
+    }
   }, []);
+  /** Touch pan: the finger's movement since the last frame, applied once at the start of the next draw (P-16: one pan per frame, however many events arrived). */
+  const panPend = useRef({ dx: 0, dy: 0 });
+  const flushPan = useCallback(() => { const q = panPend.current; if (q.dx !== 0 || q.dy !== 0) { view.current.scrollX += q.dx; view.current.scrollY += q.dy; q.dx = 0; q.dy = 0; } }, []);
   const draw = useCallback(() => {
     raf.current = 0;
+    flushPan();
     const c = canvas.current;
     const ctx = c?.getContext("2d", { alpha: false });
     if (!c || !ctx) return;
@@ -119,7 +153,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     paintPlayhead();
     const v = view.current, sig = seen.current;
     if (sig.pps !== v.pps || sig.x !== v.scrollX || sig.w !== v.width) { sig.pps = v.pps; sig.x = v.scrollX; sig.w = v.width; handle.current?.onView?.(); }
-  }, [lengthSec, media, paintPlayhead]);
+  }, [lengthSec, media, paintPlayhead, flushPan]);
   const invalidate = useCallback(() => { if (!raf.current) raf.current = requestAnimationFrame(draw); }, [draw]);
   /** Only the playhead layer changed (playback, the time bubble): the clips, ruler and thumbnails are not repainted. */
   const invalidatePlayhead = useCallback(() => {
@@ -148,7 +182,6 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       view.current.gutter = compact ? GUTTER_COMPACT : GUTTER_WIDE;
       c.width = Math.round(w * dpr.current);
       c.height = Math.round(h * dpr.current);
-      if (pcv.current) { pcv.current.width = c.width; pcv.current.height = c.height; }
       view.current.width = w;
       view.current.height = h;
       invalidate();
@@ -383,7 +416,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
 
   const onDown = (e: React.PointerEvent) => {
     if (e.pointerType === "mouse" && e.button !== 0) return; // a right click opens the track menu (contextmenu), it does not press
-    stopFling();
+    stopFling(); flushPan();
     const c = canvas.current!;
     try { c.setPointerCapture(e.pointerId); } catch { /* synthetic or already-ended pointer: keep working without capture */ }
     const p = local(e);
@@ -440,9 +473,17 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       invalidate();
     } else if (g.mode === "pan") {
       if (Math.hypot(p.x - g.sx, p.y - g.sy) > TAP_SLOP) g.moved = true;
-      const dt = Math.max(1, e.timeStamp - g.lastT);
-      v.scrollX -= p.x - prev.x; v.scrollY -= p.y - prev.y;
-      g.vx = 0.8 * g.vx + 0.2 * (-(p.x - prev.x) / dt); g.vy = 0.8 * g.vy + 0.2 * (-(p.y - prev.y) / dt);
+      // The events the browser folded into this one (touch can report faster than frames): each feeds the velocity, the position is the last of them; the scroll itself is applied once per frame.
+      const co = e.nativeEvent.getCoalescedEvents?.();
+      const sub = co && co.length > 1 ? co : [e.nativeEvent];
+      const r = canvas.current!.getBoundingClientRect();
+      let ax = prev.x, ay = prev.y, at = g.lastT;
+      for (const s of sub) {
+        const sx = s.clientX - r.left, sy = s.clientY - r.top, dt = Math.max(1, s.timeStamp - at);
+        g.vx = 0.8 * g.vx + 0.2 * (-(sx - ax) / dt); g.vy = 0.8 * g.vy + 0.2 * (-(sy - ay) / dt);
+        ax = sx; ay = sy; at = s.timeStamp;
+      }
+      panPend.current.dx -= p.x - prev.x; panPend.current.dy -= p.y - prev.y;
       g.lastT = e.timeStamp;
       invalidate();
     } else if (g.mode === "scrub") seekAt(p.x);
@@ -457,6 +498,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
   const onUp = (e: React.PointerEvent) => {
     stopHold();
     const g = gesture.current;
+    flushPan();
     ptr.current.delete(e.pointerId);
     if (g.mode === "scrub") { bubble.current = null; setCursor(""); invalidatePlayhead(); }
     if (g.mode === "edit" && ptr.current.size === 0) {
@@ -480,7 +522,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     if (ptr.current.size === 0) g.mode = "none";
   };
   const onCancel = (e: React.PointerEvent) => {
-    stopHold();
+    stopHold(); flushPan();
     ptr.current.delete(e.pointerId);
     if (gesture.current.mode === "scrub") { bubble.current = null; setCursor(""); invalidatePlayhead(); }
     gest.current = IDLE; syncPreview(IDLE);
@@ -618,7 +660,8 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
         }}
         onBlur={(e) => { delete e.currentTarget.dataset.pointer; }}
       />
-      <canvas ref={pcv} className="tl-playhead-layer" aria-hidden="true" />
+      <div ref={hclip} className="tl-playhead-clip" aria-hidden="true"><canvas ref={hcv} className="tl-playhead-head" /></div>
+      <canvas ref={pcv} className="tl-playhead-layer" aria-hidden="true" style={{ display: "none" }} />
       <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>
       <ClipList scene={scene} selected={selected} />
     </>

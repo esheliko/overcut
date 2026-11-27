@@ -11,23 +11,43 @@ export interface Palette {
   bg: string; surface: string; line: string; lineStrong: string; fg: string; muted: string; accent: string;
   videoBody: string; videoTile: string; audioBody: string; audioWave: string; videoStrip: string; audioStrip: string;
   danger: string; accentInk: string;
+  /** Clip name colour on a flat body of each kind (dark on a light body, white on a dark one: theme-aware). */
+  videoInk: string; audioInk: string;
 }
 export const DARK: Palette = {
   bg: "#08080a", surface: "#131316", line: "rgba(255,255,255,0.08)", lineStrong: "rgba(255,255,255,0.18)", fg: "#f4f4f6", muted: "#9a9aa6", accent: "#2de2d6",
   videoBody: "#17403f", videoTile: "#1d5654", videoStrip: "#2de2d6", audioBody: "#1c3a33", audioWave: "#5fd1a8", audioStrip: "#3ddc97",
-  danger: "#ff6b6b", accentInk: "#04211f",
+  danger: "#ff6b6b", accentInk: "#04211f", videoInk: "#fff", audioInk: "#fff",
 };
+/** Black or white, whichever reads better on `bg` (a #rgb / #rrggbb / rgb() colour); white when it cannot be parsed. */
+function inkOn(bg: string): string {
+  let r = 0, g = 0, b = 0;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(bg);
+  if (hex) {
+    const h = hex[1]!.length === 3 ? hex[1]!.replace(/./g, "$&$&") : hex[1]!;
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+  } else {
+    const m = /^rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/i.exec(bg);
+    if (!m) return "#fff";
+    r = +m[1]!; g = +m[2]!; b = +m[3]!;
+  }
+  const lin = (c: number) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return L > 0.3 ? "#0b1a18" : "#fff";
+}
 /** Reads the design tokens (theme/tokens.ts) so the canvas follows the active theme, including light and high contrast. */
 export function paletteFromCss(el: Element): Palette {
   const root = el.ownerDocument.documentElement;
   const c = readColors(root);
   const get = (v: string, fb: string) => v || fb;
   const tok = (n: string, fb: string) => readToken(n, root) || fb; // clip hues are timeline-only tokens (tokens.css), not in COLOR_TOKENS
+  const videoBody = get(c.clip, DARK.videoBody), audioBody = tok("clip-audio", DARK.audioBody);
   return {
+    videoInk: inkOn(videoBody), audioInk: inkOn(audioBody),
     bg: get(c.bg, DARK.bg), surface: get(c.surface, DARK.surface), line: get(c.line, DARK.line), lineStrong: get(c["line-strong"], DARK.lineStrong),
     fg: get(c.fg, DARK.fg), muted: get(c.muted, DARK.muted), accent: get(c.accent, DARK.accent),
-    videoBody: get(c.clip, DARK.videoBody), videoTile: get(c["accent-soft"], DARK.videoTile), videoStrip: get(c.accent, DARK.videoStrip),
-    audioBody: tok("clip-audio", DARK.audioBody), audioWave: tok("clip-audio-wave", DARK.audioWave), audioStrip: tok("clip-audio-strip", DARK.audioStrip),
+    videoBody, videoTile: get(c["accent-soft"], DARK.videoTile), videoStrip: get(c.accent, DARK.videoStrip),
+    audioBody, audioWave: tok("clip-audio-wave", DARK.audioWave), audioStrip: tok("clip-audio-strip", DARK.audioStrip),
     danger: get(c.danger, DARK.danger), accentInk: get(c["accent-ink"], DARK.accentInk),
   };
 }
@@ -42,7 +62,7 @@ function label(sec: number, step: number): string {
 }
 
 const FONT = '500 11px Inter, system-ui, sans-serif';
-const LABEL_SCRIM = "rgba(0,0,0,0.62)", LABEL_FG = "#fff", LABEL_SHADOW = "rgba(0,0,0,0.6)", KEYLINE = "rgba(255,255,255,0.92)", HEAD_KEYLINE = "rgba(0,0,0,0.5)";
+const LABEL_SCRIM = "rgba(0,0,0,0.62)", LABEL_FG = "#fff", KEYLINE = "rgba(255,255,255,0.92)", HEAD_KEYLINE = "rgba(0,0,0,0.5)";
 /** Corner radius of a clip (V-18) and the pixels left between neighbours on each side. */
 const R = 4;
 const speedLabels = new Map<number, string>();
@@ -74,11 +94,28 @@ function fitName(ctx: CanvasRenderingContext2D, name: string, room: number): str
   }
   return s;
 }
-const hasRoundRect = typeof CanvasRenderingContext2D !== "undefined" && "roundRect" in CanvasRenderingContext2D.prototype;
-/** Adds a rounded rectangle to the current path (a plain rectangle where `roundRect` is missing). */
+const SCRIM_H = 20;
+let scrim: CanvasGradient | null = null, scrimCtx: CanvasRenderingContext2D | null = null;
+/** The label scrim, built once per context (a gradient in user space, so it is reused at any y by translating). */
+function scrimFor(ctx: CanvasRenderingContext2D): CanvasGradient {
+  if (scrim === null || scrimCtx !== ctx) {
+    scrim = ctx.createLinearGradient(0, 0, 0, SCRIM_H);
+    scrim.addColorStop(0, "rgba(0,0,0,0.62)"); scrim.addColorStop(0.6, "rgba(0,0,0,0.38)"); scrim.addColorStop(1, "rgba(0,0,0,0)");
+    scrimCtx = ctx;
+  }
+  return scrim;
+}
+/** Adds a rounded rectangle to the current path. Corners are quadratic curves (about half the work of `roundRect`'s arcs for a rasterizer, and at 4 px the eye cannot tell). */
 function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  if (hasRoundRect) ctx.roundRect(x, y, w, h, Math.max(0, Math.min(r, w / 2, h / 2)));
-  else ctx.rect(x, y, w, h);
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  if (r < 1 || w < 12) { ctx.rect(x, y, w, h); return; } // a sliver of a clip has no visible corners: a plain rectangle is much cheaper to rasterize
+  const x1 = x + w, y1 = y + h;
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x1 - r, y); ctx.quadraticCurveTo(x1, y, x1, y + r);
+  ctx.lineTo(x1, y1 - r); ctx.quadraticCurveTo(x1, y1, x1 - r, y1);
+  ctx.lineTo(x + r, y1); ctx.quadraticCurveTo(x, y1, x, y1 - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 const FONT_CLIP = '600 11px Inter, system-ui, sans-serif';
 const FONT_HEAD = '600 11px Inter, system-ui, sans-serif';
@@ -112,7 +149,7 @@ const NO_UI: Overlay = newOverlay();
 export interface DrawStats { clipsDrawn: number; tracksDrawn: number }
 
 /** `dpr` is applied via setTransform; callers pass the device pixel ratio the backing store was sized with. The playhead is NOT drawn here: it lives on its
- *  own layer (`drawPlayhead`), so playback moves it without repainting clips, ruler and thumbnails. `playheadSec` only keeps ruler labels clear of its head. */
+ *  own layer (`drawPlayheadStrip`), so playback moves it without repainting clips, ruler and thumbnails. `playheadSec` only keeps ruler labels clear of its head. */
 export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: View, playheadSec: number, dpr: number, p: Palette, stats: DrawStats, ui: Overlay = NO_UI, media?: MediaLayer) {
   const W = v.width, H = v.height;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -210,9 +247,22 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
         for (let bx = x + k * TILE_W; bx + 2 < b; bx += TILE_W) ctx.fillRect(bx + 2, ty, Math.min(TILE_W - 4, b - bx - 4), th);
       }
     }
-    // Pass 3: names where they fit: plain text with a 1 px shadow (no box), cut with an ellipsis.
+    // Pass 3: names where they fit, plain text (no box, no shadow: one fillText each), cut with an ellipsis. Over real thumbnails a cached top gradient (0 to .55 black over 18 px)
+    // keeps white text readable in every theme; on a flat body the colour follows the body (dark on a light one).
     ctx.font = FONT_CLIP;
     ctx.textBaseline = "top";
+    const thumbs = media !== undefined && !audio;
+    if (thumbs) {
+      ctx.save(); ctx.translate(0, y + 5); ctx.fillStyle = scrimFor(ctx);
+      for (i = first; i < last; i++) {
+        const x = timeToX(v, scene.start[i]!) + 1, w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
+        if (clipDetail(w) !== "name" || !scene.mediaById.has(scene.media[i]!) || (sel !== null && sel[i] === 2)) continue;
+        const a = (x < gut(v) ? gut(v) : x) + R, b = Math.min(W, x + w) - R;
+        if (b > a) ctx.fillRect(a, 0, b - a, SCRIM_H);
+      }
+      ctx.restore();
+    }
+    const flatInk = audio ? p.audioInk : p.videoInk;
     for (i = first; i < last; i++) {
       const x = timeToX(v, scene.start[i]!) + 1;
       const w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
@@ -220,11 +270,8 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       const tx = (x < gut(v) ? gut(v) : x) + 7;
       const room = x + w - tx - 6;
       if (room > 24 && !(sel !== null && sel[i] === 2)) {
-        const text = fitName(ctx, scene.name[i]!, room);
-        ctx.fillStyle = LABEL_SHADOW;
-        ctx.fillText(text, tx + 0.5, y + 9.5);
-        ctx.fillStyle = LABEL_FG;
-        ctx.fillText(text, tx, y + 8.5);
+        ctx.fillStyle = thumbs && scene.mediaById.has(scene.media[i]!) ? LABEL_FG : flatInk;
+        ctx.fillText(fitName(ctx, scene.name[i]!, room), tx, y + 8.5);
       }
     }
     // Speed badge (bottom left, under the name): only clips that do not play at 1x.
@@ -472,36 +519,39 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
 /** What the playhead layer shows besides the line: a time bubble (the timecode while scrubbing or dragging, T-06) at `sec`. */
 export interface Bubble { sec: number; text: string }
 
-/** The playhead layer (V-16): an accent line with a dark keyline on both sides and a rounded head, over a transparent canvas on top of the timeline, so playback repaints
- *  only this layer. The canvas is cleared first. A `bubble` is drawn in the ruler beside the head (or where a dragged clip or trim edge will land). */
-export function drawPlayhead(ctx: CanvasRenderingContext2D, v: View, playheadSec: number, dpr: number, p: Palette, bubble: Bubble | null = null) {
+export const HEAD_W = 20;
+/** The playhead strip (HEAD_W css px wide, the full height of the timeline), drawn with the head centred. It is painted once and then only MOVED (a CSS transform on its own
+ *  layer, so panning, zooming and playback never repaint it); it is repainted only when the height, pixel ratio or palette changes. */
+export function drawPlayheadStrip(ctx: CanvasRenderingContext2D, H: number, dpr: number, p: Palette) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, HEAD_W, H);
+  const x = HEAD_W / 2;
+  ctx.fillStyle = p.surface; ctx.fillRect(x - 9, 0, 18, RULER - 1); // clearance: a ruler label never shows in pieces beside the head
+  ctx.fillStyle = HEAD_KEYLINE; ctx.fillRect(x - 1.75, 0, 3.5, H);
+  ctx.fillStyle = p.accent; ctx.fillRect(x - 0.75, 0, 1.5, H);
+  ctx.beginPath();
+  ctx.moveTo(x - 6.5, 1.5); ctx.lineTo(x + 6.5, 1.5); ctx.lineTo(x + 6.5, 9); ctx.lineTo(x, 15.5); ctx.lineTo(x - 6.5, 9);
+  ctx.closePath();
+  ctx.fillStyle = p.accent; ctx.fill();
+  ctx.strokeStyle = HEAD_KEYLINE; ctx.lineWidth = 1; ctx.lineJoin = "round"; ctx.stroke(); ctx.lineJoin = "miter";
+}
+
+/** The time bubble (T-06) on its own transparent layer, only while one is shown: in the ruler beside the head (or where a dragged clip or trim edge will land). Cleared first. */
+export function drawBubble(ctx: CanvasRenderingContext2D, v: View, dpr: number, p: Palette, bubble: Bubble | null) {
   const W = v.width, H = v.height, g = gut(v);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
+  if (!bubble) return;
   ctx.save();
   ctx.beginPath(); ctx.rect(g, 0, W - g, H); ctx.clip();
-  const px = timeToX(v, playheadSec);
-  if (px >= g - 8 && px <= W + 8) {
-    const x = Math.round(px * 2) / 2; // half-pixel snapped: a crisp 1.5 px line
-    ctx.fillStyle = p.surface; ctx.fillRect(x - 9, 0, 18, RULER - 1); // clearance: a ruler label never shows in pieces beside the head
-    ctx.fillStyle = HEAD_KEYLINE; ctx.fillRect(x - 1.75, 0, 3.5, H);
-    ctx.fillStyle = p.accent; ctx.fillRect(x - 0.75, 0, 1.5, H);
-    ctx.beginPath();
-    ctx.moveTo(x - 6.5, 1.5); ctx.lineTo(x + 6.5, 1.5); ctx.lineTo(x + 6.5, 9); ctx.lineTo(x, 15.5); ctx.lineTo(x - 6.5, 9);
-    ctx.closePath();
-    ctx.fillStyle = p.accent; ctx.fill();
-    ctx.strokeStyle = HEAD_KEYLINE; ctx.lineWidth = 1; ctx.lineJoin = "round"; ctx.stroke(); ctx.lineJoin = "miter";
-  }
-  if (bubble) {
-    ctx.font = '600 11px Inter, system-ui, sans-serif'; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-    const bx = timeToX(v, bubble.sec), tw = ctx.measureText(bubble.text).width, bw = tw + 14;
-    const left = bx + 12 + bw <= W - 2 ? bx + 12 : bx - 12 - bw; // flips to the left of the head near the right edge
-    const lx = Math.max(g + 2, left);
-    ctx.fillStyle = p.fg;
-    ctx.beginPath(); rr(ctx, lx, 4, bw, 20, 6); ctx.fill();
-    ctx.fillStyle = p.bg;
-    ctx.fillText(bubble.text, lx + 7, 14.5);
-  }
+  ctx.font = '600 11px Inter, system-ui, sans-serif'; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  const bx = timeToX(v, bubble.sec), tw = ctx.measureText(bubble.text).width, bw = tw + 14;
+  const left = bx + 12 + bw <= W - 2 ? bx + 12 : bx - 12 - bw; // flips to the left of the head near the right edge
+  const lx = Math.max(g + 2, left);
+  ctx.fillStyle = p.fg;
+  ctx.beginPath(); rr(ctx, lx, 4, bw, 20, 6); ctx.fill();
+  ctx.fillStyle = p.bg;
+  ctx.fillText(bubble.text, lx + 7, 14.5);
   ctx.restore();
 }
 
@@ -527,8 +577,7 @@ function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number
   if (name && room > 24) {
     ctx.font = FONT_CLIP; ctx.textAlign = "left"; ctx.textBaseline = "top";
     const text = fitName(ctx, name, room);
-    ctx.fillStyle = LABEL_SHADOW; ctx.fillText(text, tx + 0.5, y + 10.5);
-    ctx.fillStyle = LABEL_FG; ctx.fillText(text, tx, y + 9.5);
+    ctx.fillStyle = audio ? p.audioInk : p.videoInk; ctx.fillText(text, tx, y + 9.5);
   }
 }
 
