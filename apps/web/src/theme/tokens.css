@@ -140,3 +140,8 @@
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-instant: 0s; --dur-fast: 0s; --dur-base: 0s; --dur-slow: 0s; --dur-menu: 0s; --dur-dialog: 0s; --dur-toast: 0s; }
 }
+
+/* Timeline audio clip hues (M2 UX V-13): audio reads green, independent of the accent colour; video keeps --clip and --accent. Read by the canvas painter (timeline/draw.ts). */
+:root { --clip-audio: #1c3a33; --clip-audio-wave: #5fd1a8; --clip-audio-strip: #3ddc97; }
+:root[data-theme="light"] { --clip-audio: #cdeee0; --clip-audio-wave: #17704e; --clip-audio-strip: #1f8a62; }
+:root[data-theme="high-contrast"] { --clip-audio: #003d2b; --clip-audio-wave: #6dffb8; --clip-audio-strip: #6dffb8; }

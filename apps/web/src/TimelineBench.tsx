@@ -93,7 +93,7 @@ export function TimelineBench() {
   return (
     <div style={{ position: "fixed", inset: 0, display: "grid" }}>
       <div style={{ position: "relative" }}>
-        <TimelineCanvas scene={scene} fps={30} frame={0} endFrame={30 * 3600} playing={false} zoom={40} onFrame={() => undefined} onZoom={() => undefined} summary="Benchmark timeline." selected={selected} onSelect={setSelected} onEdit={(ops) => edits.current.push(ops)} onReady={ready} media={layer} />
+        <TimelineCanvas scene={scene} fps={30} frame={0} endFrame={30 * 3600} playing={false} onFrame={() => undefined} summary="Benchmark timeline." selected={selected} onSelect={setSelected} onEdit={(ops) => edits.current.push(ops)} onReady={ready} media={layer} />
       </div>
     </div>
   );

@@ -20,3 +20,9 @@ Planning in `timeline/ripple.ts` (pure, `tests/unit/timeline-ripple.test.ts`), g
 - **Limits.** Drags snap to whole frames inside the range the engine would accept (a clip keeps one frame, stays inside its media, a slide cannot overrun a non-touching neighbour); the preview shows the new edge (ripple), the new cut (roll) or the moved ghost with its amount (slip, slide). No timeline snapping to other edges yet.
 - **Not here.** Numeric entry for these edits (the timing dialog covers start/length), sync-lock across tracks (`all_tracks` is never sent; links are mirrored instead).
 - **Edge auto-scroll.** While a clip move, trim, edit-tool drag, marquee or track-reorder drag is held within 48 px of an edge of the canvas, the timeline scrolls that way (up to 700 px/s at the very edge, any direction, clamped to the content) and the drag keeps following: the gesture's press origin moves with the scroll (`edgeSpeed`, `scrolled` in `timeline/interact.ts`; the loop is in `TimelineCanvas`). `data-scrollx` on the canvas is the test hook.
+
+## M2 UX pass
+- A touch must move 8 px (mouse 6 px) before a press becomes a drag.
+- Right-click on a clip (or the context-menu key / Shift+F10 with a selection) opens the clip menu: Split, Duplicate, Delete, Ripple delete, Unlink, Speed presets (0.5x, 1x, 1.5x, 2x; one clip only). Right-clicking an unselected clip selects it first.
+- The dashed drop outline for a bin card is cleared on drop (capture), on `dragend` and on a window-level `drop`.
+- "Add media at playhead" and "Add as overlay on a new track" (palette, More menu): the selected clip's media, else the newest ready card in the bin. The overlay makes a new video track first (two undo steps: the track, then the clip). The bin's "+" is always shown, also for media already on the timeline.

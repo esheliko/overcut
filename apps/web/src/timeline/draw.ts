@@ -1,8 +1,8 @@
 /** Canvas painter for the timeline. `drawTimeline` allocates nothing per frame: typed arrays and constants only,
  *  one fillStyle per track pass (no paths: software rasterizers are slow on thousands of sub-rects), ruler labels cached by second. Only clips intersecting the viewport are touched (binary search per visible track). */
-import { readColors } from "../theme/tokens";
+import { readColors, readToken } from "../theme/tokens";
 import { firstEndingAfter, TICKS_PER_SECOND, type Scene } from "./scene";
-import { clipDetail, formatTick, gut, LANE, MARKER_NAME_PPS, minorDivisions, RULER, tickStep, timeToX, type View } from "./view";
+import { clipDetail, formatDur, formatTick, gut, LANE, MARKER_NAME_PPS, minorDivisions, RULER, tickStep, timeToX, type View } from "./view";
 import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
 import { formatSpeed } from "../inspector/speedModel";
 import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
@@ -10,20 +10,45 @@ import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
 export interface Palette {
   bg: string; surface: string; line: string; lineStrong: string; fg: string; muted: string; accent: string;
   videoBody: string; videoTile: string; audioBody: string; audioWave: string; videoStrip: string; audioStrip: string;
+  danger: string; accentInk: string;
+  /** Clip name colour on a flat body of each kind (dark on a light body, white on a dark one: theme-aware). */
+  videoInk: string; audioInk: string;
 }
 export const DARK: Palette = {
   bg: "#08080a", surface: "#131316", line: "rgba(255,255,255,0.08)", lineStrong: "rgba(255,255,255,0.18)", fg: "#f4f4f6", muted: "#9a9aa6", accent: "#2de2d6",
-  videoBody: "#17403f", videoTile: "#1d5654", videoStrip: "#2de2d6", audioBody: "#1f2c4d", audioWave: "#5a74d6", audioStrip: "#6c8cff",
+  videoBody: "#17403f", videoTile: "#1d5654", videoStrip: "#2de2d6", audioBody: "#1c3a33", audioWave: "#5fd1a8", audioStrip: "#3ddc97",
+  danger: "#ff6b6b", accentInk: "#04211f", videoInk: "#fff", audioInk: "#fff",
 };
+/** Black or white, whichever reads better on `bg` (a #rgb / #rrggbb / rgb() colour); white when it cannot be parsed. */
+function inkOn(bg: string): string {
+  let r = 0, g = 0, b = 0;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(bg);
+  if (hex) {
+    const h = hex[1]!.length === 3 ? hex[1]!.replace(/./g, "$&$&") : hex[1]!;
+    r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+  } else {
+    const m = /^rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/i.exec(bg);
+    if (!m) return "#fff";
+    r = +m[1]!; g = +m[2]!; b = +m[3]!;
+  }
+  const lin = (c: number) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return L > 0.3 ? "#0b1a18" : "#fff";
+}
 /** Reads the design tokens (theme/tokens.ts) so the canvas follows the active theme, including light and high contrast. */
 export function paletteFromCss(el: Element): Palette {
-  const c = readColors(el.ownerDocument.documentElement);
+  const root = el.ownerDocument.documentElement;
+  const c = readColors(root);
   const get = (v: string, fb: string) => v || fb;
+  const tok = (n: string, fb: string) => readToken(n, root) || fb; // clip hues are timeline-only tokens (tokens.css), not in COLOR_TOKENS
+  const videoBody = get(c.clip, DARK.videoBody), audioBody = tok("clip-audio", DARK.audioBody);
   return {
+    videoInk: inkOn(videoBody), audioInk: inkOn(audioBody),
     bg: get(c.bg, DARK.bg), surface: get(c.surface, DARK.surface), line: get(c.line, DARK.line), lineStrong: get(c["line-strong"], DARK.lineStrong),
     fg: get(c.fg, DARK.fg), muted: get(c.muted, DARK.muted), accent: get(c.accent, DARK.accent),
-    videoBody: get(c.clip, DARK.videoBody), videoTile: get(c["accent-soft"], DARK.videoTile), videoStrip: get(c.accent, DARK.videoStrip),
-    audioBody: get(c["surface-3"], DARK.audioBody), audioWave: get(c.muted, DARK.audioWave), audioStrip: get(c.muted, DARK.audioStrip),
+    videoBody, videoTile: get(c["accent-soft"], DARK.videoTile), videoStrip: get(c.accent, DARK.videoStrip),
+    audioBody, audioWave: tok("clip-audio-wave", DARK.audioWave), audioStrip: tok("clip-audio-strip", DARK.audioStrip),
+    danger: get(c.danger, DARK.danger), accentInk: get(c["accent-ink"], DARK.accentInk),
   };
 }
 
@@ -36,8 +61,10 @@ function label(sec: number, step: number): string {
   return s;
 }
 
-const FONT = '500 10.5px Inter, system-ui, sans-serif';
-const LABEL_SCRIM = "rgba(0,0,0,0.62)", LABEL_FG = "#fff";
+const FONT = '500 11px Inter, system-ui, sans-serif';
+const LABEL_SCRIM = "rgba(0,0,0,0.62)", LABEL_FG = "#fff", KEYLINE = "rgba(255,255,255,0.92)", HEAD_KEYLINE = "rgba(0,0,0,0.5)";
+/** Corner radius of a clip (V-18) and the pixels left between neighbours on each side. */
+const R = 4;
 const speedLabels = new Map<number, string>();
 /** "2×" for a clip whose speed is not 1 (cached by ratio: nothing allocated per frame once seen). */
 function speedLabel(num: number, den: number): string {
@@ -51,6 +78,44 @@ function nameWidth(ctx: CanvasRenderingContext2D, name: string): number {
   let w = nameWidths.get(name);
   if (w === undefined) { w = ctx.measureText(name).width; if (nameWidths.size > 500) nameWidths.clear(); nameWidths.set(name, w); }
   return w;
+}
+const fitted = new Map<string, string>();
+/** `name` cut with an ellipsis to fit `room` px (cached by name and width: nothing is allocated per frame for a name that fits). */
+function fitName(ctx: CanvasRenderingContext2D, name: string, room: number): string {
+  if (nameWidth(ctx, name) <= room) return name;
+  const key = `${Math.floor(room)}|${name}`;
+  let s = fitted.get(key);
+  if (s === undefined) {
+    let n = name.length;
+    while (n > 1 && ctx.measureText(`${name.slice(0, n)}…`).width > room) n--;
+    s = `${name.slice(0, n)}…`;
+    if (fitted.size > 500) fitted.clear();
+    fitted.set(key, s);
+  }
+  return s;
+}
+const SCRIM_H = 20;
+let scrim: CanvasGradient | null = null, scrimCtx: CanvasRenderingContext2D | null = null;
+/** The label scrim, built once per context (a gradient in user space, so it is reused at any y by translating). */
+function scrimFor(ctx: CanvasRenderingContext2D): CanvasGradient {
+  if (scrim === null || scrimCtx !== ctx) {
+    scrim = ctx.createLinearGradient(0, 0, 0, SCRIM_H);
+    scrim.addColorStop(0, "rgba(0,0,0,0.62)"); scrim.addColorStop(0.6, "rgba(0,0,0,0.38)"); scrim.addColorStop(1, "rgba(0,0,0,0)");
+    scrimCtx = ctx;
+  }
+  return scrim;
+}
+/** Adds a rounded rectangle to the current path. Corners are quadratic curves (about half the work of `roundRect`'s arcs for a rasterizer, and at 4 px the eye cannot tell). */
+function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  if (r < 1 || w < 12) { ctx.rect(x, y, w, h); return; } // a sliver of a clip has no visible corners: a plain rectangle is much cheaper to rasterize
+  const x1 = x + w, y1 = y + h;
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x1 - r, y); ctx.quadraticCurveTo(x1, y, x1, y + r);
+  ctx.lineTo(x1, y1 - r); ctx.quadraticCurveTo(x1, y1, x1 - r, y1);
+  ctx.lineTo(x + r, y1); ctx.quadraticCurveTo(x, y1, x, y1 - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 const FONT_CLIP = '600 11px Inter, system-ui, sans-serif';
 const FONT_HEAD = '600 11px Inter, system-ui, sans-serif';
@@ -83,7 +148,8 @@ const NO_UI: Overlay = newOverlay();
 
 export interface DrawStats { clipsDrawn: number; tracksDrawn: number }
 
-/** `dpr` is applied via setTransform; callers pass the device pixel ratio the backing store was sized with. */
+/** `dpr` is applied via setTransform; callers pass the device pixel ratio the backing store was sized with. The playhead is NOT drawn here: it lives on its
+ *  own layer (`drawPlayheadStrip`), so playback moves it without repainting clips, ruler and thumbnails. `playheadSec` only keeps ruler labels clear of its head. */
 export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: View, playheadSec: number, dpr: number, p: Palette, stats: DrawStats, ui: Overlay = NO_UI, media?: MediaLayer) {
   const W = v.width, H = v.height;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -99,12 +165,20 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   let drawn = 0;
   const sel = ui.selected;
 
-  // Lane backgrounds and separators.
+  // Lane separators; a lane without clips gets a faint dashed outline (it takes drops and pastes).
   ctx.fillStyle = p.line;
   for (let t = firstTrack; t <= lastTrack; t++) {
     const y = RULER + t * LANE - v.scrollY;
     ctx.fillRect(gut(v), y + LANE - 1, W - gut(v), 1);
   }
+  ctx.save();
+  ctx.strokeStyle = p.lineStrong; ctx.globalAlpha = 0.55; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+  for (let t = firstTrack; t <= lastTrack; t++) {
+    if (scene.trackFirst[t] !== scene.trackFirst[t + 1]) continue;
+    const y = RULER + t * LANE - v.scrollY;
+    ctx.beginPath(); rr(ctx, gut(v) + 8.5, y + 5.5, W - gut(v) - 17, LANE - 12, 6); ctx.stroke();
+  }
+  ctx.restore();
 
   // Clips, one batch per kind: fills share a fillStyle, tiles/waveforms are a single path each.
   for (let t = firstTrack; t <= lastTrack; t++) {
@@ -113,39 +187,55 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     const lo = scene.trackFirst[t]!, hi = scene.trackFirst[t + 1]!;
     let i = firstEndingAfter(scene, lo, hi, t0);
     if (!scene.trackLive[t]) ctx.globalAlpha = 0.38; // muted, hidden, or silenced by another track's solo: faded, still editable
-    // Pass 1: bodies and top strips.
+    // Pass 1: bodies (rounded, one path) and top strips (one path).
     const first = i;
+    ctx.beginPath();
     for (; i < hi && scene.start[i]! < t1; i++) {
-      const x = timeToX(v, scene.start[i]!);
-      const w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 1);
+      const x = timeToX(v, scene.start[i]!) + 1;
+      const w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
       const x0 = x < gut(v) ? gut(v) : x;
       const x1 = Math.min(W, x + w);
       if (x1 <= x0) continue;
       drawn++;
       if (sel !== null && sel[i] === 2) continue; // being dragged or trimmed: its ghost is drawn instead
-      ctx.fillStyle = audio ? p.audioBody : p.videoBody;
-      ctx.fillRect(x0, y + 3, x1 - x0, LANE - 7);
-      ctx.fillStyle = audio ? p.audioStrip : p.videoStrip;
-      ctx.fillRect(x0, y + 3, x1 - x0, 2);
+      rr(ctx, x0, y + 3, x1 - x0, LANE - 7, R);
     }
+    ctx.fillStyle = audio ? p.audioBody : p.videoBody;
+    ctx.fill();
     const last = i;
+    ctx.beginPath();
+    for (i = first; i < last; i++) {
+      if (sel !== null && sel[i] === 2) continue;
+      const x = timeToX(v, scene.start[i]!) + 1;
+      const w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
+      const x0 = x < gut(v) ? gut(v) : x;
+      const x1 = Math.min(W, x + w);
+      if (x1 <= x0) continue;
+      const inset = x1 - x0 > 14 ? R : 0;
+      ctx.rect(x0 + (x === x0 ? inset : 0), y + 3, x1 - x0 - (x === x0 ? inset : 0) - (x1 === x + w ? inset : 0), 2);
+    }
+    ctx.fillStyle = audio ? p.audioStrip : p.videoStrip;
+    ctx.fill();
     // Pass 2: filmstrip tiles (video) or waveform bars (audio) as one path, only when readable.
     ctx.fillStyle = audio ? p.audioWave : p.videoTile;
     for (i = first; i < last; i++) {
-      const x = timeToX(v, scene.start[i]!);
-      const w = (scene.end[i]! - scene.start[i]!) * v.pps - 1;
+      const x = timeToX(v, scene.start[i]!) + 1;
+      const w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
       if (clipDetail(w) === "block") continue;
       if (sel !== null && sel[i] === 2) continue;
       const a = x < gut(v) ? gut(v) : x;
       const b = Math.min(W, x + w);
-      if (media) { // real waveform / filmstrip from cached tiles (media-layer.ts)
+      if (media) { // real waveform / filmstrip from cached tiles (media-layer.ts), clipped to the rounded body
+        ctx.save();
+        ctx.beginPath(); rr(ctx, a, y + 3, b - a, LANE - 7, R); ctx.clip();
         if (audio) drawWaveform(ctx, media, scene, i, x, a, b, y, v, p);
         else drawFilmstrip(ctx, media, scene, i, x, a, b, y, v, p);
+        ctx.restore();
         continue;
       }
       if (audio) {
         const mid = y + 3 + (LANE - 7) / 2;
-        // Deterministic pseudo waveform anchored to the clip so it does not shimmer while scrolling.
+        // Deterministic pseudo waveform (placeholder) anchored to the clip so it does not shimmer while scrolling.
         let k = Math.ceil((a - x) / BAR);
         for (let bx = x + k * BAR; bx < b; bx += BAR, k++) {
           const h = 3 + 10 * Math.abs(Math.sin((k + i * 13) * 0.61) * Math.sin((k + i) * 0.17 + 1));
@@ -157,55 +247,102 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
         for (let bx = x + k * TILE_W; bx + 2 < b; bx += TILE_W) ctx.fillRect(bx + 2, ty, Math.min(TILE_W - 4, b - bx - 4), th);
       }
     }
-    // Pass 3: names where they fit.
+    // Pass 3: names where they fit, plain text (no box, no shadow: one fillText each), cut with an ellipsis. Over real thumbnails a cached top gradient (0 to .55 black over 18 px)
+    // keeps white text readable in every theme; on a flat body the colour follows the body (dark on a light one).
     ctx.font = FONT_CLIP;
     ctx.textBaseline = "top";
+    const thumbs = media !== undefined && !audio;
+    if (thumbs) {
+      ctx.save(); ctx.translate(0, y + 5); ctx.fillStyle = scrimFor(ctx);
+      for (i = first; i < last; i++) {
+        const x = timeToX(v, scene.start[i]!) + 1, w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
+        if (clipDetail(w) !== "name" || !scene.mediaById.has(scene.media[i]!) || (sel !== null && sel[i] === 2)) continue;
+        const a = (x < gut(v) ? gut(v) : x) + R, b = Math.min(W, x + w) - R;
+        if (b > a) ctx.fillRect(a, 0, b - a, SCRIM_H);
+      }
+      ctx.restore();
+    }
+    const flatInk = audio ? p.audioInk : p.videoInk;
     for (i = first; i < last; i++) {
-      const x = timeToX(v, scene.start[i]!);
-      const w = (scene.end[i]! - scene.start[i]!) * v.pps - 1;
+      const x = timeToX(v, scene.start[i]!) + 1;
+      const w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
       if (clipDetail(w) !== "name") continue;
-      const tx = (x < gut(v) ? gut(v) : x) + 6;
+      const tx = (x < gut(v) ? gut(v) : x) + 7;
       const room = x + w - tx - 6;
       if (room > 24 && !(sel !== null && sel[i] === 2)) {
-        // A dark pill behind the name keeps it readable over any thumbnail, in every theme.
-        const name = scene.name[i]!;
-        const tw = Math.min(room, nameWidth(ctx, name));
-        ctx.fillStyle = LABEL_SCRIM;
-        ctx.fillRect(tx - 4, y + 6, tw + 8, 15);
-        ctx.fillStyle = LABEL_FG;
-        ctx.fillText(name, tx, y + 8, room);
+        ctx.fillStyle = thumbs && scene.mediaById.has(scene.media[i]!) ? LABEL_FG : flatInk;
+        ctx.fillText(fitName(ctx, scene.name[i]!, room), tx, y + 8.5);
       }
     }
     // Speed badge (bottom left, under the name): only clips that do not play at 1x.
     for (i = first; i < last; i++) {
       const sn = scene.speedNum[i]!, sd = scene.speedDen[i]!;
       if (sn === sd) continue;
-      const x = timeToX(v, scene.start[i]!);
-      const w = (scene.end[i]! - scene.start[i]!) * v.pps - 1;
-      const tx = (x < gut(v) ? gut(v) : x) + 6;
+      const x = timeToX(v, scene.start[i]!) + 1;
+      const w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
+      const tx = (x < gut(v) ? gut(v) : x) + 7;
       const room = x + w - tx - 6;
       if (room < 30 || (sel !== null && sel[i] === 2)) continue;
       const text = speedLabel(sn, sd);
       const tw = Math.min(room, nameWidth(ctx, text));
       ctx.fillStyle = LABEL_SCRIM;
-      ctx.fillRect(tx - 4, y + LANE - 24, tw + 8, 15);
+      ctx.beginPath(); rr(ctx, tx - 4, y + LANE - 24, tw + 8, 15, 3); ctx.fill();
       ctx.fillStyle = LABEL_FG;
       ctx.fillText(text, tx, y + LANE - 22, room);
     }
     ctx.globalAlpha = 1;
-    // Pass 4: selection outline and trim handles (few clips, so strokes are fine).
+    // Pass 4: selection (V-12): a wash over the body, a 2 px accent outline all round with a light keyline outside it, and grips at both ends. One path per layer
+    // for every selected clip of the lane, so "select all" on a busy timeline costs a handful of draw calls, not a few per clip.
     if (scene.trackLocked[t]) { ctx.fillStyle = p.line; ctx.fillRect(gut(v), y, W - gut(v), LANE - 1); } // locked: a veil over the lane
     if (sel !== null) {
-      ctx.strokeStyle = p.accent;
-      ctx.lineWidth = 2;
+      let n = 0;
+      ctx.beginPath();
       for (i = first; i < last; i++) {
         if (sel[i] !== 1) continue;
-        const x = timeToX(v, scene.start[i]!);
-        const w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 1);
-        ctx.strokeRect(x + 1, y + 4, w - 2, LANE - 9);
-        if (w >= 14) { ctx.fillStyle = p.accent; ctx.fillRect(x + 1, y + 4, 4, LANE - 9); ctx.fillRect(x + w - 5, y + 4, 4, LANE - 9); }
-        const keys = w >= 60 ? scene.keys.get(i) : undefined; // keyframe diamonds on the selected clip (skipped when it is too narrow to read)
-        if (keys) {
+        const x = timeToX(v, scene.start[i]!) + 1, w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
+        rr(ctx, x, y + 3, w, LANE - 7, R); n++;
+      }
+      if (n > 0) {
+        const full = n <= 24; // "select all" on a busy lane: the wash and the outline only (the keyline and the grips are for the few clips you are working on)
+        ctx.fillStyle = p.accent; ctx.globalAlpha = 0.16; ctx.fill(); ctx.globalAlpha = 1;
+        if (full) {
+          ctx.beginPath();
+          for (i = first; i < last; i++) {
+            if (sel[i] !== 1) continue;
+            const x = timeToX(v, scene.start[i]!) + 1, w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
+            rr(ctx, x - 0.5, y + 2.5, w + 1, LANE - 6, R + 1);
+          }
+          ctx.strokeStyle = KEYLINE; ctx.lineWidth = 1; ctx.stroke();
+        }
+        ctx.beginPath();
+        for (i = first; i < last; i++) {
+          if (sel[i] !== 1) continue;
+          const x = timeToX(v, scene.start[i]!) + 1, w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
+          rr(ctx, x + 1, y + 4, w - 2, LANE - 9, R - 1);
+        }
+        ctx.strokeStyle = p.accent; ctx.lineWidth = 2; ctx.stroke();
+        const gy = y + 3 + (LANE - 7 - 20) / 2;
+        if (full) {
+          ctx.beginPath();
+          for (i = first; i < last; i++) {
+            if (sel[i] !== 1) continue;
+            const x = timeToX(v, scene.start[i]!) + 1, w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
+            if (w >= 20) { rr(ctx, x + 2, gy, 6, 20, 3); rr(ctx, x + w - 8, gy, 6, 20, 3); }
+          }
+          ctx.fillStyle = p.accent; ctx.fill();
+          ctx.beginPath();
+          for (i = first; i < last; i++) {
+            if (sel[i] !== 1) continue;
+            const x = timeToX(v, scene.start[i]!) + 1, w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
+            if (w >= 20) { ctx.rect(x + 4, gy + 7, 2, 2); ctx.rect(x + 4, gy + 11, 2, 2); ctx.rect(x + w - 6, gy + 7, 2, 2); ctx.rect(x + w - 6, gy + 11, 2, 2); }
+          }
+          ctx.fillStyle = p.accentInk; ctx.fill();
+        }
+        for (i = first; i < last; i++) {
+          if (sel[i] !== 1 || scene.keys.size === 0) continue;
+          const x = timeToX(v, scene.start[i]!) + 1, w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
+          const keys = w >= 60 ? scene.keys.get(i) : undefined; // keyframe diamonds on the selected clip (skipped when it is too narrow to read)
+          if (!keys) continue;
           ctx.fillStyle = "#fff"; ctx.strokeStyle = p.accent; ctx.lineWidth = 1.5;
           const cy = y + LANE - 13, r = 5.5;
           for (const k of keys) {
@@ -228,12 +365,15 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       const i = ui.ghosts[n]!;
       // A lane change gives each ghost its own row (clips of the other kind, like a linked sound, stay on their track).
       const tr = ui.ghostTracks !== null ? ui.ghostTracks[n]! : scene.clipTrack[i]!;
-      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, tr >= scene.trackCount || scene.trackKind[tr] === 1, ui.ghostLabel ?? scene.name[i]);
+      const dur = scene.end[i]! - scene.start[i]!;
+      const many = ui.ghosts.length > 16; // dragging a big selection: plain boxes (no names, no rounding), the cost stays flat
+      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, tr >= scene.trackCount || scene.trackKind[tr] === 1, many ? "" : ui.ghostLabel ?? `${scene.name[i]} · ${formatDur(dur)}`, many);
     }
   }
   if (ui.trimClip >= 0) {
     const i = ui.trimClip;
-    ghost(ctx, v, p, scene.clipTrack[i]!, ui.trimEnd ? scene.start[i]! : ui.trimSec, ui.trimEnd ? ui.trimSec : scene.end[i]!, scene.trackKind[scene.clipTrack[i]!] === 1);
+    const a = ui.trimEnd ? scene.start[i]! : ui.trimSec, b = ui.trimEnd ? ui.trimSec : scene.end[i]!;
+    ghost(ctx, v, p, scene.clipTrack[i]!, a, b, scene.trackKind[scene.clipTrack[i]!] === 1, `${scene.name[i]} · ${formatDur(b - a)}`);
     if (ui.trimRight >= 0) ghost(ctx, v, p, scene.clipTrack[ui.trimRight]!, ui.trimSec, scene.end[ui.trimRight]!, scene.trackKind[scene.clipTrack[ui.trimRight]!] === 1); // a seam: the right clip follows the boundary
   }
 
@@ -275,28 +415,43 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     ctx.fillRect(W - 4, ty, 3, th);
   }
 
-  // Ruler (sticky): adaptive ticks, minor ticks between labelled ones.
+  // Ruler (sticky): adaptive ticks with a hierarchy (full-height labelled ticks, a taller middle tick, short minor ticks).
   ctx.fillStyle = p.surface;
   ctx.fillRect(0, 0, W, RULER);
   ctx.fillStyle = p.line;
   ctx.fillRect(0, RULER - 1, W, 1);
   const step = tickStep(v.pps);
-  const minor = step / minorDivisions(step);
+  const div = minorDivisions(step);
+  const minor = step / div;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.font = FONT;
+  ctx.strokeStyle = p.lineStrong;
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.5;
   ctx.beginPath();
   for (let s = Math.floor(t0 / minor) * minor; s <= t1; s += minor) {
     const x = timeToX(v, s);
     if (x < gut(v)) continue;
+    if (div % 2 === 0 && Math.round(s / minor) % div === div / 2) continue; // the middle tick is drawn taller below
     ctx.moveTo(Math.round(x) + 0.5, RULER - 5);
     ctx.lineTo(Math.round(x) + 0.5, RULER - 1);
   }
-  ctx.strokeStyle = p.lineStrong;
-  ctx.lineWidth = 1;
   ctx.stroke();
+  ctx.globalAlpha = 1;
+  if (div % 2 === 0) {
+    ctx.beginPath();
+    for (let s = Math.floor(t0 / minor) * minor; s <= t1; s += minor) {
+      const x = timeToX(v, s);
+      if (x < gut(v) || Math.round(s / minor) % div !== div / 2) continue;
+      ctx.moveTo(Math.round(x) + 0.5, RULER - 9);
+      ctx.lineTo(Math.round(x) + 0.5, RULER - 1);
+    }
+    ctx.stroke();
+  }
   ctx.beginPath();
   ctx.fillStyle = p.muted;
+  const phx = timeToX(v, playheadSec);
   const k0 = Math.ceil(t0 / step - 1e-9);
   for (let k = k0; k * step <= t1; k++) {
     const s = k * step;
@@ -304,7 +459,8 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     if (x < gut(v)) continue;
     ctx.moveTo(Math.round(x) + 0.5, 0);
     ctx.lineTo(Math.round(x) + 0.5, RULER);
-    ctx.fillText(label(s, step), x + 5, 9);
+    if (x + 6 < phx + 10 && x + 36 > phx - 10) continue; // the playhead's head sits on this label: leave it out rather than print under the head
+    ctx.fillText(label(s, step), x + 6, 9);
   }
   ctx.stroke();
   ctx.fillStyle = p.surface;
@@ -356,68 +512,103 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   }
   ctx.restore();
 
-  // Playhead.
-  const px = timeToX(v, playheadSec);
-  if (px >= gut(v) - 7 && px <= W + 7) {
-    ctx.fillStyle = p.fg;
-    ctx.fillRect(px - 1, 0, 2, H);
-    ctx.beginPath();
-    ctx.moveTo(px - 7, 0); ctx.lineTo(px + 7, 0); ctx.lineTo(px + 7, 9); ctx.lineTo(px, 16); ctx.lineTo(px - 7, 9);
-    ctx.closePath();
-    ctx.fill();
-  }
   stats.clipsDrawn = drawn;
   stats.tracksDrawn = lastTrack - firstTrack + 1;
 }
 
+/** What the playhead layer shows besides the line: a time bubble (the timecode while scrubbing or dragging, T-06) at `sec`. */
+export interface Bubble { sec: number; text: string }
+
+export const HEAD_W = 20;
+/** The playhead strip (HEAD_W css px wide, the full height of the timeline), drawn with the head centred. It is painted once and then only MOVED (a CSS transform on its own
+ *  layer, so panning, zooming and playback never repaint it); it is repainted only when the height, pixel ratio or palette changes. */
+export function drawPlayheadStrip(ctx: CanvasRenderingContext2D, H: number, dpr: number, p: Palette) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, HEAD_W, H);
+  const x = HEAD_W / 2;
+  ctx.fillStyle = p.surface; ctx.fillRect(x - 9, 0, 18, RULER - 1); // clearance: a ruler label never shows in pieces beside the head
+  ctx.fillStyle = HEAD_KEYLINE; ctx.fillRect(x - 1.75, 0, 3.5, H);
+  ctx.fillStyle = p.accent; ctx.fillRect(x - 0.75, 0, 1.5, H);
+  ctx.beginPath();
+  ctx.moveTo(x - 6.5, 1.5); ctx.lineTo(x + 6.5, 1.5); ctx.lineTo(x + 6.5, 9); ctx.lineTo(x, 15.5); ctx.lineTo(x - 6.5, 9);
+  ctx.closePath();
+  ctx.fillStyle = p.accent; ctx.fill();
+  ctx.strokeStyle = HEAD_KEYLINE; ctx.lineWidth = 1; ctx.lineJoin = "round"; ctx.stroke(); ctx.lineJoin = "miter";
+}
+
+/** The time bubble (T-06) on its own transparent layer, only while one is shown: in the ruler beside the head (or where a dragged clip or trim edge will land). Cleared first. */
+export function drawBubble(ctx: CanvasRenderingContext2D, v: View, dpr: number, p: Palette, bubble: Bubble | null) {
+  const W = v.width, H = v.height, g = gut(v);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!bubble) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(g, 0, W - g, H); ctx.clip();
+  ctx.font = '600 11px Inter, system-ui, sans-serif'; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  const bx = timeToX(v, bubble.sec), tw = ctx.measureText(bubble.text).width, bw = tw + 14;
+  const left = bx + 12 + bw <= W - 2 ? bx + 12 : bx - 12 - bw; // flips to the left of the head near the right edge
+  const lx = Math.max(g + 2, left);
+  ctx.fillStyle = p.fg;
+  ctx.beginPath(); rr(ctx, lx, 4, bw, 20, 6); ctx.fill();
+  ctx.fillStyle = p.bg;
+  ctx.fillText(bubble.text, lx + 7, 14.5);
+  ctx.restore();
+}
+
 /** A translucent copy of a clip at its previewed position. */
-function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number, startSec: number, endSec: number, audio: boolean, name = "") {
-  const x = timeToX(v, startSec), w = Math.max(2, (endSec - startSec) * v.pps - 1);
+function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number, startSec: number, endSec: number, audio: boolean, name = "", plain = false) {
+  const x = timeToX(v, startSec) + 1, w = Math.max(2, (endSec - startSec) * v.pps - 2);
   if (x + w < gut(v) || x > v.width) return;
   const y = RULER + track * LANE - v.scrollY;
+  if (plain) {
+    ctx.globalAlpha = 0.85; ctx.fillStyle = audio ? p.audioBody : p.videoBody; ctx.fillRect(x, y + 3, w, LANE - 7);
+    ctx.globalAlpha = 1; ctx.strokeStyle = p.accent; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 4, w - 2, LANE - 9);
+    return;
+  }
   ctx.globalAlpha = 0.85;
   ctx.fillStyle = audio ? p.audioBody : p.videoBody;
-  ctx.fillRect(x, y + 3, w, LANE - 7);
+  ctx.beginPath(); rr(ctx, x, y + 3, w, LANE - 7, R); ctx.fill();
   ctx.globalAlpha = 1;
   ctx.strokeStyle = p.accent;
   ctx.lineWidth = 2;
-  ctx.strokeRect(x + 1, y + 4, w - 2, LANE - 9);
-  // The name rides along on a dark pill (same as the clip labels), so what is being carried stays readable.
-  const tx = Math.max(x, gut(v)) + 6, room = x + w - tx - 6;
+  ctx.beginPath(); rr(ctx, x + 1, y + 4, w - 2, LANE - 9, R - 1); ctx.stroke();
+  // The name (and length) ride along, so what is being carried stays readable.
+  const tx = Math.max(x, gut(v)) + 7, room = x + w - tx - 6;
   if (name && room > 24) {
     ctx.font = FONT_CLIP; ctx.textAlign = "left"; ctx.textBaseline = "top";
-    ctx.fillStyle = LABEL_SCRIM;
-    ctx.fillRect(tx - 4, y + 7, Math.min(room, nameWidth(ctx, name)) + 8, 15);
-    ctx.fillStyle = LABEL_FG;
-    ctx.fillText(name, tx, y + 9, room);
+    const text = fitName(ctx, name, room);
+    ctx.fillStyle = audio ? p.audioInk : p.videoInk; ctx.fillText(text, tx, y + 9.5);
   }
 }
 
 const BADGE = ["V", "A"];
-/** One track header in the lane whose top is `y`: kind chip + name, then (wide) the four switches or (compact) indicators of the ones that are on. */
+/** One track header in the lane whose top is `y`. Wide (mouse): ONE row, centred in the lane: kind chip, name, then the switches right aligned (borderless, filled when on).
+ *  Compact (touch): chip and name, then small indicators of the switches that are on; the whole header is one target. */
 function header(ctx: CanvasRenderingContext2D, scene: Scene, v: View, p: Palette, t: number, y: number, lifted: boolean) {
   const audio = scene.trackKind[t] === 1;
   const live = scene.trackLive[t] === 1;
   if (lifted) { ctx.fillStyle = p.line; ctx.fillRect(0, y, gut(v) - 1, LANE - 1); }
-  // Kind chip.
+  const cy = y + (LANE - 1) / 2; // one-row headers sit on the lane's middle line
+  const rowY = v.compact ? y + 15.5 : cy;
+  // Kind chip: video takes the accent, audio its own green.
   ctx.fillStyle = audio ? p.audioStrip : p.videoStrip;
   ctx.globalAlpha = live ? 1 : 0.5;
-  ctx.fillRect(8, y + 7, 16, 16);
+  ctx.beginPath(); rr(ctx, 8, rowY - 8, 16, 16, 4); ctx.fill();
   ctx.fillStyle = p.bg;
   ctx.font = '700 10px Inter, system-ui, sans-serif';
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(BADGE[scene.trackKind[t]!]!, 16, y + 15.5);
+  ctx.fillText(BADGE[scene.trackKind[t]!]!, 16, rowY + 0.5);
   ctx.globalAlpha = 1;
   // Name.
   ctx.fillStyle = live ? p.fg : p.muted;
   ctx.font = FONT_HEAD;
   ctx.textAlign = "left";
-  ctx.fillText(scene.trackName[t]!, 30, y + 15.5, gut(v) - (v.compact ? 48 : 38));
   if (v.compact) {
+    ctx.fillText(scene.trackName[t]!, 30, rowY, gut(v) - 48);
     // A small chevron: the whole header opens the track menu.
-    const cx = gut(v) - 12, cy = y + 15.5;
+    const cx = gut(v) - 12;
     ctx.strokeStyle = p.muted; ctx.lineWidth = 1.5; ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.beginPath(); ctx.moveTo(cx - 3.5, cy - 1.8); ctx.lineTo(cx, cy + 1.8); ctx.lineTo(cx + 3.5, cy - 1.8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 3.5, rowY - 1.8); ctx.lineTo(cx, rowY + 1.8); ctx.lineTo(cx + 3.5, rowY - 1.8); ctx.stroke();
     ctx.lineCap = "butt"; ctx.lineJoin = "miter";
     let x = IND.x0;
     for (const part of TOGGLES) {
@@ -427,10 +618,11 @@ function header(ctx: CanvasRenderingContext2D, scene: Scene, v: View, p: Palette
     }
     return;
   }
+  const first = switchX(TOGGLES.length - togglesFor(scene.trackKind[t]!).length, gut(v));
+  ctx.fillText(scene.trackName[t]!, 30, rowY, Math.max(20, first - 30 - 4));
   for (const part of togglesFor(scene.trackKind[t]!)) {
-    const on = state(scene, t, part), x = switchX(TOGGLES.indexOf(part)), by = y + SW.y;
-    if (on) { ctx.fillStyle = part === "lock" || part === "hide" ? p.fg : p.accent; ctx.fillRect(x, by, SW.w, SW.h); }
-    else { ctx.strokeStyle = p.lineStrong; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, by + 0.5, SW.w - 1, SW.h - 1); }
+    const on = state(scene, t, part), x = switchX(TOGGLES.indexOf(part), gut(v)), by = y + SW.y;
+    if (on) { ctx.fillStyle = part === "mute" ? p.danger : part === "solo" ? p.accent : p.fg; ctx.beginPath(); rr(ctx, x, by, SW.w, SW.h, 6); ctx.fill(); }
     glyph(ctx, p, part, x + (SW.w - 14) / 2, by + (SW.h - 14) / 2, 14, on);
   }
 }
