@@ -315,6 +315,7 @@
   "export.err.storage": "There isn't enough free storage to finish the video. Free up some space, or pick Small file, then try again.",
   "export.err.encode": "The video encoder stopped unexpectedly. Try again, or pick a smaller size or another format.",
   "export.err.unsupported": "This device can't make that format or size. Pick another format or a smaller size.",
+  "export.err.mediaFailed": "One of your clips couldn't be processed for the export. Try again; if it keeps failing, open Technical details and send them along.",
   "export.err.media": "One of your clips can't be read right now. Reconnect it in the Media panel, then try again.",
   "export.err.empty": "There is nothing to export yet. Add a clip to the timeline first.",
   "export.err.notYet": "Exporting in the desktop app is not ready yet. Use OverCut in your browser to export for now.",

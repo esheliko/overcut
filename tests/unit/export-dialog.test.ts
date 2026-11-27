@@ -11,7 +11,7 @@ import type { CodecProbe } from "../../packages/engine-client/src/export/presets
 import type { Project } from "../../packages/engine-client/src/model.generated";
 import { canShareFile, saveFile, shareFile } from "../../apps/web/src/export/deliver";
 import {
-  PLATFORMS, MIN_BPP, formatNote, withoutCap, buildSettings, errorKey, needsBars, presetWarnings, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, pickFormat, presetChoice, presetHint, saveName, resolutionSteps, saveRemembered, scaledSize, usableCustom, videoBitrate,
+  PLATFORMS, MIN_BPP, formatNote, withoutCap, buildSettings, errorKey, describeFailure, needsBars, presetWarnings, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, pickFormat, presetChoice, presetHint, saveName, resolutionSteps, saveRemembered, scaledSize, usableCustom, videoBitrate,
   type Choice, type Source,
 } from "../../apps/web/src/export/model";
 
@@ -150,6 +150,7 @@ test("every failure has a friendly message key", () => {
   assert.equal(key("storage_failed"), "export.err.storage");
   assert.equal(key("encode_failed"), "export.err.encode");
   assert.equal(key("media_unavailable"), "export.err.media");
+  assert.equal(key("media_failed"), "export.err.mediaFailed");
   assert.equal(key("unsupported"), "export.err.unsupported");
   assert.equal(key("not_yet"), "export.err.notYet");
   assert.equal(errorKey(new Error("boom")), "export.err.unknown");
@@ -352,4 +353,11 @@ test("formatNote: only a WebM default that is forced by a device with no MP4 get
   assert.equal(formatNote(mp4, [mp4, webm]), null);
   assert.equal(formatNote(webm, [webm]), "export.format.noMp4"); // this device cannot make MP4 at all
   assert.equal(formatNote(webm, []), null); // nothing encodable: no note, the dialog shows its own message
+});
+
+test("the failure box shows everything a device report needs: code, error, stage, clip, position, attempts", () => {
+  const e = new ExportError("media_failed", `"a.mp4" failed at audio samples 1..2: out of range`, { name: "MediaDecodeError(out_of_range)", message: "out of range", stage: "encoding", clip: "a.mp4", at: "audio samples 1..2 (48000 Hz)", frames: 12, attempts: [{ stage: "encoding", message: "earlier", name: "Error" }] });
+  const text = describeFailure(e);
+  for (const part of ["code: media_failed", "error: MediaDecodeError(out_of_range): out of range", "stage: encoding", "clip: a.mp4", "at: audio samples 1..2", "frames encoded: 12", "attempt 1 (failed earlier):", "earlier"]) assert.ok(text.includes(part), part);
+  assert.match(describeFailure(new RangeError("x")), /error: RangeError: x/);
 });

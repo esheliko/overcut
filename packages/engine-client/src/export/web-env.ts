@@ -80,7 +80,10 @@ export async function openUsedMedia(plan: ExportPlan, project: Project, settings
       m = ref && blob && media ? await openBlobMedia(media, blob, plan.sampleRate, ref.name) : ref ? await openMedia(ref, plan.sampleRate) : null;
     } catch (err) {
       dispose();
-      throw new ExportError("media_unavailable", `"${ref?.name ?? id}" cannot be read: ${err instanceof Error ? err.message : String(err)}`);
+      const gone = err instanceof DOMException && ["NotFoundError", "NotReadableError", "SecurityError"].includes(err.name);
+      const message = err instanceof Error ? err.message : String(err);
+      const kind = err instanceof Error ? `${err.name}${"kind" in err ? `(${String(err.kind)})` : ""}` : "Error";
+      throw new ExportError(gone ? "media_unavailable" : "media_failed", `"${ref?.name ?? id}" cannot be opened: ${message}`, { name: kind, message, clip: ref?.name ?? id, at: `opening the file (${blob?.size ?? "?"} bytes)`, stack: err instanceof Error ? err.stack?.slice(0, 1500) : undefined });
     }
     if (!m) {
       dispose();
