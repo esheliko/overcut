@@ -1,5 +1,6 @@
 import type { Engine, Project } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { announce } from "./a11y/announcer";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { clipCount, timelineEnd } from "./media/plan";
@@ -7,7 +8,9 @@ import { useImportPicker } from "./media/MediaBin";
 import type { Source } from "./media/sources";
 import { canvasSummary, ratioLabel } from "./canvas";
 import { canvasBackingSize } from "./preview/layout";
-import { PLAY_RANGE_EVENT, type PlayRange } from "./commands/palette";
+import { COMMAND_EVENT, PLAY_RANGE_EVENT, type PlayRange } from "./commands/palette";
+import { currentKeymap } from "./commands/keymap";
+import { resolveKey } from "./commands/registry";
 import { acquirePreviewHost, type PlayerProxy, type PreviewHost } from "./preview/host";
 import { rateLabel, TICKS_PER_SECOND, timecodeHMS, type Rate } from "./preview/timing";
 import { TransformHandles } from "./preview/TransformHandles";
@@ -15,6 +18,7 @@ import { selectedVideoClip, useTransformEdit } from "./inspector/Inspector";
 import { relativeTicks } from "./inspector/keyframeModel";
 import { useWorkerMedia } from "./preview/useWorkerMedia";
 import { useProjectStore, useStore } from "./store/projectStore";
+import type { Clip } from "@app/engine-client";
 
 const IDLE = { rate: { num: 30, den: 1 } as Rate, size: { width: 1920, height: 1080 }, endTicks: 60 * TICKS_PER_SECOND };
 
@@ -48,7 +52,40 @@ interface Props {
   onPlaying(p: boolean): void;
   /** Upright pixel size of a media item once probed (the transform handles need the picture's shape). */
   pictureOf?(id: string): { width: number; height: number } | undefined;
+  /** Whether the transform handles may show. On a phone they only do while the Edit sheet is open (they cover the picture otherwise). Default true. */
+  handlesOn?: boolean;
 }
+
+/** The playhead time. Its own component so a playhead tick re-renders this one text, not the whole preview panel. */
+function Timecode({ rate, endFrame, label }: { rate: Rate; endFrame: number; label: string }) {
+  const frame = useProjectStore((s) => s.playhead);
+  return (
+    <div className="tc" aria-label={label} data-testid="timecode"><span>{timecodeHMS(frame, rate)}</span><span className="tc-total"> / {timecodeHMS(endFrame, rate)}</span></div>
+  );
+}
+
+/** The drag handles of the selected clip. Hidden while playing and for a moment after the playhead moved (scrubbing), so they never cover the picture being watched. */
+function HandlesLayer({ clip, rate, size, boxRef, picture, hidden, onEdit }: { clip: Clip; rate: Rate; size: { width: number; height: number }; boxRef: { current: HTMLElement | null }; picture?: { width: number; height: number }; hidden: boolean; onEdit(next: Parameters<ReturnType<typeof useTransformEdit>>[1], key: number): void }) {
+  const frame = useProjectStore((s) => s.playhead);
+  const [moving, setMoving] = useState(false);
+  const last = useRef(frame);
+  useEffect(() => {
+    if (frame === last.current) return;
+    last.current = frame;
+    setMoving(true);
+    const id = window.setTimeout(() => setMoving(false), 220);
+    return () => window.clearTimeout(id);
+  }, [frame]);
+  if (hidden || moving) return null;
+  return <TransformHandles clip={clip} canvas={size} rel={relativeTicks(clip, frame, rate)} picture={picture} boxRef={boxRef} onEdit={onEdit} />;
+}
+
+/** Whether the playhead is on `clip` (a boolean selector: the panel re-renders when it flips, not on every tick). */
+const onClipAt = (clip: Clip | null, frame: number, rate: Rate): boolean => {
+  if (!clip) return false;
+  const now = (frame * TICKS_PER_SECOND * rate.den) / rate.num;
+  return now >= clip.start && now < clip.start + clip.duration;
+};
 
 /**
  * The preview: canvas, transport, timecode, keyboard. It plays the shared project (`store/projectStore.ts`): it never opens a project of its
@@ -56,11 +93,10 @@ interface Props {
  * The player, the GPU compositor and the decoders live in the preview Worker (`preview/worker.ts`); this component sends it the project, the files and
  * the transport commands, and shows the playhead it reports.
  */
-export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying, pictureOf }: Props) {
+export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying, pictureOf, handlesOn = true }: Props) {
   const { t } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
-  const frame = useProjectStore((s) => s.playhead);
   const selection = useProjectStore((s) => s.selection);
   const readOnly = useProjectStore((s) => s.readOnly);
   const editTransform = useTransformEdit();
@@ -72,6 +108,11 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   const [speed, setSpeed] = useState(1);
   const [problem, setProblem] = useState<string | null>(null);
   const [prep, setPrep] = useState<number | null>(null);
+  const stageRef = useRef<HTMLElement>(null);
+  const [fs, setFs] = useState<"off" | "native" | "overlay">("off");
+  const [loop, setLoop] = useState(false);
+  const loopRef = useRef(false);
+  loopRef.current = loop;
   const { open, field } = useImportPicker(onImport, "preview-input");
   const noGpu = useRef(t("preview.noGpu"));
   noGpu.current = t("preview.noGpu");
@@ -109,7 +150,13 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
-    const { host, release } = acquirePreviewHost(c, { onFrame: emit, onState: (pl, r) => { cb.current.onPlaying(pl); setSpeed(r || 1); const rr = rangeRun.current; if (rr) { if (pl) rr.seen = true; else if (rr.seen) rangeRun.current = null; } }, onError: (m) => setProblem(m), onStrip: (p) => setPrep(p === null ? null : Math.min(99, Math.floor(p * 100))) });
+    const { host, release } = acquirePreviewHost(c, { onFrame: emit, onState: (pl, r) => {
+      cb.current.onPlaying(pl); setSpeed(r || 1);
+      const rr = rangeRun.current; if (rr) { if (pl) rr.seen = true; else if (rr.seen) rangeRun.current = null; }
+      // Loop playback: the player stopped at the end, so start over.
+      const pp = playerRef.current;
+      if (!pl && !rangeRun.current && loopRef.current && pp && pp.endFrame > 0 && pp.frame >= pp.endFrame) { pp.seek(0); pp.toggle(); }
+    }, onError: (m) => setProblem(m), onStrip: (p) => setPrep(p === null ? null : Math.min(99, Math.floor(p * 100))) });
     hostRef.current = host;
     playerRef.current = host.player;
     setHostVersion((v) => v + 1);
@@ -140,18 +187,26 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
     host.configure({ project: view.has && project ? JSON.stringify(project) : "", sequence: view.sequence, rate, size, endTicks });
   }, [project, hostVersion, rate.num, rate.den, size.width, size.height, endTicks, view.sequence, view.has]);
 
-  // The timeline (or anything else) moved the playhead: show that frame.
+  // The timeline (or anything else) moved the playhead: show that frame. A store subscription, not a render dependency: a tick does not re-render this panel.
   useEffect(() => {
-    const echo = echoes.current;
-    const p = playerRef.current;
-    if (echo.has(frame)) {
-      for (const f of echo) if (f <= frame) echo.delete(f);
-      // A stale echo (the player published this frame earlier, while the playhead already was there) must not swallow a real request such as Home:
-      // it is an echo only while the player really shows that frame, or is playing (state then lags the player).
-      if (!p || p.isPlaying || p.frame === frame) return;
-    }
-    p?.seek(frame);
-  }, [frame]);
+    let seen: number | null = null;
+    const follow = () => {
+      const frame = store.getState().playhead;
+      if (frame === seen) return;
+      seen = frame;
+      const echo = echoes.current;
+      const p = playerRef.current;
+      if (echo.has(frame)) {
+        for (const f of echo) if (f <= frame) echo.delete(f);
+        // A stale echo (the player published this frame earlier, while the playhead already was there) must not swallow a real request such as Home:
+        // it is an echo only while the player really shows that frame, or is playing (state then lags the player).
+        if (!p || p.isPlaying || p.frame === frame) return;
+      }
+      p?.seek(frame);
+    };
+    follow();
+    return store.subscribe(follow);
+  }, [store]);
 
   // Canvas backing store follows the panel at real device pixels.
   useEffect(() => {
@@ -163,9 +218,11 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       hostRef.current?.resize(s.width, s.height);
     };
     fit();
-    const ro = new ResizeObserver(fit);
+    // The box animates when the shape changes (and while a splitter is dragged): resize the backing store once it settles, not on every frame of it.
+    let timer = 0;
+    const ro = new ResizeObserver(() => { window.clearTimeout(timer); timer = window.setTimeout(fit, 120); });
     ro.observe(box);
-    return () => ro.disconnect();
+    return () => { window.clearTimeout(timer); ro.disconnect(); };
   }, [size.width, size.height, view.has, hostVersion]);
 
   // Transport keys. Space and the shuttle keys also work with the timeline focused; arrows/Home/End leave a focused slider alone (it handles them itself).
@@ -173,12 +230,15 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const el = e.target as HTMLElement;
+      if (e.key === "Escape" && fsRef.current === "overlay") { setFs("off"); e.preventDefault(); return; }
       const typing = !!el.closest("input:not([type=range]), select, textarea, [contenteditable=true]");
       const onButton = !!el.closest("button");
       const onSlider = !!el.closest("[role=slider], input[type=range]");
       const p = playerRef.current;
       if (!p || typing) return;
       const k = e.key;
+      const pv = resolveKey(e, "global", currentKeymap())?.command;
+      if (pv?.c === "preview") { if (!e.repeat && !(onButton && e.code === "Space")) { e.preventDefault(); doPreview(pv.what); } return; }
       let handled = true;
       if (e.code === "Space") { if (onButton || e.repeat) return; p.toggle(); }
       else if (/^[jkl]$/i.test(k)) { if (e.repeat) return; p.key(k.toUpperCase() as "J" | "K" | "L"); }
@@ -193,21 +253,51 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const fsRef = useRef(fs);
+  fsRef.current = fs;
+  const toggleFullscreen = useCallback(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) { void document.exitFullscreen().catch(() => undefined); return; }
+    if (fsRef.current === "overlay") { setFs("off"); return; }
+    // iPhone has no element fullscreen: a fixed overlay over the whole app does the same job.
+    if (el.requestFullscreen && document.fullscreenEnabled) el.requestFullscreen().catch(() => setFs("overlay"));
+    else setFs("overlay");
+  }, []);
+  const toggleLoop = useCallback(() => { const next = !loopRef.current; setLoop(next); announce(t(next ? "preview.loop.on" : "preview.loop.off")); }, [t]);
+  const doPreview = (what: "fullscreen" | "loop") => (what === "fullscreen" ? toggleFullscreen() : toggleLoop());
+  const doPreviewRef = useRef(doPreview);
+  doPreviewRef.current = doPreview;
+  useEffect(() => {
+    const sync = () => setFs(document.fullscreenElement && document.fullscreenElement === stageRef.current ? "native" : fsRef.current === "overlay" ? "overlay" : "off");
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  // The palette (and the shortcuts dialog's rows) run the same two commands.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const c = (e as CustomEvent<{ c?: string; what?: "fullscreen" | "loop" }>).detail;
+      if (c?.c === "preview" && c.what) doPreviewRef.current(c.what);
+      else if (c?.c === "play") playerRef.current?.toggle(); // the phone Edit sheet's mini transport
+    };
+    window.addEventListener(COMMAND_EVENT, on);
+    return () => window.removeEventListener(COMMAND_EVENT, on);
+  }, []);
+
   const p = () => playerRef.current;
   const ar = size.width / size.height;
   // Handles only while the playhead is on the selected video clip (otherwise there is no picture to grab).
   const sel = view.has ? selectedVideoClip(project, selection) : null;
-  const nowTicks = (frame * TICKS_PER_SECOND * rate.den) / rate.num;
-  const handled = sel && nowTicks >= sel.start && nowTicks < sel.start + sel.duration ? sel : null;
+  const onSel = useProjectStore((s) => onClipAt(sel, s.playhead, rate));
+  const handled = sel && onSel ? sel : null;
+  const showHandles = !!handled && !readOnly && handlesOn;
   const canvasText = canvasSummary(size, rate);
   const badge = rateLabel(playing ? speed : 1);
-  const tcNow = timecodeHMS(frame, rate);
-  const total = timecodeHMS(endFrame, rate);
 
   return (
-    <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview">
+    <section className="stage" ref={stageRef} data-fs={fs === "off" ? undefined : fs} aria-label={t("preview.label")} data-testid="panel-preview">
       <div className="stage-view">
-        <div ref={boxRef} className={handled && !readOnly ? "canvas framed" : "canvas"} style={{ ["--ar" as string]: ar, aspectRatio: String(ar) }} data-loaded={view.has}>
+        <div ref={boxRef} className={showHandles && !playing ? "canvas framed" : "canvas"} style={{ ["--ar" as string]: ar, aspectRatio: String(ar) }} data-loaded={view.has} onDoubleClick={view.has ? toggleFullscreen : undefined}>
           <canvas ref={canvasRef} className="preview-canvas" data-testid="preview-canvas" aria-label={t("preview.canvas")} role="img" />
           {!view.has && (
             <div className="canvas-hint">
@@ -220,7 +310,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
               )}
             </div>
           )}
-          {handled && !readOnly && <TransformHandles clip={handled} canvas={size} rel={relativeTicks(handled, frame, rate)} picture={pictureOf?.(handled.media)} boxRef={boxRef} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
+          {showHandles && handled && <HandlesLayer clip={handled} rate={rate} size={size} boxRef={boxRef} picture={pictureOf?.(handled.media)} hidden={playing} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
           {prep !== null && <span className="scrub-prep" role="status" data-testid="scrub-prep">{t("scrub.preparing", { percent: prep })}</span>}
         </div>
@@ -228,7 +318,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       </div>
       {problem && <p className="preview-problem" role="alert" data-testid="preview-problem">{problem}</p>}
       <div className="player-bar">
-        <div className="tc" aria-label={t("player.time")} data-testid="timecode"><span>{tcNow}</span><span className="tc-total"> / {total}</span></div>
+        <Timecode rate={rate} endFrame={endFrame} label={t("player.time")} />
         <div className="transport" role="toolbar" aria-label={t("player.toolbar")}>
           <button className="icon-btn" aria-label={t("player.start")} title={tip(t("player.start"), "Home")} onClick={() => p()?.seek(0)}><Icon name="back" size={20} /></button>
           <button className="icon-btn" aria-label={t("player.stepBack")} title={tip(t("player.stepBack"), ",")} onClick={() => p()?.step(-1)}><Icon name="stepBack" size={20} /></button>
@@ -236,9 +326,13 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
           <button className="icon-btn" aria-label={t("player.stepForward")} title={tip(t("player.stepForward"), ".")} onClick={() => p()?.step(1)}><Icon name="stepForward" size={20} /></button>
           <button className="icon-btn" aria-label={t("player.end")} title={tip(t("player.end"), "End")} onClick={() => p()?.seek(p()!.endFrame)}><Icon name="forward" size={20} /></button>
         </div>
-        <button className="ratio chip-btn" onClick={onCanvas} aria-label={t("canvas.open", { summary: canvasText })} title={t("canvas.hint")} data-testid="canvas-open">
-          <Icon name="canvas" size={18} /><span>{ratioLabel(size)}</span>
-        </button>
+        <div className="player-extras">
+          <button className="icon-btn loop-btn" aria-pressed={loop} aria-label={t("preview.loop")} title={`${t("preview.loop")} (R)`} onClick={toggleLoop} data-testid="loop-toggle"><Icon name="loop" size={20} /></button>
+          <button className="icon-btn fs-btn" aria-pressed={fs !== "off"} aria-label={t(fs === "off" ? "preview.fullscreen" : "preview.fullscreen.exit")} title={`${t("preview.fullscreen")} (F)`} onClick={toggleFullscreen} data-testid="fullscreen-toggle"><Icon name={fs === "off" ? "fullscreen" : "fullscreenExit"} size={20} /></button>
+          <button className="ratio chip-btn" onClick={onCanvas} aria-label={t("canvas.open", { summary: canvasText })} title={t("canvas.hint")} data-testid="canvas-open">
+            <Icon name="canvas" size={18} /><span>{ratioLabel(size)}</span>
+          </button>
+        </div>
       </div>
     </section>
   );

@@ -63,3 +63,9 @@ Where the time goes (GOP 150, B-frames, before): read ~18 ms, feeding the decode
 
 ## Not done
 Per-clip speed/transition blending (M2), verifying the WebGPU path on real hardware, the Rust `FrameCache`/thumbnail service (M1-013; the Worker uses the TS caches above), `importExternalTexture` in the compositor, audio at shuttle speeds, drop-frame timecode, hardware-latency calibration of the audio clock on Bluetooth, loop playback, an acoustic A/V loopback test on a device.
+
+## M2 UX pass
+- **Full screen**: `F`, double-click the picture, or the button; Esc leaves. The browser's fullscreen on the stage, else (iPhone) a fixed overlay. Registered as `view.fullscreen` (remappable, in the palette and shortcuts dialog).
+- **Loop**: `R` or the button (`view.loop`): at the end the player starts over. Not combined with the in/out range loop.
+- **Transform handles** hide while playing and for 220 ms after the playhead moves (scrubbing), and on a phone unless the Edit sheet is open. The dim around the frame is a clipped layer, not a 100vmax shadow.
+- Performance: the timecode and the handles subscribe to the playhead themselves, the panel does not re-render per tick; the canvas backing store resizes 120 ms after the box settles; the preview Worker starts only once a project is open.
