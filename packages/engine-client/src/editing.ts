@@ -1,3 +1,4 @@
+import type { EditPatch } from "./patch";
 import { parseRecovery, type SnapQuery, type SnapResult, type Editing, type EditOutcome, type FrameDescription, type Op, type TrackProps } from "./types";
 import type { Marker, MarkerId, MarkerKind, Project, SequenceId, Time, TimeRange, Track, TrackId, TrackKind } from "./model.generated";
 
@@ -25,7 +26,9 @@ export function parseEditOutcome(json: string): EditOutcome {
   if (typeof o.revision !== "number" || typeof o.can_undo !== "boolean" || typeof o.can_redo !== "boolean" || typeof o.changed !== "boolean") {
     throw new Error("edit outcome has the wrong shape");
   }
-  return { revision: o.revision, can_undo: o.can_undo, can_redo: o.can_redo, changed: o.changed };
+  const out: EditOutcome = { revision: o.revision, can_undo: o.can_undo, can_redo: o.can_redo, changed: o.changed };
+  if (o.patch && typeof o.patch === "object" && Array.isArray((o.patch as { sequences?: unknown }).sequences)) out.patch = o.patch as EditPatch;
+  return out;
 }
 
 /** The coalesce key crosses as a u32. */

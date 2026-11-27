@@ -109,6 +109,10 @@ The 4x CPU throttle approximates a phone but is not one; a throttled-container n
   | 20 tracks x 1000 = 20k clips (stress) | 0.22 ms | 12.9 ms (same ripple, moves 20k clips) | none (4x the budget size) |
   Single-clip ops stay under 0.2 ms even at 20k clips. Before this gate a ripple over n clips was O(n^2) (each step prepended its inverse): 3.3 ms worst at 5k and 35 ms at 20k. What is left is one linear `find_clip` per shifted clip; an id index is the next lever if a UI test needs it.
 
+## Edit latency (M2 UX P-4, ADR 0020)
+- The engine reports what an edit changed (`EditOutcome.patch`); the UI no longer re-reads and re-parses the whole project after each edit, and the preview Worker's project JSON is built from cached per-clip and per-track strings. Cost of the patch itself: `ops_apply_patch_ms` in the op bench (apply one op, diff against the shadow copy, advance the shadow) 0.18 ms native at 5k clips on 5 tracks, against 0.003 ms for the bare apply; the budget is <= 8 ms apply + patch on the low phone.
+- Measured in the browser (`/?sample=2h`, 2300 clips, split then undo, key press to the Undo button state and a painted frame, median of 10, container Chromium with software GL): see the PR for the before/after table; what is left at 4x is mostly React commit, layout and paint, not project size.
+
 ## Design rules that keep it fast
 1. Nothing heavy on the UI thread; engine in a Worker (web) / dedicated threads (native).
 2. GPU-resident frames end to end where the platform allows; avoid CPU readbacks except at export.

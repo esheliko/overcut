@@ -17,6 +17,7 @@ export { containScale, fitScale, layerOf, placeLayer, renderExportFrame, type Gp
 export type { Evaluator };
 export { addMarkerOp, addTrackOp, createEditing, deleteMarkerOp, moveMarkerOp, moveTrackOp, newMarker, newTrack, parseEditOutcome, removeTrackOp, setMarkerPropsOp, setRangeOp, setTrackPropsOp, type RawEditing } from "./editing";
 export { probeHost } from "./probe";
+export { applyEditPatch, type ClipSplice, type EditPatch, type SequencePatch, type TrackPatch } from "./patch";
 
 /** True inside a Tauri shell (desktop or mobile app), false in a plain browser. */
 export const isTauri = (): boolean => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

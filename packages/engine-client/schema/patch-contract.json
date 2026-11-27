@@ -1,0 +1,3171 @@
+{
+  "cases": [
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 20000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": false,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": false,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "insert two clips",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "tracks": [
+              {
+                "id": "00000000000000000000000000000003",
+                "splice": {
+                  "insert": [
+                    {
+                      "duration": 10000,
+                      "id": "0000000000000000000000000000000a",
+                      "media": "00000000000000000000000000000005",
+                      "source_in": 0,
+                      "speed": {
+                        "den": 1,
+                        "num": 1
+                      },
+                      "start": 0
+                    },
+                    {
+                      "duration": 10000,
+                      "id": "0000000000000000000000000000000b",
+                      "media": "00000000000000000000000000000005",
+                      "source_in": 10000,
+                      "speed": {
+                        "den": 1,
+                        "num": 1
+                      },
+                      "start": 20000
+                    }
+                  ],
+                  "remove": 0,
+                  "start": 0
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  },
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 20000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": false,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 20000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": false,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "split the first clip",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "tracks": [
+              {
+                "id": "00000000000000000000000000000003",
+                "splice": {
+                  "insert": [
+                    {
+                      "duration": 4000,
+                      "id": "0000000000000000000000000000000a",
+                      "media": "00000000000000000000000000000005",
+                      "source_in": 0,
+                      "speed": {
+                        "den": 1,
+                        "num": 1
+                      },
+                      "start": 0
+                    },
+                    {
+                      "duration": 6000,
+                      "id": "0000000000000000000000000000000c",
+                      "media": "00000000000000000000000000000005",
+                      "source_in": 4000,
+                      "speed": {
+                        "den": 1,
+                        "num": 1
+                      },
+                      "start": 4000
+                    }
+                  ],
+                  "remove": 1,
+                  "start": 0
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": false,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  },
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 20000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": false,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "move the second clip to another track",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "tracks": [
+              {
+                "id": "00000000000000000000000000000003",
+                "splice": {
+                  "insert": [],
+                  "remove": 1,
+                  "start": 2
+                }
+              },
+              {
+                "id": "00000000000000000000000000000009",
+                "splice": {
+                  "insert": [
+                    {
+                      "duration": 10000,
+                      "id": "0000000000000000000000000000000b",
+                      "media": "00000000000000000000000000000005",
+                      "source_in": 10000,
+                      "speed": {
+                        "den": 1,
+                        "num": 1
+                      },
+                      "start": 30000
+                    }
+                  ],
+                  "remove": 0,
+                  "start": 0
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": false,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "mute a track",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "tracks": [
+              {
+                "id": "00000000000000000000000000000004",
+                "shell": {
+                  "clips": [],
+                  "id": "00000000000000000000000000000004",
+                  "kind": "audio",
+                  "locked": false,
+                  "muted": true,
+                  "name": "A1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "add a track at the bottom",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "order": [
+              "0000000000000000000000000000000d",
+              "00000000000000000000000000000003",
+              "00000000000000000000000000000009",
+              "00000000000000000000000000000004"
+            ],
+            "tracks": [
+              {
+                "id": "0000000000000000000000000000000d",
+                "shell": {
+                  "clips": [],
+                  "id": "0000000000000000000000000000000d",
+                  "kind": "video",
+                  "locked": false,
+                  "muted": false,
+                  "name": "V3"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              },
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "move that track to the top",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "order": [
+              "00000000000000000000000000000003",
+              "00000000000000000000000000000009",
+              "00000000000000000000000000000004",
+              "0000000000000000000000000000000d"
+            ],
+            "tracks": []
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "markers": [
+              {
+                "id": "0000000000000000000000000000000e",
+                "name": "m",
+                "time": 5000
+              }
+            ],
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              },
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              },
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "add a marker",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "shell": {
+              "frame_rate": {
+                "den": 1,
+                "num": 30
+              },
+              "id": "00000000000000000000000000000002",
+              "markers": [
+                {
+                  "id": "0000000000000000000000000000000e",
+                  "name": "m",
+                  "time": 5000
+                }
+              ],
+              "name": "Sequence 1",
+              "resolution": {
+                "height": 1080,
+                "width": 1920
+              },
+              "sample_rate": 48000,
+              "tracks": []
+            },
+            "tracks": []
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "markers": [
+              {
+                "id": "0000000000000000000000000000000e",
+                "name": "m",
+                "time": 5000
+              }
+            ],
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "markers": [
+              {
+                "id": "0000000000000000000000000000000e",
+                "name": "m",
+                "time": 5000
+              }
+            ],
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              },
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "remove the new track",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "order": [
+              "00000000000000000000000000000003",
+              "00000000000000000000000000000009",
+              "00000000000000000000000000000004"
+            ],
+            "tracks": []
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "markers": [
+              {
+                "id": "0000000000000000000000000000000e",
+                "name": "m",
+                "time": 5000
+              }
+            ],
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              },
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "markers": [
+              {
+                "id": "0000000000000000000000000000000e",
+                "name": "m",
+                "time": 5000
+              }
+            ],
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "undo",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "order": [
+              "00000000000000000000000000000003",
+              "00000000000000000000000000000009",
+              "00000000000000000000000000000004",
+              "0000000000000000000000000000000d"
+            ],
+            "tracks": [
+              {
+                "id": "0000000000000000000000000000000d",
+                "shell": {
+                  "clips": [],
+                  "id": "0000000000000000000000000000000d",
+                  "kind": "video",
+                  "locked": false,
+                  "muted": false,
+                  "name": "V3"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              },
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "markers": [
+              {
+                "id": "0000000000000000000000000000000e",
+                "name": "m",
+                "time": 5000
+              }
+            ],
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              },
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "undo",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "shell": {
+              "frame_rate": {
+                "den": 1,
+                "num": 30
+              },
+              "id": "00000000000000000000000000000002",
+              "name": "Sequence 1",
+              "resolution": {
+                "height": 1080,
+                "width": 1920
+              },
+              "sample_rate": 48000,
+              "tracks": []
+            },
+            "tracks": []
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              },
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "undo",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "order": [
+              "0000000000000000000000000000000d",
+              "00000000000000000000000000000003",
+              "00000000000000000000000000000009",
+              "00000000000000000000000000000004"
+            ],
+            "tracks": []
+          }
+        ]
+      }
+    },
+    {
+      "after": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "before": {
+        "id": "00000000000000000000000000000001",
+        "media": [
+          {
+            "duration": 100000,
+            "hash": null,
+            "id": "00000000000000000000000000000005",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": 50000,
+            "hash": null,
+            "id": "00000000000000000000000000000006",
+            "kind": "audio",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000007",
+            "kind": "image",
+            "name": "m",
+            "uri": "m"
+          },
+          {
+            "duration": null,
+            "hash": null,
+            "id": "00000000000000000000000000000008",
+            "kind": "video",
+            "name": "m",
+            "uri": "m"
+          }
+        ],
+        "name": "T",
+        "schema_version": 4,
+        "sequences": [
+          {
+            "frame_rate": {
+              "den": 1,
+              "num": 30
+            },
+            "id": "00000000000000000000000000000002",
+            "name": "Sequence 1",
+            "resolution": {
+              "height": 1080,
+              "width": 1920
+            },
+            "sample_rate": 48000,
+            "tracks": [
+              {
+                "clips": [],
+                "id": "0000000000000000000000000000000d",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V3"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 4000,
+                    "id": "0000000000000000000000000000000a",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 0,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 0
+                  },
+                  {
+                    "duration": 6000,
+                    "id": "0000000000000000000000000000000c",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 4000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 4000
+                  }
+                ],
+                "id": "00000000000000000000000000000003",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V1"
+              },
+              {
+                "clips": [
+                  {
+                    "duration": 10000,
+                    "id": "0000000000000000000000000000000b",
+                    "media": "00000000000000000000000000000005",
+                    "source_in": 10000,
+                    "speed": {
+                      "den": 1,
+                      "num": 1
+                    },
+                    "start": 30000
+                  }
+                ],
+                "id": "00000000000000000000000000000009",
+                "kind": "video",
+                "locked": false,
+                "muted": false,
+                "name": "V2"
+              },
+              {
+                "clips": [],
+                "id": "00000000000000000000000000000004",
+                "kind": "audio",
+                "locked": false,
+                "muted": true,
+                "name": "A1"
+              }
+            ]
+          }
+        ]
+      },
+      "name": "undo",
+      "patch": {
+        "sequences": [
+          {
+            "id": "00000000000000000000000000000002",
+            "order": [
+              "00000000000000000000000000000003",
+              "00000000000000000000000000000009",
+              "00000000000000000000000000000004"
+            ],
+            "tracks": []
+          }
+        ]
+      }
+    }
+  ]
+}
