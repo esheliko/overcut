@@ -62,6 +62,11 @@ const PAIRS: [string, string, number, string][] = [
   ["focus-ring", "surface-2", 3, "focus ring"],
   ["ok", "surface-2", 3, "status dot"],
   ["danger", "surface-2", 3, "status dot"],
+  // control borders (WCAG 1.4.11, V-02): the border of a field, a toolbar dropdown, a checkbox box or a keycap must be 3:1 on every surface it sits on
+  ...["bg", "surface", "surface-2", "surface-3"].map((bg): [string, string, number, string] => ["line-strong", bg, 3, "control border"]),
+  // non-text state colours: selected-tool fill vs the bar, accent as a stroke (playhead, selection outline) on the lanes
+  ["accent", "surface-3", 3, "accent stroke on a raised surface"],
+  ["fg", "surface-3", 3, "icon on a hovered control"],
 ];
 
 /** Every accent (UX-05) on top of every theme: the overrides in tokens.css, merged over the theme's tokens. Teal is the base set. */
@@ -140,7 +145,7 @@ test("high-contrast borders are visible (3:1)", () => {
 });
 
 test("all themes define the same colour roles", () => {
-  const roles = ["bg", "surface", "surface-2", "surface-3", "line", "line-strong", "fg", "muted", "accent", "accent-ink", "accent-soft", "danger", "ok", "stage", "stage-fg", "clip", "shadow", "focus-ring"];
+  const roles = ["bg", "surface", "surface-2", "surface-3", "line", "line-strong", "fg", "muted", "accent", "accent-ink", "accent-soft", "danger", "ok", "stage", "stage-fg", "clip", "shadow", "scrim", "elev-1", "elev-2", "elev-3", "focus-ring"];
   for (const [theme, tokens] of Object.entries(THEMES)) for (const r of roles) assert.ok(tokens[r], `${theme} lacks --${r}`);
 });
 
@@ -155,7 +160,7 @@ test("the dark theme keeps the original shell colours", () => {
 test("reduced motion zeroes every duration token", () => {
   const m = /@media \(prefers-reduced-motion: reduce\) \{\s*:root \{([^}]*)\}/.exec(css);
   assert.ok(m);
-  for (const d of ["dur-instant", "dur-fast", "dur-base", "dur-slow"]) assert.match(m[1]!, new RegExp(`--${d}: 0s`));
+  for (const d of ["dur-instant", "dur-fast", "dur-base", "dur-slow", "dur-menu", "dur-dialog", "dur-toast"]) assert.match(m[1]!, new RegExp(`--${d}: 0s`));
 });
 
 test("the shell stylesheet uses tokens: no colour literals, no physical left/right outside LTR islands", () => {
@@ -167,4 +172,16 @@ test("the shell stylesheet uses tokens: no colour literals, no physical left/rig
   const physical = /(margin|padding|border)-(left|right)|text-align:\s*(left|right)|[\s{;](left|right):|float:\s*(left|right)/;
   const bad = stripped.split("\n").filter((l) => !island.test(l) && physical.test(l));
   assert.deepEqual(bad, [], "use logical properties (inline-start/end) so RTL mirrors");
+});
+
+test("type, radius and easing tokens form a ladder (V-03/V-04/V-09)", () => {
+  const root = THEMES.dark;
+  const px = (n: string) => parseFloat(root[n]!);
+  const scale = ["text-2xs", "text-xs", "text-sm", "text-base", "text-md", "text-lg", "text-xl"].map(px);
+  assert.deepEqual(scale, [...scale].sort((a, b) => a - b), "type scale ascends");
+  assert.equal(new Set(scale).size, scale.length, "no two steps share a size");
+  const radii = ["radius-xs", "radius-sm", "radius-md", "radius-lg"].map(px);
+  assert.deepEqual(radii, [...radii].sort((a, b) => a - b));
+  assert.match(root["ease-out"]!, /^cubic-bezier\(/);
+  assert.match(root["ease-in-out"]!, /^cubic-bezier\(/);
 });

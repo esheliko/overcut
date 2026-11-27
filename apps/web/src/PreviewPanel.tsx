@@ -24,6 +24,9 @@ import type { Clip } from "@app/engine-client";
 const IDLE = { rate: { num: 30, den: 1 } as Rate, size: { width: 1920, height: 1080 }, endTicks: 60 * TICKS_PER_SECOND };
 
 /** The sequence the editor shows: the project's once it has clips, the idle sample before that. Shared by the preview and the timeline's length. */
+/** A tooltip with its shortcut: "Back to start (Home)". */
+const tip = (label: string, keys: string): string => `${label} (${keys})`;
+
 export function sequenceView(project: Project | null) {
   const seq = project?.sequences[0];
   const has = !!project && !!seq && clipCount(project) > 0;
@@ -327,11 +330,11 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       <div className="player-bar">
         <Timecode rate={rate} endFrame={endFrame} label={t("player.time")} />
         <div className="transport" role="toolbar" aria-label={t("player.toolbar")}>
-          <button className="icon-btn" aria-label={t("player.start")} onClick={() => p()?.seek(0)}><Icon name="back" size={20} /></button>
-          <button className="icon-btn" aria-label={t("player.stepBack")} onClick={() => p()?.step(-1)}><Icon name="stepBack" size={20} /></button>
-          <button className="play" aria-label={playing ? t("player.pause") : t("player.play")} onClick={() => p()?.toggle()}><Icon name={playing ? "pause" : "play"} size={22} /></button>
-          <button className="icon-btn" aria-label={t("player.stepForward")} onClick={() => p()?.step(1)}><Icon name="stepForward" size={20} /></button>
-          <button className="icon-btn" aria-label={t("player.end")} onClick={() => p()?.seek(p()!.endFrame)}><Icon name="forward" size={20} /></button>
+          <button className="icon-btn" aria-label={t("player.start")} title={tip(t("player.start"), "Home")} onClick={() => p()?.seek(0)}><Icon name="back" size={20} /></button>
+          <button className="icon-btn" aria-label={t("player.stepBack")} title={tip(t("player.stepBack"), ",")} onClick={() => p()?.step(-1)}><Icon name="stepBack" size={20} /></button>
+          <button className="play" aria-label={playing ? t("player.pause") : t("player.play")} title={tip(playing ? t("player.pause") : t("player.play"), "Space · J K L")} onClick={() => p()?.toggle()}><Icon name={playing ? "pause" : "play"} size={22} /></button>
+          <button className="icon-btn" aria-label={t("player.stepForward")} title={tip(t("player.stepForward"), ".")} onClick={() => p()?.step(1)}><Icon name="stepForward" size={20} /></button>
+          <button className="icon-btn" aria-label={t("player.end")} title={tip(t("player.end"), "End")} onClick={() => p()?.seek(p()!.endFrame)}><Icon name="forward" size={20} /></button>
         </div>
         <div className="player-extras">
           <button className="icon-btn loop-btn" aria-pressed={loop} aria-label={t("preview.loop")} title={`${t("preview.loop")} (R)`} onClick={toggleLoop} data-testid="loop-toggle"><Icon name="loop" size={20} /></button>

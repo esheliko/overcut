@@ -40,8 +40,9 @@ test("a file shared to the installed app (share target) lands in the media bin, 
 test("an app failure shows the calm error screen; the report copies and holds the stack; saved work is only claimed when it is", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => undefined);
   await page.goto("/?e2e&force-error=2500");
-  // The app is up once the engine is (the empty-preview Import button is not a readiness signal: under ?e2e a bin item exists a moment after start, which removes it).
-  await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
+  // Wait for the editor to be up (its preview canvas). Not the empty-state Import button: `?e2e` seeds an offline media item, and once the bin lists it
+  // that button goes away, so it was only there for a race-dependent moment.
+  await expect(page.getByTestId("preview-canvas")).toBeVisible({ timeout: 30_000 });
   const screen = page.getByTestId("error-screen");
   await expect(screen).toBeVisible({ timeout: 20_000 });
   await expect(screen).not.toContainText(/Forced test error|at \w+ \(/); // no stack trace on screen

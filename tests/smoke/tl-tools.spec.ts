@@ -12,7 +12,7 @@ test("the tool picker names the tool, tints when it is not Select, and Esc on th
   await picker.click();
   for (const k of ["select", "ripple", "roll", "slip", "slide"]) {
     const b = (await page.getByTestId(`tl-tool-${k}`).boundingBox())!;
-    expect(b.height).toBeGreaterThanOrEqual(43.5);
+    expect(b.height).toBeGreaterThanOrEqual(test.info().project.name === "phone" ? 43.5 : 31.5); // 32 px desktop density with a mouse (V-11)
     expect(b.x + b.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   }
   await page.getByTestId("tl-tool-slip").click();
