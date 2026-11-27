@@ -188,6 +188,8 @@ test("the upload path is chosen by a micro-benchmark, and a frame step after a s
   await expect.poll(async () => { const x = await stats(); return x.firstUpdateMs.length - x.scrubMs.length; }, { timeout: 10_000 }).toBe(0);
   const s = await stats();
   expect(s.firstUpdateMs.length).toBe(s.scrubMs.length);
+  // The measurement waits for an idle player (400 ms) and takes a second or two.
+  await expect.poll(async () => (await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.gpu())).upload?.path, { timeout: 20_000 }).toBeDefined();
   const g = await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.gpu());
   expect(["frame", "cpu"]).toContain(g.upload?.path);
   if (g.upload?.source === "measured") {
