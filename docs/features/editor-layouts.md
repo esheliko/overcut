@@ -28,3 +28,12 @@ The preview transport bar stacks (time + ratio over controls) when the preview i
 - `tests/unit/layout-profiles.test.ts`: `profileFor` for common devices and every breakpoint edge; CSS container queries match `BREAKPOINTS`; the grid is only re-arranged in container queries; safe-area insets present.
 - `tests/smoke/smoke.spec.ts` ("layout profile ..."): seven viewports (320x568, 390x844, 844x390, 820x1180, 1024x768, 1280x800, 3440x1440): `data-profile`, preview / timeline / tools inside the viewport and not overlapping, inspector only >= desktop, docked panel vs sheet, landscape drawer, tool buttons >= 44 px, no horizontal overflow.
 - Visual: `node scripts/shot.mjs "/" --w <w> --h <h>` per profile (screenshots in the PR).
+
+## M2 UX pass (layout shell)
+- **Phone portrait**: the stage is as tall as its picture (the canvas is capped at 38 dvh); the bar under it is one 52 px row (shape chip | transport | full screen), the playhead time rides on the picture's corner, the loop button on the other. The timeline takes all remaining height (about 350 px of canvas at 390x844). Bottom-bar tabs share the width.
+- **Phone landscape**: tool rail | preview | timeline side by side (48 / 52). The picture keeps the full height; the timeline toolbar hides the zoom -/+ and slider (pinch zooms).
+- **Tablet portrait**: the tool panel is capped (26 dvh, max 300 px) and scrolls with a fade cue; the timeline row is `clamp(260px, 38%, 460px)`.
+- **Splitter** (tablet and up, `layout/Splitter.tsx`): `role=separator`, drag, Up/Down (Shift = 96 px, Home/End), double-click or Enter resets; 44 px hit area on touch; the size is stored in `localStorage` (try/catch) and applied as `--tl-row` on the workspace.
+- **Collapse**: Media and Details fold to a 52 px strip (chevron in the header, state remembered). Details with no selection shows the canvas, length and clip count.
+- **Phone sheet detents** (`layout/SheetHandle.tsx`, `sheet.ts`): small / half / full. Drag the handle (snaps by velocity; a flick down from small closes), tap steps up, Up/Down keys, Escape closes. Edit opens small with a mini transport (time, play, previous / next keyframe); Media opens at half. The height animates (not during a drag; none with reduced motion).
+- Gaps: no vertical splitter between panels and preview; the sheet height transition animates `height` (short, one element).

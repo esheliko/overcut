@@ -11,6 +11,7 @@ import type { Source } from "./model";
 import { useExport, type ExportState } from "./useExport";
 
 const loadView = () => import("./ExportDialogView");
+const warmed = new Set<string>();
 const Dialog = lazy(() => loadView().then((m) => ({ default: m.Dialog })));
 
 export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileOf(id: string): Promise<File | null> }) {
@@ -23,6 +24,22 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
     [view.has, view.size.width, view.size.height, view.rate.num, view.rate.den, view.endTicks],
   );
   const [open, setOpen] = useState(false);
+  /** Loads the dialog chunk and asks the browser which formats it can encode (once per size and rate), so the dialog opens ready. */
+  const warm = useCallback(() => {
+    if (!src) return;
+    const key = `${src.width}x${src.height}@${src.fps}`;
+    if (warmed.has(key)) return;
+    warmed.add(key);
+    void loadView().then((m) => m.prefetchExportProbe(src)).catch(() => warmed.delete(key));
+  }, [src]);
+  // Idle after the first clip lands: by the time the button is pressed the chunk and the answers are already here.
+  useEffect(() => {
+    if (!src || !engine) return;
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (h: number) => void };
+    if (w.requestIdleCallback) { const h = w.requestIdleCallback(warm, { timeout: 4000 }); return () => w.cancelIdleCallback?.(h); }
+    const h = window.setTimeout(warm, 1500);
+    return () => window.clearTimeout(h);
+  }, [src, engine, warm]);
   const openRef = useRef(false);
   openRef.current = open;
 
@@ -67,12 +84,12 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
           <span className="export-chip-text">{t("export.chip.text", { percent })}</span>
         </button>
       ) : (
-        <button className="primary" data-testid="export-open" onPointerEnter={() => void loadView()} onFocus={() => void loadView()} disabled={!engine || !src} title={!src ? t("export.needClip") : undefined} onClick={() => setOpen(true)}>
+        <button className="primary" data-testid="export-open" onPointerEnter={warm} onFocus={warm} onTouchStart={warm} disabled={!engine || !src} title={!src ? t("export.needClip") : undefined} onClick={() => setOpen(true)}>
           <Icon name="export" size={18} /><span>{t("export.label")}</span>
         </button>
       )}
       {open && src && project && (
-        <Suspense fallback={<div className="export-loading" role="status">{t("export.loading")}</div>}>
+        <Suspense fallback={null}>
         <Dialog
           src={src}
           state={ex.state}

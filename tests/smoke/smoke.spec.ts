@@ -351,7 +351,7 @@ for (const p of PROFILES) {
     }
     if (p.name === "phone-landscape") { // B3: one toolbar row, and the track area keeps at least 160 px
       expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(160);
-      for (const b of await page.locator('[data-testid="tl-bar"] .icon-btn').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      for (const b of await page.locator('[data-testid="tl-bar"] .icon-btn:visible').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44); // visible ones: the narrow side-by-side column hides zoom -/+ and ripple (pinch zooms)
     }
     expect(await page.getByTestId("panel-inspector").count()).toBe(p.inspector ? 1 : 0);
     if (p.docked) await expect(page.getByTestId("panel-tool")).toBeVisible();

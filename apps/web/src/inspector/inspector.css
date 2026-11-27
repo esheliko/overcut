@@ -26,7 +26,8 @@
 /* While a clip is being transformed: the frame is outlined and everything outside it is dimmed, so a layer dragged off-canvas shows where the picture ends.
    The handles (z-index 3) stay above the dim; the stage clips both, so nothing reaches outside the preview panel. */
 .canvas.framed { outline: 1.5px solid var(--line-strong); outline-offset: 0; }
-.canvas.framed::after { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; border-radius: inherit; box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--stage) 58%, transparent); }
+/* The dim is a mask (a clipped plain layer), not a 100vmax box-shadow: a shadow that size is rasterised on every repaint of the preview. */
+.canvas.framed::after { content: ""; position: absolute; inset: -60vmax; z-index: 2; pointer-events: none; background: color-mix(in srgb, var(--stage) 58%, transparent); clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, 60vmax 60vmax, 60vmax calc(100% - 60vmax), calc(100% - 60vmax) calc(100% - 60vmax), calc(100% - 60vmax) 60vmax, 60vmax 60vmax); }
 .stage { overflow: clip; }
 
 /* Keyframes (M2-004 / M2-048): one row per field, diamond + previous / next key, easing picker under a field that sits on a key. */
