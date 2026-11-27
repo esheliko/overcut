@@ -33,7 +33,10 @@ const paletteKey = (): string => chordLabel(currentKeymap().get("app.palette")?.
 import { VersionsDialog, useAutoSnapshots } from "./Versions";
 import { binMeta, type BinMeta } from "./media/binView";
 import { MediaBin } from "./media/MediaBin";
-import { TICKS } from "./media/plan";
+import { newId, TICKS } from "./media/plan";
+import { mediaToAdd } from "./timeline/addMedia";
+import { buildScene } from "./timeline/scene";
+import { addTrack } from "./timeline/tracks";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickMany, pickOne, setDesktop, setNativeMedia, type Source } from "./media/sources";
 import { useShellProfile } from "./layout/useShellProfile";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
@@ -230,7 +233,6 @@ function Editor({ store }: { store: ProjectStore }) {
   const [playing, setPlaying] = useState(false);
   const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
   useEffect(() => { const open = () => setPalette(true); window.addEventListener(PALETTE_EVENT, open); return () => window.removeEventListener(PALETTE_EVENT, open); }, []);
-  const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
   const [refusals, setRefusals] = useState<string[]>([]); // phone: files refused in an import, kept on screen until dismissed (the Media sheet closes after a successful one)
   // F3: the theme is picked from a small menu (System, Dark, Light, High contrast), not cycled.
@@ -301,8 +303,27 @@ function Editor({ store }: { store: ProjectStore }) {
     if (readyCount > readyBefore.current && !roomy) setSheet(false);
     readyBefore.current = readyCount;
   }, [readyCount, roomy]);
+  /** "Add media at playhead" / "Add as overlay on a new track": the selected clip's media, else the newest card in the bin (T-01). */
+  const addMediaAt = useCallback((overlay: boolean, tick: number) => {
+    const st = store.getState();
+    const id = mediaToAdd(st.project, st.selection, media.items);
+    if (!id) { soon(t("timeline.addMedia.none")); return; }
+    const done = (ok: boolean) => { if (ok) announce(t("media.added")); };
+    const kind = media.items.find((i) => i.id === id)?.kind;
+    if (overlay && kind !== "audio" && st.project) { // a new video track on top, then the clip on it (two undo steps: the track, then the clip)
+      const track = newId();
+      void store.apply(addTrack(buildScene(st.project), "video", track).ops).then(() => media.addToTimeline(id, tick, track)).then(done).catch(() => soon(t("timeline.say.failed")));
+    } else void media.addToTimeline(id, tick).then(done);
+  }, [store, media, soon, t]);
   const [dragging, setDragging] = useState(false);
   const [tlOver, setTlOver] = useState(false);
+  // The dashed drop outline must never outlive a drag: the canvas handles the drop itself (and stops it), a drag can end elsewhere or be cancelled (I-06).
+  useEffect(() => {
+    const clear = () => setTlOver(false);
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear, true);
+    return () => { window.removeEventListener("dragend", clear); window.removeEventListener("drop", clear, true); };
+  }, []);
   useEffect(() => {
     let depth = 0;
     const over = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer)) e.preventDefault(); };
@@ -630,14 +651,14 @@ function Editor({ store }: { store: ProjectStore }) {
 
         {wide && DETAILS_READY && <section className="inspector" aria-label={t("details.title")} data-testid="panel-inspector"><Details /></section>}
 
-        <div className="tl-drop" data-over={tlOver} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
+        <div className="tl-drop" data-over={tlOver} onDropCapture={() => setTlOver(false)} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
           const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
           setTlOver(false);
           if (!id) return;
           e.preventDefault();
           void media.addToTimeline(id, Math.round((store.getState().playhead * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
         }}>
-          <Timeline playing={playing} zoom={zoom} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onDropMedia={(id, tick, track) => void media.addToTimeline(id, tick, track).then((ok) => ok && announce(t("media.added")))} />
+          <Timeline playing={playing} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onNotice={soon} onAddMedia={addMediaAt} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onDropMedia={(id, tick, track) => void media.addToTimeline(id, tick, track).then((ok) => ok && announce(t("media.added")))} />
         </div>
       </main>
 

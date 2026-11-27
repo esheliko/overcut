@@ -6,7 +6,7 @@ export const MAX_PPS = 1200;
 export const MAX_SPAN_SEC = 36000;
 /** Default gutter (px). The canvas widens it for track headers: `GUTTER_WIDE` with a mouse, `GUTTER_COMPACT` on a phone (view.gutter). */
 export const GUTTER = 48;
-export const GUTTER_WIDE = 148;
+export const GUTTER_WIDE = 172;
 export const GUTTER_COMPACT = 60;
 export const RULER = 30;
 export const LANE = 52;
@@ -52,6 +52,31 @@ export function zoomAt(v: View, pps: number, anchorX: number) {
   const t = xToTime(v, anchorX);
   v.pps = clampPps(pps);
   v.scrollX = Math.max(0, t * v.pps - (anchorX - gut(v)));
+}
+
+/** One wheel notch (a ctrl + wheel tick of ~100 px) must zoom by about this factor, however hard the wheel or trackpad flings (T-04). */
+export const WHEEL_NOTCH = 1.28;
+/** Zoom factor for a ctrl/cmd + wheel event of `dy` pixels: exponential in dy, clamped to one notch either way. Pinch gestures on a trackpad send small dy (ctrl set by the browser) and keep their fine control. */
+export function wheelZoomFactor(dy: number, pinch: boolean): number {
+  const f = Math.exp(-dy * (pinch ? 0.01 : 0.0025));
+  return clamp(f, 1 / WHEEL_NOTCH, WHEEL_NOTCH);
+}
+
+/** Whether a timeline that just grew should fit itself to the width (L-06): a first clip always does, later additions only when the end moved past what is visible
+ *  and the person has not set the zoom by hand. Pure; `endSec` values are the end of the last clip before and after, `visibleSec` the time at the right edge. */
+export function shouldAutoFit(p: { prevClips: number; clips: number; prevEndSec: number; endSec: number; visibleEndSec: number; userZoomed: boolean }): boolean {
+  if (p.clips <= p.prevClips) return false;
+  if (p.prevClips === 0) return true;
+  return !p.userZoomed && p.endSec > p.prevEndSec && p.endSec > p.visibleEndSec;
+}
+
+/** A length for the drag ghost: "4s", "12.5s", "1:05" (seconds, one decimal under 10 s). */
+export function formatDur(sec: number): string {
+  const s = Math.max(0, sec);
+  if (s < 10) return `${Number(s.toFixed(1))}s`;
+  if (s < 60) return `${Math.round(s)}s`;
+  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  return r === 60 ? `${m + 1}:00` : `${m}:${String(r).padStart(2, "0")}`;
 }
 
 /** Slider (0..1, logarithmic) <-> pixels per second. */

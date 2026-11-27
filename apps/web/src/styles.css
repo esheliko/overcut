@@ -14,7 +14,7 @@ h2, p { margin: 0; }
 .icon-btn:active { transform: scale(0.94); }
 .icon-btn:disabled { opacity: 0.5; cursor: default; }
 .icon-btn:disabled:hover { background: none; }
-.tl-sel { margin-left: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.tl-sel { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--fg); font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; } /* selection pill (V-17): only while something is selected, in the right group */
 
 .editor { container: editor / size; display: grid; grid-template-rows: var(--top) minmax(0, 1fr); height: 100%; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 
@@ -109,13 +109,15 @@ h2, p { margin: 0; }
 .tl-bar { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 6px; min-height: 48px; border-bottom: 1px solid var(--line); }
 .tl-group, .zoom { display: flex; align-items: center; gap: 0; }
 .zoom { min-width: 0; flex: 0 0 auto; }
+.tl-right { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
 @media (max-width: 480px) { .zoom input { display: none; } .tl-bar { padding: 0 2px; gap: 0; } .tl-sel { display: none; } .sep { margin: 0; } } /* phone: the −/+ buttons stay, the slider goes so the bar fits at 320 px */
 .sep { width: 1px; height: 20px; margin: 0 4px; background: var(--line-strong); }
 .zoom input { width: clamp(56px, 18vw, 140px); min-width: 20px; flex: 0 1 auto; accent-color: var(--accent); } /* shrinks before the bar overflows (a selected clip adds a label) */
 .tl-stage { direction: ltr; flex: 1; min-height: 0; position: relative; }
 .tl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; cursor: default; background: var(--surface); }
-.tl-empty { position: absolute; inset-inline: calc(var(--gutter-w, 48px) + 12px) 12px; inset-block-start: 38px; margin: 0; z-index: 1; display: grid; place-items: center; min-block-size: 52px; padding: 8px 12px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--muted); font-size: 13px; text-align: center; pointer-events: none; }
+.tl-empty { position: absolute; inset-inline: calc(var(--gutter-w, 48px) + 12px) 12px; inset-block-start: 30px; margin: 0; z-index: 1; display: grid; place-items: center; min-block-size: 51px; padding: 8px 12px; border: 0; color: var(--muted); font-size: 13px; text-align: center; pointer-events: none; }
 .tl-canvas:focus-visible { outline: none; }
+.tl-playhead-layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; } /* the playhead and its time bubble: a transparent layer over the timeline canvas */
 .tl-menu { width: min(240px, calc(100vw - 16px)); position: fixed; inset-inline-end: auto; inset-block-start: auto; z-index: 60; min-width: min(240px, calc(100vw - 16px)); }
 .tl-menu .menu-row[data-danger] { color: var(--danger); }
 .tl-menu .menu-row:disabled { opacity: 0.4; }
@@ -124,7 +126,7 @@ h2, p { margin: 0; }
 .tl-rename label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
 .tl-rename input { min-height: 44px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--fg); width: 100%; min-width: 0; box-sizing: border-box; font: inherit; font-size: 16px; }
 .tl-menu-note { padding: 4px 12px 8px; margin: 0; }
-.tl-stage:has(.tl-canvas:focus-visible:not([data-pointer]))::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 var(--focus-ring-width) color-mix(in srgb, var(--focus-ring) 70%, transparent); } /* keyboard focus only: a slimmer, softened inset frame in the focus token (an inset shadow is not drawn on a canvas itself) */
+.tl-stage:has(.tl-canvas:focus-visible:not([data-pointer]))::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 50%, transparent); } /* keyboard focus only: a slimmer, softened inset frame in the focus token (an inset shadow is not drawn on a canvas itself) */
 
 .toast { position: fixed; z-index: 40; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translate(-50%, 8px); max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 12px; background: var(--fg); color: var(--bg); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity var(--dur-base), transform var(--dur-base); }
 .toast:not(:empty) { opacity: 1; transform: translate(-50%, 0); }
@@ -387,8 +389,10 @@ h2, p { margin: 0; }
 /* (second toolbar row removed: its buttons live in the More menu) Was: TL-02/06: duplicate, copy, cut, paste, timing, history. Six 44 px buttons fit at 320 px. */
 
 /* One toolbar row: undo redo | split delete ripple | tool picker + More | zoom. The picker is tinted while a tool other than Select is active, so nobody is stuck in Ripple unaware (Esc returns to Select). */
-.tl-pick { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--fg); font: inherit; font-size: 13px; white-space: nowrap; }
-.tl-pick.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.tl-pick { display: inline-flex; align-items: center; gap: 4px; min-height: var(--target, 44px); padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg); font: inherit; font-size: 13px; white-space: nowrap; }
+.tl-pick:hover { background: var(--surface-3); }
+.tl-pick.on { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.tl-pick.on:hover { background: var(--accent); }
 .tl-caret { font-size: 10px; opacity: 0.7; }
 .tl-group { min-width: 0; }
 .tl-group .tl-pick { margin-inline-start: 4px; }
@@ -402,7 +406,7 @@ h2, p { margin: 0; }
 .tl-sheet-title { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; font-weight: 700; }
 @media (max-width: 480px) { .tl-wide { display: none; } .tl-pick { padding: 0 6px; } .tl-group .tl-pick { margin-inline-start: 0; } }
 @media (max-width: 359px) { .tl-fit { display: none; } }
-.tl-stage { --gutter-w: 148px; }
+.tl-stage { --gutter-w: 172px; }
 @media (max-width: 559px), (pointer: coarse) { .tl-stage { --gutter-w: 60px; } }
 .edit-sheet { inline-size: min(380px, calc(100vw - 16px)); max-block-size: min(70dvh, 520px); margin: auto 12px 12px auto; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow); overflow: auto; }
 .edit-sheet::backdrop { background: transparent; }
@@ -570,8 +574,23 @@ h2, p { margin: 0; }
 @media (pointer: coarse) { :is(input:not([type="range"], [type="checkbox"], [type="radio"], [type="file"]), select, textarea) { font-size: max(16px, 1em); } .zoom input { block-size: 44px; } }
 
 /* Overview bar (M2-043): the whole project in a thin strip under the tracks, with a window for the visible part. */
-.tl-overview { flex: 0 0 auto; height: 26px; border-top: 1px solid var(--line); background: var(--surface); }
+.tl-overview { flex: 0 0 auto; height: 32px; border-top: 1px solid var(--line); background: var(--surface); }
 .tl-overview[hidden] { display: none; }
-.tl-overview canvas { display: block; width: 100%; height: 26px; touch-action: none; cursor: grab; }
+.tl-overview canvas { display: block; width: 100%; height: 32px; touch-action: none; cursor: grab; }
 .tl-overview canvas:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: -2px; }
-@media (pointer: coarse) { .tl-overview, .tl-overview canvas { height: 44px; } }
+@media (pointer: coarse) { .tl-overview, .tl-overview canvas { height: 44px; } } /* 44 px hit area around the 32 px bar the canvas draws */
+
+/* Zoom slider (V-17): a 12 px thumb on a thin track, so the slider is not the most accent-heavy thing in the bar; 16 px with a coarse pointer. */
+.zoom input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; height: 24px; margin: 0 4px; }
+.zoom input[type="range"]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--line-strong); }
+.zoom input[type="range"]::-moz-range-track { height: 3px; border-radius: 2px; background: var(--line-strong); }
+.zoom input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: -4.5px; border: 0; border-radius: 50%; background: var(--accent); }
+.zoom input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--accent); }
+.zoom input[type="range"]:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
+@media (pointer: coarse) {
+  .zoom input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; margin-top: -7.5px; }
+  .zoom input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; }
+}
+
+@media (pointer: fine) { .bin-card[data-on] .bin-act.icon-btn { min-width: 36px; min-height: 36px; padding: 0; } } /* the always-visible add button must not squeeze the card text onto a third line */
+@media (pointer: fine) { .bin-card[data-on] .bin-text strong { -webkit-line-clamp: 1; } } /* one-line names on a desktop card (the full name is the tooltip) */

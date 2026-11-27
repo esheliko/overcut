@@ -116,11 +116,12 @@ export class WaveformService {
       const g = c.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
       g.fillStyle = st.color;
       const mid = h / 2, k = (h / 2 - 1) / 32768;
-      for (let i = 0; i < TILE_COLS; i++) {
+      // Mirrored bars (the loudest side of each column, drawn symmetrically about the middle line) at 85% of the height, every other column: a 1 px bar and a 1 px gap.
+      for (let i = 0; i < TILE_COLS; i += 2) {
         const lo = cols[i * 2]!, hi = cols[i * 2 + 1]!;
         if (lo > hi) continue; // no data yet
-        const y0 = mid - hi * k, y1 = mid - lo * k;
-        g.fillRect(i, y0, 1, Math.max(1, y1 - y0));
+        const amp = Math.max(1, Math.max(hi, -lo) * k * 0.85);
+        g.fillRect(i, mid - amp, 1, amp * 2);
       }
       const wholeBinsEnd = Math.floor(view.frames / 256) * 256;
       const final = view.complete || (index + 1) * TILE_COLS * fpp <= wholeBinsEnd;
