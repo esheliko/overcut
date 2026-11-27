@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useI18n } from "../i18n";
 import { onThemeChange } from "../theme/tokens";
 import type { Palette } from "./draw";
@@ -6,12 +6,14 @@ import { DARK, paletteFromCss } from "./draw";
 import { fitsView, overviewSpan, panTo, partAt, resizeTo, windowOf, type Win } from "./overview";
 import type { Scene } from "./scene";
 import type { CanvasHandle } from "./TimelineCanvas";
+import { zoomStore } from "./zoomStore";
 
 type Drag = { part: "left" | "right" | "body"; grab: number; win: Win };
 
 /** A thin strip with the whole project and a window for what the timeline shows: drag the window to pan, its edges to zoom, press outside it to jump.
- *  Hidden when the project already fits. The clip layer is cached; a scroll or zoom only repaints the window. */
-export function Overview({ scene, lengthSec, handle, onZoom }: { scene: Scene; lengthSec: number; handle: () => CanvasHandle | null; onZoom: (pps: number) => void }) {
+ *  Hidden while the project has no clips and when everything already fits. The clip layer is cached; a scroll or zoom only repaints the window, and a playhead tick
+ *  does not reach it at all (memoized, and the timeline above it no longer re-renders per tick). */
+export const Overview = memo(function Overview({ scene, lengthSec, handle }: { scene: Scene; lengthSec: number; handle: () => CanvasHandle | null }) {
   const { t } = useI18n();
   const wrap = useRef<HTMLDivElement>(null);
   const cv = useRef<HTMLCanvasElement>(null);
@@ -19,18 +21,19 @@ export function Overview({ scene, lengthSec, handle, onZoom }: { scene: Scene; l
   const pal = useRef<Palette>(DARK);
   const drag = useRef<Drag | null>(null);
   const [shown, setShown] = useState(false);
-  const [pct, setPct] = useState(0);
-  const live = useRef({ scene, lengthSec, onZoom });
-  live.current = { scene, lengthSec, onZoom };
+  const live = useRef({ scene, lengthSec });
+  live.current = { scene, lengthSec };
 
   const paint = useCallback(() => {
     const c = cv.current, h = handle();
     if (!c || !h) return;
     const { scene: sc, lengthSec: len } = live.current, v = h.view;
-    const hide = fitsView(v, len);
+    // The content that decides whether the bar is useful: the clips' end, not the sequence's nominal length (an empty project, or a few seconds of clips, needs no overview).
+    const hide = sc.clipCount === 0 || fitsView(v, Math.min(len, Math.max(sc.endSec, 1)));
     setShown((s) => (s === !hide ? s : !hide));
     if (hide) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2), H = Math.max(16, Math.round(c.clientHeight));
+    const band = Math.min(H, 32), top = Math.round((H - band) / 2); // the visible bar is 28-32 px; on touch the canvas around it is the 44 px hit area
     const w = Math.max(1, Math.round(c.clientWidth));
     if (c.width !== Math.round(w * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(H * dpr); }
     const ctx = c.getContext("2d");
@@ -44,29 +47,31 @@ export function Overview({ scene, lengthSec, handle, onZoom }: { scene: Scene; l
       const b = bmp.getContext("2d")!;
       b.setTransform(dpr, 0, 0, dpr, 0, 0);
       const span = overviewSpan(v, len);
-      const rows = Math.max(1, sc.trackCount), rh = Math.max(1, (H - 6) / rows);
+      const rows = Math.max(1, sc.trackCount), rh = Math.max(1, (band - 8) / rows);
       for (let k = 0; k < 2; k++) {
         b.fillStyle = k === 0 ? p.videoStrip : p.audioStrip;
         for (let i = 0; i < sc.clipCount; i++) {
           if ((sc.trackKind[sc.clipTrack[i]!] === 1 ? 1 : 0) !== k) continue;
           const x = (sc.start[i]! / span) * w, cw = Math.max(1, ((sc.end[i]! - sc.start[i]!) / span) * w);
-          b.fillRect(x, 3 + sc.clipTrack[i]! * rh, cw, Math.max(1, rh - 0.5));
+          b.fillRect(x, top + 4 + sc.clipTrack[i]! * rh, cw, Math.max(1, rh - 0.5));
         }
       }
       layer.current = { scene: sc, key, bmp };
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = p.surface; ctx.fillRect(0, 0, w, H);
+    ctx.fillStyle = p.bg; ctx.beginPath(); roundRect(ctx, 0, top, w, band, 4); ctx.fill(); // the track the window slides in
     ctx.globalAlpha = 0.7; ctx.drawImage(layer.current.bmp!, 0, 0, w, H); ctx.globalAlpha = 1;
     const win = windowOf(v, len, w);
-    ctx.fillStyle = p.bg; ctx.globalAlpha = 0.55;
-    ctx.fillRect(0, 0, win.x0, H); ctx.fillRect(win.x1, 0, w - win.x1, H); ctx.globalAlpha = 1;
-    ctx.strokeStyle = p.accent; ctx.lineWidth = 2;
-    ctx.strokeRect(win.x0 + 1, 1, Math.max(2, win.x1 - win.x0 - 2), H - 2);
+    // The window: a 1 px accent outline over a light accent wash (rounded 4 px); the grips at its ends show on touch and when focused only as a subtle tick.
+    ctx.fillStyle = p.accent; ctx.globalAlpha = 0.14;
+    ctx.beginPath(); roundRect(ctx, win.x0, top, win.x1 - win.x0, band, 4); ctx.fill();
+    ctx.globalAlpha = 1; ctx.strokeStyle = p.accent; ctx.lineWidth = 1;
+    ctx.beginPath(); roundRect(ctx, win.x0 + 0.5, top + 0.5, Math.max(2, win.x1 - win.x0 - 1), band - 1, 4); ctx.stroke();
     ctx.fillStyle = p.accent;
-    ctx.fillRect(win.x0, 4, 4, H - 8); ctx.fillRect(win.x1 - 4, 4, 4, H - 8);
+    ctx.fillRect(win.x0 + 2, top + band / 2 - 5, 2, 10); ctx.fillRect(win.x1 - 4, top + band / 2 - 5, 2, 10);
     const total = overviewSpan(v, len);
-    setPct(Math.round(((v.scrollX / v.pps) / total) * 100));
+    c.setAttribute("aria-valuenow", String(Math.round(((v.scrollX / v.pps) / total) * 100)));
     c.dataset.win0 = String(Math.round(win.x0)); c.dataset.win1 = String(Math.round(win.x1)); // test hook
   }, [handle]);
 
@@ -89,7 +94,7 @@ export function Overview({ scene, lengthSec, handle, onZoom }: { scene: Scene; l
   const apply = (nx: { pps?: number; scrollX: number }) => {
     const h = handle();
     if (!h) return;
-    if (nx.pps !== undefined) { h.view.pps = nx.pps; live.current.onZoom(nx.pps); }
+    if (nx.pps !== undefined) { h.view.pps = nx.pps; zoomStore.set(nx.pps, "user"); }
     h.view.scrollX = nx.scrollX;
     h.invalidate();
   };
@@ -122,8 +127,14 @@ export function Overview({ scene, lengthSec, handle, onZoom }: { scene: Scene; l
 
   return (
     <div ref={wrap} className="tl-overview" data-testid="tl-overview" hidden={!shown}>
-      <canvas ref={cv} role="scrollbar" aria-orientation="horizontal" aria-label={t("timeline.overview")} aria-controls="tl-summary" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} tabIndex={0}
+      <canvas ref={cv} role="scrollbar" aria-orientation="horizontal" aria-label={t("timeline.overview")} aria-controls="tl-summary" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0} tabIndex={0}
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={end} onPointerCancel={end} onKeyDown={onKey} />
     </div>
   );
+});
+
+/** A rounded rectangle path (a plain one where `roundRect` is missing). */
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  if (typeof ctx.roundRect === "function") ctx.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2));
+  else ctx.rect(x, y, w, h);
 }

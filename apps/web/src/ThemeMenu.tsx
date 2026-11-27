@@ -30,7 +30,7 @@ export function ThemeMenu({ pref, onPick }: { pref: ThemePref; onPick(p: ThemePr
         <div className="menu-pop theme-pop" role="menu" aria-label={t("theme.label")} data-testid="theme-menu">
           {THEME_PREFS.map((p) => (
             <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === pref} data-testid={`theme-${p}`} onClick={() => { setOpen(false); onPick(p); button.current?.focus(); }}>
-              <span className="menu-check" aria-hidden="true">{p === pref ? "✓" : ""}</span>
+              <span className="menu-check" aria-hidden="true">{p === pref && <Icon name="check" size={16} />}</span>
               <span>{t(`theme.${p}`)}</span>
             </button>
           ))}

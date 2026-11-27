@@ -19,8 +19,8 @@ const PATHS = {
   pause: "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z",
   back: "M6 5v14M19 5L9 12l10 7z",
   forward: "M18 5v14M5 5l10 7-10 7z",
-  stepBack: "M15 5l-7 7 7 7",
-  stepForward: "M9 5l7 7-7 7",
+  stepBack: "M16 6v12l-8-6z",
+  stepForward: "M8 6v12l8-6z",
   undo: "M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3",
   redo: "M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3",
   split: `M12 3v18${c(5, 6, 2.5)}${c(5, 18, 2.5)}M7.5 7.5L12 12M7.5 16.5L12 12M12 12l8-6M12 12l8 6`,
@@ -52,11 +52,23 @@ const PATHS = {
   closeGap: "M3 5v14M21 5v14M6 12h4M18 12h-4M9 9l3 3-3 3M15 9l-3 3 3 3",
   archive: "M3 5h18v4H3zM5 9v10h14V9M10 13h4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4",
+  keyboard: "M3 6.5h18v11H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10",
+  shield: "M12 3l8 3v6c0 4.7-3.4 7.6-8 9-4.6-1.4-8-4.3-8-9V6z",
+  activity: "M3 12h4l3-8 4 16 3-8h4",
+  chevronDown: "M6 9l6 6 6-6",
+  chevronLeft: "M15 6l-6 6 6 6",
+  chevronRight: "M9 6l6 6-6 6",
+  warn: "M12 3.5l9.5 16.5h-19zM12 10v4.5M12 17.2v.3",
+  info: `${c(12, 12, 9)}M12 11v5.5M12 7.6v.3`,
+  reset: "M4 12a8 8 0 1 0 2.6-5.9M4 4.5V9h4.5",
+  ratioPortrait: "M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3z",
+  ratioLandscape: "M4.5 6.5h15a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16V8a1.5 1.5 0 0 1 1.5-1.5z",
+  ratioSquare: "M6.5 4.5h11A1.5 1.5 0 0 1 19 6v12a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18V6a1.5 1.5 0 0 1 1.5-1.5z",
+  smallFile: "M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM14 3v4h4M9.5 15.5l2.5 2.5 2.5-2.5M12 11.5V18",
+  sparkle: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z",
   fullscreen: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   fullscreenExit: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
   loop: "M17 3l3 3-3 3M4 11V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3M20 13v2a3 3 0 0 1-3 3H4",
-  chevronLeft: "M15 5l-7 7 7 7",
-  chevronRight: "M9 5l7 7-7 7",
 } as const;
 
 /** The path data of every icon, by name (tests pin an icon's shape through it). */
@@ -64,8 +76,11 @@ export const ICON_PATHS = PATHS;
 
 export type IconName = keyof typeof PATHS;
 
+/** One rule (docs/features/design-system.md): the transport (play, pause, skip, frame step) is filled; every other icon is a 1.7 px outline. */
+const TRANSPORT: ReadonlySet<IconName> = new Set<IconName>(["play", "pause", "back", "forward", "stepBack", "stepForward"]);
+
 export function Icon({ name, size = 22, ...rest }: { name: IconName; size?: number } & Omit<SVGProps<SVGSVGElement>, "name">) {
-  const filled = name === "play" || name === "pause";
+  const filled = TRANSPORT.has(name);
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" {...rest}>
       <path d={PATHS[name]} />

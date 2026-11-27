@@ -1,4 +1,4 @@
-import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
+import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, summarizeExtra, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
@@ -9,6 +9,7 @@ import { useIncoming } from "./incoming";
 import { Icon, type IconName } from "./icons";
 import { PersistenceNotes, usePersistence } from "./persistence";
 import { Home } from "./Home";
+import { capturePoster } from "./posterSource";
 import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects, projectBytes, setArchived } from "./projects";
 import { isArchived, startScreen } from "./projectsView";
 import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
@@ -33,7 +34,10 @@ const paletteKey = (): string => chordLabel(currentKeymap().get("app.palette")?.
 import { VersionsDialog, useAutoSnapshots } from "./Versions";
 import { binMeta, type BinMeta } from "./media/binView";
 import { MediaBin } from "./media/MediaBin";
-import { TICKS } from "./media/plan";
+import { newId, TICKS } from "./media/plan";
+import { mediaToAdd } from "./timeline/addMedia";
+import { buildScene } from "./timeline/scene";
+import { addTrack } from "./timeline/tracks";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickMany, pickOne, setDesktop, setNativeMedia, type Source } from "./media/sources";
 import { useShellProfile } from "./layout/useShellProfile";
 import { Splitter } from "./layout/Splitter";
@@ -182,15 +186,15 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
   }, [open]);
   return (
     <div className="menu" ref={ref}>
-      <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
+      <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} title={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
       {open && (
         <div className="menu-pop" role="menu">
-          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><span>{t("palette.open")}</span>{!compact && <kbd className="menu-hint">{paletteKey()}</kbd>}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><Icon name="search" size={16} className="menu-ic" /><span>{t("palette.open")}</span>{!compact && <kbd className="menu-hint">{paletteKey()}</kbd>}</button>
           {compact && (
             <>
               {/* Small phones: the theme choices are listed here (F3), not cycled. */}
               {THEME_PREFS.map((p) => (
-                <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref ? "✓" : ""}</span><span>{t(`theme.${p}`)}</span></button>
+                <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref && <Icon name="check" size={16} />}</span><span>{t(`theme.${p}`)}</span></button>
               ))}
               <div className="menu-row menu-status" role="presentation">{status}</div>
               {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
@@ -198,20 +202,20 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
             </>
           )}
           <div className="menu-group" role="presentation">{t("menu.group.project")}</div>
-          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}>{t("menu.projects")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}>{t("menu.new")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={opening(project.onOpen)}>{t("menu.openProject")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}>{t("menu.saveProject")}</button>
-          {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}>{t("menu.projectsFolder")}</button>}
-          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}>{t("menu.versions")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projects")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}><Icon name="plus" size={16} className="menu-ic" /><span>{t("menu.new")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={opening(project.onOpen)}><Icon name="upload" size={16} className="menu-ic" /><span>{t("menu.openProject")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}><Icon name="download" size={16} className="menu-ic" /><span>{t("menu.saveProject")}</span></button>
+          {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projectsFolder")}</span></button>}
+          <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}><Icon name="history" size={16} className="menu-ic" /><span>{t("menu.versions")}</span></button>
           <div className="menu-group" role="presentation">{t("menu.group.view")}</div>
           <AccentPicker />
           <ScrubPrepItem />
           <div className="menu-group" role="presentation">{t("menu.group.help")}</div>
-          <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={opening(project.onShortcuts)}>{t("menu.shortcuts")}</button>
-          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={opening(project.onPrivacy)}>{t("menu.privacy")}</button>
+          <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={opening(project.onShortcuts)}><Icon name="keyboard" size={16} className="menu-ic" /><span>{t("menu.shortcuts")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={opening(project.onPrivacy)}><Icon name="shield" size={16} className="menu-ic" /><span>{t("menu.privacy")}</span></button>
           <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
-          <a role="menuitem" href="/diagnostics">{t("menu.diagnostics")}</a>
+          <a role="menuitem" href="/diagnostics"><Icon name="activity" size={16} className="menu-ic" /><span>{t("menu.diagnostics")}</span></a>
         </div>
       )}
     </div>
@@ -246,7 +250,6 @@ function Editor({ store }: { store: ProjectStore }) {
   const [playing, setPlaying] = useState(false);
   const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
   useEffect(() => { const open = () => setPalette(true); window.addEventListener(PALETTE_EVENT, open); return () => window.removeEventListener(PALETTE_EVENT, open); }, []);
-  const [zoom, setZoom] = useState(40);
   const [toast, setToast] = useState<string | null>(null);
   const [refusals, setRefusals] = useState<string[]>([]); // phone: files refused in an import, kept on screen until dismissed (the Media sheet closes after a successful one)
   // F3: the theme is picked from a small menu (System, Dark, Light, High contrast), not cycled.
@@ -322,6 +325,18 @@ function Editor({ store }: { store: ProjectStore }) {
     if (readyCount > readyBefore.current && !roomy) setSheet(false);
     readyBefore.current = readyCount;
   }, [readyCount, roomy]);
+  /** "Add media at playhead" / "Add as overlay on a new track": the selected clip's media, else the newest card in the bin (T-01). */
+  const addMediaAt = useCallback((overlay: boolean, tick: number) => {
+    const st = store.getState();
+    const id = mediaToAdd(st.project, st.selection, media.items);
+    if (!id) { soon(t("timeline.addMedia.none")); return; }
+    const done = (ok: boolean) => { if (ok) announce(t("media.added")); };
+    const kind = media.items.find((i) => i.id === id)?.kind;
+    if (overlay && kind !== "audio" && st.project) { // a new video track on top, then the clip on it (two undo steps: the track, then the clip)
+      const track = newId();
+      void store.apply(addTrack(buildScene(st.project), "video", track).ops).then(() => media.addToTimeline(id, tick, track)).then(done).catch(() => soon(t("timeline.say.failed")));
+    } else void media.addToTimeline(id, tick).then(done);
+  }, [store, media, soon, t]);
   // History and Timing dialogs (lazy chunks in the timeline's More menu): fetched while the browser is idle once there is something to edit, so they open at once.
   const hasMedia = readyCount > 0;
   useEffect(() => {
@@ -334,6 +349,13 @@ function Editor({ store }: { store: ProjectStore }) {
   }, [hasMedia]);
   const [dragging, setDragging] = useState(false);
   const [tlOver, setTlOver] = useState(false);
+  // The dashed drop outline must never outlive a drag: the canvas handles the drop itself (and stops it), a drag can end elsewhere or be cancelled (I-06).
+  useEffect(() => {
+    const clear = () => setTlOver(false);
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear, true);
+    return () => { window.removeEventListener("dragend", clear); window.removeEventListener("drop", clear, true); };
+  }, []);
   useEffect(() => {
     let depth = 0;
     const over = (e: DragEvent) => { if (dragHasFiles(e.dataTransfer)) e.preventDefault(); };
@@ -516,11 +538,25 @@ function Editor({ store }: { store: ProjectStore }) {
   const touchBase = useRef<Project | null>(null);
   const pendingTouch = useRef<{ id: string; project: Project } | null>(null);
   const touchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const flushTouch = (): Promise<void> => {
+  const lastPoster = useRef(0);
+  /**
+   * Writes the row's facts (and, at most every few seconds, a small poster of the frame at the playhead). `leaving` = the project is about to be
+   * closed (the preview is still there for this one call): the poster is also taken when the row has none yet. The pagehide path never waits
+   * for a poster. A poster that cannot be had (no frame, black frame, timeout) leaves the old one in place.
+   */
+  const flushTouch = async (mode: "idle" | "leaving" | "hide" = "idle"): Promise<void> => {
+    const leaving = mode === "leaving";
     clearTimeout(touchTimer.current);
     const p = pendingTouch.current;
     pendingTouch.current = null;
-    return p ? getRegistry().then((r) => r.update(p.id, { modified: Date.now(), ...summarize(p.project) })).catch(() => undefined) : Promise.resolve();
+    const id = p?.id ?? openId;
+    const live = p?.project ?? store.getState().project;
+    if (!id || !live) return;
+    const needsPoster = leaving && !list?.find((x) => x.id === id)?.poster && (summarize(live).clips ?? 0) > 0;
+    if (!p && !needsPoster) return;
+    const poster = mode !== "hide" && (leaving || Date.now() - lastPoster.current > 4000) ? await capturePoster() : null;
+    if (poster) lastPoster.current = Date.now();
+    await getRegistry().then((r) => r.update(id, { ...(p ? { modified: Date.now(), ...summarize(live), ...summarizeExtra(live) } : {}), ...(poster ? { poster } : {}) })).catch(() => undefined);
   };
   useEffect(() => {
     if (!project || !openId) { touchBase.current = null; return; }
@@ -530,9 +566,9 @@ function Editor({ store }: { store: ProjectStore }) {
     clearTimeout(touchTimer.current);
     touchTimer.current = setTimeout(() => void flushTouch(), 1500);
   }, [project, openId]);
-  useEffect(() => { const f = () => void flushTouch(); addEventListener("pagehide", f); return () => removeEventListener("pagehide", f); }, []);
+  useEffect(() => { const f = () => void flushTouch("hide"); addEventListener("pagehide", f); return () => removeEventListener("pagehide", f); }, []);
   const goHome = async () => {
-    await flushTouch();
+    await flushTouch("leaving");
     try { await refreshList(); } catch (e) { return fail("projects.failed", e); }
     setOpenId(null);
   };
@@ -676,14 +712,14 @@ function Editor({ store }: { store: ProjectStore }) {
         )}
         {roomy && <Splitter workspace={workspaceRef} />}
 
-        <div className="tl-drop" data-over={tlOver} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
+        <div className="tl-drop" data-over={tlOver} onDropCapture={() => setTlOver(false)} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
           const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
           setTlOver(false);
           if (!id) return;
           e.preventDefault();
           void media.addToTimeline(id, Math.round((store.getState().playhead * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
         }}>
-          <Timeline playing={playing} zoom={zoom} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onZoom={setZoom} onNotice={soon} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onDropMedia={(id, tick, track) => void media.addToTimeline(id, tick, track).then((ok) => ok && announce(t("media.added")))} />
+          <Timeline playing={playing} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onNotice={soon} onAddMedia={addMediaAt} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onDropMedia={(id, tick, track) => void media.addToTimeline(id, tick, track).then((ok) => ok && announce(t("media.added")))} />
         </div>
       </main>
 
@@ -691,7 +727,7 @@ function Editor({ store }: { store: ProjectStore }) {
         <div className="persist-note" role="status" data-testid="offline-note">
           <span>{t("project.offline", { count: offline })}</span>
           <button onClick={() => void locate()} data-testid="locate-files">{t("project.locate")}</button>
-          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setLocating(false)}>×</button>
+          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setLocating(false)}><Icon name="close" size={18} /></button>
         </div>
       ) : null} />
       {dialog === "versions" && persistence.session && <VersionsDialog session={persistence.session} onRestore={restoreVersion} onClose={() => setDialog(null)} />}
@@ -705,7 +741,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {refusals.length > 0 && !roomy && (
         <div className="refusal-note" data-testid="refusal-note">
           <ul>{refusals.map((m) => <li key={m}>{m}</li>)}</ul>
-          <button className="icon-btn" aria-label={t("media.refusalDismiss")} onClick={() => setRefusals([])}>×</button>
+          <button className="icon-btn" aria-label={t("media.refusalDismiss")} onClick={() => setRefusals([])}><Icon name="close" size={18} /></button>
         </div>
       )}
       <div className="toast" role="status">{toast}</div>

@@ -76,3 +76,12 @@ export function applyAccent(a: Accent, root: HTMLElement = document.documentElem
   root.dataset.accent = a;
   root.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { theme: root.dataset.theme } }));
 }
+
+/** Canvas text uses `Inter`: ask for the faces the canvas draws with, then tell canvas code to repaint (same event as a theme change). Never throws; no fonts API = nothing to do. */
+export function redrawWhenFontsLoad(root: HTMLElement = document.documentElement): void {
+  const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+  if (!fonts?.load) return;
+  Promise.all(["500 12px Inter", "600 12px Inter", "700 12px Inter"].map((f) => fonts.load(f)))
+    .then(() => root.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { theme: root.dataset.theme } })))
+    .catch(() => undefined);
+}

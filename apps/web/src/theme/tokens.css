@@ -6,26 +6,45 @@
   /* colour roles: dark (the default shell look) */
   color-scheme: dark;
   --bg: #08080a; --surface: #131316; --surface-2: #1b1b20; --surface-3: #26262d;
-  --line: rgba(255, 255, 255, 0.08); --line-strong: rgba(255, 255, 255, 0.18);
+  --line: rgba(255, 255, 255, 0.1); --line-strong: rgba(255, 255, 255, 0.36); /* --line-strong >= 3:1 on --surface (WCAG 1.4.11: control borders); --line is the quiet panel edge */
   --fg: #f4f4f6; --muted: #9a9aa6;
   --accent: #2de2d6; --accent-ink: #04211f; --accent-soft: rgba(45, 226, 214, 0.14);
   --danger: #ff6b6b; --ok: #3ddc97;
   --stage: #050506; --stage-fg: rgba(255, 255, 255, 0.5); --clip: #1f4f4c;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  /* elevation scale (V-05): --elev-1 cards, --elev-2 menus and popovers, --elev-3 dialogs and sheets. --shadow kept as an alias of the strongest. */
+  --elev-hi: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.28), 0 0 0 1px var(--line);
+  --elev-2: 0 6px 18px rgba(0, 0, 0, 0.35), var(--elev-hi);
+  --elev-3: 0 20px 60px rgba(0, 0, 0, 0.5), var(--elev-hi);
+  --shadow: var(--elev-3);
+  /* overlay scrim: the same dim in every theme (a light theme must not turn the app into a white veil) */
+  --scrim: rgb(8 8 12 / 0.55);
+  --panel-pad: 16px; /* left/right inset shared by every panel header, tab bar and row (V-08) */
+  /* status icons for notices (info, warning) as masks: stroke 2 on a 24 grid, the colour comes from the element using them */
+  --icon-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5.5M12 7.6v.3'/%3E%3C/svg%3E");
+  --icon-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.5l9.5 16.5h-19zM12 10v4.5M12 17.2v.3'/%3E%3C/svg%3E");
+  /* badge on top of a picture (duration on a poster): the same in every theme, a picture is always dark-ish */
+  --media-badge-bg: rgb(0 0 0 / 0.66); --media-badge-fg: #ffffff;
   /* focus ring */
   --focus-ring: var(--accent); --focus-ring-width: 2px; --focus-ring-offset: 2px;
 
   /* spacing scale (4px base) */
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
   /* radius */
-  --radius-sm: 8px; --radius-md: 10px; --radius: 14px; --radius-lg: 18px; --radius-full: 999px;
-  /* type scale */
+  --radius-xs: 4px; /* keycaps, small tags */
+  --radius-sm: 8px; /* controls: buttons, fields, menu rows, tabs */
+  --radius-md: 12px; /* cards, panels, menus, toasts */
+  --radius: 12px; /* alias of --radius-md (panels) */
+  --radius-lg: 16px; /* dialogs and sheets */
+  --radius-full: 999px; /* pills */
+  /* type scale (V-03): UI labels 1.3, paragraphs 1.5; weights 400 / 500 / 600 only (700 stays on primary buttons) */
   --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --text-xs: 12px; --text-sm: 12px; --text-base: 14px; --text-md: 15px; --text-lg: 18px;
+  --text-2xs: 11px; --text-xs: 12px; --text-sm: 13px; --text-base: 14px; --text-md: 16px; --text-lg: 18px; --text-xl: 22px;
+  --lh-ui: 1.3; --lh-text: 1.5;
   /* motion (zeroed under prefers-reduced-motion) */
-  --dur-instant: 0.1s; --dur-fast: 0.15s; --dur-base: 0.2s; --dur-slow: 0.25s;
-  --ease-out: ease-out;
+  --dur-instant: 0.1s; --dur-fast: 0.15s; --dur-base: 0.2s; --dur-slow: 0.25s; --dur-menu: 0.12s; --dur-dialog: 0.18s; --dur-toast: 0.28s;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   /* layout */
   --top: 52px; --gutter: 48px; --lane: 52px; --ruler: 30px; --target: 44px;
 }
@@ -33,12 +52,15 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #f1f1f4; --surface: #ffffff; --surface-2: #eceef2; --surface-3: #dfe1e7;
-  --line: rgba(0, 0, 0, 0.12); --line-strong: rgba(0, 0, 0, 0.3);
+  --line: rgba(0, 0, 0, 0.14); --line-strong: rgba(0, 0, 0, 0.46);
   --fg: #14141a; --muted: #565664;
   --accent: #00695f; --accent-ink: #ffffff; --accent-soft: rgba(0, 105, 95, 0.12);
   --danger: #b3261e; --ok: #0b7a4d;
   --stage-fg: rgba(255, 255, 255, 0.6); --clip: #8fd6cf;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  --elev-hi: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --elev-1: 0 1px 2px rgba(20, 24, 40, 0.1), 0 0 0 1px var(--line);
+  --elev-2: 0 6px 18px rgba(20, 24, 40, 0.12);
+  --elev-3: 0 20px 60px rgba(20, 24, 40, 0.2);
 }
 
 :root[data-theme="high-contrast"] {
@@ -49,7 +71,9 @@
   --accent: #5ff5ea; --accent-ink: #000000; --accent-soft: rgba(95, 245, 234, 0.22);
   --danger: #ff9a9a; --ok: #6dffb8;
   --stage: #000000; --stage-fg: rgba(255, 255, 255, 0.9); --clip: #0b6b66;
-  --shadow: 0 0 0 1px #ffffff;
+  --elev-hi: 0 0 0 0 transparent;
+  --elev-1: 0 0 0 1px #ffffff; --elev-2: 0 0 0 1px #ffffff; --elev-3: 0 0 0 1px #ffffff;
+  --scrim: rgb(0 0 0 / 0.8);
   --focus-ring: #ffffff; --focus-ring-width: 3px; --focus-ring-offset: 3px;
 }
 
@@ -114,5 +138,10 @@
 @media (min-width: 720px) { :root { --gutter: 56px; --lane: 56px; } }
 @media (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { :root { --top: 44px; --lane: 36px; --ruler: 24px; } }
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-instant: 0s; --dur-fast: 0s; --dur-base: 0s; --dur-slow: 0s; }
+  :root { --dur-instant: 0s; --dur-fast: 0s; --dur-base: 0s; --dur-slow: 0s; --dur-menu: 0s; --dur-dialog: 0s; --dur-toast: 0s; }
 }
+
+/* Timeline audio clip hues (M2 UX V-13): audio reads green, independent of the accent colour; video keeps --clip and --accent. Read by the canvas painter (timeline/draw.ts). */
+:root { --clip-audio: #1c3a33; --clip-audio-wave: #5fd1a8; --clip-audio-strip: #3ddc97; }
+:root[data-theme="light"] { --clip-audio: #cdeee0; --clip-audio-wave: #17704e; --clip-audio-strip: #1f8a62; }
+:root[data-theme="high-contrast"] { --clip-audio: #003d2b; --clip-audio-wave: #6dffb8; --clip-audio-strip: #6dffb8; }

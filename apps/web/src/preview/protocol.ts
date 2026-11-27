@@ -23,7 +23,9 @@ export type PreviewRpc =
   | { name: "gpu" }
   | { name: "strip" }
   | { name: "bench"; width: number; height: number; frames: number }
-  | { name: "parity"; frame: number };
+  | { name: "parity"; frame: number }
+  /** The picture at the playhead as a small JPEG for the project card (`docs/features/projects.md`); `null` when it is black or cannot be had. */
+  | { name: "poster" };
 
 /** What the Worker plays: the shared project's JSON (empty = the idle, black timeline) and the sequence settings. */
 export interface PreviewConfig {

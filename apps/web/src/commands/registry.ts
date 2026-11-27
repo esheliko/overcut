@@ -33,6 +33,8 @@ export type Command =
   /** The in/out range (M2-046): set in / out at the playhead, clear it, loop it, play it. */
   | { c: "range"; what: "in" | "out" | "clear" | "loop" | "play" }
   | { c: "zoom"; how: "in" | "out" | "fit" | "selection" }
+  /** Put a media item on the timeline at the playhead (the selected clip's media, else the newest in the bin): on its track, or as an overlay on a new video track. */
+  | { c: "addMedia"; overlay: boolean }
   | { c: "scroll"; how: "pageLeft" | "pageRight" | "up" | "down" }
   /** The preview (M2 UX): full-screen picture, loop playback on or off. Handled by the preview panel (it listens for COMMAND_EVENT and reads the keys itself). */
   | { c: "preview"; what: "fullscreen" | "loop" }
@@ -116,6 +118,9 @@ export const COMMANDS: readonly CommandDef[] = [
   D("clip.slideForward", "canvas", ["Mod+Shift+Period"], { c: "slide", frames: 1 }),
   D("clip.rollBack", "canvas", ["Mod+Alt+Comma"], { c: "roll", frames: -1 }),
   D("clip.rollForward", "canvas", ["Mod+Alt+Period"], { c: "roll", frames: 1 }),
+
+  D("media.addAtPlayhead", "global", [], { c: "addMedia", overlay: false }),
+  D("media.addOverlay", "global", [], { c: "addMedia", overlay: true }),
 
   D("marker.add", "global", ["M"], { c: "marker" }),
   D("marker.edit", "global", [], { c: "markerEdit" }),
