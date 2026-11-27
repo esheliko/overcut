@@ -39,13 +39,15 @@ test("add from the bin with the + button (44 px), keyboard reachable; a second f
   await ready(page);
   await page.getByTestId("media-input").setInputFiles(file("h264_aac.mp4"));
   await expect(summary(page)).toContainText("2 clips");
-  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); // the sheet closed itself after the import
+  if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // the sheet closed itself after the import (wait for that: clicking earlier would toggle it shut)
   await page.getByTestId("import-more").click({ trial: true });
   await page.getByTestId("media-input").setInputFiles(file("vp9_opus.webm"));
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
-  if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); // closed again after this import
+  if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // closed again after this import (same wait)
   await expect(summary(page)).toContainText("2 clips"); // only the first import auto-adds
   const add = page.getByRole("button", { name: "Add vp9_opus.webm to the timeline" });
+  // The phone sheet rises with an animation (translate): measured mid-way a 44 px button reads 43.99997. Measure once it has settled.
+  await page.getByTestId("panel-tool").evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
   expect((await add.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await add.focus();
   await page.keyboard.press("Enter");

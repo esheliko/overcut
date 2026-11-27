@@ -119,7 +119,14 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   const echoes = useRef(new Set<number>());
   // Playing the in/out range (M2-046): the timeline asks with PLAY_RANGE_EVENT; the player runs from the range's start and stops at its end (or loops).
   const rangeRun = useRef<(PlayRange & { seen: boolean }) | null>(null);
+  // A seek the timeline asked for that the player has not answered yet: frames it published before that (it was still on the old position, or just re-configured) are stale and must not move the playhead back.
+  const pendingSeek = useRef<{ frame: number; until: number } | null>(null);
   const emit = useCallback((f: number) => {
+    const ps = pendingSeek.current;
+    if (ps) {
+      if (f === ps.frame || performance.now() > ps.until) pendingSeek.current = null;
+      else return;
+    }
     echoes.current.add(f);
     store.setPlayhead(f);
     const r = rangeRun.current, p = playerRef.current;
@@ -199,6 +206,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
         // it is an echo only while the player really shows that frame, or is playing (state then lags the player).
         if (!p || p.isPlaying || p.frame === frame) return;
       }
+      if (p) pendingSeek.current = { frame, until: performance.now() + 400 };
       p?.seek(frame);
     };
     follow();
