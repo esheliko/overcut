@@ -293,8 +293,11 @@ let pendingCapture: ((bmp: Promise<ImageBitmap>) => void) | undefined;
 
 /** Pixel of what the preview presents (test only): the player draws the current frame again and the canvas is read the moment it is presented. */
 async function probe(x: number, y: number): Promise<number[]> {
+  // Bounded: a probe runs on the message chain, so one whose draw never presents (a failed decode, a draw superseded and dropped) would hold up every
+  // message behind it (media, config, the next probe) for good. After 2 s it gives up with an error and the caller asks again.
   const bmp = await new Promise<ImageBitmap>((resolve, reject) => {
-    pendingCapture = (p) => void p.then(resolve, reject);
+    const timer = setTimeout(() => { pendingCapture = undefined; reject(new Error("the preview presented no frame within 2 s")); }, 2000);
+    pendingCapture = (p) => void p.then((b) => { clearTimeout(timer); resolve(b); }, (e) => { clearTimeout(timer); reject(e); });
     if (player && !player.isPlaying) player.seek(player.frame);
   });
   const c = new OffscreenCanvas(bmp.width, bmp.height);
