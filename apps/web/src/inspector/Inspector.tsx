@@ -4,6 +4,9 @@ import { useI18n } from "../i18n";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { isIdentity, newGestureKey, setField, setFit, toggleFlip, valuesOf, RESET, rangeOf, type NumKey } from "./transformModel";
 import { EASING_CHOICES, PROPS_OF, easingId, easingOps, keyNear, keyState, neighbourKey, relativeTicks, setKeyOps, ticksPerFrame, ticksToFrame, toggleKeyOps, type EasingId } from "./keyframeModel";
+import { canvasSummary } from "../canvas";
+import { clipCount, timelineEnd } from "../media/plan";
+import { TICKS_PER_SECOND, timecodeHMS } from "../preview/timing";
 import "./inspector.css";
 
 /** The one selected video clip, or null (nothing, several, or an audio clip). */
@@ -80,21 +83,42 @@ function Diamond({ filled }: { filled: boolean }): ReactNode {
 /** Transform of the selected clip: numeric fields with keyframe controls, then crop / flip / fit, reset. Every field editing session (focus to blur) is one undo step. */
 export function Inspector(): ReactNode {
   const { t } = useI18n();
-  const store = useStore();
   const project = useProjectStore((s) => s.project);
   const selection = useProjectStore((s) => s.selection);
+  const clip = selectedVideoClip(project, selection);
+  if (!clip || !project) return <><p className="insp-empty">{t("inspector.none")}</p>{project && <ProjectInfo project={project} />}</>;
+  return <InspectorFields clip={clip} rate={project.sequences[0]!.frame_rate} />;
+}
+
+/** Nothing selected: what the project is, so the Details panel is never an empty column. */
+function ProjectInfo({ project }: { project: Project }) {
+  const { t } = useI18n();
+  const seq = project.sequences[0];
+  if (!seq) return null;
+  const frames = Math.round((timelineEnd(project) * seq.frame_rate.num) / (TICKS_PER_SECOND * seq.frame_rate.den));
+  return (
+    <dl className="insp-info" data-testid="insp-project-info">
+      <div><dt>{t("inspector.info.canvas")}</dt><dd>{canvasSummary(seq.resolution, seq.frame_rate)}</dd></div>
+      <div><dt>{t("inspector.info.length")}</dt><dd>{timecodeHMS(frames, seq.frame_rate)}</dd></div>
+      <div><dt>{t("inspector.info.clips")}</dt><dd>{clipCount(project)}</dd></div>
+    </dl>
+  );
+}
+
+/** The fields. Only this part follows the playhead, and only as the clip-relative time clamped to just outside the clip: while the playhead is elsewhere nothing here re-renders. */
+function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof selectedVideoClip>>; rate: Project["sequences"][number]["frame_rate"] }): ReactNode {
+  const { t } = useI18n();
+  const store = useStore();
   const readOnly = useProjectStore((s) => s.readOnly);
-  const playhead = useProjectStore((s) => s.playhead);
+  const pad = 2 * ticksPerFrame(rate); // two frames of margin keep the "on a key" tolerance exact next to the clip
+  const rel = useProjectStore((s) => Math.min(clip.duration + pad, Math.max(-pad, relativeTicks(clip, s.playhead, rate))));
   const edit = useTransformEdit();
   const key = useRef<number | undefined>(undefined);
-  const clip = selectedVideoClip(project, selection);
-  if (!clip || !project) return <p className="insp-empty">{t("inspector.none")}</p>;
-  const rate = project.sequences[0]!.frame_rate;
   const tr = clip.transform;
-  const rel = relativeTicks(clip, playhead, rate);
   const tol = ticksPerFrame(rate) / 2;
   const onClip = rel >= 0 && rel < clip.duration;
   const v = valuesOf(tr, rel);
+  const goToClip = () => store.setPlayhead(Math.max(0, ticksToFrame(clip.start, rate)));
   const gesture = () => key.current ?? (key.current = newGestureKey());
   const label = t("inspector.undoLabel");
   const set = (f: FieldDef, value: number) => {
@@ -181,6 +205,12 @@ export function Inspector(): ReactNode {
   };
   return (
     <div className="insp" data-testid="inspector-fields">
+      {!onClip && (
+        <div className="insp-hint" data-testid="insp-offclip">
+          <p>{t("inspector.offClip")}</p>
+          <button type="button" onClick={goToClip} data-testid="insp-goto-clip">{t("inspector.goToClip")}</button>
+        </div>
+      )}
       {FIELDS.map(field)}
       <details className="insp-more">
         <summary data-testid="insp-more">{t("inspector.more")}</summary>

@@ -49,6 +49,7 @@ h2, p { margin: 0; }
 
 .tools { display: flex; gap: 2px; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; background: var(--surface); border-top: 1px solid var(--line); }
 .tools::-webkit-scrollbar { display: none; }
+@container editor (max-width: 719px) and (min-height: 501px) { .tools { gap: 8px; padding: 6px 12px 8px; } .tool { flex: 1 1 0; max-inline-size: 172px; margin-inline: auto; } }
 .tool { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 66px; min-height: 56px; padding: 6px 8px; background: none; border: 0; border-radius: 12px; color: var(--muted); font-size: var(--text-xs); font-weight: 500; transition: color var(--dur-fast), background var(--dur-fast); }
 .tool:hover { color: var(--fg); }
 .tool[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
@@ -58,9 +59,18 @@ h2, p { margin: 0; }
 
 /* Tool panel: a bottom sheet on a phone */
 .library { display: none; flex-direction: column; min-height: 0; background: var(--surface); }
-.library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: 0; bottom: calc(env(safe-area-inset-bottom) + 68px); height: min(52dvh, 440px); padding-top: 18px; border-radius: 18px 18px 0 0; border: 1px solid var(--line); border-bottom: 0; box-shadow: var(--shadow); animation: rise var(--dur-base) ease-out; }
-.library[data-open="true"]::before { content: ""; position: absolute; top: 7px; inset-inline-start: 50%; width: 36px; height: 4px; margin-inline-start: -18px; border-radius: 2px; background: var(--line-strong); }
-.sheet-close { position: absolute; top: 12px; inset-inline-end: 8px; }
+.library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: 0; bottom: calc(env(safe-area-inset-bottom) + 68px); height: var(--sheet-h, min(52dvh, 440px)); padding-top: 18px; border-radius: 18px 18px 0 0; transition: height var(--dur-base) ease-out; border: 1px solid var(--line); border-bottom: 0; box-shadow: var(--shadow); animation: rise var(--dur-base) ease-out; }
+.library[data-dragging="true"] { transition: none; }
+/* The grab handle of the phone sheet (layout/SheetHandle.tsx): a 40 px tall touch target, the visible bar is the span. */
+.sheet-handle { position: absolute; z-index: 2; inset-block-start: 0; inset-inline: 0; block-size: 40px; display: grid; place-items: start center; padding-block-start: 8px; touch-action: none; cursor: grab; border-radius: 18px 18px 0 0; }
+.sheet-handle > span { inline-size: 40px; block-size: 5px; border-radius: 3px; background: var(--line-strong); transition: background var(--dur-fast); }
+.sheet-handle:active > span, .library[data-dragging="true"] .sheet-handle > span { background: var(--muted); }
+.sheet-handle:focus-visible { outline-offset: -3px; }
+/* Edit sheet at its small size: playhead time, play and the previous / next keyframe stay in reach (layout/MiniTransport.tsx) */
+.mini-transport { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding-block: 0; padding-inline: 16px 60px; min-block-size: 52px; border-block-end: 1px solid var(--line); }
+.mini-tc { margin-inline-end: auto; direction: ltr; font: 600 15px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.mini-transport .play { inline-size: 44px; block-size: 44px; }
+.sheet-close { position: absolute; z-index: 3; top: 12px; inset-inline-end: 8px; }
 @keyframes rise { from { transform: translateY(24px); opacity: 0; } }
 
 .panel-head { display: flex; align-items: center; gap: 10px; padding: 8px 16px 4px; }
@@ -86,7 +96,7 @@ h2, p { margin: 0; }
 /* Preview */
 .stage { container: stage / inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
 .stage-view { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 12px; container-type: size; }
-.canvas { position: relative; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); max-height: 100cqh; display: grid; place-items: center; background: var(--stage); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), var(--shadow); transition: width var(--dur-slow) ease, aspect-ratio var(--dur-slow) ease; }
+.canvas { position: relative; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); max-height: 100cqh; display: grid; place-items: center; background: var(--stage); border-radius: 10px; box-shadow: 0 0 0 1px var(--line-strong), inset 0 0 0 1px color-mix(in srgb, var(--stage-fg) 8%, transparent), 0 6px 20px color-mix(in srgb, var(--stage) 40%, transparent); transition: width var(--dur-slow) ease, aspect-ratio var(--dur-slow) ease; }
 .preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: var(--stage); }
 .scrub-prep { position: absolute; bottom: 8px; inset-inline-start: 8px; max-width: calc(100% - 16px); padding: 2px 10px; border-radius: 999px; background: var(--surface-3); color: var(--muted); font: 500 12px/1.6 var(--font-ui, inherit); pointer-events: none; }
 .rate-badge { position: absolute; top: 8px; inset-inline-end: 8px; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--fg); font: 700 12px/1.6 var(--font-mono); direction: ltr; }
@@ -101,7 +111,8 @@ h2, p { margin: 0; }
 .transport { grid-area: transport; direction: ltr; display: flex; align-items: center; gap: 2px; }
 .play { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--fg); color: var(--bg); transition: transform var(--dur-instant); }
 .play:active { transform: scale(0.92); }
-.ratio { justify-self: end; }
+.player-extras { grid-area: ratio; justify-self: end; display: flex; align-items: center; gap: 4px; }
+.player-extras .icon-btn[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
 .ratio { padding: 0 12px; }
 
 /* Timeline */
@@ -173,13 +184,16 @@ h2, p { margin: 0; }
 .ratio { grid-area: ratio; justify-self: end; }
 .transport .play { width: max(var(--target), 44px); height: max(var(--target), 44px); }
 @container stage (max-width: 640px) { .player-bar { grid-template-columns: 1fr auto; grid-template-areas: "tc ratio" "transport transport"; row-gap: 2px; } .transport { justify-content: center; } }
+.stage { position: relative; }
 
 /* Form-factor profiles. The shell is a size container, so the layout follows the space the app really has (split view, foldable, embedded), not the window.
    Numbers match src/layout/profiles.ts (a unit test compares them). Default above = phone portrait: preview / timeline / tool bar, tools open as a bottom sheet. */
 
 /* Tablet and up: rail | tool panel | preview over a full-width timeline */
 @container editor (min-width: 720px) {
-  .workspace { grid-template-columns: 84px minmax(240px, 300px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) clamp(200px, 38%, 380px); grid-template-areas: "tools library stage" "timeline timeline timeline"; gap: 6px; padding: 0 6px 6px; }
+  .workspace { --lib-w: minmax(240px, 300px); --insp-w: 300px; grid-template-columns: 84px var(--lib-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--tl-row, clamp(200px, 38%, 380px)); grid-template-areas: "tools library stage" "timeline timeline timeline"; gap: 6px; padding: 0 6px 6px; }
+  .workspace[data-lib="collapsed"] { --lib-w: 52px; }
+  .workspace[data-insp="collapsed"] { --insp-w: 52px; }
   .tools, .library, .stage, .timeline { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
   .stage { background: var(--surface); }
   .tools { flex-direction: column; padding: 8px 6px; overflow-y: auto; overflow-x: hidden; }
@@ -188,46 +202,93 @@ h2, p { margin: 0; }
   .library::before, .library[data-open="true"]::before, .sheet-close { display: none; }
   .toast { bottom: 24px; }
   /* One tool (Media) and its panel always open: no rail, its column goes to the panels */
-  .workspace[data-rail="none"] { grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
+  .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
+  .splitter { display: block; grid-area: timeline; align-self: start; justify-self: stretch; position: relative; z-index: 6; block-size: 12px; margin-block-start: -9px; cursor: row-resize; touch-action: none; border-radius: 6px; }
+  .splitter > span { position: absolute; inset-block-start: 4px; inset-inline-start: 50%; inline-size: 48px; block-size: 4px; margin-inline-start: -24px; border-radius: 2px; background: var(--line-strong); opacity: 0; transition: opacity var(--dur-fast), background var(--dur-fast); }
+  .splitter:hover > span, .splitter:focus-visible > span, .splitter:active > span { opacity: 1; }
+  .splitter:active > span, .splitter:focus-visible > span { background: var(--accent); }
+  .splitter:focus-visible { outline: none; }
+  .panel-collapse { display: inline-grid; margin-inline-start: auto; }
+  .library[data-collapsed="true"] > :not(.panel-expand), .inspector[data-collapsed="true"] > :not(.panel-expand) { display: none; }
+  .library[data-collapsed="true"], .inspector[data-collapsed="true"] { align-items: center; padding-block-start: 8px; }
+  .panel-expand { display: none; }
+  .library[data-collapsed="true"] > .panel-expand, .inspector[data-collapsed="true"] > .panel-expand { display: inline-grid; }
+}
+@media (pointer: coarse) {
+  /* Touch: a 44 px grab area, and the preview's bottom row sits above it so the transport buttons stay clear */
+  @container editor (min-width: 720px) { .splitter { block-size: 44px; margin-block-start: -34px; } .splitter > span { inset-block-start: 20px; opacity: 0.7; } .stage { padding-block-end: 30px; } }
 }
 /* Tablet in portrait (820 px wide): the Media panel stacks above the preview, full width, so each card has room for its name, meta on one line and its buttons. The tool rail stays on the left; the timeline keeps the bottom. */
 @container editor (min-width: 720px) and (max-width: 1099px) and (orientation: portrait) {
-  .workspace { grid-template-rows: minmax(300px, 0.9fr) minmax(260px, 1fr) clamp(200px, 30%, 320px); grid-template-columns: 84px minmax(0, 1fr); grid-template-areas: "tools library" "tools stage" "timeline timeline"; }
+  /* The tool panel is capped (it scrolls, with a fade at the cut) so the preview keeps its height and the timeline at least about a third */
+  .workspace { grid-template-rows: auto minmax(260px, 1fr) var(--tl-row, clamp(260px, 38%, 460px)); grid-template-columns: 84px minmax(0, 1fr); grid-template-areas: "tools library" "tools stage" "timeline timeline"; }
   .workspace[data-rail="none"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "library" "stage" "timeline"; }
+  .library { max-block-size: clamp(170px, 26dvh, 300px); }
+  .library[data-collapsed="true"] { max-block-size: 56px; flex-direction: row; justify-content: flex-start; padding-inline: 8px; }
 }
 /* Laptop and desktop: details panel on the right */
 @container editor (min-width: 1100px) {
-  .workspace { grid-template-columns: 84px 320px minmax(0, 1fr) 300px; grid-template-areas: "tools library stage inspector" "timeline timeline timeline timeline"; }
-  .workspace[data-inspector="false"] { grid-template-columns: 84px 320px minmax(0, 1fr); grid-template-areas: "tools library stage" "timeline timeline timeline"; }
-  .workspace[data-rail="none"] { grid-template-columns: 320px minmax(0, 1fr) 300px; grid-template-areas: "library stage inspector" "timeline timeline timeline"; }
-  .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: 320px minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
+  .workspace { --lib-w: 320px; grid-template-columns: 84px var(--lib-w) minmax(0, 1fr) var(--insp-w); grid-template-areas: "tools library stage inspector" "timeline timeline timeline timeline"; }
+  .workspace[data-inspector="false"] { grid-template-columns: 84px var(--lib-w) minmax(0, 1fr); grid-template-areas: "tools library stage" "timeline timeline timeline"; }
+  .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr) var(--insp-w); grid-template-areas: "library stage inspector" "timeline timeline timeline"; }
+  .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
+  .workspace[data-lib="collapsed"] { --lib-w: 52px; }
   .inspector { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 }
 /* Ultrawide (>= 1900 px and at least 2:1): wider side panels, the timeline gets the extra width and more height */
 @container editor (min-width: 1900px) and (min-aspect-ratio: 2/1) {
-  .workspace { grid-template-columns: 96px 360px minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1fr) clamp(240px, 42%, 460px); gap: 8px; padding: 0 8px 8px; }
-  .workspace[data-inspector="false"] { grid-template-columns: 96px 360px minmax(0, 1fr); }
-  .workspace[data-rail="none"] { grid-template-columns: 360px minmax(0, 1fr) 380px; }
-  .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: 360px minmax(0, 1fr); }
+  .workspace { --lib-w: 360px; --insp-w: 380px; grid-template-columns: 96px var(--lib-w) minmax(0, 1fr) var(--insp-w); grid-template-rows: minmax(0, 1fr) var(--tl-row, clamp(240px, 42%, 460px)); gap: 8px; padding: 0 8px 8px; }
+  .workspace[data-inspector="false"] { grid-template-columns: 96px var(--lib-w) minmax(0, 1fr); }
+  .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr) var(--insp-w); }
+  .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); }
+  .workspace[data-lib="collapsed"] { --lib-w: 52px; }
+  .workspace[data-insp="collapsed"] { --insp-w: 52px; }
 }
-/* Phone landscape (short screen on its side): slim tool rail | preview over timeline; the tool panel slides in from the side over the preview */
+/* Phone landscape (short screen on its side): slim tool rail | preview | timeline, side by side. The picture gets the full height (it was a 34 x 19 px
+   thumbnail when the timeline sat under it); the tool panel slides in from the side over the preview. */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) {
-  .workspace { grid-template-columns: 72px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "tools stage" "tools timeline"; gap: 4px; padding: 0 4px 4px; }
-  /* One toolbar row, 44 px tall (scrolls sideways only on very narrow landscape), then a track area of at least 160 px; the preview takes the rest */
+  .workspace { grid-template-columns: 72px minmax(0, 48fr) minmax(0, 52fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "tools stage timeline"; gap: 4px; padding: 0 4px 4px; }
+  /* One toolbar row, 44 px tall (scrolls sideways when the column is narrow), then the track area */
   .tl-bar { min-height: 44px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; }
-  .tl-bar .tl-sel { display: none; }
+  .tl-bar .tl-sel, .tl-bar .tl-wide, .tl-bar .zoom input { display: none; } /* the column is narrow: pinch zooms, the fit button stays */
   .tl-bar .icon-btn { width: 44px; height: 44px; min-width: 44px; } /* touch size on a phone, whatever the pointer media query says */
   .tl-stage { min-height: 160px; }
   .tools { padding: 4px; }
   .tool { width: 100%; min-width: 0; min-height: 52px; }
   .library:not([data-open="true"]) { display: none; }
-  .library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: auto; inset-inline-start: calc(80px + env(safe-area-inset-left)); bottom: calc(env(safe-area-inset-bottom) + 4px); top: calc(var(--top) + env(safe-area-inset-top)); width: min(340px, 52%); height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); animation: slide-in var(--dur-base) ease-out; }
-  .library[data-open="true"]::before { display: none; }
+  .library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: auto; inset-inline-start: calc(80px + env(safe-area-inset-left)); bottom: calc(env(safe-area-inset-bottom) + 4px); top: calc(var(--top) + env(safe-area-inset-top)); width: min(340px, 52%); height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); animation: slide-in var(--dur-base) ease-out; transition: none; }
+  .sheet-handle, .mini-transport { display: none; }
   .sheet-close { display: inline-grid; top: 6px; }
   .toast { bottom: 12px; }
   .persist-notes { bottom: 12px; }
-  .player-bar { min-height: 44px; padding-block-end: 2px; }
+  .stage { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; padding-block-end: 0; }
+  .panel-collapse { display: none; }
+  .timeline { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 }
+/* Both phone shapes: the stage is narrow, so the bar under the picture is ONE row (shape chip | transport | full screen), the playhead time rides on the
+   picture's corner and the loop button on the other; nothing else competes for the 44 px targets. */
+@container editor ((max-width: 719px) and (min-height: 501px)) or ((orientation: landscape) and (max-height: 500px) and (max-width: 1000px)) {
+  .player-bar { grid-template-columns: auto 1fr auto; grid-template-areas: "ratio transport fs"; align-items: center; min-height: 52px; padding: 0 8px 4px; gap: 4px; }
+  .player-extras { display: contents; }
+  .ratio { grid-area: ratio; justify-self: start; padding: 0 10px; min-width: 44px; }
+  .fs-btn { grid-area: fs; justify-self: end; }
+  .transport { grid-area: transport; justify-self: center; justify-content: center; }
+  .tc { position: absolute; z-index: 3; inset-inline-start: 20px; inset-block-end: 64px; padding: 3px 8px; border-radius: 999px; background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--stage-fg); font-size: 12px; pointer-events: none; }
+  .tc-total { display: none; }
+  .loop-btn { position: absolute; z-index: 3; inset-inline-end: 12px; inset-block-end: 60px; background: color-mix(in srgb, var(--stage) 55%, transparent); color: var(--stage-fg); border-radius: 50%; }
+  .loop-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .rate-badge { inset-block-start: auto; inset-block-end: 8px; }
+}
+/* Small phones: the shape chip keeps only its icon so the row never overflows at 320 px */
+@container editor (max-width: 389px) { .ratio span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); } .ratio { padding: 0; justify-content: center; } .transport { gap: 0; } }
+/* Phone portrait: the stage is as tall as its picture (no dead band above and below it) and the timeline gets everything else */
+@container editor (max-width: 719px) and (min-height: 501px) {
+  .workspace { grid-template-rows: auto minmax(260px, 1fr) auto; }
+  .stage-view { flex: none; container-type: inline-size; }
+  .canvas { width: min(100cqw, calc(38dvh * var(--ar, 1.78))); max-height: 38dvh; }
+  .splitter, .panel-collapse { display: none; }
+}
+@container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { .splitter { display: none; } .ratio span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); } .ratio { padding: 0; justify-content: center; } }
 @keyframes slide-in { from { transform: translateX(-24px); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
@@ -457,7 +518,6 @@ h2, p { margin: 0; }
 .bin-count { margin: 0 0 var(--space-2); font-size: var(--text-sm); color: var(--muted); }
 .bin-tags { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
 .bin-virtual { position: relative; }
-.bin-fixed { will-change: transform; }
 .bin-fixed > .bin-card { block-size: 56px; box-sizing: border-box; }
 .tag-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; padding: 0; list-style: none; }
 .tag-chips li { display: inline-flex; align-items: center; gap: var(--space-1); padding-inline-start: var(--space-3); border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
@@ -575,3 +635,54 @@ h2, p { margin: 0; }
 .tl-overview canvas { display: block; width: 100%; height: 26px; touch-action: none; cursor: grab; }
 .tl-overview canvas:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: -2px; }
 @media (pointer: coarse) { .tl-overview, .tl-overview canvas { height: 44px; } }
+
+/* Export dialog while the browser is asked what it can encode: the final layout in grey (no jump when the answer arrives), see export/ExportDialogView.tsx */
+.export-skel { display: flex; flex-direction: column; gap: var(--space-4); }
+.export-skel-line { block-size: 1.45em; inline-size: 70%; border-radius: 6px; background: var(--surface-2); }
+.export-skel-line.short { inline-size: 45%; }
+.export-skel-tile { min-block-size: 76px; border-radius: var(--radius); background: var(--surface-2); }
+.export-skel-go { min-block-size: 52px; border-radius: var(--radius); background: var(--surface-2); margin-block-start: var(--space-3); }
+.export-skel-line, .export-skel-tile, .export-skel-go { animation: skel-pulse 1.4s ease-in-out infinite; }
+@keyframes skel-pulse { 50% { opacity: 0.55; } }
+.export-dialog[data-phase="idle"] { min-block-size: min(60dvh, 520px); }
+/* Exporting with the dialog open: a light veil, the editor behind stays readable (Keep editing is one tap away) */
+.export-dialog[data-phase="running"]::backdrop { background: color-mix(in srgb, var(--bg) 35%, transparent); }
+
+/* Full-screen preview (F, double-click the picture, the button): the browser's fullscreen on the stage, or a fixed overlay where there is none (iPhone) */
+.stage:fullscreen, .stage[data-fs="overlay"] { background: var(--stage); border: 0; border-radius: 0; padding: 0; }
+.stage[data-fs="overlay"] { position: fixed; inset: 0; z-index: 70; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+.stage:fullscreen .stage-view, .stage[data-fs="overlay"] .stage-view { padding: 0; }
+.stage:fullscreen .canvas, .stage[data-fs="overlay"] .canvas { border-radius: 0; box-shadow: none; max-height: 100cqh; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); }
+.stage:fullscreen .stage-view, .stage[data-fs="overlay"] .stage-view { container-type: size; flex: 1; }
+.stage:fullscreen .player-bar, .stage[data-fs="overlay"] .player-bar { background: var(--stage); color: var(--stage-fg); }
+.stage:fullscreen .player-bar .icon-btn, .stage[data-fs="overlay"] .player-bar .icon-btn { color: var(--stage-fg); }
+.stage:fullscreen .player-bar .chip-btn, .stage[data-fs="overlay"] .player-bar .chip-btn { background: color-mix(in srgb, var(--stage-fg) 14%, transparent); color: var(--stage-fg); border-color: transparent; }
+
+/* Details with nothing selected: the project's facts instead of an empty column */
+.insp-info { display: grid; gap: 8px; margin: 0; padding: 0 16px 16px; }
+.insp-info > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.insp-info dt { color: var(--muted); }
+.insp-info dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: end; }
+/* Why the diamonds are off, and the way out (the playhead is not on the selected clip) */
+.insp-hint { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--fg); }
+.insp-hint p { flex: 1 1 180px; font-size: 13px; }
+.insp-hint button { min-block-size: 44px; padding: 0 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--surface); color: var(--accent); font-weight: 600; }
+/* Reset stays in reach at the bottom of a long panel (the phone sheet showed it half cut by the tool bar) */
+.insp > .insp-row:last-child { position: sticky; inset-block-end: 0; z-index: 1; margin-block-end: -16px; padding-block: 8px 16px; background: var(--surface); }
+
+/* Scrolling panels: a soft fade shows there is more above or below (it appears only while the content really scrolls) */
+.panel-body { background: linear-gradient(var(--surface) 30%, transparent) center top / 100% 22px no-repeat local, linear-gradient(transparent, var(--surface) 70%) center bottom / 100% 22px no-repeat local, radial-gradient(farthest-side at 50% 0, color-mix(in srgb, var(--stage) 22%, transparent), transparent) center top / 100% 8px no-repeat scroll, radial-gradient(farthest-side at 50% 100%, color-mix(in srgb, var(--stage) 22%, transparent), transparent) center bottom / 100% 8px no-repeat scroll; }
+
+/* The static first paint (index.html): the top bar and a dark stage in place of a blank page until the app renders over it */
+.boot { display: grid; grid-template-rows: var(--top) minmax(0, 1fr); block-size: 100%; background: var(--bg); }
+.boot-bar { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-block-end: 1px solid var(--line); }
+.boot-logo { inline-size: 26px; block-size: 26px; border-radius: 8px; background: var(--accent); }
+.boot-name { inline-size: 84px; block-size: 12px; border-radius: 6px; background: var(--surface-2); }
+.boot-body { display: grid; place-items: center; padding: 12px; }
+.boot-stage { inline-size: min(100%, 640px); aspect-ratio: 16 / 9; border-radius: 10px; background: var(--stage); }
+
+/* Small sheet: no heading (the tool bar says where you are), the Reset row scrolls with the fields instead of covering them */
+.library[data-detent="peek"] .panel-head { display: none; }
+.library[data-detent="peek"] .insp > .insp-row:last-child { position: static; margin-block-end: 0; padding-block: 0; }
+.insp-info { align-self: start; align-content: start; }
+.insp-info > div { align-items: baseline; }

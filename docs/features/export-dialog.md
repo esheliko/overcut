@@ -39,3 +39,8 @@ No AAC encoder (sandbox Chromium): MP4 (H.264 + Opus) is still the default, flag
 - A measured trial encode for the time estimate before starting (ADR 0004 asks for one); today the ETA appears about a second into the export.
 - Reframing a 16:9 project into 9:16 (currently black bars). Export range (in/out) and a "this device is slow for this size" warning.
 - Hardware vs software choice and the real-device speed numbers (reference devices, ADR 0013).
+
+## M2 UX pass: opening speed
+- The browser's encoder probe starts early: on pointer-enter, focus or touch-start of Export, and while idle after the first clip. The four formats of one size are asked together (`Promise.all` in `probeExportFormats`).
+- While no answer is there the dialog shows a skeleton of its final layout (same tiles and footer, minimum height), so nothing jumps; the separate "Loading" pill is gone.
+- While exporting, the backdrop is lighter; the remaining-time estimate is smoothed (exponential average).

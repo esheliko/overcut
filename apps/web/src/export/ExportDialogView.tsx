@@ -23,6 +23,20 @@ function probeOnce(width: number, height: number, fps: number): Promise<ExportFo
 
 const fmtKey = (w: number, h: number, fps: number) => `${w}x${h}@${fps.toFixed(3)}`;
 
+/** Every size and rate the dialog will ask about for this clip (each preset, and the current choice). */
+function probeKeys(src: Source, extra?: Choice): Map<string, [number, number, number]> {
+  const m = new Map<string, [number, number, number]>();
+  for (const id of PRESET_IDS) { const c = presetChoice(id, src); const f = outputFps(c, src); m.set(fmtKey(c.width, c.height, f), [c.width, c.height, f]); }
+  if (extra) { const f = outputFps(extra, src); m.set(fmtKey(extra.width, extra.height, f), [extra.width, extra.height, f]); }
+  return m;
+}
+
+/** Asks the browser which formats it can encode, ahead of the dialog opening (hover, focus, touch, or idle after the first clip), so the answer is usually there when the dialog appears. Desktop asks its native encoder instead. */
+export function prefetchExportProbe(src: Source): void {
+  if (getDesktop()) return;
+  for (const [, [w, h, f]] of probeKeys(src)) void probeOnce(w, h, f);
+}
+
 
 export interface DialogProps {
   src: Source;
@@ -83,13 +97,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
   const choice = preset === "custom" ? custom : presetChoice(preset, src);
 
   // What this device can encode at each preset's size, and at the current choice. Offer only what passes.
-  const keys = useMemo(() => {
-    const m = new Map<string, [number, number, number]>();
-    for (const id of PRESET_IDS) { const c = presetChoice(id, src); const f = outputFps(c, src); m.set(fmtKey(c.width, c.height, f), [c.width, c.height, f]); }
-    const f = outputFps(choice, src);
-    m.set(fmtKey(choice.width, choice.height, f), [choice.width, choice.height, f]);
-    return [...m.entries()];
-  }, [src, choice]);
+  const keys = useMemo(() => [...probeKeys(src, choice).entries()], [src, choice]);
   const [formats, setFormats] = useState<Record<string, ExportFormats>>({});
   // Desktop app: the native encoder decides (not the webview's WebCodecs); asked again after the person enables MP4.
   const desktop = getDesktop();
@@ -132,7 +140,16 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
   const fmtName = (o: ExportFormatOption) => t(formatLabelKey(o, Boolean(desktop)));
   const fps = src.fps % 1 === 0 ? String(src.fps) : src.fps.toFixed(2);
 
-  if (!ready) return <p className="export-note" role="status">{t("export.checking")}</p>;
+  // Not answered yet: the final layout's skeleton (same tiles, same footer), so nothing jumps when the answer arrives.
+  if (!ready) return (
+    <div className="export-skel" role="status" aria-busy="true" data-testid="export-checking">
+      <span className="sr-only">{t("export.checking")}</span>
+      <div className="export-skel-line" />
+      <div className="export-presets" aria-hidden="true">{PRESET_IDS.map((id) => <div key={id} className="export-skel-tile" />)}</div>
+      <div className="export-skel-line short" />
+      <div className="export-skel-go" />
+    </div>
+  );
   const notice = desktop && codecs ? <H264Notice codecs={codecs} onEnabled={() => setCodecRev((n) => n + 1)} /> : null;
   if (offered.length === 0) return <>{notice}<p className="export-error" role="alert" data-testid="export-nodevice">{t(desktop ? "export.desktop.noneAtAll" : "export.err.noEncoder")}</p></>;
   return (
@@ -207,7 +224,10 @@ function Progress({ state, onCancel, onTuck }: { state: Extract<ExportState, { p
   const fraction = p?.fraction ?? 0;
   const percent = Math.floor(fraction * 100);
   const finishing = p?.phase === "finalizing";
-  const eta = p?.etaMs != null && !finishing ? etaSeconds(p.etaMs) : null;
+  const smooth = useRef<number | null>(null);
+  // The raw estimate jumps with every batch of frames: an exponential average keeps the number from flickering up and down.
+  if (p?.etaMs != null && !finishing) smooth.current = smooth.current === null ? p.etaMs : smooth.current * 0.85 + p.etaMs * 0.15;
+  const eta = smooth.current !== null && !finishing ? etaSeconds(smooth.current) : null;
   const left = eta === null ? t("export.eta.estimating") : eta >= 60 ? t("export.eta.minutes", { minutes: Math.ceil(eta / 60) }) : t("export.eta.seconds", { seconds: eta });
   return (
     <>

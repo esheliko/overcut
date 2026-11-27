@@ -35,22 +35,21 @@ const VIDEO_TO_NAME = { avc: "h264", vp9: "vp9", av1: "av1" } as const;
 export async function probeExportFormats(size: { width: number; height: number; fps: number }, probe: CodecProbe = webCodecsProbe): Promise<ExportFormats> {
   const fpsNum = Math.round(size.fps * 1000);
   const plan = { width: size.width, height: size.height, fpsNum, fpsDen: 1000, sampleRate: 48000 } as ExportPlan;
-  const options: ExportFormatOption[] = [];
-  for (const f of FORMATS) {
-    try {
-      const r = await resolvePreset(plan, { sequence: "", container: f.container, videoCodec: f.videoCodec }, probe);
-      options.push({ id: f.id, container: f.container, videoCodec: f.videoCodec, audioCodec: r.audioCodec, warnings: r.warnings });
-    } catch {
-      /* not encodable here: not offered */
-    }
-  }
-  let auto: ExportFormatId | null = null;
-  try {
-    const r = await resolvePreset(plan, { sequence: "" }, probe);
-    const hit = options.find((o) => o.container === r.container && o.videoCodec === VIDEO_TO_NAME[r.videoCodec]);
+  // All four questions go to the browser at once (each isConfigSupported is its own round trip): the slowest one sets the time, not their sum.
+  const [tried, autoTry] = await Promise.all([
+    Promise.all(FORMATS.map(async (f) => {
+      try {
+        const r = await resolvePreset(plan, { sequence: "", container: f.container, videoCodec: f.videoCodec }, probe);
+        return { id: f.id, container: f.container, videoCodec: f.videoCodec, audioCodec: r.audioCodec, warnings: r.warnings } as ExportFormatOption; // not encodable here: not offered
+      } catch { return null; }
+    })),
+    resolvePreset(plan, { sequence: "" }, probe).then((r) => r, () => null),
+  ]);
+  const options = tried.filter((o): o is ExportFormatOption => o !== null);
+  let auto: ExportFormatId | null;
+  if (autoTry) {
+    const hit = options.find((o) => o.container === autoTry.container && o.videoCodec === VIDEO_TO_NAME[autoTry.videoCodec]);
     auto = (hit ?? options[0])?.id ?? null;
-  } catch {
-    auto = options[0]?.id ?? null;
-  }
+  } else auto = options[0]?.id ?? null;
   return { options, auto };
 }
