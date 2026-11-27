@@ -72,23 +72,34 @@ PR #212 reported commit 3.1 ms at 1x and key-to-paint 49.5 ms at 4x on its own r
 | TL-01 / TL-08 tracks | done | 002, 042 |
 | TL-03 snapping | done | 009, 046 |
 | TL-04 ripple/roll/slip/slide | done | 005, 045 |
-| TL-05 link/group | **partial** (link only) | 006, 044 |
+| TL-05 link/group | **partial** (link only; group/Batch M2.1) | 006, 044 |
 | TL-07 markers, ranges | done | 007, 046 |
 | TL-09 zoom | done | 043 |
 | TL-10 speed | **partial** (constant) | 008, 026 |
 | TL-12 keyframes | **partial** (no graph editor) | 004, 048 |
 | TL-13 / TL-14 transform, PiP | done | 003, 024, 047 |
-| TL-19 background fill | **missing** | 003 (part), 025 |
-| TL-20 replace/extend/overwrite | **partial** (ripple delete and gap close only) | 005, 010 |
+| TL-19 background fill | **in progress** (W8, stays in M2) | 003 (part), 025 |
+| TL-20 replace/extend/overwrite | **partial** (ripple delete and gap close only; rest M2.1) | 005, 010 |
 | TL-22 VFR, PM-04 formats, PM-05 proxies, PM-09 collect, EX-03 queue, EX-05 formats, PV-02 adaptive preview | **M2.1** | 4b.4a |
 | PM-08 project library | done | 051 |
-| PV-06 playback while editing | **partial** | 029 |
+| PV-06 playback while editing | **partial** (no dedicated work; M2.1) | 029 |
 | UX-02 touch | **partial** | 043, 049 |
 | UX-03 / UX-04 shortcuts, palette | done | 040, 041 |
-| AU-03 detach/attach audio | **missing** (link only) | 006 |
+| AU-03 detach/attach audio | **M2.1** (link/unlink only in M2) | 006 |
 
-## 3. Claimed-but-missing, needs the owner
-Not in the 4b.4a cut list and not built on `m2`: **TL-19 background fill** (M2-003 part, M2-025), **TL-05 group + AU-03 detach/attach** (M2-006 rest, M2-044 rest), **TL-20 replace/extend/overwrite** (M2-010), and an automated test for **PV-06 / M2-030**. The ROADMAP status line did not mention them. Options: carry them into M2.1 (this PR records them there) or build them before the merge. They need schema work (background) and a new op set, so they are not a polish fix.
+## 3. Claimed-but-missing: lead decision 2026-11-27
+Decided by the M2 lead (no longer open for the owner; the owner can still overrule in the #120 review).
+| Item | Decision |
+|---|---|
+| TL-19 background fill (M2-003 part, M2-025) | **stays in M2, being built** (black / colour / blur, per sequence; `docs/features/background.md`). Image background: M2.1 |
+| Automated export parity test (M2-030) | **stays in M2, being built** |
+| TL-05 group/ungroup + Batch (M2-006 rest, M2-044 rest) | **moved to M2.1** |
+| AU-03 detach/attach audio as separate ops | **moved to M2.1** (Unlink already covers moving sound separately) |
+| TL-20 replace/extend/overwrite/insert (M2-010) | **moved to M2.1** |
+| TL-10 remainder: speed freeze/reverse/loop (M2-008 rest) | **moved to M2.1** |
+| M2-049 stylus / palm rejection | **moved to M2.1** |
+| PV-06 playback while editing (M2-029) | **no dedicated work**; edit-during-play works through the normal op path (patches and coalesced sync, #205/#206/#212); the "no dropped audio during a drag on 20 tracks" measurement moves to M2.1 |
+Reason for the moves: low user value per cost for the first real-editing release.
 
 ## 4. Field validation (owner's devices; does not block the M2 merge)
 | Item | State |
