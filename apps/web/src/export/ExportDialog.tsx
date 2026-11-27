@@ -1,6 +1,6 @@
 /** Export (M1-035): the top-bar button and the progress chip; the dialog (full-screen sheet on a phone, modal on a desktop) loads on first use (ExportDialogView.tsx). Logic lives in model.ts, useExport.ts, deliver.ts. */
 import { ExportError, type Engine } from "@app/engine-client";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
@@ -10,9 +10,12 @@ import { useProjectStore, useStore } from "../store/projectStore";
 import type { Source } from "./model";
 import { useExport, type ExportState } from "./useExport";
 
-const loadView = () => import("./ExportDialogView");
+const importView = () => import("./ExportDialogView");
+type View = Awaited<ReturnType<typeof importView>>;
+/** The dialog module once it has loaded. Kept here, not behind React.lazy: a lazy component suspends for a tick even when its chunk is already in, and React holds a suspended reveal back for 300 ms (the "export opens late" of UX r11). */
+let loadedView: View | null = null;
+const loadView = (): Promise<View> => importView().then((m) => (loadedView = m));
 const warmed = new Set<string>();
-const Dialog = lazy(() => loadView().then((m) => ({ default: m.Dialog })));
 
 export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileOf(id: string): Promise<File | null> }) {
   const { t, locale } = useI18n();
@@ -24,6 +27,9 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
     [view.has, view.size.width, view.size.height, view.rate.num, view.rate.den, view.endTicks],
   );
   const [open, setOpen] = useState(false);
+  const [, loaded] = useState(0);
+  // Opened before the chunk was here (a cold first click): fetch it, then draw the dialog.
+  useEffect(() => { if (open && !loadedView) void loadView().then(() => loaded((n) => n + 1)); }, [open]);
   /** Loads the dialog chunk and asks the browser which formats it can encode (once per size and rate), so the dialog opens ready. */
   const warm = useCallback(() => {
     if (!src) return;
@@ -32,12 +38,21 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
     warmed.add(key);
     void loadView().then((m) => m.prefetchExportProbe(src)).catch(() => warmed.delete(key));
   }, [src]);
+  // The dialog's code is fetched once the engine is up and the browser is idle (before any clip exists), so the first Export click has nothing left to download.
+  useEffect(() => {
+    if (!engine) return;
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (h: number) => void };
+    const go = () => void loadView().catch(() => undefined);
+    if (w.requestIdleCallback) { const h = w.requestIdleCallback(go, { timeout: 3000 }); return () => w.cancelIdleCallback?.(h); }
+    const h = window.setTimeout(go, 2000);
+    return () => window.clearTimeout(h);
+  }, [engine]);
   // Idle after the first clip lands: by the time the button is pressed the chunk and the answers are already here.
   useEffect(() => {
     if (!src || !engine) return;
     const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (h: number) => void };
-    if (w.requestIdleCallback) { const h = w.requestIdleCallback(warm, { timeout: 4000 }); return () => w.cancelIdleCallback?.(h); }
-    const h = window.setTimeout(warm, 1500);
+    if (w.requestIdleCallback) { const h = w.requestIdleCallback(warm, { timeout: 800 }); return () => w.cancelIdleCallback?.(h); }
+    const h = window.setTimeout(warm, 600);
     return () => window.clearTimeout(h);
   }, [src, engine, warm]);
   const openRef = useRef(false);
@@ -88,9 +103,8 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
           <Icon name="export" size={18} /><span>{t("export.label")}</span>
         </button>
       )}
-      {open && src && project && (
-        <Suspense fallback={null}>
-        <Dialog
+      {open && src && project && loadedView && (
+        <loadedView.Dialog
           src={src}
           state={ex.state}
           locale={locale}
@@ -100,7 +114,6 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
           onClose={close}
           onTuck={() => setOpen(false)}
         />
-        </Suspense>
       )}
     </>
   );

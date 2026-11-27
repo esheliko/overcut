@@ -27,6 +27,8 @@ import { clipMenuItems } from "./timeline/clipMenu";
 import { clipSpan, speedOps, speedTarget, toRational, SPEED_PRESETS, formatSpeed } from "./inspector/speedModel";
 import { TimelineCanvas, type CanvasHandle, type PlayheadSource } from "./timeline/TimelineCanvas";
 import { Overview } from "./timeline/Overview";
+import { CUE_OF, emitCue } from "./timeline/commitCue";
+import { haptic } from "./timeline/haptics";
 import { TrackMenu, type TrackAction, type TrackMenuTarget } from "./timeline/TrackMenu";
 import { addTrack, removeTrack, renameTrack, reorderTrack, toggleTrack, TRACK_SAY_KEYS } from "./timeline/tracks";
 import { useProjectStore, useStore } from "./store/projectStore";
@@ -165,16 +167,19 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     if (shouldAutoFit({ prevClips: prev.clips, clips: scene.clipCount, prevEndSec: prev.end, endSec: scene.endSec, visibleEndSec: (v.scrollX + v.width - gut(v)) / v.pps, userZoomed: zoomStore.userZoomed() })) fitTo("auto");
   }, [project, scene, fitTo]);
 
-  const commit = useCallback((ops: Op[], s: Say, after?: (out: { changed: boolean }) => void) => {
+  const commit = useCallback((ops: Op[], s: Say, after?: (out: { changed: boolean }) => void, at?: number) => {
     const p = live.current.proj;
     if (!p.ready) { onNotice(t("timeline.notReady")); return; }
     const labelKey = LABELS[s.key];
-    p.apply(closeStartGap(live.current.scene, ops), undefined, labelKey ? t(labelKey, s.values) : undefined).then((out) => { if (out?.changed) after?.(out); return out; }).then((out) => { if (out?.changed) speak(s); }).catch((e: unknown) => {
+    const cue = CUE_OF[s.key];
+    // Where the edit lands for the commit cue (seconds): the playhead unless the caller knows better (a ripple delete: where the removed clip began).
+    const sec = at ?? store.getState().playhead / FPS;
+    p.apply(closeStartGap(live.current.scene, ops), undefined, labelKey ? t(labelKey, s.values) : undefined).then((out) => { if (out?.changed) after?.(out); return out; }).then((out) => { if (out?.changed) { speak(s); if (cue) emitCue({ sec, kind: cue }); if (cue === "split") haptic(); } }).catch((e: unknown) => {
       const m = t("timeline.notPossible", { message: e instanceof Error ? e.message : String(e) });
       onNotice(m);
       announce(m);
     });
-  }, [speak, onNotice, t]);
+  }, [speak, onNotice, t, store]);
 
   const undoRedo = useCallback((which: "undo" | "redo") => {
     const p = live.current.proj;
@@ -218,14 +223,14 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       }
       case "rippleDelete": {
         if (mine.length === 0) { speak(locked ?? say("timeline.say.nothingToDelete")); break; }
-        commit(rippleDeleteOps(sc, mine), say("timeline.say.rippleDeleted", { count: mine.length }));
+        commit(rippleDeleteOps(sc, mine), say("timeline.say.rippleDeleted", { count: mine.length }), undefined, Math.min(...mine.map((i) => sc.start[i]!)));
         setSelected(NO_SELECTION);
         break;
       }
       case "closeGap": {
         const ops = closeGapOps(sc, mine);
         if (ops.length === 0) { const m = say(mine.length === 0 ? "timeline.say.selectFirst" : "timeline.say.noGap"); speak(locked ?? m); onNotice(t((locked ?? m).key)); break; }
-        commit(ops, say("timeline.say.gapClosed", { count: ops.length }));
+        commit(ops, say("timeline.say.gapClosed", { count: ops.length }), undefined, mine.length ? Math.min(...mine.map((i) => sc.start[i]!)) : undefined);
         break;
       }
       case "lane": {
@@ -286,7 +291,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
         const r = trimRange(sc, i, cmd.edge);
         const value = cmd.c === "trimBy" ? trimTarget(sc, i, cmd.edge, r.at + cmd.frames * ft) : clampN(tick, r.min, r.max);
         if (value === r.at) { speak(say("timeline.say.cantTrim")); break; }
-        commit(linkedTrimOps(sc, i, cmd.edge, value), say("timeline.say.trimmed", { edge: cmd.edge, name: sc.name[i]! }));
+        commit(linkedTrimOps(sc, i, cmd.edge, value), say("timeline.say.trimmed", { edge: cmd.edge, name: sc.name[i]! }), undefined, value / TICKS_PER_SECOND);
         break;
       }
       case "copy": case "cut": case "duplicate": {
@@ -407,7 +412,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           <button className="icon-btn" aria-label={t("timeline.delete")} title={tip(t("timeline.delete"), KEYS.del)} disabled={off || none} onClick={() => run({ c: "delete" })}><Icon name="trash" /></button>
           <button className="icon-btn tl-wide" aria-label={t("timeline.rippleDelete")} title={tip(t("timeline.rippleDelete"), KEYS.rippleDel)} data-testid="tl-ripple-delete" disabled={off || none} onClick={() => run({ c: "rippleDelete" })}><Icon name="rippleDelete" /></button>
           <span className="sep tl-wide" aria-hidden="true" />
-          <button className={tool === "select" ? "tl-pick" : "tl-pick on"} aria-haspopup="menu" aria-expanded={menuOpen === "tool"} data-testid="tl-tool" data-tool={tool} title={t("timeline.tool.pick")}
+          <button className={tool === "select" ? "tl-pick" : "tl-pick on"} aria-haspopup="menu" aria-expanded={menuOpen === "tool"} data-testid="tl-tool" data-tool={tool} title={`${t("timeline.tool.current", { tool: t(`timeline.tool.${tool}`) })}${keyHint(`tool.${tool}`) ? ` (${keyHint(`tool.${tool}`)})` : ""}`}
             aria-label={t("timeline.tool.current", { tool: t(`timeline.tool.${tool}`) })} onClick={(e) => openBar("tool", e.currentTarget)}>
             <span>{t(`timeline.tool.${tool}`)}</span><Icon name="chevronDown" size={14} className="tl-caret" />
           </button>

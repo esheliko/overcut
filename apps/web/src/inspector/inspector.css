@@ -76,3 +76,9 @@
 .insp-row button { transition: background var(--dur-fast), transform var(--dur-instant); }
 .insp-row button:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--surface-3); }
 .insp-row button:active:not(:disabled) { transform: scale(0.97); }
+
+/* Scrub on the number itself (Inspector.tsx): sideways cursor until the field is focused for typing; the picture's frame shows a focus ring for the arrow-key nudge. */
+.insp-field input[type="number"] { cursor: ew-resize; touch-action: pan-y; -moz-appearance: textfield; appearance: textfield; }
+.insp-field input[type="number"]:focus { cursor: text; }
+.insp-field input[type="number"]::-webkit-inner-spin-button, .insp-field input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.th-body:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

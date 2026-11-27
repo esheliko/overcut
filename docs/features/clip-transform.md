@@ -25,3 +25,7 @@
 - **Undo.** One drag, or one field focus session, shares one coalescing key (`newGestureKey`), so it is one undo step. Flip, fit and reset are their own steps.
 - **Not yet.** Anchor editing, non-uniform scale, keyframes (M2-004), handles for clips whose probe is still pending use the canvas shape.
 - **Tests.** `tests/unit/transform-model.test.ts` (clamps, coalescing key, keyframes kept), `tests/smoke/inspector.spec.ts` (fields, undo, reset, desktop drag = one undo step).
+
+## Keyboard and scrub (M2 UX r12)
+- The selected picture's frame on the preview takes focus (click it, or Tab): arrow keys move it 1 canvas pixel, Shift+arrow 10. Commands `picture.nudge*` (context `preview`, remappable, not in the palette). A burst of presses (600 ms apart at most) is one undo step; the arrows do not step the playhead while the frame is focused.
+- Details numbers scrub from the number itself as well as the label: 4 px = one step, Shift x10, Alt x0.1, Escape puts the old value back, one drag = one undo step; a tap focuses the field for typing; Shift/Alt+Up/Down step a focused field x10 / x0.1.

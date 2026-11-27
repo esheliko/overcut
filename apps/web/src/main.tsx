@@ -9,6 +9,7 @@ import { applyAccent, applyTheme, loadAccent, loadPref, redrawWhenFontsLoad } fr
 import "./theme/fonts.css";
 import "./theme/tokens.css";
 import "./styles.css";
+import "./interaction-states.css";
 
 // Set theme, language and direction before the first paint so there is no flash of the wrong theme.
 applyTheme(loadPref());

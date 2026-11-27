@@ -6,7 +6,7 @@ import { COMMANDS, DEFAULT_SETTINGS, PRESETS, bind, buildKeymap, chordLabel, cho
 
 const key = (o: Partial<KeyLike>): KeyLike => ({ key: "", code: "", ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...o });
 const defaults = buildKeymap();
-const id = (e: Partial<KeyLike>, ctx: "global" | "canvas" | "transport", sel = false) => resolveKey(key(e), ctx, defaults, sel)?.id ?? null;
+const id = (e: Partial<KeyLike>, ctx: "global" | "canvas" | "transport" | "preview", sel = false) => resolveKey(key(e), ctx, defaults, sel)?.id ?? null;
 
 test("registry: ids are unique, every command has a label, defaults have no conflicts", () => {
   assert.equal(new Set(COMMANDS.map((d) => d.id)).size, COMMANDS.length);
@@ -94,4 +94,17 @@ test("saved settings are validated: junk and unknown ids are dropped", () => {
   assert.deepEqual(parseSettings(null), DEFAULT_SETTINGS);
   assert.deepEqual(parseSettings({ preset: "x", overrides: { "edit.split": ["Q"], "nope": ["A"], "edit.undo": [3] } }), { preset: "default", overrides: { "edit.split": ["Q"] } });
   assert.equal(parseSettings({ preset: "resolve" }).preset, "resolve");
+});
+
+test("picture nudge (preview context): arrows 1 px, Shift 10 px, remappable, no clash with the timeline's arrows; , and . nudge only with a selection", () => {
+  assert.equal(id({ key: "ArrowLeft" }, "preview"), "picture.nudgeLeft");
+  assert.equal(id({ key: "ArrowDown", shiftKey: true }, "preview"), "picture.nudgeDown10");
+  assert.equal(id({ key: "ArrowUp", altKey: true }, "preview"), null, "Alt+arrows are not a nudge");
+  assert.equal(id({ key: "ArrowLeft" }, "canvas", true), "select.left", "the timeline keeps its arrows");
+  assert.deepEqual(findConflicts(defaults), []);
+  const moved = bind(DEFAULT_SETTINGS, "picture.nudgeLeft", "J");
+  assert.equal(resolveKey(key({ key: "j" }), "preview", buildKeymap(moved))?.id, "picture.nudgeLeft");
+  // a clip nudge needs a selection; without one the key is the transport's frame step
+  assert.equal(id({ key: ",", code: "Comma" }, "canvas", true), "clip.nudgeBack");
+  assert.equal(id({ key: ",", code: "Comma" }, "canvas", false), null);
 });
