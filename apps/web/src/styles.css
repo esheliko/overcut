@@ -15,7 +15,7 @@ h2, p { margin: 0; }
 .icon-btn:disabled { opacity: 0.5; cursor: default; }
 .primary:disabled, .chip-btn:disabled { opacity: 0.5; cursor: default; filter: none; transform: none; } /* I-01: one disabled look for every button (the icon buttons' 0.5 is pinned at 3:1 by tests/unit/theme-contrast) */
 .icon-btn:disabled:hover { background: none; }
-.tl-sel { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--fg); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; } /* selection pill (V-17): only while something is selected, in the right group */
+.tl-sel { display: inline-block; min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 24px; flex: 0 1 auto; min-height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--fg); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; } /* selection pill (V-17): only while something is selected, in the right group */
 
 .editor { container: editor / size; display: grid; grid-template-rows: var(--top) minmax(0, 1fr); height: 100%; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 
@@ -124,11 +124,13 @@ h2, p { margin: 0; }
 .timeline { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-top: 1px solid var(--line); }
 .tl-bar { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 6px; min-height: 48px; border-bottom: 1px solid var(--line); }
 .tl-group, .zoom { display: flex; align-items: center; gap: 0; }
+@media (min-width: 600px) { .tl-bar > .tl-group { flex: 0 0 auto; } } /* tablet and up: the tools never shrink into each other (a phone keeps shrinking them: the pill is hidden there and the bar must fit 320 px): the zoom slider and the selection pill give way first (820 px with a linked clip selected overlapped "More") */
 @media (pointer: coarse) and (min-width: 360px) { .tl-group, .zoom { gap: 4px; } .sep { margin: 0 2px; } } /* I-02: touch buttons do not touch */
-.zoom { min-width: 0; flex: 0 0 auto; }
+.zoom { min-width: 0; flex: 0 1 auto; }
 .tl-right { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
 @media (max-width: 480px) { .zoom input { display: none; } .tl-bar { padding: 0 2px; gap: 0; } .tl-sel { display: none; } .sep { margin: 0; } } /* phone: the −/+ buttons stay, the slider goes so the bar fits at 320 px */
 .sep { width: 1px; height: 20px; margin: 0 4px; background: var(--line-strong); }
+@media (pointer: coarse) { .zoom input { height: 44px; } } /* a touch slider is a 44 px target (round 10 tablet audit) */
 .zoom input { width: clamp(56px, 18vw, 140px); min-width: 20px; flex: 0 1 auto; accent-color: var(--accent); } /* shrinks before the bar overflows (a selected clip adds a label) */
 .tl-stage { direction: ltr; flex: 1; min-height: 0; position: relative; }
 .tl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; cursor: default; background: var(--surface); }

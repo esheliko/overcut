@@ -54,7 +54,7 @@
 /* Speed section (M2-008) */
 .insp-check { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border-radius: var(--radius-sm); background: var(--surface-2); }
 .insp-check input { width: 22px; height: 22px; margin: 0; flex: none; }
-.insp-note { grid-column: 1 / -1; margin: 0; padding: 0 4px; color: var(--muted); font-size: var(--text-sm); }
+.insp-help { grid-column: 1 / -1; margin: 0; padding: 0 4px; color: var(--muted); font-size: var(--text-sm); }
 .insp-warn:empty { display: none; }
 .insp-warn { color: var(--fg); }
 

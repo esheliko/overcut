@@ -7,7 +7,7 @@ import { layerOf, renderExportFrame, type GpuLayer, type GpuRenderer } from "../
 import { openMedia, type DrawableFrame, type MediaAudio, type MediaVideo, type OpenedMedia } from "./media";
 import { outputFrameTimes, type ExportEnv } from "./pipeline";
 import { planExport, type ExportPlan } from "./plan";
-import { resolvePreset, webCodecsProbe, type CodecProbe, type ResolvedPreset } from "./presets";
+import { describeAudioConfig, describeVideoConfig, resolvePreset, webCodecsProbe, type CodecProbe, type ResolvedPreset } from "./presets";
 import type { ExportStorage } from "./storage";
 import { createWebOutput } from "./web-output";
 import { ExportError, type ExportSettings } from "./types";
@@ -30,6 +30,8 @@ export interface WebEnvInput {
   /** Creates the GPU compositor (the same Rust one the preview uses) on the export's own canvas. */
   openRenderer(canvas: OffscreenCanvas): Promise<GpuRenderer>;
   probe?: CodecProbe;
+  /** Called as each step of the start-up begins (`ExportFailureDetail.stage`), so a crash can say where it happened. */
+  onStage?(stage: string, info?: { video?: string; audio?: string }): void;
 }
 
 export interface WebEnv {
@@ -89,12 +91,17 @@ export async function openUsedMedia(plan: ExportPlan, project: Project, settings
 /** Everything in the real export that needs a browser: media, canvas compositing, WebCodecs, OPFS. Fails fast (before the file exists) on anything it cannot do. */
 export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
   const { project, settings, signal } = input;
+  const stage = input.onStage ?? (() => undefined);
   const plan = planExport(project, settings);
+  stage("preset");
   const preset = await resolvePreset(plan, settings, input.probe ?? webCodecsProbe);
+  const configs = { video: describeVideoConfig(preset.video), audio: describeAudioConfig(preset.audio) };
 
+  stage("media", configs);
   const { videoOf, audioOf, dispose } = await openUsedMedia(plan, project, settings, input.media);
 
   // The compositor is opened before the file exists, so "no GPU" fails at 0% with a plain message.
+  stage("renderer");
   const canvas = new OffscreenCanvas(plan.width, plan.height);
   let renderer: GpuRenderer;
   try {
@@ -113,7 +120,9 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
 
   const ext = preset.container;
   const fileName = `${input.jobId}.${ext}`;
+  stage("file");
   const file = await input.storage.create(fileName);
+  stage("encoders");
   let output;
   try {
     output = await createWebOutput(plan, preset, file, signal, settings.creationTime);
@@ -122,6 +131,7 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
     closeAll();
     throw e instanceof ExportError ? e : new ExportError("encode_failed", `Could not start encoding: ${e instanceof Error ? e.message : String(e)}`);
   }
+  stage("encoding");
 
   const mixer = new AudioMixer(plan.sampleRate, audioOf, input.stretch);
   let mime = "";

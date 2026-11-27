@@ -30,6 +30,10 @@ test("speed: presets and the field change the selected clip, undo reverts", asyn
   await expect(field).toHaveValue("2");
   await expect(page.locator('.visually-hidden[role="status"]')).toContainText(/Speed 2×: .* to 0:0[0-9]\.\d\d/); // the status line reads the new span
   await expect(page.getByTestId("speed-message")).toHaveText("");
+  // The pitch note is part of the panel's flow (it once floated off to the bottom of the window): it sits inside the viewport, under the "move later clips" row.
+  const [pitch, ripple, vp] = await Promise.all([page.getByTestId("speed-pitch").boundingBox(), page.getByTestId("speed-ripple").boundingBox(), page.evaluate(() => window.innerHeight)]);
+  expect(pitch!.y).toBeGreaterThan(ripple!.y);
+  expect(pitch!.y + pitch!.height).toBeLessThanOrEqual(vp);
   if (process.env.SPEED_SHOT) await page.screenshot({ path: `${process.env.SPEED_SHOT}-${info.project.name}.png` });
 
   await field.fill("1.25");
