@@ -1,5 +1,7 @@
-// App-shell cache so the installed app opens offline. Bump VERSION to drop old caches. Network-first for navigations, cache-first for hashed assets.
-const VERSION = "v1";
+// App-shell cache so the installed app opens offline. The build stamps VERSION with the build hash (scripts/stamp-sw.mjs), so every build gets a new cache and `activate` drops the old ones.
+// Navigations race the network against the cached shell (3 s), so a flaky connection never blocks the app; hashed assets are cache-first.
+const VERSION = "overcut-__BUILD__";
+const NAV_TIMEOUT_MS = 3000;
 // Visible network log (XT-06): report the files this worker itself loaded to the page (same channel as packages/engine-client/src/net-report.ts). Read-only; fetch is not wrapped.
 try {
   const ch = new BroadcastChannel("overcut-network");
@@ -27,6 +29,13 @@ async function takeShare(req) {
     return Response.redirect(`/?shared=${id}`, 303);
   } catch { return Response.redirect("/", 303); }
 }
+// Network first, but give up after NAV_TIMEOUT_MS and serve the cached shell; a late network answer still refreshes the cache.
+function navigate(req) {
+  const net = fetch(req).then((r) => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then((c) => c.put("/", copy)); } return r; });
+  const timeout = new Promise((res) => setTimeout(() => res(null), NAV_TIMEOUT_MS));
+  const cached = () => caches.match("/");
+  return Promise.race([net.catch(() => null), timeout]).then((r) => r || cached().then((c) => c || net));
+}
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (new URL(req.url).pathname === SHARE_ACTION && new URL(req.url).origin === self.location.origin) {
@@ -35,7 +44,7 @@ self.addEventListener("fetch", (e) => {
   }
   if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
   if (req.mode === "navigate") {
-    e.respondWith(fetch(req).then((r) => { const copy = r.clone(); caches.open(VERSION).then((c) => c.put("/", copy)); return r; }).catch(() => caches.match("/")));
+    e.respondWith(navigate(req));
     return;
   }
   // ignoreVary: the server sends `Vary: Origin`, and a module script asks with an Origin header the stored copy (warmed by main.tsx) lacks: without this the app would not start offline.
