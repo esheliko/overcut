@@ -57,6 +57,6 @@ export { MAX_AUTO, SnapshotStore, retain, type SnapshotInfo, type SnapshotKind }
 export { memoryStorage } from "./persist/memory";
 export { openProjectSession, ProjectSession, type OpenedSession, type RecoveryNote, type SaveStatus, type SessionOptions } from "./persist/session";
 export { acquireProjectLock, openProjectStorage } from "./persist/open";
-export { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_ID, copyName, deleteProjectData, migrateSingleProject, newProjectId, summarize, summarizeExtra, type ProjectEntry, type RegistryData } from "./persist/registry";
+export { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_ID, copyName, countClips, deleteProjectData, migrateSingleProject, newProjectId, summarize, summarizeExtra, type ProjectEntry, type RegistryData } from "./persist/registry";
 export { PROJECT_FILE } from "./persist/session";
 export { newId, newProject, PROJECT_SCHEMA_VERSION } from "./project";

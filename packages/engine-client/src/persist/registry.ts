@@ -37,13 +37,23 @@ export interface RegistryData {
   items: ProjectEntry[];
 }
 
+/** Clips as a person counts them: a picture and the sound linked to it (one video import) are one clip; a detached or audio-only clip counts on its own. */
+export function countClips(p: Project): number {
+  let n = 0;
+  for (const s of p.sequences) {
+    const links = new Set<string>();
+    for (const t of s.tracks) for (const c of t.clips) { if (c.link) { if (links.has(c.link)) continue; links.add(c.link); } n++; }
+  }
+  return n;
+}
+
 /** Canvas size and clip count of a project, for its list row. */
 export function summarize(p: Project): Pick<ProjectEntry, "width" | "height" | "clips"> {
   const seq = p.sequences[0];
   return {
     width: seq?.resolution.width,
     height: seq?.resolution.height,
-    clips: p.sequences.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.clips.length, 0), 0),
+    clips: countClips(p),
   };
 }
 

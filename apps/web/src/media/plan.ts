@@ -5,6 +5,7 @@
 import { adoptedFormat } from "../canvas";
 import { planSound } from "../timeline/soundLane";
 import type { Clip, MediaKind, MediaRef, Op, Project, Rational, Resolution, Track } from "@app/engine-client";
+import { countClips } from "@app/engine-client";
 
 /** Ticks per second (ADR 0010). */
 export const TICKS = 705_600_000;
@@ -57,7 +58,8 @@ export interface Probed {
 
 export const DEFAULT_RATE: Rational = { num: 30, den: 1 };
 
-export const clipCount = (p: Project): number => p.sequences.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.clips.length, 0), 0);
+/** Clips as a person counts them (a linked picture + sound is one). Zero exactly when the timeline is empty. */
+export const clipCount = (p: Project): number => countClips(p);
 
 /** End of the last clip on any track of the first sequence, in ticks. */
 export function timelineEnd(p: Project): number {

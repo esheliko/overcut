@@ -75,7 +75,7 @@ test("placement: the wanted spot when free, else after everything; a project wit
   const ref = mediaRef("m1", "v.mp4", "u", video, null);
   const first = insertOps(p, ref, video, 0, counter())!;
   p = { ...p, media: [ref], sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t, i) => ({ ...t, clips: [first[i]!.op === "insert_clip" ? first[i]!.clip : (undefined as never)] })) }] };
-  assert.equal(clipCount(p), 2);
+  assert.equal(clipCount(p), 1); // picture + linked sound is one clip to a person
   assert.equal(timelineEnd(p), 10 * TICKS);
   assert.equal(placeAt(p, 12 * TICKS, 5 * TICKS), 12 * TICKS); // free
   assert.equal(placeAt(p, 4 * TICKS, 2 * TICKS), 10 * TICKS); // inside a clip: goes to the end
@@ -112,4 +112,17 @@ test("probe: the tracks decide the kind, so an audio-only .webm named as video i
   assert.equal(iconForKind(ok.probed.kind), "audio");
   assert.equal(iconForKind(video.kind), "video");
   await assert.rejects(probeFile(engineWith({ container: "webm", durationTicks: 0 }), new File(["x"], "empty.webm"), "video"), /no picture or sound/);
+});
+
+test("clip count: a linked picture+sound pair is one clip, detached audio and separate imports count on their own", () => {
+  let p = emptyProject("x");
+  const ref = mediaRef("m1", "v.mp4", "u", video, null);
+  const ops = insertOps(p, ref, video, 0, counter())!;
+  const clips = ops.map((o) => (o.op === "insert_clip" ? o.clip : (undefined as never)));
+  p = { ...p, media: [ref], sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t, i) => ({ ...t, clips: clips[i] ? [clips[i]!] : [] })) }] };
+  assert.equal(clipCount(p), 1);
+  const detached = { ...clips[1]!, link: undefined };
+  p = { ...p, sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t, i) => (i === 1 ? { ...t, clips: [detached] } : t)) }] };
+  assert.equal(clipCount(p), 2);
+  assert.equal(clipCount(emptyProject("y")), 0);
 });

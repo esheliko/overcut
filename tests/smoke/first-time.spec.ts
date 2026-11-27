@@ -65,4 +65,14 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   await expect(page.locator(".toast")).toContainText("Undid import of flash_click.mp4");
   await expect(page.locator("#tl-summary")).toContainText("0 clips");
   await expect(page.getByRole("button", { name: "Redo import of flash_click.mp4" })).toBeVisible();
+
+  // Redo, then leave for the projects list while a toast is up: the editor's message must not follow, and the card counts the import as one clip.
+  await page.getByRole("button", { name: "Redo import of flash_click.mp4" }).click();
+  await page.getByRole("button", { name: "Split at playhead" }).click();
+  await expect(page.locator(".toast")).toContainText("Nothing to split here");
+  await page.getByRole("button", { name: "Menu" }).click();
+  await page.getByRole("menuitem", { name: "Projects" }).click();
+  await expect(page.getByTestId("projects-new")).toBeVisible();
+  await expect(page.locator(".toast")).toHaveText("");
+  await expect(page.getByTestId("project-card").first()).toContainText("1 clip");
 });
