@@ -417,3 +417,69 @@ fn the_containers_colour_description_is_carried_with_its_range() {
     let p = probe_bytes(&fixture("h264_aac.mp4")).unwrap();
     assert_eq!(video(&p).colour.full_range, None);
 }
+
+/// One EBML element: `id`, an 8-byte size, the payload.
+fn ebml(id: &[u8], payload: &[u8]) -> Vec<u8> {
+    let mut v = id.to_vec();
+    v.push(0x01);
+    v.extend_from_slice(&(payload.len() as u64).to_be_bytes()[1..]);
+    v.extend_from_slice(payload);
+    v
+}
+
+fn ebml_uint(id: &[u8], n: u64) -> Vec<u8> {
+    let b = n.to_be_bytes();
+    let skip = b.iter().take_while(|&&x| x == 0).count().min(7);
+    ebml(id, &b[skip..])
+}
+
+/// A one-block Matroska file whose block starts at `timecode` units and lasts `duration` units (1 ms units).
+fn mkv_one_block(timecode: u64, duration: u64) -> Vec<u8> {
+    let video = [
+        ebml_uint(&[0xD7], 1),
+        ebml_uint(&[0x83], 1),
+        ebml(&[0x86], b"V_VP9"),
+        ebml(
+            &[0xE0],
+            &[ebml_uint(&[0xB0], 16), ebml_uint(&[0xBA], 16)].concat(),
+        ),
+    ]
+    .concat();
+    let block = [&[0x81u8, 0, 0, 0x80][..], &[0u8; 4][..]].concat();
+    let cluster = [
+        ebml_uint(&[0xE7], timecode),
+        ebml(
+            &[0xA0],
+            &[ebml(&[0xA1], &block), ebml_uint(&[0x9B], duration)].concat(),
+        ),
+    ]
+    .concat();
+    let segment = [
+        ebml(
+            &[0x15, 0x49, 0xA9, 0x66],
+            &ebml_uint(&[0x2A, 0xD7, 0xB1], 1_000_000),
+        ),
+        ebml(&[0x16, 0x54, 0xAE, 0x6B], &ebml(&[0xAE], &video)),
+        ebml(&[0x1F, 0x43, 0xB6, 0x75], &cluster),
+    ]
+    .concat();
+    [
+        ebml(&[0x1A, 0x45, 0xDF, 0xA3], &ebml(&[0x42, 0x82], b"webm")),
+        ebml(&[0x18, 0x53, 0x80, 0x67], &segment),
+    ]
+    .concat()
+}
+
+/// Found by the demux fuzzer (CI, 2026-11-27): a block that starts late (5.6e18 ticks) and lasts long made `pts + duration` overflow `i64` and panic.
+/// The end of a track now saturates; the file is still read.
+#[test]
+fn block_end_beyond_i64_ticks_does_not_overflow() {
+    let d = mkv_one_block(8_000_000_000_000, 8_000_000_000_000);
+    let p = probe_bytes(&d).expect("a hostile but well-formed file is still read");
+    let t = p.video().expect("video track");
+    assert_eq!(t.packets.len(), 1);
+    assert_eq!(t.duration.ticks(), i64::MAX, "the end saturates");
+    // The same shape in a sane file ends where it should.
+    let ok = probe_bytes(&mkv_one_block(1000, 40)).unwrap();
+    assert_eq!(ok.video().unwrap().duration.ticks(), 1040 * 705_600);
+}
