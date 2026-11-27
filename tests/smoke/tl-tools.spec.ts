@@ -103,22 +103,18 @@ test("phone: the loop button and the time chip fade away while the on-canvas han
   test.skip(info.project.name !== "phone", "the chips sit on the picture only on a phone");
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
-  await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(resolve("crates/media/tests/fixtures/flash_click.mp4"));
   await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 20_000 });
-  await page.getByRole("button", { name: "Close panel" }).click().catch(() => undefined);
   const loop = page.getByTestId("loop-toggle"), tc = page.getByTestId("timecode");
-  await expect(loop).toBeVisible();
-  await expect(tc).toBeVisible();
   await page.getByTestId("tl-more").click();
-  await page.getByTestId("tl-add-overlay").click(); // the new overlay is selected: its handles show
+  await page.getByTestId("tl-add-overlay").click(); // the new overlay is selected; on a phone its handles show while the Edit sheet is open
+  await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
   await expect(page.locator(".canvas.framed")).toBeVisible();
   await expect(loop).toBeHidden();
   await expect(tc).toBeHidden();
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid="loop-toggle"]')!).pointerEvents)).toBe("none");
-  // Deselect (Escape on the timeline): the handles go, the chips return.
-  await page.getByTestId("timeline-canvas").focus();
-  await page.keyboard.press("Escape");
+  // Close the Edit sheet: the handles go, the chips return.
+  await page.getByRole("button", { name: "Close panel" }).click();
   await expect(page.locator(".canvas.framed")).toHaveCount(0);
   await expect(loop).toBeVisible();
   await expect(tc).toBeVisible();
