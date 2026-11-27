@@ -14,12 +14,11 @@ import { clipboardState } from "./commands/availability";
 import { COMMAND_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
 import { addMarkerPlan, clearRangePlan, loopPlan, rangePlan } from "./timeline/markers";
 import { MarkerMenu, type MarkerAction } from "./timeline/MarkerMenu";
-import { deleteMarkerOp, setMarkerPropsOp } from "@app/engine-client";
+import { deleteMarkerOp, newProject, setMarkerPropsOp } from "@app/engine-client";
 import { hopStep } from "./timeline/arrange";
 import { ToolbarMenu } from "./timeline/ToolbarMenu";
 import { chordLabel } from "./commands/registry";
 import { currentKeymap } from "./commands/keymap";
-import { sampleProject } from "./timeline/fixture";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
 import { clampPps, fitPps, gut, ppsToSlider, shouldAutoFit, sliderToPps } from "./timeline/view";
@@ -107,7 +106,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     for (const id of [...readyBefore.current]) if (!ready.has(id)) readyBefore.current.delete(id);
   }, [media, project, readyIds]);
   const proj = useMemo(() => ({ ready: project !== null, project, canUndo, canRedo, apply: store.apply, undo: store.undo, redo: store.redo }), [store, project, canUndo, canRedo]);
-  const fallback = useMemo(() => sampleProject(), []);
+  const fallback = useMemo(() => newProject(""), []); // while the project opens the timeline is empty, not a placeholder sample (it flashed 14 fake clips and the overview bar)
   const source: Project = project ?? fallback;
   const scene = useMemo(() => buildScene(source), [source]);
   const setSelected = store.setSelection;

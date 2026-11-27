@@ -141,7 +141,7 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
           ))}
         </div>
       )}
-      <div className="panel-body">
+      <div className="panel-body insp-body">
         {tab === "speed" ? <SpeedSection /> : <Inspector />}
       </div>
     </>

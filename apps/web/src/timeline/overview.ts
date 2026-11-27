@@ -1,5 +1,5 @@
 /** Overview bar maths: a thin strip showing the whole project with a draggable window for what the timeline shows. Pure, no DOM. */
-import { clamp, clampPps, END_PAD, gut, type View } from "./view";
+import { clamp, clampPps, gut, type View } from "./view";
 
 /** Narrowest the window may be dragged to (px), so a handle is always grabbable. */
 export const MIN_WINDOW = 12;
@@ -10,7 +10,7 @@ export const EDGE = 10;
 export const overviewSpan = (_v: View, lengthSec: number) => Math.max(1, lengthSec);
 
 /** The whole project already fits the timeline width: the bar is hidden. */
-export const fitsView = (v: View, lengthSec: number) => lengthSec * v.pps + END_PAD <= v.width - gut(v) + 0.5;
+export const fitsView = (v: View, lengthSec: number) => lengthSec * v.pps <= v.width - gut(v) + 0.5;
 
 export interface Win { x0: number; x1: number }
 
