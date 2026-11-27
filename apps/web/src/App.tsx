@@ -13,6 +13,7 @@ import { capturePoster } from "./posterSource";
 import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects, projectBytes, setArchived } from "./projects";
 import { isArchived, startScreen } from "./projectsView";
 import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
+import { confirmBodyKey, toastDuration } from "./projectConfirm";
 import { canvasSummary, hasPicture } from "./canvas";
 import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
@@ -281,7 +282,7 @@ function Editor({ store }: { store: ProjectStore }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), Math.min(7000, Math.max(2600, 1800 + 55 * toast.length))); // long messages stay long enough to read
+    const t = setTimeout(() => setToast(null), toastDuration(toast)); // about 2.5 s; longer text a little longer, never more than 4 s
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -441,7 +442,7 @@ function Editor({ store }: { store: ProjectStore }) {
   };
   const confirmThen = (what: "new" | "open", name: string, run: () => Promise<void>) => {
     if (!dirty()) return void run();
-    setDialog({ title: t(`project.${what}.title`), body: t(what === "new" && !persistence.session ? "project.new.bodyUnsaved" : `project.${what}.body`, { name }), confirm: t(`project.${what}.confirm`), danger: what === "new", run });
+    setDialog({ title: t(`project.${what}.title`), body: t(confirmBodyKey(what, !!persistence.session), { name }), confirm: t(`project.${what}.confirm`), danger: what === "new", run });
   };
   const onNew = () => {
     if (!core) return;

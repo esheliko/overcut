@@ -61,13 +61,16 @@ export const Overview = memo(function Overview({ scene, lengthSec, handle }: { s
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = p.surface; ctx.fillRect(0, 0, w, H);
     ctx.fillStyle = p.bg; ctx.beginPath(); roundRect(ctx, 0, top, w, band, 4); ctx.fill(); // the track the window slides in
-    ctx.globalAlpha = 0.7; ctx.drawImage(layer.current.bmp!, 0, 0, w, H); ctx.globalAlpha = 1;
+    // Outside the window the clips are a faint trace; inside it they read a little stronger (the window is the one clear element).
+    ctx.globalAlpha = 0.22; ctx.drawImage(layer.current.bmp!, 0, 0, w, H); ctx.globalAlpha = 1;
     const win = windowOf(v, len, w);
-    // The window: a 1 px accent outline over a light accent wash (rounded 4 px); the grips at its ends show on touch and when focused only as a subtle tick.
-    ctx.fillStyle = p.accent; ctx.globalAlpha = 0.14;
+    ctx.save(); ctx.beginPath(); ctx.rect(win.x0, 0, Math.max(1, win.x1 - win.x0), H); ctx.clip();
+    ctx.globalAlpha = 0.4; ctx.drawImage(layer.current.bmp!, 0, 0, w, H); ctx.restore(); ctx.globalAlpha = 1;
+    // The window: a 1.5 px accent outline over a light accent wash (rounded 4 px); the grips at its ends show on touch and when focused only as a subtle tick.
+    ctx.fillStyle = p.accent; ctx.globalAlpha = 0.1;
     ctx.beginPath(); roundRect(ctx, win.x0, top, win.x1 - win.x0, band, 4); ctx.fill();
-    ctx.globalAlpha = 1; ctx.strokeStyle = p.accent; ctx.lineWidth = 1;
-    ctx.beginPath(); roundRect(ctx, win.x0 + 0.5, top + 0.5, Math.max(2, win.x1 - win.x0 - 1), band - 1, 4); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.strokeStyle = p.accent; ctx.lineWidth = 1.5;
+    ctx.beginPath(); roundRect(ctx, win.x0 + 0.75, top + 0.75, Math.max(2, win.x1 - win.x0 - 1.5), band - 1.5, 4); ctx.stroke();
     ctx.fillStyle = p.accent;
     ctx.fillRect(win.x0 + 2, top + band / 2 - 5, 2, 10); ctx.fillRect(win.x1 - 4, top + band / 2 - 5, 2, 10);
     const total = overviewSpan(v, len);

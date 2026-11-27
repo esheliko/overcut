@@ -147,8 +147,11 @@ h2, p { margin: 0; }
 .tl-menu-note { padding: 4px 12px 8px; margin: 0; }
 .tl-stage:has(.tl-canvas:focus-visible:not([data-pointer]))::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 50%, transparent); } /* keyboard focus only: a slimmer, softened inset frame in the focus token (an inset shadow is not drawn on a canvas itself) */
 
-.toast { position: fixed; z-index: 40; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translate(-50%, 8px); max-width: calc(100vw - 32px); padding: 10px 16px 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface-3); color: var(--fg); box-shadow: var(--elev-2); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity var(--dur-toast) var(--ease-out), transform var(--dur-toast) var(--ease-out); }
-.toast:not(:empty) { display: flex; align-items: center; gap: 10px; opacity: 1; transform: translate(-50%, 0); }
+.toast { position: fixed; z-index: 40; left: 50%; top: calc(env(safe-area-inset-top) + var(--top, 52px) + 8px); transform: translate(-50%, -8px); width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface-3); color: var(--fg); box-shadow: var(--elev-2); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity var(--dur-toast) var(--ease-out), transform var(--dur-toast) var(--ease-out); }
+/* On the Projects home there is no timeline: the notice goes back to the bottom so it never covers the header buttons. */
+.editor.home-mode .toast { top: auto; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translate(-50%, 8px); }
+.toast:not(:empty), .editor.home-mode .toast:not(:empty) { display: flex; align-items: center; gap: 10px; opacity: 1; transform: translate(-50%, 0); }
+/* The toast sits at the top of the picture, under the top bar: it never covers the timeline, its last lane or the transport (K-03). */
 /* One notice style (V-28): toast, saved-work notes, refusals share a surface, an elevation and a 16 px status icon (info by default, warning on a danger note). The icon is a mask, so it takes the colour of its role. */
 :is(.toast, .persist-note, .refusal-note)::before { content: ""; flex: none; align-self: center; inline-size: 16px; block-size: 16px; background: var(--accent); -webkit-mask: var(--notice-icon, var(--icon-info)) center / contain no-repeat; mask: var(--notice-icon, var(--icon-info)) center / contain no-repeat; }
 :is(.persist-note.danger, .refusal-note)::before { background: var(--danger); --notice-icon: var(--icon-warn); }
@@ -215,7 +218,6 @@ h2, p { margin: 0; }
   .tool { width: 100%; min-height: 58px; flex: 0 0 auto; }
   .library, .library[data-open="true"] { display: flex; position: static; height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: none; animation: none; }
   .library::before, .library[data-open="true"]::before, .sheet-close { display: none; }
-  .toast { bottom: 24px; }
   /* One tool (Media) and its panel always open: no rail, its column goes to the panels */
   .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
   .splitter { display: block; grid-area: timeline; align-self: start; justify-self: stretch; position: relative; z-index: 6; block-size: 12px; margin-block-start: -9px; cursor: row-resize; touch-action: none; border-radius: 6px; }
@@ -274,7 +276,6 @@ h2, p { margin: 0; }
   .library[data-open="true"] { display: flex; position: fixed; z-index: 20; inset-inline: auto; inset-inline-start: calc(80px + env(safe-area-inset-left)); bottom: calc(env(safe-area-inset-bottom) + 4px); top: calc(var(--top) + env(safe-area-inset-top)); width: min(340px, 52%); height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: var(--shadow); animation: slide-in var(--dur-base) ease-out; transition: none; }
   .sheet-handle, .mini-transport { display: none; }
   .sheet-close { display: inline-grid; top: 6px; }
-  .toast { bottom: 12px; }
   .persist-notes { bottom: 12px; }
   .stage { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; padding-block-end: 0; }
   .panel-collapse { display: none; }

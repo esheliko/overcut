@@ -41,6 +41,9 @@ test("library: archive and restore (with Undo and the Archived filter), export t
   await page.getByLabel("Project name").blur();
   await menu(page, "Projects");
   await expect(cards(page)).toHaveCount(2);
+  // One "New project" action while there are projects: the accent header button; the big tile is only the empty state's call to action.
+  await expect(page.getByTestId("projects-new")).toHaveCount(1);
+  await expect(page.getByTestId("projects-new-tile")).toHaveCount(0);
   // No archived project yet: no filter bar to clutter the list.
   await expect(page.getByTestId("library-filter-archived")).toHaveCount(0);
 
