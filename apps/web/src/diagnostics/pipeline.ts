@@ -45,7 +45,9 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
     for (let i = 0; i < 150 && ((await host.rpc<unknown[]>({ name: "frames" })).length === 0); i++) await sleep(100);
     if ((await host.rpc<unknown[]>({ name: "frames" })).length === 0) throw new Error("the test clip could not be opened by the decoder");
     host.player.seek(0);
-    await sleep(1500); // first frame drawn: also runs the upload-path measurement once, outside the timed run
+    // First frame drawn: the preview measures its upload path once the player is idle (about 1 to 3 s on a phone); wait for it so it is not inside the timed run.
+    for (let i = 0; i < 100 && !(await host.rpc<{ upload?: unknown }>({ name: "gpu" })).upload; i++) await sleep(100);
+    await sleep(500);
     type S = { presented: number; dropped: number; stalls: number; late: number[]; times: number[] };
     const s0 = await host.rpc<S>({ name: "stats" });
     const t0 = performance.now();
@@ -57,13 +59,13 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
     }
     host.player.toggle();
     const s1 = await host.rpc<S>({ name: "stats" });
-    const gpu = await host.rpc<{ upload?: { path: string; source: string } }>({ name: "gpu" });
+    const gpu = await host.rpc<{ upload?: { path: string; source: string; ms?: Record<string, number> } }>({ name: "gpu" });
     const times = s1.times.slice(s0.times.length);
     const span = times.length > 1 ? times[times.length - 1]! - times[0]! : 0;
     const late = s1.late.slice(s0.late.length).sort((a, b) => a - b);
     const presented = s1.presented - s0.presented;
     return {
-      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a",
+      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a", upload_source: gpu.upload?.source ?? "n/a", upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
       presented, dropped: s1.dropped - s0.dropped, stalls: s1.stalls - s0.stalls,
       fps: span ? Math.round(((times.length - 1) / span) * 10) / 10 : 0,
       p95_late_ms: Math.round(late[Math.floor(late.length * 0.95)] ?? 0),
@@ -91,6 +93,7 @@ async function exportSpeed(progress: (f: number) => void): Promise<Record<string
   }
 }
 
+const round1 = (v: number | undefined): number => (typeof v === "number" ? Math.round(v * 10) / 10 : -1);
 const clip = (v: string | undefined, n: number): string => (v ?? "").replace(/\s+/g, " ").slice(0, n);
 
 /** The failure of an export, flat and short enough for the copied report: where it died, what the browser said, which encoder config was tried. */
