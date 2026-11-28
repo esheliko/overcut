@@ -5,7 +5,7 @@ import type { Op } from "@app/engine-client";
 import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, lanePlan, type LanePlan, type LaneMove, type Say, inRect, linkedTrimOps, moveOps, moveRoom, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { hopOps, planHop, snapMove } from "./arrange";
 import { snapPx } from "./snapStore";
-import { handleAt, hitTest, trackAtY } from "./hit";
+import { addTrackAt, handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart, type HeaderPart } from "./header";
 import { frameTick, markerAt, moveMarkerPlan } from "./markers";
 import { reorderTrack, rowAt, toggleTrack } from "./tracks";
@@ -36,6 +36,8 @@ export interface Effects {
   ops?: Op[];
   /** The `say` is also shown as a visible notice (not only announced): a refusal a sighted user must see. */
   visible?: boolean;
+  /** Add an empty track of this kind (the "+ Video" / "+ Audio" buttons under the track column). */
+  addTrack?: "video" | "audio";
   /** Open the menu of this track (row index); the canvas knows where its header is. */
   menu?: number;
   /** Open the menu of the marker with this id (the canvas knows where its flag is). */
@@ -145,6 +147,8 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     if (mi >= 0) { const m = scene.markers[mi]!; return { g: { k: "marker", id: m.id, sx: e.x, orig: m.ticks, value: m.ticks, moved: false, touch }, fx: NONE }; }
     return e.x >= gut(view) ? { g: { k: "scrub" }, fx: { seek: xToTime(view, e.x) } } : { g: IDLE, fx: NONE };
   }
+  const add = addTrackAt(scene, view, e.x, e.y);
+  if (add) return { g: IDLE, fx: { addTrack: add } };
   const tl = toolDown(c, e);
   if (tl) return tl;
   const hd = handleAt(scene, view, c.selFlags, e.x, e.y, touch);

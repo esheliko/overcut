@@ -9,6 +9,21 @@ export type Hit =
   | { kind: "track"; track: number; time: number }
   | { kind: "empty"; time: number };
 
+/** The "+ Video" / "+ Audio" buttons in the track column, just under the last track (UX r15: adding a track was hidden in a menu). 44 px tall: a touch target. Null on the phone's compact headers. */
+export function addTrackRect(scene: Scene, v: View, kind: "video" | "audio"): { x: number; y: number; w: number; h: number } | null {
+  if (v.compact) return null;
+  const w = Math.floor((gut(v) - 28) / 2);
+  return { x: 10 + (kind === "audio" ? w + 8 : 0), y: RULER + scene.trackCount * LANE - v.scrollY + 10, w, h: 44 };
+}
+/** Which add-track button (x, y) is on, or null. */
+export function addTrackAt(scene: Scene, v: View, x: number, y: number): "video" | "audio" | null {
+  for (const kind of ["video", "audio"] as const) {
+    const r = addTrackRect(scene, v, kind);
+    if (r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h && y > RULER) return kind;
+  }
+  return null;
+}
+
 /** Track row under a canvas y, or -1. */
 export function trackAtY(scene: Scene, v: View, y: number): number {
   if (y < RULER) return -1;

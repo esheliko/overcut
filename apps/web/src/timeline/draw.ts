@@ -3,6 +3,7 @@
 import { readColors, readToken } from "../theme/tokens";
 import { firstEndingAfter, TICKS_PER_SECOND, type Scene } from "./scene";
 import { clipDetail, formatDur, formatTick, gut, LANE, MARKER_NAME_PPS, minorDivisions, RULER, tickStep, timeToX, type View } from "./view";
+import { addTrackRect } from "./hit";
 import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
 import { formatSpeed } from "../inspector/speedModel";
 import { CUE_MS } from "./commitCue";
@@ -137,6 +138,8 @@ export interface Overlay {
   ghostLabel: string | null;
   /** Lane (row index, -1 none) a dragged clip or media card would land on: tinted. */
   lane: number;
+  /** A media card is held over the place for a NEW track: 1 = above the first track, 2 = under the last (the painter draws an insertion line and a label). 0 = none. */
+  newTrack: 0 | 1 | 2;
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Where a drag snapped or will drop (seconds): a thin guide line across the tracks. Null = none. */
   guideSec: number | null;
@@ -147,7 +150,7 @@ export interface Overlay {
   /** The commit cue (commitCue.ts): where an edit landed and when it started (`performance.now()`); `t0 < 0` = none. One record, mutated, never reallocated. */
   cue: { sec: number; t0: number; kind: string };
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, ghostLabel: null, lane: -1, marquee: null, guideSec: null, trackDrag: null, markerDrag: null, cue: { sec: 0, t0: -1, kind: "" } });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, ghostLabel: null, lane: -1, newTrack: 0, marquee: null, guideSec: null, trackDrag: null, markerDrag: null, cue: { sec: 0, t0: -1, kind: "" } });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -381,6 +384,13 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     const ly = RULER + ui.lane * LANE - v.scrollY;
     ctx.save(); ctx.globalAlpha = 0.14; ctx.fillStyle = p.accent; ctx.fillRect(gut(v), ly, v.width - gut(v), LANE - 1); ctx.restore();
   }
+  if (ui.newTrack !== 0) { // an insertion line where the new track will appear, with its name
+    const ny = Math.round(ui.newTrack === 1 ? RULER - v.scrollY + 1 : RULER + scene.trackCount * LANE - v.scrollY + 1);
+    ctx.save(); ctx.fillStyle = p.accent; ctx.fillRect(gut(v), ny - 1, W - gut(v), 3);
+    ctx.font = FONT_HEAD; const label = "New track", lw = ctx.measureText(label).width + 16, lx = gut(v) + 12, ly = ui.newTrack === 1 ? ny + 3 : ny - 24;
+    rr(ctx, lx, ly, lw, 21, 10.5); ctx.fill();
+    ctx.fillStyle = p.accentInk; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(label, lx + 8, ly + 11); ctx.restore();
+  }
   if (ui.ghosts !== null) {
     for (let n = 0; n < ui.ghosts.length; n++) {
       const i = ui.ghosts[n]!;
@@ -438,6 +448,14 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   ctx.fillStyle = p.line;
   for (let t = firstTrack; t <= lastTrack; t++) ctx.fillRect(0, RULER + t * LANE - v.scrollY + LANE - 1, gut(v), 1);
   for (let t = firstTrack; t <= lastTrack; t++) header(ctx, scene, v, p, t, RULER + t * LANE - v.scrollY, ui.trackDrag?.from === t);
+  for (const kind of ["video", "audio"] as const) { // "+ Video" / "+ Audio" under the last header (r15): adding a track is one visible click
+    const r = addTrackRect(scene, v, kind);
+    if (!r || r.y > H) continue;
+    ctx.strokeStyle = p.lineStrong; ctx.lineWidth = 1; ctx.setLineDash([]);
+    rr(ctx, r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1, 8); ctx.stroke();
+    ctx.fillStyle = p.muted; ctx.font = FONT_HEAD; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(kind === "video" ? "+ Video" : "+ Audio", r.x + r.w / 2, r.y + r.h / 2);
+  }
   const td = ui.trackDrag;
   if (td !== null) { // reordering: a line where the track will land, the carried header under the pointer
     const ly = RULER + (td.to + (td.to > td.from ? 1 : 0)) * LANE - v.scrollY;

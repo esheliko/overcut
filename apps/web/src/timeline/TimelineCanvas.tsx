@@ -55,7 +55,8 @@ type Props = {
   /** Real waveforms and filmstrips; without it the canvas draws placeholders. */
   media?: MediaLayer;
   /** A media-bin card was dropped on the canvas: put it on the timeline at this tick. */
-  onDropMedia?: (id: string, tick: number, track?: string) => void;
+  /** `zone`: the card was dropped on the edge above the first track ("top") or on the empty area under the last one ("bottom"): the owner makes a new track for it (UX r15). */
+  onDropMedia?: (id: string, tick: number, track?: string, zone?: "top" | "bottom") => void;
   /** A track header was tapped (or right-clicked): open its menu. `at` is the header's rectangle in viewport pixels. */
   onTrackMenu?: (track: number, at: DOMRect) => void;
   /** A marker was long-pressed, right-clicked, or tapped while the playhead was on it: open its menu. `at` is its flag's rectangle in viewport pixels. */
@@ -73,6 +74,9 @@ const TAP_SLOP = 8;
 const cursorFor = (g: Gesture): string => g.k === "move" || g.k === "tdrag" || (g.k === "marker" && g.moved) ? "grabbing" : g.k === "tool" ? toolCursor(g.tool) : g.k === "trim" || g.k === "scrub" ? "ew-resize" : g.k === "marquee" ? "crosshair" : "";
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
+/** Height (px) of the strip at the top of the first picture lane where a dropped card makes a new track above it. */
+const NEW_TRACK_STRIP = 14;
+
 export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, endFrame, playing, onFrame, summary, selected = NO_SEL, onSelect, onEdit, onCommand, onAnnounce, onNotice, onReady, media, onDropMedia, onTrackMenu, onMarkerMenu, onClipMenu, tool = "select", onLane }: Props) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -189,14 +193,16 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       c.height = Math.round(h * dpr.current);
       view.current.width = w;
       view.current.height = h;
-      invalidate();
+      // Setting width / height clears the bitmap: repaint in the SAME frame (a ResizeObserver callback runs before the paint), or a splitter drag flashes black (UX r15 CUST-2).
+      cancelAnimationFrame(raf.current);
+      draw();
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(c);
     window.addEventListener("resize", fit); // devicePixelRatio changes (browser zoom, moving between screens) fire resize
     return () => { ro.disconnect(); window.removeEventListener("resize", fit); cancelAnimationFrame(raf.current); raf.current = 0; cancelAnimationFrame(phRaf.current); phRaf.current = 0; };
-  }, [invalidate]);
+  }, [draw]);
 
   useEffect(() => {
     const h: CanvasHandle = { view: view.current, invalidate, draw, stats: stats.current, el: canvas.current!, onView: handle.current?.onView };
@@ -303,9 +309,14 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     const l = live.current;
     const x = e.clientX - canvas.current!.getBoundingClientRect().left;
     const raw = Math.max(0, xToTime(view.current, x)) * TICKS_PER_SECOND;
-    const row = trackAtY(l.scene, view.current, e.clientY - canvas.current!.getBoundingClientRect().top);
+    const y = e.clientY - canvas.current!.getBoundingClientRect().top;
+    const row = trackAtY(l.scene, view.current, y);
     const ft = TICKS_PER_SECOND / l.fps;
-    return { ...snapDrop(l.scene, raw, Math.round((fr.current / l.fps) * TICKS_PER_SECOND), (snapPx() / view.current.pps) * TICKS_PER_SECOND, ft), row };
+    // A new track: the strip at the very top of the first (picture) lane, or the empty area under the last track.
+    const sc = l.scene, v = view.current;
+    const bottom = RULER + sc.trackCount * LANE - v.scrollY;
+    const zone: "top" | "bottom" | undefined = y >= bottom && y > RULER ? "bottom" : row === 0 && v.scrollY === 0 && sc.trackKind[0] === 0 && y < RULER + NEW_TRACK_STRIP ? "top" : undefined;
+    return { ...snapDrop(l.scene, raw, Math.round((fr.current / l.fps) * TICKS_PER_SECOND), (snapPx() / view.current.pps) * TICKS_PER_SECOND, ft), row: zone ? -1 : row, zone };
   };
   const onDragOver = (e: React.DragEvent) => {
     if (!onDropMedia || !e.dataTransfer.types.includes(BIN_DRAG_TYPE)) return;
@@ -314,17 +325,18 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     const d = dropAt(e);
     ui.current.guideSec = d.delta / TICKS_PER_SECOND;
     ui.current.lane = d.row;
+    ui.current.newTrack = d.zone === "top" ? 1 : d.zone === "bottom" ? 2 : 0;
     invalidate();
   };
-  const onDragLeave = () => { ui.current.guideSec = null; ui.current.lane = -1; invalidate(); };
+  const onDragLeave = () => { ui.current.guideSec = null; ui.current.lane = -1; ui.current.newTrack = 0; invalidate(); };
   const onDrop = (e: React.DragEvent) => {
     const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
     if (!onDropMedia || !id) return;
     e.preventDefault();
     e.stopPropagation();
     const d = dropAt(e);
-    ui.current.guideSec = null; ui.current.lane = -1; invalidate();
-    onDropMedia(id, Math.round(d.delta), d.row >= 0 ? live.current.scene.trackId[d.row] : undefined);
+    ui.current.guideSec = null; ui.current.lane = -1; ui.current.newTrack = 0; invalidate();
+    onDropMedia(id, Math.round(d.delta), d.row >= 0 ? live.current.scene.trackId[d.row] : undefined, d.zone);
   };
   const hold = useRef(0);
   const stopHold = () => { clearTimeout(hold.current); hold.current = 0; };
@@ -354,6 +366,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     if (fx.seek !== undefined) l.onFrame(clamp(Math.round(fx.seek * l.fps), 0, l.endFrame));
     if (fx.menu !== undefined) l.onTrackMenu?.(fx.menu, headerRect(fx.menu));
     if (fx.markerMenu !== undefined) l.onMarkerMenu?.(fx.markerMenu, markerRect(fx.markerMenu));
+    if (fx.addTrack) l.onCommand?.({ c: "addTrack", kind: fx.addTrack });
     if (fx.ops) l.onEdit?.(fx.ops, fx.say ?? { key: "timeline.say.edited" });
     else if (fx.say) { l.onAnnounce?.(fx.say); if (fx.visible) l.onNotice?.(fx.say); }
   };

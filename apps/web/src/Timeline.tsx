@@ -438,6 +438,13 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     commit([op], say(a.a === "delete" ? "timeline.say.marker.deleted" : "timeline.say.marker.edited"));
   }, [commit, speak, onNotice, t]);
   const openMenu = useCallback((target: TrackMenuTarget, anchor: DOMRect) => setMenu({ target, anchor }), []);
+  // A card dropped above the first track or under the last one gets a NEW track first (a picture: a video track on top, a sound: an audio track), then lands on it at the drop time (UX r15).
+  const dropMedia = useCallback((id: string, tick: number, track?: string, zone?: "top" | "bottom") => {
+    if (!zone) { onDropMedia?.(id, tick, track); return; }
+    const kind = live.current.proj.project?.media.find((m) => m.id === id)?.kind === "audio" ? "audio" : "video";
+    const r = addTrack(live.current.scene, kind, newClipId());
+    commit(r.ops, r.say, () => onDropMedia?.(id, tick, r.ops[0]?.op === "add_track" ? r.ops[0].track.id : undefined));
+  }, [commit, onDropMedia]);
 
   // Shortcuts that work anywhere except while typing in a field.
   useEffect(() => {
@@ -551,7 +558,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       <div className="tl-stage">
         {scene.clipCount === 0 && <p className="tl-empty" data-testid="tl-empty">{t(coarsePointer() ? "timeline.empty.touch" : "timeline.empty")}</p>}
         <TimelineCanvas scene={scene} fps={fps} playhead={playhead} endFrame={endFrame} playing={playing} onFrame={onFrame} summary={summary}
-          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={onDropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} onMarkerMenu={openMarkerMenu} onClipMenu={(at) => setClipMenu(at)} tool={tool} onLane={(id) => { armed.current = id; }} />
+          selected={selected} onSelect={(ids) => { const all = expandLinks(scene, ids); setSelected(all.size === ids.size ? ids : all); }} onEdit={commit} onCommand={run} onAnnounce={speak} onNotice={(s) => onNotice(t(s.key, s.values))} onReady={ready} media={media} onDropMedia={dropMedia} onTrackMenu={(track, at) => openMenu({ kind: "track", track }, at)} onMarkerMenu={openMarkerMenu} onClipMenu={(at) => setClipMenu(at)} tool={tool} onLane={(id) => { armed.current = id; }} />
       </div>
       <Overview scene={scene} lengthSec={lengthSec} handle={getHandle} />
     </section>
