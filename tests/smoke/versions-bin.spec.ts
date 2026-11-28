@@ -93,16 +93,19 @@ test("bin: type filter, sort, tags (undoable) and tag filter", async ({ page }) 
   await page.getByTestId("bin-kind-all").click();
 
   // tag one item: it shows on the card, the tag filter appears, Undo removes it
+  await page.keyboard.press("Escape"); // UX r15 D2: close the Filter popover (on a phone it floats over the cards)
   await items.filter({ hasText: "dot.png" }).getByTestId("bin-tag-edit").click();
   await page.getByTestId("tag-input").fill("  B-roll ");
   await page.getByTestId("tag-add").click();
   await expect(page.getByTestId("tags-dialog")).toContainText("B-roll");
   await page.keyboard.press("Escape");
   await expect(items.filter({ hasText: "dot.png" }).getByTestId("bin-tags")).toHaveText("#B-roll");
+  // UX r15 D2: Filter and sort is a popover; a tap on a card (outside it) closes it, so open it again for the tag filter
+  if ((await page.getByTestId("bin-filter-toggle").getAttribute("aria-expanded")) !== "true") await page.getByTestId("bin-filter-toggle").click();
   await page.getByTestId("bin-tag-filter").selectOption("B-roll");
   await expect(items).toHaveCount(1);
   await expect(page.getByTestId("bin-count")).toHaveText("1 of 3 shown");
-  expect((await page.getByTestId("bin-kind-all").boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await page.getByTestId("bin-kind-all").boundingBox())!.height).toBeGreaterThanOrEqual(phoneOf(page) ? 44 : 31.5);
 
   await openBin(page); // phone: closes the sheet that covers the toolbar
   await page.getByRole("button", { name: "Undo" }).first().click();
@@ -144,7 +147,7 @@ test("a bin of 10,000 items renders a window of rows and filters quickly", async
 
   await page.getByTestId("bin-kind-all").click();
   await page.getByTestId("bin-sort").selectOption("name");
-  await page.locator(".panel-body").evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await page.getByTestId("panel-tool").locator(".panel-body").evaluate((el) => { el.scrollTop = el.scrollHeight; });
   await expect(items.last()).toContainText("e2e.mp4");
   expect(await items.count()).toBeLessThan(120);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

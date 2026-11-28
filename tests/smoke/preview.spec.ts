@@ -26,8 +26,9 @@ test("a portrait phone clip shows upright (display rotation applied) and the pre
   await expect(page.getByTestId("timecode")).toContainText("00:00:00:00");
   // Frame 0 is on the canvas (not black) and the canvas is not stretched: backing aspect equals the display aspect.
   await expect.poll(async () => { const b = (await page.getByTestId("preview-canvas").boundingBox())!; return Math.abs(b.width / b.height - 0.75); }).toBeLessThan(0.02); // layout transition done
-  await page.waitForTimeout(150);
-  // The canvas belongs to the preview Worker: its backing size and pixels are asked of the Worker.
+  // The canvas belongs to the preview Worker: its backing size and pixels are asked of the Worker. The backing store follows the box once the box has stopped
+  // animating (debounced resize), so wait for it to take the display aspect instead of reading it after a fixed pause.
+  await expect.poll(() => page.evaluate(async () => { const { canvas } = await (window as unknown as { __overcutPreview: { gpu(): Promise<{ canvas: { width: number; height: number } }> } }).__overcutPreview.gpu(); return Math.abs(canvas.width / canvas.height - 120 / 160); }), { timeout: 10_000 }).toBeLessThan(0.02);
   const px = await page.evaluate(async () => {
     const h = (window as unknown as { __overcutPreview: { gpu(): Promise<{ canvas: { width: number; height: number } }>; probe(x: number, y: number): Promise<number[]> } }).__overcutPreview;
     const { canvas } = await h.gpu();
@@ -99,6 +100,14 @@ test("play 2 s, pause, frame-step; numbers reported", async ({ page }, info) => 
   await expect.poll(() => page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.frame)).toBe(before);
   await page.keyboard.press("Home");
   await expect(tc).toContainText("00:00:00:00");
+  // End then Home from the timeline canvas: the shown frame follows both (a stale "echo" of an earlier frame 0 used to swallow the Home seek).
+  const shown = () => page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.frame);
+  await page.getByTestId("timeline-canvas").focus();
+  await page.keyboard.press("End");
+  await expect.poll(shown).toBeGreaterThan(0);
+  await page.keyboard.press("Home");
+  await expect(tc).toContainText("00:00:00:00");
+  await expect.poll(shown, "Home moves the shown frame too, not only the timecode").toBe(0);
   // Scrub latency: 40 random seeks.
   const scrub = await page.evaluate(async () => {
     const h = (window as unknown as { __overcutPreview: Hook }).__overcutPreview;
@@ -121,8 +130,12 @@ test("JKL shuttle: L doubles the speed, K stops", async ({ page }, info) => {
   await expect(page.locator(".rate-badge")).toHaveText("2×");
   await page.keyboard.press("k");
   await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
-  const open = await page.evaluate(async () => (await (window as unknown as { __overcutPreview: { media(): Promise<{ open: number }[]> } }).__overcutPreview.media())[0]!.open);
-  expect(open).toBeLessThanOrEqual(2); // no leaked VideoFrames after stopping (at most the frame on the compositor path)
+  // No leaked VideoFrames after stopping: every decoded frame still open is either in the paused-playhead cache (the decode-ahead around the stop frame
+  // legitimately holds up to a dozen, and how many are there depends on timing: the old fixed `<= 2` was racy) or the one on the compositor path.
+  await expect.poll(async () => page.evaluate(async () => {
+    const hook = (window as unknown as { __overcutPreview: { media(): Promise<{ open: number }[]>; stats(): Promise<{ cached: number }> } }).__overcutPreview;
+    return (await hook.media())[0]!.open - (await hook.stats()).cached;
+  }), { timeout: 5_000 }).toBeLessThanOrEqual(2);
 });
 
 type Parity = { width: number; height: number; layers: number; previewVsReadback: number; previewVsCanvasCapture: number; lit: boolean; error?: string };
@@ -175,8 +188,12 @@ test("the upload path is chosen by a micro-benchmark, and a frame step after a s
   await expect.poll(async () => (await stats()).cached, { timeout: 20_000 }).toBeGreaterThanOrEqual(3); // decode-ahead around frame 20
   await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.player.seek(21));
   await expect.poll(async () => (await stats()).cacheHits, { timeout: 10_000 }).toBeGreaterThan(0);
+  // Every scrub ends with both numbers (the first update lands before the exact frame, so the last scrub can still be one short for a moment).
+  await expect.poll(async () => { const x = await stats(); return x.firstUpdateMs.length - x.scrubMs.length; }, { timeout: 10_000 }).toBe(0);
   const s = await stats();
-  expect(s.firstUpdateMs.length).toBe(s.scrubMs.length); // every scrub has both numbers
+  expect(s.firstUpdateMs.length).toBe(s.scrubMs.length);
+  // The measurement waits for an idle player (400 ms) and takes a second or two.
+  await expect.poll(async () => (await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.gpu())).upload?.path, { timeout: 20_000 }).toBeDefined();
   const g = await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.gpu());
   expect(["frame", "cpu"]).toContain(g.upload?.path);
   if (g.upload?.source === "measured") {

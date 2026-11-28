@@ -1,0 +1,35 @@
+/*
+ * Interaction states (M2 UX r12, ergonomics): every control has a hover, a pressed and a focus look, on the shared motion tokens
+ * (--dur-instant 100 ms press, --dur-fast 150 ms hover; --ease-out). A control that jumped between states with no transition, or had no pressed look,
+ * was found by scripts/ux audit (docs/m2/ux-r12-ergonomics.md); they are gathered here so the rule is in one place.
+ * Reduced motion: the tokens are 0 s there (theme/tokens.css), so none of this animates.
+ */
+
+/* Keyframe diamond, previous / next key, field reset (inspector) */
+.insp-kbtn { transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-instant) var(--ease-out); }
+.insp-kbtn:hover:not(:disabled) { background: var(--surface-3); color: var(--fg); }
+.insp-kbtn:active:not(:disabled) { transform: scale(0.92); }
+
+/* "Crop & flip" disclosure */
+.insp-more > summary { transition: background var(--dur-fast) var(--ease-out), transform var(--dur-instant) var(--ease-out); }
+.insp-more > summary:hover { background: var(--surface-3); }
+.insp-more > summary:active { transform: scale(0.98); }
+
+/* Media bin: "Choose X again" and the tag editor */
+.bin-link { transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-instant) var(--ease-out); }
+.bin-link:hover:not(:disabled) { color: var(--fg); }
+.bin-link:active:not(:disabled) { transform: scale(0.97); }
+.bin-act { transition: background var(--dur-fast) var(--ease-out), transform var(--dur-instant) var(--ease-out); }
+.bin-act:active:not(:disabled) { transform: scale(0.92); }
+
+/* Transport Play: the big round button lifts a touch on hover (pointer only), presses in on :active (styles.css) */
+@media (hover: hover) { .play:hover:not(:disabled) { filter: brightness(1.12); } }
+.play { transition: transform var(--dur-instant) var(--ease-out), filter var(--dur-fast) var(--ease-out); }
+
+/* Timeline zoom slider: the thumb grows under the pointer and while dragged, so it reads as grabbable */
+.zoom input[type="range"]::-webkit-slider-thumb { transition: transform var(--dur-fast) var(--ease-out); }
+.zoom input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.25); }
+.zoom input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.4); }
+.zoom input[type="range"]::-moz-range-thumb { transition: transform var(--dur-fast) var(--ease-out); }
+.zoom input[type="range"]:hover::-moz-range-thumb { transform: scale(1.25); }
+.zoom input[type="range"]:active::-moz-range-thumb { transform: scale(1.4); }

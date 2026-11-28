@@ -1,0 +1,14 @@
+{
+ "segSec": 4,
+ "segments": 6,
+ "killAfterMs": 9000,
+ "segmentsDoneAtKill": 1,
+ "partialDropped": 1,
+ "fullBuildS": 48.454761314,
+ "resumeBuildS": 42.669455728,
+ "lostMediaSeconds": 4,
+ "identicalBytes": true,
+ "framesInResumed": 720,
+ "framesExpected": 720,
+ "perSegmentBuildS": 8.075793552333334
+}

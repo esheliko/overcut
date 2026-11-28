@@ -3,6 +3,7 @@
 //! Regenerate goldens: `UPDATE_GOLDENS=1 cargo test -p app-render --test golden` (renders on the first available backend).
 #![cfg(not(target_arch = "wasm32"))]
 
+use app_model::{Background, BackgroundMode};
 use app_render::{
     headless_compositor, headless_compositor_with, rgb_to_yuv, AccumFormat, Layer, Pixels,
     YuvMatrix, YuvRange,
@@ -51,6 +52,8 @@ impl Img {
             rotation,
             opacity,
             display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
         }
     }
 }
@@ -167,6 +170,11 @@ fn max_diff(a: &[u8], b: &[u8]) -> u8 {
 
 /// Render `layers` on every available backend (and, with `fallback`, also with the 8-bit accumulation) and compare to the named golden.
 fn check_golden(name: &str, w: u32, h: u32, layers: &[Layer]) {
+    check_golden_with(name, w, h, layers, Background::default());
+}
+
+/// [`check_golden`] with a project background (TL-19).
+fn check_golden_with(name: &str, w: u32, h: u32, layers: &[Layer], bg: Background) {
     let mut frames: Vec<(String, Vec<u8>, u8)> = vec![];
     for (bname, b) in BACKENDS {
         for (label, force, tol) in [
@@ -181,6 +189,7 @@ fn check_golden(name: &str, w: u32, h: u32, layers: &[Layer]) {
                         info.device_type,
                         c.accum_format()
                     );
+                    c.set_background(bg);
                     frames.push((
                         format!("{bname}/{label}"),
                         c.render_to_rgba8(w, h, layers),
@@ -365,6 +374,8 @@ fn yuv_bars_decode_to_the_original_colours_for_range_and_matrix() {
                 rotation: 0.0,
                 opacity: 1.0,
                 display_rotation: 0,
+                crop: [0.0; 4],
+                flip: [false; 2],
             };
             let f = c.render_to_rgba8(w, h, &[l]);
             for (i, b) in BARS.iter().enumerate() {
@@ -403,6 +414,8 @@ fn yuv_range_flag_matters() {
             rotation: 0.0,
             opacity: 1.0,
             display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
         };
         c.render_to_rgba8(4, 4, &[l])[0]
     };
@@ -443,6 +456,8 @@ fn steady_state_frames_create_no_gpu_objects() {
             rotation: 0.2,
             opacity: 0.8,
             display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
         };
         let layers = [
             a.layer([960.0, 540.0], [1.0, 1.0], 0.0, 1.0),
@@ -585,6 +600,8 @@ fn resident_layers_and_rendering_into_a_view_match_the_uploaded_readback_exactly
                 rotation,
                 opacity,
                 display_rotation: 0,
+                crop: [0.0; 4],
+                flip: [false; 2],
             };
             [
                 base(g, [48.0, 27.0], [1.5, 1.5], 0.0, 1.0),
@@ -654,6 +671,307 @@ fn resident_layers_and_rendering_into_a_view_match_the_uploaded_readback_exactly
         assert_eq!(
             got, reference,
             "{name}: view path and readback path must be identical"
+        );
+    }
+}
+
+// ---- M2-024: crop, flip and the picture-in-picture matrix ------------------------------------------------------------------------------
+
+#[test]
+fn crop_keeps_the_visible_part_in_place_and_flip_mirrors_before_the_crop() {
+    let _gpu = gpu();
+    let Some((mut c, _)) = headless_compositor(wgpu::Backends::all()) else {
+        eprintln!("SKIPPED: no wgpu adapter");
+        return;
+    };
+    let img = rot_img(); // 4x2: left half red, right half blue, green marker at (0, 0)
+    let mut l = img.layer([2.0, 1.0], [1.0, 1.0], 0.0, 1.0);
+    // Crop the left half away: blue stays where it was (columns 2..4), the rest is black.
+    l.crop = [0.5, 0.0, 0.0, 0.0];
+    let f = c.render_to_rgba8(4, 2, &[l]);
+    assert_eq!(px(&f, 4, 0, 0), [0, 0, 0]);
+    assert_eq!(px(&f, 4, 1, 1), [0, 0, 0]);
+    assert_eq!(px(&f, 4, 2, 0), [0, 0, 255]);
+    assert_eq!(px(&f, 4, 3, 1), [0, 0, 255]);
+    // Mirrored: blue | red with the marker top-right; the crop is on screen, so removing the left half now leaves the red (mirrored) half on the right.
+    l.crop = [0.0; 4];
+    l.flip = [true, false];
+    let f = c.render_to_rgba8(4, 2, &[l]);
+    assert_eq!(px(&f, 4, 0, 1), [0, 0, 255]);
+    assert_eq!(
+        px(&f, 4, 3, 0),
+        [0, 255, 0],
+        "marker moved to the top-right"
+    );
+    l.crop = [0.5, 0.0, 0.0, 0.0];
+    let f = c.render_to_rgba8(4, 2, &[l]);
+    assert_eq!(px(&f, 4, 1, 1), [0, 0, 0]);
+    assert_eq!(px(&f, 4, 2, 1), [255, 0, 0]);
+    // Vertical flip moves the marker to the bottom-left.
+    l.crop = [0.0; 4];
+    l.flip = [false, true];
+    let f = c.render_to_rgba8(4, 2, &[l]);
+    assert_eq!(px(&f, 4, 0, 1), [0, 255, 0]);
+    assert_eq!(px(&f, 4, 0, 0), [255, 0, 0]);
+}
+
+#[test]
+fn picture_in_picture_matches_golden_on_every_available_backend() {
+    let _gpu = gpu();
+    let (base, pip) = (gradient(64, 36), checker(64, 64));
+    // A background filling the frame and a rotated, cropped, mirrored, half-transparent inset.
+    let mut inset = pip.layer([190.0, 40.0], [1.0, 1.0], 0.35, 0.8);
+    inset.crop = [0.1, 0.0, 0.25, 0.15];
+    inset.flip = [true, false];
+    let scene = [base.layer([128.0, 72.0], [4.0, 4.0], 0.0, 1.0), inset];
+    check_golden("pip_crop_flip_rotate", 256, 144, &scene);
+}
+
+// ---- Project background (TL-19) ----------------------------------------------------------------------------------------------------------
+
+/// A 16:9 picture on a 9:16 canvas (90 x 160): contain-fit, so it covers the middle band and leaves the top and bottom bands empty.
+fn landscape_on_portrait() -> (Img, [f32; 2], [f32; 2]) {
+    // Warm left, cool right, bright stripe: something that blurs into a visible, non-uniform backdrop.
+    let img = Img::from_fn(64, 36, |x, y| {
+        let t = x as f32 / 63.0;
+        if (10..14).contains(&(y)) {
+            [250, 250, 250, 255]
+        } else {
+            [
+                (230.0 * (1.0 - t)) as u8 + 20,
+                80,
+                (230.0 * t) as u8 + 20,
+                255,
+            ]
+        }
+    });
+    (img, [45.0, 80.0], [90.0 / 64.0, 90.0 / 64.0])
+}
+
+fn bg(mode: BackgroundMode, colour: [u8; 3], blur: u8) -> Background {
+    Background { mode, colour, blur }
+}
+
+#[test]
+fn colour_background_fills_the_uncovered_canvas_exactly_and_leaves_the_layer_alone() {
+    let _gpu = gpu();
+    let (img, centre, scale) = landscape_on_portrait();
+    let layers = [img.layer(centre, scale, 0.0, 1.0)];
+    for (_, b) in BACKENDS {
+        let Some((mut c, _)) = headless_compositor_with(b, None) else {
+            continue;
+        };
+        c.set_background(Background::default());
+        let black = c.render_to_rgba8(90, 160, &layers);
+        c.set_background(bg(BackgroundMode::Colour, [200, 40, 90], 50));
+        let coloured = c.render_to_rgba8(90, 160, &layers);
+        // top and bottom bands: the colour (sRGB-exact through the linear accumulation), the middle band: unchanged
+        assert_eq!(px(&coloured, 90, 3, 3), [200, 40, 90]);
+        assert_eq!(px(&coloured, 90, 86, 156), [200, 40, 90]);
+        assert_eq!(px(&black, 90, 3, 3), [0, 0, 0]);
+        for y in 60..100u32 {
+            for x in 0..90u32 {
+                assert_eq!(px(&coloured, 90, x, y), px(&black, 90, x, y), "({x},{y})");
+            }
+        }
+        // an empty frame is the colour everywhere
+        let empty = c.render_to_rgba8(8, 8, &[]);
+        assert_eq!(px(&empty, 8, 4, 4), [200, 40, 90]);
+    }
+}
+
+#[test]
+fn blur_background_shows_the_picture_smeared_into_the_empty_bands_and_follows_the_strength() {
+    let _gpu = gpu();
+    let (img, centre, scale) = landscape_on_portrait();
+    let layers = [img.layer(centre, scale, 0.0, 1.0)];
+    for (name, b) in BACKENDS {
+        let Some((mut c, _)) = headless_compositor_with(b, None) else {
+            continue;
+        };
+        c.set_background(Background::default());
+        let black = c.render_to_rgba8(90, 160, &layers);
+        c.set_background(bg(BackgroundMode::Blur, [0; 3], 50));
+        let f = c.render_to_rgba8(90, 160, &layers);
+        let again = c.render_to_rgba8(90, 160, &layers);
+        assert_eq!(f, again, "{name}: deterministic");
+        // the bands are no longer black and are not flat: the left is warmer than the right (the picture's own gradient)
+        let (tl, tr) = (px(&f, 90, 6, 6), px(&f, 90, 83, 6));
+        assert!(
+            tl.iter().map(|&v| u32::from(v)).sum::<u32>() > 90,
+            "{name}: top band is black: {tl:?}"
+        );
+        assert!(
+            tl[0] > tr[0] + 20 && tr[2] > tl[2] + 20,
+            "{name}: {tl:?} vs {tr:?}"
+        );
+        // the picture itself is drawn on top, untouched
+        for y in 60..100u32 {
+            for x in 0..90u32 {
+                assert_eq!(px(&f, 90, x, y), px(&black, 90, x, y), "({x},{y})");
+            }
+        }
+        // a stronger blur is smoother: less change between neighbouring columns across the brightest stripe's row
+        let rough = |frame: &[u8]| -> u32 {
+            (0..89u32)
+                .map(|x| {
+                    let (a, b) = (px(frame, 90, x, 40), px(frame, 90, x + 1, 40));
+                    u32::from(a[0].abs_diff(b[0]))
+                })
+                .sum()
+        };
+        c.set_background(bg(BackgroundMode::Blur, [0; 3], 100));
+        let strong = c.render_to_rgba8(90, 160, &layers);
+        assert!(
+            rough(&strong) <= rough(&f) + 4,
+            "{name}: stronger blur is not smoother"
+        );
+    }
+}
+
+#[test]
+fn blur_is_skipped_when_the_bottom_layer_already_fills_the_canvas_and_ignores_the_layers_animation()
+{
+    let _gpu = gpu();
+    let full = gradient(64, 36);
+    let covering = [full.layer([128.0, 72.0], [4.0, 4.0], 0.0, 1.0)];
+    let (img, _, _) = landscape_on_portrait();
+    let (small_a, small_b) = (
+        [img.layer([45.0, 80.0], [0.5, 0.5], 0.0, 1.0)],
+        [img.layer([60.0, 120.0], [0.5, 0.5], 0.0, 1.0)],
+    );
+    for (_, b) in BACKENDS {
+        let Some((mut c, _)) = headless_compositor_with(b, None) else {
+            continue;
+        };
+        c.set_background(Background::default());
+        let black = c.render_to_rgba8(256, 144, &covering);
+        c.set_background(bg(BackgroundMode::Blur, [0; 3], 50));
+        assert_eq!(
+            c.render_to_rgba8(256, 144, &covering),
+            black,
+            "nothing to show behind a covering layer"
+        );
+        // the backdrop does not move with the layer: a corner far from both placements is the same
+        let (a, bb) = (
+            c.render_to_rgba8(90, 160, &small_a),
+            c.render_to_rgba8(90, 160, &small_b),
+        );
+        assert_eq!(px(&a, 90, 2, 2), px(&bb, 90, 2, 2));
+        assert_eq!(px(&a, 90, 87, 157), px(&bb, 90, 87, 157));
+    }
+}
+
+#[test]
+fn blur_background_matches_golden_on_every_available_backend() {
+    let _gpu = gpu();
+    let (img, centre, scale) = landscape_on_portrait();
+    let layers = [img.layer(centre, scale, 0.0, 1.0)];
+    check_golden_with(
+        "background_blur_9x16",
+        90,
+        160,
+        &layers,
+        bg(BackgroundMode::Blur, [0; 3], 50),
+    );
+}
+
+#[test]
+fn colour_background_matches_golden_on_every_available_backend() {
+    let _gpu = gpu();
+    let (img, centre, scale) = landscape_on_portrait();
+    let layers = [img.layer(centre, scale, 0.0, 0.8)];
+    check_golden_with(
+        "background_colour_9x16",
+        90,
+        160,
+        &layers,
+        bg(BackgroundMode::Colour, [24, 130, 200], 50),
+    );
+}
+
+#[test]
+fn blur_background_is_the_same_picture_at_the_preview_size_and_at_the_export_size() {
+    let _gpu = gpu();
+    let (img, centre, scale) = landscape_on_portrait();
+    for (name, b) in BACKENDS {
+        let Some((mut c, _)) = headless_compositor_with(b, None) else {
+            continue;
+        };
+        c.set_background(bg(BackgroundMode::Blur, [0; 3], 50));
+        let small = c.render_to_rgba8(90, 160, &[img.layer(centre, scale, 0.0, 1.0)]);
+        let big = c.render_to_rgba8(
+            360,
+            640,
+            &[img.layer(
+                [centre[0] * 4.0, centre[1] * 4.0],
+                [scale[0] * 4.0, scale[1] * 4.0],
+                0.0,
+                1.0,
+            )],
+        );
+        // average the big frame 4 x 4 down to the small one's size and compare (a different size samples the picture differently: allow a few codes)
+        let mut worst = 0u8;
+        // only the empty bands (the picture itself has hard edges that a different size samples differently)
+        for y in (0..50u32).chain(112..160) {
+            for x in 0..90u32 {
+                for ch in 0..3usize {
+                    let mut sum = 0u32;
+                    for dy in 0..4 {
+                        for dx in 0..4 {
+                            sum += u32::from(
+                                big[(((y * 4 + dy) * 360 + x * 4 + dx) * 4) as usize + ch],
+                            );
+                        }
+                    }
+                    let v = (sum / 16) as u8;
+                    worst = worst.max(v.abs_diff(small[((y * 90 + x) * 4) as usize + ch]));
+                }
+            }
+        }
+        eprintln!("[{name}] blur at 90x160 vs 360x640, worst channel difference: {worst}");
+        assert!(
+            worst <= 6,
+            "{name}: the blur differs between sizes by {worst}"
+        );
+    }
+}
+
+/// Frame cost of the blurred background (measurement, not a gate): `cargo test -p app-render --test golden --release blur_background_cost -- --ignored --nocapture`.
+/// One 1080p layer on a 1080x1920 canvas (the case that shows the blur: a landscape clip on a vertical canvas), GPU work only (waits for the queue, no readback).
+/// A software rasteriser in a container is far slower than a laptop GPU: it bounds the cost from above and shows the blur's share.
+#[test]
+#[ignore]
+fn blur_background_cost() {
+    let _gpu = gpu();
+    let img = gradient(1920, 1080);
+    for (name, b) in BACKENDS {
+        let Some((mut c, info)) = headless_compositor_with(b, None) else {
+            continue;
+        };
+        let layer = [img.layer([540.0, 960.0], [0.5625, 0.5625], 0.0, 1.0)];
+        let mut run = |mode: BackgroundMode| -> f64 {
+            c.set_background(bg(mode, [30, 60, 90], 50));
+            for _ in 0..3 {
+                c.render(1080, 1920, &layer);
+            }
+            let n = 20;
+            let t0 = std::time::Instant::now();
+            for _ in 0..n {
+                c.render(1080, 1920, &layer);
+                c.device().poll(wgpu::PollType::Wait).ok();
+            }
+            t0.elapsed().as_secs_f64() * 1000.0 / n as f64
+        };
+        let (black, colour, blur) = (
+            run(BackgroundMode::Black),
+            run(BackgroundMode::Colour),
+            run(BackgroundMode::Blur),
+        );
+        eprintln!(
+            "[{name}] {} 1 layer 1080x1920: black {black:.2} ms, colour {colour:.2} ms, blur {blur:.2} ms (+{:.2} ms)",
+            info.name,
+            blur - black
         );
     }
 }

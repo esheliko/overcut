@@ -1,17 +1,19 @@
 //! The project document: `Project -> Sequence -> Track -> Clip`, plus the media it references.
 //! Plain data. It is changed only by ops (ADR 0006, `app-timeline`), never directly by the UI.
 
-use crate::ids::{ClipId, LinkId, MediaId, ProjectId, SequenceId, TrackId};
+use crate::audio::ClipAudio;
+use crate::ids::{ClipId, LinkId, MarkerId, MediaId, ProjectId, SequenceId, TrackId};
 use crate::time::{Rational, Time};
+use crate::transform::ClipTransform;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 
 /// Version of the document schema. Bump (and add a migration + fixture, M1-005) on any incompatible change.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 6;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Project {
     /// The schema this document was written with; readers migrate older versions and refuse newer ones.
     pub schema_version: u32,
@@ -28,7 +30,7 @@ pub struct Resolution {
     pub height: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Sequence {
     pub id: SequenceId,
     pub name: String,
@@ -44,6 +46,114 @@ pub struct Sequence {
     pub sample_rate: u32,
     /// Bottom-to-top for video (later tracks draw over earlier ones). Any number of tracks of either kind.
     pub tracks: Vec<Track>,
+    /// Markers and chapters (TL-07, M2-007, `docs/features/markers.md`), ordered by time then id. Absent in older files = none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markers: Vec<Marker>,
+    /// The in/out range (render range, loop range). `None` = the whole sequence. Absent in older files = none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TimeRange>,
+    /// True while playback loops over `range` (needs a range). Absent = false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub loop_range: bool,
+    /// What shows where no clip covers the canvas (TL-19, `docs/features/background.md`). Absent in older files = black.
+    #[serde(default, skip_serializing_if = "Background::is_default")]
+    pub background: Background,
+}
+
+/// How the empty part of the canvas is filled.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundMode {
+    /// Opaque black (the M1 behaviour).
+    #[default]
+    Black,
+    /// One flat colour, `Background::colour`.
+    Colour,
+    /// The bottom-most picture of the frame, scaled to fill the canvas and blurred by `Background::blur`.
+    Blur,
+}
+
+/// The project background (TL-19): shown behind every layer, so only where the layers leave the canvas uncovered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Background {
+    #[serde(default)]
+    pub mode: BackgroundMode,
+    /// sRGB 8-bit red, green, blue; used by `Colour`.
+    #[serde(default)]
+    pub colour: [u8; 3],
+    /// Blur strength 0..=100 (50 = the default look); used by `Blur`.
+    #[serde(default = "default_blur")]
+    pub blur: u8,
+}
+
+/// Largest `Background::blur`.
+pub const MAX_BLUR: u8 = 100;
+fn default_blur() -> u8 {
+    50
+}
+
+impl Default for Background {
+    fn default() -> Self {
+        Self {
+            mode: BackgroundMode::Black,
+            colour: [0, 0, 0],
+            blur: default_blur(),
+        }
+    }
+}
+
+impl Background {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Most markers one sequence may hold, and the longest marker name (characters).
+pub const MAX_MARKERS: usize = 10_000;
+pub const MAX_MARKER_NAME: usize = 120;
+
+/// A plain marker (a flag on the ruler) or a chapter (also exported as a chapter mark).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkerKind {
+    #[default]
+    Marker,
+    Chapter,
+}
+
+impl MarkerKind {
+    fn is_marker(&self) -> bool {
+        *self == MarkerKind::Marker
+    }
+}
+
+/// A point on the sequence's timeline (ticks, `>= 0`) with a name and an optional colour.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Marker {
+    pub id: MarkerId,
+    pub time: Time,
+    #[serde(default, skip_serializing_if = "MarkerKind::is_marker")]
+    pub kind: MarkerKind,
+    /// 0-120 characters, no surrounding spaces. Empty is allowed (an unnamed marker).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// `#rrggbb`; `None` = the default colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
+}
+
+/// A half-open stretch of the timeline: `start <= t < end`, `0 <= start < end`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct TimeRange {
+    pub start: Time,
+    pub end: Time,
+}
+
+/// Name and colour rules shared by validation and the `AddMarker` / `SetMarkerProps` ops.
+pub fn marker_props_ok(name: &str, colour: Option<&str>) -> bool {
+    name.trim() == name
+        && name.chars().count() <= MAX_MARKER_NAME
+        && colour.is_none_or(is_track_colour)
 }
 
 fn is_false(b: &bool) -> bool {
@@ -57,18 +167,56 @@ pub enum TrackKind {
     Audio,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// Bounds of `Track::height` (UI pixels).
+pub const MIN_TRACK_HEIGHT: u32 = 24;
+pub const MAX_TRACK_HEIGHT: u32 = 400;
+/// Longest track name, in characters.
+pub const MAX_TRACK_NAME: usize = 64;
+
+/// True for `#rrggbb` (hex digits of either case).
+pub fn is_track_colour(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+impl Track {
+    /// Whether the track takes part in the output (drawn / heard) given whether another track of its kind is soloed.
+    pub fn is_live(&self, kind_has_solo: bool) -> bool {
+        !self.muted && !self.hidden && (!kind_has_solo || self.solo)
+    }
+}
+
+impl Sequence {
+    /// True when some track of `kind` is soloed.
+    pub fn has_solo(&self, kind: TrackKind) -> bool {
+        self.tracks.iter().any(|t| t.kind == kind && t.solo)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Track {
     pub id: TrackId,
     pub kind: TrackKind,
     pub name: String,
+    /// Silent (audio) / not drawn (video). The track keeps its clips and its place in the stack.
     pub muted: bool,
     pub locked: bool,
+    /// Out of the output entirely (eye off): neither drawn nor heard. Added in schema 2; absent = false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub hidden: bool,
+    /// While any track of a kind is soloed, only the soloed tracks of that kind are drawn / heard. Schema 2; absent = false.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub solo: bool,
+    /// Row height in UI pixels (`MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT`); `None` = the view's default for the kind. Schema 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// Label colour as `#rrggbb`; `None` = the theme's default for the kind. Schema 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<String>,
     /// Sorted by `start`, never overlapping (see [`Project::validate`]).
     pub clips: Vec<Clip>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Clip {
     pub id: ClipId,
     pub media: MediaId,
@@ -85,6 +233,18 @@ pub struct Clip {
     /// Only the editing layer acts on it; evaluation and export ignore it. Absent in files made before linking existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<LinkId>,
+    /// Position, scale, rotation, crop, flip, opacity and fit (M2-003). The identity is the default and is not written.
+    #[serde(default, skip_serializing_if = "transform_is_identity")]
+    pub transform: Box<ClipTransform>,
+    /// Volume and fades (round 16, schema 6). The plain clip is the default and is not written.
+    #[serde(default, skip_serializing_if = "ClipAudio::is_default")]
+    pub audio: ClipAudio,
+}
+
+/// Boxed so a `Clip` (and every `Op` carrying one) stays small: a transform is a dozen animatable numbers.
+#[allow(clippy::borrowed_box)]
+fn transform_is_identity(t: &Box<ClipTransform>) -> bool {
+    t.is_identity()
 }
 
 fn unit_speed() -> Rational {
@@ -148,6 +308,10 @@ pub enum ModelError {
         sequence: SequenceId,
         why: &'static str,
     },
+    BadTrack {
+        track: TrackId,
+        why: &'static str,
+    },
 }
 
 impl fmt::Display for ModelError {
@@ -172,6 +336,10 @@ impl Project {
             name: name.to_string(),
             muted: false,
             locked: false,
+            hidden: false,
+            solo: false,
+            height: None,
+            colour: None,
             clips: Vec::new(),
         };
         let id = ProjectId::new(src);
@@ -192,6 +360,10 @@ impl Project {
                 rate_fixed: false,
                 sample_rate: 48_000,
                 tracks: vec![video, audio],
+                markers: Vec::new(),
+                range: None,
+                loop_range: false,
+                background: Background::default(),
             }],
         }
     }
@@ -223,8 +395,23 @@ impl Project {
                     why: "frame rate, sample rate and size must be positive",
                 });
             }
+            self.validate_markers(s)?;
             for t in &s.tracks {
                 unique(t.id.0)?;
+                if t.height
+                    .is_some_and(|h| !(MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT).contains(&h))
+                {
+                    return Err(ModelError::BadTrack {
+                        track: t.id,
+                        why: "height out of range",
+                    });
+                }
+                if t.colour.as_deref().is_some_and(|c| !is_track_colour(c)) {
+                    return Err(ModelError::BadTrack {
+                        track: t.id,
+                        why: "colour must be #rrggbb",
+                    });
+                }
                 let mut prev_end = Time::ZERO;
                 for c in &t.clips {
                     unique(c.id.0)?;
@@ -235,6 +422,43 @@ impl Project {
                     })?;
                 }
             }
+        }
+        Ok(())
+    }
+
+    fn validate_markers(&self, s: &Sequence) -> Result<(), ModelError> {
+        let bad = |why| {
+            Err(ModelError::BadSequence {
+                sequence: s.id,
+                why,
+            })
+        };
+        if s.markers.len() > MAX_MARKERS {
+            return bad("too many markers");
+        }
+        for w in s.markers.windows(2) {
+            if (w[0].time, w[0].id) >= (w[1].time, w[1].id) {
+                return bad("markers must be ordered by time then id");
+            }
+        }
+        for m in &s.markers {
+            if m.time < Time::ZERO {
+                return bad("marker time must not be negative");
+            }
+            if !marker_props_ok(&m.name, m.colour.as_deref()) {
+                return bad("marker name or colour is invalid");
+            }
+        }
+        if let Some(r) = s.range {
+            if r.start < Time::ZERO || r.end <= r.start {
+                return bad("range must satisfy 0 <= start < end");
+            }
+        }
+        if s.loop_range && s.range.is_none() {
+            return bad("loop_range needs a range");
+        }
+        if s.background.blur > MAX_BLUR {
+            return bad("background blur is above 100");
         }
         Ok(())
     }
@@ -257,6 +481,12 @@ impl Project {
         }
         if c.speed.num <= 0 {
             return bad("speed must be positive");
+        }
+        if c.transform.validate().is_err() {
+            return bad("transform has a value that is not finite or out of range");
+        }
+        if !c.audio.is_in_range() {
+            return bad("volume or fade is not finite or out of range");
         }
         if c.start < prev_end {
             return Err(ModelError::Overlap {
@@ -309,6 +539,8 @@ mod tests {
             duration: Time::from_seconds(2).unwrap(),
             speed: unit_speed(),
             link: None,
+            transform: Default::default(),
+            audio: Default::default(),
         };
         let (c1, mut c2) = (clip(&mut ids, 0), clip(&mut ids, 3));
         // linked video + its own audio on the audio track
@@ -332,7 +564,7 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: Project = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
-        assert!(json.contains("\"schema_version\":1"));
+        assert!(json.contains("\"schema_version\":6"));
     }
 
     #[test]
@@ -395,8 +627,8 @@ mod tests {
             p.validate().unwrap_err()
         };
         assert!(matches!(
-            edit(&|p| p.schema_version = 2),
-            ModelError::UnsupportedVersion(2)
+            edit(&|p| p.schema_version = 7),
+            ModelError::UnsupportedVersion(7)
         ));
         assert!(matches!(
             edit(&|p| p.media.clear()),
@@ -415,6 +647,14 @@ mod tests {
             ModelError::BadClip { .. }
         ));
         assert!(matches!(
+            edit(&|p| p.sequences[0].tracks[0].clips[0].audio.volume = 3.0),
+            ModelError::BadClip { .. }
+        ));
+        assert!(matches!(
+            edit(&|p| p.sequences[0].tracks[0].clips[0].audio.fade_out = Time::from_ticks(-1)),
+            ModelError::BadClip { .. }
+        ));
+        assert!(matches!(
             edit(&|p| p.media[0].kind = MediaKind::Audio),
             ModelError::KindMismatch { .. }
         ));
@@ -429,5 +669,48 @@ mod tests {
         let mut p = sample();
         p.sequences[0].tracks[0].clips[1].start = Time::from_seconds(2).unwrap();
         p.validate().unwrap();
+    }
+
+    #[test]
+    fn markers_and_range_are_checked_and_written_only_when_used() {
+        let mut p = sample();
+        assert!(!serde_json::to_string(&p).unwrap().contains("markers"));
+        let mut ids = crate::SeqIds::default();
+        let mk = |ids: &mut crate::SeqIds, t: i64| Marker {
+            id: MarkerId::new(ids),
+            time: Time::from_ticks(t),
+            kind: MarkerKind::Marker,
+            name: String::new(),
+            colour: None,
+        };
+        let (a, b) = (mk(&mut ids, 5), mk(&mut ids, 9));
+        p.sequences[0].markers = vec![a.clone(), b.clone()];
+        p.validate().unwrap();
+        let back: Project = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
+        let bad = |f: &dyn Fn(&mut Sequence)| {
+            let mut q = p.clone();
+            f(&mut q.sequences[0]);
+            q.validate().unwrap_err()
+        };
+        bad(&|s| s.markers.reverse());
+        bad(&|s| s.markers[0].time = Time::from_ticks(-1));
+        bad(&|s| s.markers[0].name = " x".into());
+        bad(&|s| s.markers[0].colour = Some("red".into()));
+        bad(&|s| s.markers.push(a.clone()));
+        bad(&|s| {
+            s.range = Some(TimeRange {
+                start: Time::from_ticks(4),
+                end: Time::from_ticks(4),
+            })
+        });
+        bad(&|s| s.loop_range = true);
+        let mut q = p.clone();
+        q.sequences[0].range = Some(TimeRange {
+            start: Time::ZERO,
+            end: Time::from_ticks(8),
+        });
+        q.sequences[0].loop_range = true;
+        q.validate().unwrap();
     }
 }

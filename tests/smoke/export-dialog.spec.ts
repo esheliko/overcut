@@ -11,7 +11,7 @@ async function ready(page: Page) {
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "vp9_opus.webm"));
-  await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 30_000 });
+  await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 30_000 });
 }
 
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -33,10 +33,13 @@ test("one click on Export (the smart default) makes a file and saves it", async 
   await expect(dialog).toBeVisible();
   // presets are big tappable chips; the default is the project's own size
   const chips = page.locator(".export-chip-choice");
-  await expect(chips).toHaveCount(8);
+  await expect(chips).toHaveCount(6); // eight presets; the 160x120 fixture cannot grow, so YouTube and Facebook write the same file as Original and are named on its tile (UX r14), not offered twice
   for (const c of await chips.all()) expect((await c.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(page.getByTestId("export-preset-original")).toBeChecked();
-  await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
+  await expect(page.getByTestId("export-estimate")).toContainText(/Up to about .* (MB|KB)/);
+  // R11: a tile's hint says what the preset does (size cap, black bars): it wraps, it is never cut off by an ellipsis.
+  const cut = await page.locator(".ex-tx span").evaluateAll((els) => els.filter((e) => e.scrollHeight > e.clientHeight + 1 || getComputedStyle(e).whiteSpace === "nowrap").map((e) => e.textContent));
+  expect(cut).toEqual([]);
   expect(await noOverflow(page)).toBeLessThanOrEqual(0);
   const box = (await dialog.boundingBox())!;
   if ((page.viewportSize()?.width ?? 0) < 720) expect(box.width).toBeGreaterThanOrEqual(page.viewportSize()!.width - 1); // full-screen sheet
@@ -46,6 +49,7 @@ test("one click on Export (the smart default) makes a file and saves it", async 
   await expect(page.getByTestId("export-done")).toBeVisible({ timeout: 90_000 });
   expect(Number((await page.getByTestId("export-filesize").innerText()).replace(/[^\d.]/g, ""))).toBeGreaterThan(0);
   await expect(page.getByTestId("export-filename")).toHaveText(/\.(mp4|webm)$/);
+  expect((await page.getByTestId("export-filename").boundingBox())!.height).toBeLessThan(30); // R11: the file name is one line, not broken mid-date
   expect(await noOverflow(page)).toBeLessThanOrEqual(0);
 
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("export-save").click()]);
@@ -69,7 +73,7 @@ test("a chosen preset is remembered, and Advanced shows a live size", async ({ p
   await page.getByText("Advanced").click();
   await expect(page.getByTestId("export-quality")).toBeVisible();
   await page.getByTestId("export-quality").selectOption("low"); // the 160x120 fixture is at the minimum bitrate, so the figure cannot move here; scaling is a unit test
-  await expect(est).toContainText(/About .* (MB|KB)/);
+  await expect(est).toContainText(/Up to about .* (MB|KB)/);
   await expect(page.getByTestId("export-preset-small")).not.toBeChecked(); // an Advanced change makes it a custom choice
   await page.getByTestId("export-preset-small").check({ force: true }); // picking the chip again resets Advanced to the preset
   await expect(page.getByTestId("export-quality")).toHaveValue("medium");
@@ -117,14 +121,15 @@ test("platform presets: picking Discord aims under its cap, labels the figure a 
   await expect(page.getByTestId("export-preset-discord")).toBeChecked();
   await expect(page.locator(".export-chip-choice", { has: page.getByTestId("export-preset-discord") })).toContainText("Aims under 10 MB");
   await expect(page.getByTestId("export-cap-note")).toContainText(/Aims to stay under 10 MB.*target/);
-  await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
+  await expect(page.getByTestId("export-estimate")).toContainText(/Up to about .* (MB|KB)/);
   await expect(page.getByTestId("export-cap-warning")).toHaveCount(0); // a short clip fits
   // The 160x120 fixture is not 9:16, so the TikTok chip says it adds bars and shows the note when chosen.
   await page.getByTestId("export-preset-vertical").check({ force: true });
   await expect(page.getByText("placed inside this tall frame with black bars")).toBeVisible();
   await expect(page.getByTestId("export-cap-note")).toHaveCount(0);
-  await page.getByTestId("export-preset-facebook").check({ force: true });
-  await expect(page.getByTestId("export-preset-facebook")).toBeChecked();
+  await expect(page.getByTestId("export-preset-facebook")).toHaveCount(0); // the same file as Original here: merged, named on the Original tile
+  await expect(page.getByTestId("export-same-original")).toContainText("Facebook");
+  await page.getByTestId("export-preset-original").check({ force: true });
   await expect(page.getByTestId("export-cap-note")).toHaveCount(0); // no size cap claimed
   await page.getByTestId("export-preset-whatsapp").check({ force: true });
   await expect(page.getByTestId("export-cap-note")).toContainText("16 MB");

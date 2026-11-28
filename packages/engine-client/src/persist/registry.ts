@@ -22,6 +22,13 @@ export interface ProjectEntry {
   width?: number;
   height?: number;
   clips?: number;
+  /** Milliseconds since the epoch: when the project was archived (tucked out of the main list, never deleted); absent = active. */
+  archived?: number;
+  /** Length of the first sequence in ticks and the first track colour (`#rrggbb`), for the card's meta line and its placeholder. Absent until known. */
+  ticks?: number;
+  colour?: string;
+  /** A small preview picture of the project (`data:image/jpeg;base64,...`, 320x180, under 15 KB), refreshed when the project is left or after edits. Absent = the card draws a placeholder. */
+  poster?: string;
 }
 
 export interface RegistryData {
@@ -30,14 +37,36 @@ export interface RegistryData {
   items: ProjectEntry[];
 }
 
+/** Clips as a person counts them: a picture and the sound linked to it (one video import) are one clip; a detached or audio-only clip counts on its own. */
+export function countClips(p: Project): number {
+  let n = 0;
+  for (const s of p.sequences) {
+    const links = new Set<string>();
+    for (const t of s.tracks) for (const c of t.clips) { if (c.link) { if (links.has(c.link)) continue; links.add(c.link); } n++; }
+  }
+  return n;
+}
+
 /** Canvas size and clip count of a project, for its list row. */
 export function summarize(p: Project): Pick<ProjectEntry, "width" | "height" | "clips"> {
   const seq = p.sequences[0];
   return {
     width: seq?.resolution.width,
     height: seq?.resolution.height,
-    clips: p.sequences.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.clips.length, 0), 0),
+    clips: countClips(p),
   };
+}
+
+/** The sequence length (end of the last clip, ticks) and the first track colour of a project, for its list card. */
+export function summarizeExtra(p: Project): Pick<ProjectEntry, "ticks" | "colour"> {
+  const seq = p.sequences[0];
+  let ticks = 0;
+  let colour: string | undefined;
+  for (const t of seq?.tracks ?? []) {
+    colour ??= typeof t.colour === "string" && /^#[0-9a-fA-F]{6}$/.test(t.colour) ? t.colour : undefined;
+    for (const c of t.clips) ticks = Math.max(ticks, c.start + c.duration);
+  }
+  return { ticks, colour };
 }
 
 /** A fresh flat id: `p` + time + randomness. Never `default` or `registry`. */
@@ -57,6 +86,12 @@ export function copyName(name: string, taken: readonly string[], base: string): 
 
 const isEntry = (e: unknown): e is ProjectEntry => !!e && typeof e === "object" && typeof (e as ProjectEntry).id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test((e as ProjectEntry).id) && typeof (e as ProjectEntry).modified === "number";
 
+const withoutArchived = (e: ProjectEntry): ProjectEntry => {
+  const row = { ...e };
+  delete row.archived;
+  return row;
+};
+
 /**
  * The list of local projects (PM-06, `docs/features/projects.md`): a small file in its own storage (`REGISTRY_ID`), replaced atomically.
  * It only NAMES projects; each project's data stays in its own storage, so losing or damaging the list never touches a project.
@@ -75,7 +110,7 @@ export class ProjectRegistry {
     if (!raw) return null;
     try {
       const v = JSON.parse(decode(raw)) as { current?: unknown; items?: unknown };
-      const items = (Array.isArray(v.items) ? v.items : []).filter(isEntry);
+      const items = (Array.isArray(v.items) ? v.items : []).filter(isEntry).map((e) => (Number.isFinite(e.archived) ? e : withoutArchived(e)));
       return { current: typeof v.current === "string" ? v.current : null, items };
     } catch {
       return { current: null, items: [] };
@@ -113,7 +148,8 @@ export class ProjectRegistry {
   /** Changes a row; does nothing for an id that is not listed. `modified` is only set when the patch carries it. */
   update(id: string, patch: Partial<Omit<ProjectEntry, "id" | "created">>): Promise<void> {
     return this.change((d) => {
-      d.items = d.items.map((i) => (i.id === id ? { ...i, ...patch } : i));
+      // `archived: undefined` in a patch clears the field (restore); JSON would drop it anyway, this keeps the in-memory row the same.
+      d.items = d.items.map((i) => (i.id === id ? ("archived" in patch && patch.archived === undefined ? withoutArchived({ ...i, ...patch }) : { ...i, ...patch }) : i));
     });
   }
 

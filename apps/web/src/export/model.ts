@@ -15,6 +15,8 @@ export interface Source {
   /** Frames per second of the project. */
   fps: number;
   seconds: number;
+  /** The project's name, for the saved file's name (empty: the dated default). */
+  name?: string;
 }
 
 /** What the person chose, whether from a preset chip or the Advanced section. `null` size/fps/format = "same as the project" / "best this device can do". */
@@ -106,6 +108,24 @@ export function presetChoice(id: PresetId, src: Source): Choice {
     }
   }
   return { ...size, fps, format: "auto", quality: "high", ...(p.capBytes ? { capBytes: p.capBytes } : null) };
+}
+
+/** What a preset writes, as one comparable string: two presets with the same key give the same file for this project. */
+const presetKey = (c: Choice): string => [c.width, c.height, c.fps ?? "same", c.format, c.quality, c.capBytes ?? "nocap"].join("|");
+
+/**
+ * Presets that would give the same file for this project are one choice: the first of each group (in `ids` order) is shown, the others are listed
+ * under it (`same`). A 720p project exported as "YouTube 1080p" is just "Original" with another name, so offering both made the choice look real when it was not.
+ */
+export function mergePresets(ids: readonly PresetId[], src: Source): { id: PresetId; same: PresetId[] }[] {
+  const out: { id: PresetId; same: PresetId[]; key: string }[] = [];
+  for (const id of ids) {
+    const key = presetKey(presetChoice(id, src));
+    const hit = out.find((g) => g.key === key);
+    if (hit) hit.same.push(id);
+    else out.push({ id, same: [], key });
+  }
+  return out.map(({ id, same }) => ({ id, same }));
 }
 
 /** The same choice without a platform's size cap (any manual change makes it a custom choice). */
@@ -214,6 +234,28 @@ export function etaSeconds(etaMs: number): number {
   return s > 60 ? Math.ceil(s / 5) * 5 : s;
 }
 
+/**
+ * The time left, smoothed (UX r16): the rate over the last 10 s is folded into a moving average (alpha 0.3, one fold per half second), and the finish time
+ * it implies can only move earlier, so the figure counts down and never climbs back up. Returns whole seconds (see `etaSeconds`) or null while there is no rate yet.
+ */
+export interface EtaState { samples: { at: number; f: number }[]; rate: number; deadline: number | null }
+export const newEta = (): EtaState => ({ samples: [], rate: 0, deadline: null });
+export function stepEta(s: EtaState, now: number, fraction: number): number | null {
+  const last = s.samples[s.samples.length - 1];
+  if (!last || now - last.at >= 500) {
+    s.samples.push({ at: now, f: fraction });
+    while (s.samples.length > 2 && now - s.samples[0]!.at > 10_000) s.samples.shift();
+    const first = s.samples[0]!;
+    if (now - first.at >= 3_000 && fraction > first.f) {
+      const inst = (fraction - first.f) / (now - first.at);
+      s.rate = s.rate > 0 ? 0.3 * inst + 0.7 * s.rate : inst;
+      const finish = now + (1 - fraction) / s.rate;
+      s.deadline = s.deadline === null ? finish : Math.min(s.deadline, finish);
+    }
+  }
+  return s.deadline === null ? null : etaSeconds(s.deadline - now);
+}
+
 // ---- the remembered choice ----
 export interface Remembered { preset: PresetId | "custom"; custom?: Choice }
 const KEY = "overcut.export";
@@ -264,9 +306,11 @@ export function errorKey(e: unknown): string {
 export const isCancel = (e: unknown): boolean => e instanceof ExportError && e.code === "cancelled";
 
 /** A name worth saving under: "OverCut export 2026-11-23.mp4" (the engine's own file name is an internal id). */
-export function saveName(internal: string, date: Date = new Date()): string {
+export function saveName(internal: string, projectName?: string | null, date: Date = new Date()): string {
   const ext = internal.includes(".") ? internal.slice(internal.lastIndexOf(".")) : "";
-  return `OverCut export ${date.toISOString().slice(0, 10)}${ext}`;
+  // r15: the file is named after the project ("Summer trip.mp4"); a project with no name keeps the dated default.
+  const base = Array.from(projectName ?? "", (ch) => (ch.charCodeAt(0) < 32 || '\\/:*?"<>|'.includes(ch) ? "" : ch)).join("").trim().replace(/\s+/g, " ").slice(0, 80).trim();
+  return `${base || `OverCut export ${date.toISOString().slice(0, 10)}`}${ext}`;
 }
 
 /** The chip's second line, as a message key plus values, so it never promises more than the output delivers. */
@@ -327,4 +371,11 @@ export function describeFailure(e: unknown): string {
     add("stack", e.stack?.split("\n").slice(0, 6).join(" | "));
   } else add("error", String(e));
   return lines.join("\n");
+}
+
+/** Seconds of black for the gap warning: "18", "2.5", "0.4" (one decimal under 10 s, none above; never "0"). */
+export function formatGapSeconds(seconds: number): string {
+  if (seconds >= 10) return String(Math.round(seconds));
+  const r = Math.round(seconds * 10) / 10;
+  return String(r === 0 ? 0.1 : r);
 }

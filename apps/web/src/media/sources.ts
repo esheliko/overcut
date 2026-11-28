@@ -4,6 +4,7 @@
  */
 
 import type { DesktopApi, MediaApi } from "@app/engine-client";
+import { loadKept } from "./kept";
 
 export interface Source {
   file: File;
@@ -127,6 +128,7 @@ export async function saveHandle(uri: string, handle: FileSystemFileHandle): Pro
     await new Promise<void>((ok, bad) => {
       const tx = d.transaction(STORE, "readwrite");
       tx.objectStore(STORE).put(handle, uri);
+      handleCache.set(uri, handle);
       tx.oncomplete = () => ok();
       tx.onerror = () => bad(tx.error);
     });
@@ -136,22 +138,62 @@ export async function saveHandle(uri: string, handle: FileSystemFileHandle): Pro
   }
 }
 
+type Perm = { queryPermission(o: { mode: "read" }): Promise<PermissionState>; requestPermission(o: { mode: "read" }): Promise<PermissionState> };
+/** Handles read from storage, by uri: "Allow access" must start every `requestPermission` inside one click, so it cannot wait for IndexedDB reads. */
+const handleCache = new Map<string, FileSystemFileHandle>();
+
+async function readHandle(uri: string): Promise<FileSystemFileHandle | undefined> {
+  const cached = handleCache.get(uri);
+  if (cached) return cached;
+  const d = await db();
+  const handle = await new Promise<FileSystemFileHandle | undefined>((ok, bad) => {
+    const r = d.transaction(STORE).objectStore(STORE).get(uri);
+    r.onsuccess = () => ok(r.result as FileSystemFileHandle | undefined);
+    r.onerror = () => bad(r.error);
+  });
+  d.close();
+  if (handle) handleCache.set(uri, handle);
+  return handle;
+}
+
+/**
+ * What a reopened file needs: `granted` (readable now), `prompt` (the browser keeps the handle but asks again after a reload: one "Allow access"
+ * click fixes it, the file is NOT missing), or `missing` (no handle, or the file cannot be read).
+ */
+export type HandleState = "granted" | "prompt" | "missing";
+export async function handleState(uri: string): Promise<HandleState> {
+  if (uri.startsWith("path:")) return "granted"; // desktop: read where it lies; `loadHandle` says whether it still is there
+  if (uri.startsWith("kept:")) return (await loadKept(uri)) ? "granted" : "missing"; // our own copy in the origin-private file system: no permission to ask for
+  try {
+    const handle = await readHandle(uri);
+    if (!handle) return "missing";
+    const state = await (handle as unknown as Perm).queryPermission({ mode: "read" });
+    return state === "granted" ? "granted" : "prompt";
+  } catch {
+    return "missing";
+  }
+}
+
+/** Asks permission for every uri at once. Call it straight from the click (before any await): all prompts start inside the one user gesture. Resolves to the uris that were granted. */
+export function allowAll(uris: readonly string[]): Promise<string[]> {
+  const asks = uris.map(async (uri) => {
+    const handle = handleCache.get(uri);
+    if (!handle) return null;
+    try { return (await (handle as unknown as Perm).requestPermission({ mode: "read" })) === "granted" ? uri : null; } catch { return null; }
+  });
+  return Promise.all(asks).then((r) => r.filter((x): x is string => x !== null));
+}
+
 /**
  * The file behind a stored `uri`, or `null` (never stored, or permission was not granted: the caller shows "relink").
  * `request` asks the user for permission, which must happen from a click; without it only an existing grant counts.
  */
-export async function loadHandle(uri: string, request = false): Promise<File | null> {
+export async function loadHandle(uri: string, request = false, name?: string): Promise<File | null> {
+  if (uri.startsWith("kept:")) return loadKept(uri, name);
   if (uri.startsWith("path:")) return desktop ? desktop.fileAt(uri.slice(5)) : null; // desktop: the file is read where it lies
   try {
-    const d = await db();
-    const handle = await new Promise<FileSystemFileHandle | undefined>((ok, bad) => {
-      const r = d.transaction(STORE).objectStore(STORE).get(uri);
-      r.onsuccess = () => ok(r.result as FileSystemFileHandle | undefined);
-      r.onerror = () => bad(r.error);
-    });
-    d.close();
+    const handle = await readHandle(uri);
     if (!handle) return null;
-    type Perm = { queryPermission(o: { mode: "read" }): Promise<PermissionState>; requestPermission(o: { mode: "read" }): Promise<PermissionState> };
     const p = handle as unknown as Perm;
     let state = await p.queryPermission({ mode: "read" });
     if (state === "prompt" && request) state = await p.requestPermission({ mode: "read" });

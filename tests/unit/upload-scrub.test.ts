@@ -11,7 +11,9 @@ import type { TestResult } from "../../apps/web/src/diagnostics/types";
 test("the faster measured path wins, zero-copy is never assumed, a failed path never wins, nothing measurable falls back to the frame path", () => {
   assert.equal(pickPath({ frame: 5.9, cpu: 27 }), "frame"); // Intel UHD 630: copy 5.9 ms vs CPU 27 ms
   assert.equal(pickPath({ frame: 40, cpu: 9 }), "cpu");
-  assert.equal(pickPath({ frame: 10, cpu: 9.5 }), "frame"); // within 10%: the path that needs no CPU copy
+  assert.equal(pickPath({ frame: 10, cpu: 9.5 }), "frame"); // within 25%: the path that needs no CPU copy
+  assert.equal(pickPath({ frame: 10, cpu: 8 }), "frame");
+  assert.equal(pickPath({ frame: 10, cpu: 7 }), "cpu");
   assert.equal(pickPath({ frame: null, cpu: 30 }), "cpu");
   assert.equal(pickPath({ frame: 8, cpu: null }), "frame");
   assert.equal(pickPath({ frame: null, cpu: null }), "frame");
@@ -25,6 +27,19 @@ test("the cache key changes with the GPU, the backend and the browser version", 
   assert.notEqual(k, uploadKey("webgpu", "Xclipse 940", ua));
   assert.notEqual(k, uploadKey("webgl2", "Mali", ua));
   assert.notEqual(k, uploadKey("webgl2", "Xclipse 940", ua.replace("157", "158")));
+  // A value cached by the old measuring method (no version suffix) is never found under the current key: it is measured again.
+  assert.ok(k.endsWith("|v2"));
+  assert.notEqual(k, "webgl2|Xclipse 940|Chrome/157.0.0.0");
+});
+
+test("S24 regression: both paths measured together; a run disturbed by playback is dropped, not stored", async () => {
+  const saved: UploadChoice[] = [];
+  const ok = await chooseUploadPath({ key: "k", cached: async () => null, save: (_k, v) => void saved.push(v), measure: async () => null, measureAll: async () => ({ frame: 9.5, cpu: 28 }) });
+  assert.deepEqual([ok.path, ok.source, saved.length], ["frame", "measured", 1]);
+  // The numbers the v1 method produced on the S24 (frame 45 ms, cpu 28 ms) would still pick cpu; the fix is the method, not the threshold.
+  assert.equal(pickPath({ frame: 45.36, cpu: 28.19 }), "cpu");
+  const disturbed = await chooseUploadPath({ key: "k", cached: async () => null, save: (_k, v) => void saved.push(v), measure: async () => null, measureAll: async () => ({ frame: 45, cpu: 20 }), undisturbed: () => false });
+  assert.deepEqual([disturbed.path, disturbed.source, saved.length], ["frame", "default", 1]);
 });
 
 test("a stored choice is reused without measuring; a bad or missing one is measured and saved; a run where nothing worked is not remembered", async () => {
@@ -109,7 +124,7 @@ test("thumbnail store returns the nearest in time and forgets a media item", () 
 const T = 705_600_000;
 const STEP = T / 30;
 
-function setup(opts: { thumb?: boolean; strip?: boolean } = {}) {
+function setup(opts: { thumb?: boolean; strip?: boolean; layers?: number } = {}) {
   const closed: number[] = [];
   const seeks: [string, number][] = [];
   const calls: number[] = [];
@@ -130,7 +145,7 @@ function setup(opts: { thumb?: boolean; strip?: boolean } = {}) {
   const renders: { scale: number[]; first: number | "bitmap" }[] = [];
   const player = new Player({
     rate: { num: 30, den: 1 }, size: { width: 1920, height: 1080 }, endTicks: 10 * T, sequence: "s",
-    evaluate: async (ticks, n) => ({ time: ticks, frame: 0, video_time: ticks, sample: 0, audio_samples: n, audio: [], layers: [{ clip: "c", media: "m", source_time: ticks, opacity: 1, transform: { center: [960, 540], scale: [1, 1], rotation: 0 } }] }) as never,
+    evaluate: async (ticks, n) => ({ time: ticks, frame: 0, video_time: ticks, sample: 0, audio_samples: n, audio: [], layers: Array.from({ length: opts.layers ?? 1 }, (_, i) => ({ clip: `c${i}`, media: "m", source_time: ticks, opacity: 1, transform: { center: [960, 540], scale: [1, 1], rotation: 0 } })) }) as never,
     media: () => media as never,
     renderer: { render: (layers) => void renders.push({ scale: [...layers[0]!.scale], first: "rgba" in layers[0]!.source ? (layers[0]!.source as { rgba: Uint8Array }).rgba[0]! : "bitmap" }), dispose: () => undefined },
     fallbackClock: { now: () => 0 },
@@ -160,6 +175,20 @@ test("scrub shows the nearest filmstrip thumbnail at once, scaled to the clip, t
   assert.equal(s.renders[1]!.first, 30, "then the exact frame");
   assert.deepEqual(s.renders[1]!.scale, [1, 1]);
   assert.deepEqual([s.player.stats.standIns, s.player.stats.thumbStandIns, s.player.stats.scrubMs.length], [1, 1, 1]);
+  s.player.dispose();
+});
+
+test("S24 regression: three layers of the same picture are decoded once, so the scrub reaches its exact frame (the handle cancels all but the latest request)", async () => {
+  const s = setup({ layers: 3 });
+  s.player.seek(30);
+  await settle();
+  assert.deepEqual(s.calls, [30], "one decode for three layers showing the same frame of the same media");
+  s.finish(30);
+  await settle();
+  assert.equal(s.player.stats.scrubMs.length, 1, "the scrub finished (before the fix every layer cancelled the others and it never did)");
+  assert.equal(s.player.isIdle(), false);
+  await new Promise((r) => setTimeout(r, 450));
+  assert.equal(s.player.isIdle(), true, "and the player becomes idle, so the upload path can be measured");
   s.player.dispose();
 });
 
@@ -202,6 +231,19 @@ test("with no thumbnail the nearest decoded frame is the stand-in; the held pict
   await settle();
   assert.equal(s.renders.at(-1)!.first, 60);
   s.player.dispose();
+});
+
+test("a scrub replaced before its exact frame does not leave a first-update number without an exact one", async () => {
+  const s = setup({ thumb: true });
+  s.player.seek(30);
+  await settle();
+  assert.equal(s.player.stats.firstUpdateMs.length, 1, "stand-in shown");
+  s.player.seek(50); // replaces the first scrub while 30 is still decoding
+  await settle();
+  s.finish(50);
+  await settle();
+  assert.equal(s.player.stats.scrubMs.length, 1, "only the scrub that finished");
+  assert.equal(s.player.stats.firstUpdateMs.length, s.player.stats.scrubMs.length, "one-to-one: every counted scrub has both numbers");
 });
 
 test("decode-ahead fills the cache around a paused playhead so a frame step needs no decode and updates at once", async () => {

@@ -203,6 +203,15 @@ fn editor_evaluate(
     with_editor(&state, |e| e.evaluate_json(&sequence, ticks, audio_samples))
 }
 
+#[tauri::command]
+fn editor_snap(
+    state: State<'_, EditorState>,
+    sequence: String,
+    params: String,
+) -> Result<String, String> {
+    with_editor(&state, |e| e.snap_json(&sequence, &params))
+}
+
 /// Waveform jobs and parsed peaks files, by id (mirrors `PeaksJob` / `PeaksView` in `crates/wasm`).
 #[derive(Default)]
 struct PeaksState {
@@ -343,6 +352,7 @@ macro_rules! handlers {
             project_open,
             project_save,
             editor_evaluate,
+            editor_snap,
             peaks_job_begin,
             peaks_job_push,
             peaks_job_snapshot,

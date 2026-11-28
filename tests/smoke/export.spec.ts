@@ -17,7 +17,7 @@ interface Outcome {
   stats?: { frames: number; durationSeconds: number; speedVsRealtime: number; peakEncodeQueue: number; codecs: string };
   slices?: string[];
 }
-type Run = { seconds: number; realMedia?: { base64: string; name: string }; width?: number; height?: number; settings?: Record<string, unknown>; cancelAfterProgress?: number; fps?: [number, number] };
+type Run = { seconds: number; speed?: [number, number]; realMedia?: { base64: string; name: string }; width?: number; height?: number; settings?: Record<string, unknown>; cancelAfterProgress?: number; fps?: [number, number] };
 
 // Export is engine work in a Worker, not layout: one viewport is enough (the phone project would only repeat it).
 test.beforeEach(async ({ page }, info) => {
@@ -133,6 +133,66 @@ test("export: a real file goes through the production decoder (video and audio) 
   expect(luma[0] ?? 0).toBeGreaterThan(20);
 });
 
+// M2-026: a sped-up or slowed clip exports at its new length, the click stays on its flash (flash and click are once per SOURCE second,
+// so the pair repeats every 1 / speed timeline seconds), and the pitch of the sound is kept.
+for (const [num, den] of [[2, 1], [1, 2]] as const) {
+  test(`export: a ${num / den}x clip has the right length and its click stays on its flash`, async ({ page }, info) => {
+    let ffmpeg = true;
+    try {
+      execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
+    } catch {
+      ffmpeg = false;
+    }
+    test.skip(!ffmpeg, "ffmpeg is not installed here");
+    const seconds = 6;
+    const r = await run(page, { seconds, speed: [num, den], settings: pinned }, true);
+    expect(r.ok).toBe(true);
+    expect(r.stats?.frames).toBe(seconds * 30);
+    const file = info.outputPath(`speed-${num}-${den}.webm`);
+    writeFileSync(file, Buffer.concat((r.slices ?? []).map((s) => Buffer.from(s, "base64"))));
+    const period = den / num;
+    const out = JSON.parse(execFileSync("node", ["spikes/s3-encode/verify.mjs", file, String(seconds), String(period)], { maxBuffer: 1 << 24 }).toString()) as {
+      decodedVideoFrames: number;
+      expectedVideoFrames: number;
+      flashesFound: number;
+      expectedFlashes: number;
+      clicksMeasured: number;
+      maxAbsOffsetFrames: number;
+    };
+    const length = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString());
+    expect(out.decodedVideoFrames).toBe(out.expectedVideoFrames);
+    expect(length).toBeCloseTo(seconds, 1);
+    expect(out.flashesFound).toBeGreaterThanOrEqual(out.expectedFlashes - 1);
+    expect(out.clicksMeasured).toBeGreaterThanOrEqual(out.expectedFlashes - 1); // an edge click may fall inside the first/last window
+    expect(out.maxAbsOffsetFrames).toBeLessThan(1); // the bar: under one frame
+  });
+}
+
+// esheliko/overcut#138: the audio track must end where the video ends (the encoder's last, padded Opus packet used to run 20 ms past it).
+for (const [container, videoCodec, ext] of [["webm", "vp9", "webm"], ["mp4", "h264", "mp4"]] as const) {
+  for (const seconds of [2, 7]) {
+    test(`export: audio and video end together (${container}, ${seconds} s)`, async ({ page }, info) => {
+      let ffprobe = true;
+      try {
+        execFileSync("ffprobe", ["-version"], { stdio: "ignore" });
+      } catch {
+        ffprobe = false;
+      }
+      test.skip(!ffprobe, "ffprobe is not installed here");
+      const r = await run(page, { seconds, settings: { container, videoCodec, creationTime: 1_700_000_000_000 } }, true);
+      test.skip(!r.ok && r.code === "unsupported", `this browser cannot encode ${videoCodec} here`);
+      expect(r.ok).toBe(true);
+      const file = info.outputPath(`av-${seconds}.${ext}`);
+      writeFileSync(file, Buffer.concat((r.slices ?? []).map((s) => Buffer.from(s, "base64"))));
+      const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type,duration:format=duration", "-of", "json", file]).toString()) as { streams: { codec_type: string; duration?: string }[]; format: { duration: string } };
+      const dur = (kind: string) => Number(probe.streams.find((s) => s.codec_type === kind)?.duration ?? probe.format.duration);
+      console.log(`${container} ${seconds}s:`, JSON.stringify({ video: dur("video"), audio: dur("audio"), format: probe.format.duration }));
+      expect(dur("video")).toBeCloseTo(seconds, 2);
+      expect(dur("audio") - dur("video")).toBeLessThan(0.0025); // within a sample or two of the video, not a whole 20 ms Opus frame
+      expect(dur("audio") - dur("video")).toBeGreaterThan(-0.021); // and never more than one audio frame short
+    });
+  }
+}
 test("export: a clip whose audio track is shorter than its picture exports (audio past the end is silence, not 'out of range')", async ({ page }) => {
   const base64 = readFileSync("crates/media/tests/fixtures/vp9_opus_short_audio.webm").toString("base64"); // 1.5 s picture, 1 s of tone
   const r = await run(page, { seconds: 2, width: 320, height: 240, realMedia: { base64, name: "short-audio.webm" }, settings: pinned });

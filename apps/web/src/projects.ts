@@ -15,6 +15,7 @@ import {
   openProjectSession,
   openProjectStorage,
   summarize,
+  summarizeExtra,
   type Engine,
   type ProjectEntry,
   type RegistryData,
@@ -55,7 +56,7 @@ export async function loadProjects(engine: Engine): Promise<RegistryData> {
       if (!bytes) return null;
       try {
         const { project } = await engine.openProject(bytes);
-        return { name: project.name, ...summarize(project) };
+        return { name: project.name, ...summarize(project), ...summarizeExtra(project) };
       } catch {
         return { name: "" }; // a file this build cannot read still belongs in the list: opening it shows the real reason
       }
@@ -64,22 +65,21 @@ export async function loadProjects(engine: Engine): Promise<RegistryData> {
 }
 
 /** Adds a project to the list. With `bytes` (a `.overcut` file already checked by the caller) it starts from that file, else it starts empty on first open. */
-export async function createProject(engine: Engine, name: string, bytes?: Uint8Array): Promise<ProjectEntry> {
+export async function createProject(engine: Engine, name: string, bytes?: Uint8Array, poster?: string): Promise<ProjectEntry> {
   const reg = await getRegistry();
   const id = newProjectId();
   let extra: Partial<ProjectEntry> = {};
   if (bytes) {
     const { project } = await engine.openProject(bytes);
-    extra = summarize(project);
+    extra = { ...summarize(project), ...summarizeExtra(project), ...(poster ? { poster } : {}) };
     await withStorage(id, (s) => s.writeAtomic(PROJECT_FILE, bytes));
   }
   return reg.add({ id, name, ...extra });
 }
 
-/** A copy of a project that is not open: its latest state (a crash-left journal is replayed first, like opening it would) saved as a new project. */
-export async function duplicateProject(engine: Engine, entry: ProjectEntry, defaultName: string): Promise<ProjectEntry> {
-  const reg = await getRegistry();
-  const bytes = await withStorage(entry.id, async (s) => {
+/** The latest state of a project that is not open (a crash-left journal is replayed first, like opening it would), as `.overcut` bytes. */
+export function projectBytes(engine: Engine, entry: ProjectEntry): Promise<Uint8Array> {
+  return withStorage(entry.id, async (s) => {
     const { session } = await openProjectSession(engine, s, { createProject: () => { throw new Error("this project has no saved file"); } });
     try {
       return await session.exportBytes();
@@ -87,9 +87,20 @@ export async function duplicateProject(engine: Engine, entry: ProjectEntry, defa
       await session.close().catch(() => undefined);
     }
   });
+}
+
+/** A copy of a project that is not open: its latest state saved as a new project. */
+export async function duplicateProject(engine: Engine, entry: ProjectEntry, defaultName: string): Promise<ProjectEntry> {
+  const reg = await getRegistry();
+  const bytes = await projectBytes(engine, entry);
   const name = copyName(entry.name, (await reg.list()).map((e) => e.name), defaultName);
-  const copy = await createProject(engine, name, bytes);
-  return copy;
+  return createProject(engine, name, bytes, entry.poster); // the copy looks like its source until it is opened and left
+}
+
+/** Archives (`true`) or restores (`false`) a project: only its row changes, its data is never touched. */
+export async function setArchived(entry: ProjectEntry, archived: boolean): Promise<void> {
+  const reg = await getRegistry();
+  await reg.update(entry.id, { archived: archived ? Date.now() : undefined });
 }
 
 /** Deletes a project for good (its data and its row). The caller has asked the person first. */

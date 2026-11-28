@@ -63,7 +63,7 @@ function fake(over: { failBegin?: string; failVideoAt?: number } = {}) {
     resize: () => undefined,
     present: () => undefined,
     readback: async (_l: unknown, _s: unknown, out: { width: number; height: number }) => new Uint8Array(out.width * out.height * 4),
-    allocStats: () => ({ textures: 0, buffers: 0, bind_groups: 0 }),
+    allocStats: () => ({ textures: 0, buffers: 0, bind_groups: 0, errors: 0 }),
     dispose: () => undefined,
   } as unknown as GpuRenderer;
   const host: NativeExportHost = {
@@ -71,8 +71,8 @@ function fake(over: { failBegin?: string; failVideoAt?: number } = {}) {
     project: async () => project,
     evaluate: async (_s, ticks, n) => ({
       time: ticks, frame: 0, video_time: ticks, sample: 0, audio_samples: n,
-      layers: [{ track: "v", clip: "c", media: "m", source_time: ticks, transform: { center: [0, 0], scale: [1, 1], rotation: 0 }, opacity: 1 }],
-      audio: n ? [{ track: "a", clip: "c", media: "m", out_start: 0, len: n, source_start: ticks, speed: { num: 1, den: 1 }, gain: 1 }] : [],
+      layers: [{ track: "v", clip: "c", media: "m", source_time: ticks, transform: { center: [0, 0], scale: [1, 1], rotation: 0 }, props: { position: [0, 0], scale: [1, 1], rotation: 0, anchor: [0, 0], crop: [0, 0, 0, 0], opacity: 1, flip: [false, false], fit: "contain" }, opacity: 1 }],
+      audio: n ? [{ track: "a", clip: "c", media: "m", out_start: 0, len: n, source_start: ticks, speed: { num: 1, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] : [],
     }),
     media: {
       open: async () =>

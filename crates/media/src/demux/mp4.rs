@@ -8,7 +8,7 @@
 use super::codec;
 use super::reader::{invalid, Cur, Reader};
 use super::{
-    analyze_steps, to_time, ContainerFormat, Packet, Probe, Track, TrackKind,
+    analyze_steps, to_time, ColourInfo, ContainerFormat, Packet, Probe, Track, TrackKind,
     MAX_PACKETS_PER_TRACK, MAX_TRACKS,
 };
 use crate::{MediaError, Source};
@@ -352,6 +352,7 @@ fn parse_trak(
         width: entry.width,
         height: entry.height,
         rotation,
+        colour: entry.colour,
         sample_rate: entry.sample_rate,
         channels: entry.channels,
         timescale,
@@ -427,6 +428,7 @@ struct Entry {
     height: u32,
     sample_rate: u32,
     channels: u16,
+    colour: ColourInfo,
 }
 
 fn sample_entry(stsd: &[u8], kind: TrackKind) -> Result<Entry, MediaError> {
@@ -450,6 +452,7 @@ fn sample_entry(stsd: &[u8], kind: TrackKind) -> Result<Entry, MediaError> {
         height: 0,
         sample_rate: 0,
         channels: 0,
+        colour: ColourInfo::default(),
     };
     let name = || String::from_utf8_lossy(&fourcc).trim().to_ascii_lowercase();
     match kind {
@@ -460,6 +463,17 @@ fn sample_entry(stsd: &[u8], kind: TrackKind) -> Result<Entry, MediaError> {
             e.skip(78 - 28)?;
             let kids = boxes(e.rest())?;
             let take = |t: &[u8; 4]| find(&kids, t).map(<[u8]>::to_vec);
+            // `colr` / `nclx`: primaries, transfer, matrix (u16 each), then the full-range flag in the top bit.
+            if let Some(c) = take(b"colr").filter(|c| c.starts_with(b"nclx") && c.len() >= 11) {
+                let code =
+                    |i: usize| u8::try_from(u16::from_be_bytes([c[i], c[i + 1]])).unwrap_or(0);
+                entry.colour = ColourInfo {
+                    primaries: code(4),
+                    transfer: code(6),
+                    matrix: code(8),
+                    full_range: Some(c[10] & 0x80 != 0),
+                };
+            }
             match &fourcc {
                 b"avc1" | b"avc3" => {
                     entry.description = take(b"avcC").unwrap_or_default();
@@ -471,6 +485,15 @@ fn sample_entry(stsd: &[u8], kind: TrackKind) -> Result<Entry, MediaError> {
                 }
                 b"vp09" => {
                     let vpcc = take(b"vpcC").unwrap_or_default();
+                    // vpcC (after version + flags): profile, level, depth/chroma/range byte, primaries, transfer, matrix: the fallback when there is no `colr`.
+                    if entry.colour == ColourInfo::default() && vpcc.len() >= 11 {
+                        entry.colour = ColourInfo {
+                            primaries: vpcc[7],
+                            transfer: vpcc[8],
+                            matrix: vpcc[9],
+                            full_range: Some(vpcc[6] & 1 != 0),
+                        };
+                    }
                     entry.codec = codec::vp9(vpcc.get(4..).unwrap_or(&[]));
                 }
                 b"av01" => {

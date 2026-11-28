@@ -1,17 +1,18 @@
 /** Export harness: open `/#export-harness`. Drives `engine.export` end to end on a synthetic project (the `test:pattern` media: a flash frame and a click
  *  on every second) and exposes `window.__exportHarness` for the smoke test and for manual measurement. Not linked from the UI; the export dialog is M1-035. */
 import { useEffect, useState } from "react";
-import { ExportError, createEngine, type Engine, type ExportSettings, type ExportStats, type Project } from "@app/engine-client";
+import { PROJECT_SCHEMA_VERSION, ExportError, createEngine, type Engine, type ExportSettings, type ExportStats, type Project } from "@app/engine-client";
 
 const TICKS = 705_600_000;
 const hex = (n: number) => n.toString(16).padStart(32, "0");
 
-export function patternProject(seconds: number, opts: { fps?: [number, number]; width?: number; height?: number } = {}): Project {
+export function patternProject(seconds: number, opts: { fps?: [number, number]; width?: number; height?: number; speed?: [number, number] } = {}): Project {
+  const speed = opts.speed ? { num: opts.speed[0], den: opts.speed[1] } : undefined; // timeline length stays `seconds`; the source read is `seconds * speed`
   const [num, den] = opts.fps ?? [30, 1];
   return {
     id: hex(1),
     name: "export harness",
-    schema_version: 1,
+    schema_version: PROJECT_SCHEMA_VERSION,
     media: [{ id: hex(2), kind: "video", name: "test pattern", uri: `test:pattern?w=${opts.width ?? 1280}&h=${opts.height ?? 720}` }],
     sequences: [
       {
@@ -21,8 +22,8 @@ export function patternProject(seconds: number, opts: { fps?: [number, number]; 
         resolution: { width: opts.width ?? 1280, height: opts.height ?? 720 },
         sample_rate: 48000,
         tracks: [
-          { id: hex(4), kind: "video", locked: false, muted: false, name: "V1", clips: [{ id: hex(5), media: hex(2), start: 0, source_in: 0, duration: seconds * TICKS }] },
-          { id: hex(6), kind: "audio", locked: false, muted: false, name: "A1", clips: [{ id: hex(7), media: hex(2), start: 0, source_in: 0, duration: seconds * TICKS }] },
+          { id: hex(4), kind: "video", locked: false, muted: false, name: "V1", clips: [{ id: hex(5), media: hex(2), start: 0, source_in: 0, duration: seconds * TICKS, ...(speed && { speed }) }] },
+          { id: hex(6), kind: "audio", locked: false, muted: false, name: "A1", clips: [{ id: hex(7), media: hex(2), start: 0, source_in: 0, duration: seconds * TICKS, ...(speed && { speed }) }] },
         ],
       },
     ],
@@ -35,6 +36,8 @@ export interface HarnessRun {
   fps?: [number, number];
   width?: number;
   height?: number;
+  /** Speed of both clips as [num, den] (default 1): a 6 s timeline at 2x reads 12 source seconds. */
+  speed?: [number, number];
   /** A real media file (base64) used instead of the test pattern, 1 s long: exercises the production decoder. */
   realMedia?: { base64: string; name: string };
   /** Cancel after this many progress events (to test cancel). */
@@ -76,7 +79,7 @@ async function sha256(file: File): Promise<string> {
 }
 
 export async function runHarness(engine: Engine, run: HarnessRun, keep = false): Promise<HarnessOutcome> {
-  const project = patternProject(run.seconds, { fps: run.fps, width: run.width, height: run.height });
+  const project = patternProject(run.seconds, { fps: run.fps, width: run.width, height: run.height, speed: run.speed });
   const sources: Record<string, Blob> = {};
   if (run.realMedia) {
     const m = project.media[0]!;

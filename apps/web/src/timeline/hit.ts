@@ -1,6 +1,6 @@
 /** Pure hit-testing for the canvas timeline; reused by M1-034 editing. No DOM. */
 import { firstEndingAfter, type Scene } from "./scene";
-import { GUTTER, LANE, RULER, xToTime, type View } from "./view";
+import { gut, LANE, RULER, xToTime, type View } from "./view";
 
 export type Hit =
   | { kind: "ruler"; time: number }
@@ -8,6 +8,21 @@ export type Hit =
   | { kind: "clip"; track: number; clip: number; time: number; edge: "start" | "end" | null }
   | { kind: "track"; track: number; time: number }
   | { kind: "empty"; time: number };
+
+/** The "+ Video" / "+ Audio" buttons in the track column, just under the last track (UX r15: adding a track was hidden in a menu). 44 px tall: a touch target. Null on the phone's compact headers. */
+export function addTrackRect(scene: Scene, v: View, kind: "video" | "audio"): { x: number; y: number; w: number; h: number } | null {
+  if (v.compact) return null;
+  const w = Math.floor((gut(v) - 28) / 2);
+  return { x: 10 + (kind === "audio" ? w + 8 : 0), y: RULER + scene.trackCount * LANE - v.scrollY + 10, w, h: 44 };
+}
+/** Which add-track button (x, y) is on, or null. */
+export function addTrackAt(scene: Scene, v: View, x: number, y: number): "video" | "audio" | null {
+  for (const kind of ["video", "audio"] as const) {
+    const r = addTrackRect(scene, v, kind);
+    if (r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h && y > RULER) return kind;
+  }
+  return null;
+}
 
 /** Track row under a canvas y, or -1. */
 export function trackAtY(scene: Scene, v: View, y: number): number {
@@ -27,14 +42,14 @@ export function clipAtTime(scene: Scene, track: number, sec: number): number {
 /** `edgePx`: grab zone at each clip edge (use ~16 for touch). */
 export function hitTest(scene: Scene, v: View, x: number, y: number, edgePx = 8): Hit {
   const time = xToTime(v, x);
-  if (y < RULER) return x < GUTTER ? { kind: "empty", time } : { kind: "ruler", time };
+  if (y < RULER) return x < gut(v) ? { kind: "empty", time } : { kind: "ruler", time };
   const track = trackAtY(scene, v, y);
   if (track < 0) return { kind: "empty", time };
-  if (x < GUTTER) return { kind: "gutter", track };
+  if (x < gut(v)) return { kind: "gutter", track };
   const clip = clipAtTime(scene, track, time);
   if (clip < 0) return { kind: "track", track, time };
-  const edge = (x - (GUTTER + scene.start[clip]! * v.pps - v.scrollX) <= edgePx) ? "start"
-    : ((GUTTER + scene.end[clip]! * v.pps - v.scrollX) - x <= edgePx ? "end" : null);
+  const edge = (x - (gut(v) + scene.start[clip]! * v.pps - v.scrollX) <= edgePx) ? "start"
+    : ((gut(v) + scene.end[clip]! * v.pps - v.scrollX) - x <= edgePx ? "end" : null);
   return { kind: "clip", track, clip, time, edge };
 }
 
@@ -46,14 +61,14 @@ export const HANDLE_MOUSE = 16;
  *  or null. Only seams with a selected clip on either side count, unless `any` (mouse): then every seam counts. The nearest seam wins. */
 export function seamAt(scene: Scene, v: View, selected: Uint8Array, x: number, y: number, touch: boolean, any = false): { left: number; right: number } | null {
   const track = trackAtY(scene, v, y);
-  if (track < 0 || x < GUTTER) return null;
+  if (track < 0 || x < gut(v)) return null;
   const zone = touch ? HANDLE_TOUCH : HANDLE_MOUSE;
   const lo = scene.trackFirst[track]!, hi = scene.trackFirst[track + 1]!;
   let best: { left: number; right: number } | null = null, bestD = Infinity;
   for (let i = lo; i + 1 < hi; i++) {
     if (scene.tStart[i]! + scene.tDur[i]! !== scene.tStart[i + 1]!) continue;
     if (!any && !selected[i] && !selected[i + 1]) continue;
-    const bx = GUTTER + scene.end[i]! * v.pps - v.scrollX, d = Math.abs(x - bx);
+    const bx = gut(v) + scene.end[i]! * v.pps - v.scrollX, d = Math.abs(x - bx);
     if (d <= zone / 2 && d < bestD) { best = { left: i, right: i + 1 }; bestD = d; }
   }
   return best;
@@ -65,7 +80,7 @@ export function seamAt(scene: Scene, v: View, selected: Uint8Array, x: number, y
  *  `any` (mouse only): every clip's edge counts, not just the selected ones, so a first-time user can drag an edge without selecting first. */
 export function handleAt(scene: Scene, v: View, selected: Uint8Array, x: number, y: number, touch: boolean, any = false): { clip: number; edge: "start" | "end" } | null {
   const track = trackAtY(scene, v, y);
-  if (track < 0 || x < GUTTER) return null;
+  if (track < 0 || x < gut(v)) return null;
   const zone = touch ? HANDLE_TOUCH : HANDLE_MOUSE;
   const lo = scene.trackFirst[track]!, hi = scene.trackFirst[track + 1]!;
   const t = xToTime(v, x), reach = zone / v.pps;
@@ -74,9 +89,10 @@ export function handleAt(scene: Scene, v: View, selected: Uint8Array, x: number,
     if (!any && !selected[i]) continue;
     const w = (scene.end[i]! - scene.start[i]!) * v.pps;
     const inside = Math.min(zone / 2, w / 3), outside = zone - inside;
-    const x0 = GUTTER + scene.start[i]! * v.pps - v.scrollX, x1 = x0 + w;
+    const x0 = gut(v) + scene.start[i]! * v.pps - v.scrollX, x1 = x0 + w;
     const ds = Math.abs(x - x0), de = Math.abs(x - x1);
-    if (x >= x0 - outside && x <= x0 + inside && ds < bestD) { best = { clip: i, edge: "start" }; bestD = ds; }
+    // On a shared edge (a cut) the pointer's side picks: right of it = the right clip's start, left of it = the left clip's end.
+    if (x >= x0 - outside && x <= x0 + inside && (ds < bestD || (x >= x0 && ds <= bestD + 0.5))) { best = { clip: i, edge: "start" }; bestD = ds; }
     if (x >= x1 - inside && x <= x1 + outside && de < bestD) { best = { clip: i, edge: "end" }; bestD = de; }
   }
   return best;

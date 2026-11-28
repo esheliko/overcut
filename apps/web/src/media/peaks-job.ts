@@ -18,6 +18,8 @@ export interface ExtractOptions {
   cache: MediaCache;
   media: MediaRef;
   signal?: AbortSignal;
+  /** Called between decode steps; resolves when the next step may run (default: a zero-delay timeout). The app passes `pace`, which also waits while the user plays or drags. */
+  pace?: () => Promise<void>;
   /** PCM frames decoded per step (default 2 s at the stream's rate). */
   chunkSeconds?: number;
   /** Minimum time between published partial files. */
@@ -69,7 +71,7 @@ export async function extractPeaks(o: ExtractOptions): Promise<ExtractResult> {
       await job.push(pcm);
       pos += n; decoded += n;
       if (performance.now() - lastPublish >= every) await publish();
-      await tick(); // keep the thread responsive between chunks
+      await (o.pace ?? tick)(); // keep the thread responsive between chunks
     }
     const file = await job.finish();
     await cache.put(key, file);

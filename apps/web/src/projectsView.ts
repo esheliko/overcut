@@ -20,7 +20,33 @@ export function shapeBox(width: number | undefined, height: number | undefined, 
   return { w: Math.max(8, Math.round(width * k)), h: Math.max(8, Math.round(height * k)) };
 }
 
-/** What to show first: the list when there are several projects, the editor when there is exactly one, a new project when there are none. */
-export function startScreen(count: number): "home" | "editor" | "new" {
-  return count === 0 ? "new" : count === 1 ? "editor" : "home";
+/** What to show first: the list when there are several active projects, the editor when there is exactly one, a new project when there are none.
+ * `archived` projects are not counted (they are tucked away), but they keep the list as the first screen when nothing else is active: a first
+ * start must not silently create a project next to the ones the person archived. */
+export function startScreen(count: number, archived = 0): "home" | "editor" | "new" {
+  return count === 0 ? (archived > 0 ? "home" : "new") : count === 1 ? "editor" : "home";
+}
+
+/** Archived = tucked out of the main list (never deleted). A row without a valid `archived` time is active. */
+export const isArchived = (e: { archived?: number }): boolean => typeof e.archived === "number" && Number.isFinite(e.archived);
+
+export type LibraryFilter = "active" | "archived";
+
+/** The rows of one filter (order kept: the registry already sorts newest edit first) and how many projects each side holds. */
+export function libraryView<T extends { archived?: number }>(entries: readonly T[], filter: LibraryFilter): { shown: T[]; active: number; archived: number } {
+  const archived = entries.filter(isArchived).length;
+  return { shown: entries.filter((e) => isArchived(e) === (filter === "archived")), active: entries.length - archived, archived };
+}
+
+/**
+ * The name a new project gets so the list tells them apart: "Project 28 Nov", then "Project 28 Nov 2", "... 3" when that day's name is taken.
+ * `label` is the localized template with `{date}` (`projects.auto`).
+ */
+export function autoProjectName(taken: readonly string[], date: Date, locale: string, label = "Project {date}"): string {
+  let when: string;
+  try { when = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(date); } catch { when = date.toISOString().slice(5, 10); }
+  const base = label.replace("{date}", when);
+  const used = new Set(taken);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) if (!used.has(`${base} ${n}`)) return `${base} ${n}`;
 }

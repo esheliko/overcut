@@ -92,7 +92,42 @@ pub type Migration = fn(Value) -> Result<Value, FileError>;
 /// `MIGRATIONS[n - 1]` upgrades version `n` to `n + 1`. Its length must be `SCHEMA_VERSION - 1` (tested).
 /// A format change = bump `SCHEMA_VERSION`, append one function here, and check in `fixtures/project.v<new>.json`
 /// (keep every older fixture: the tests migrate each of them to current).
-pub const MIGRATIONS: &[Migration] = &[];
+pub const MIGRATIONS: &[Migration] = &[v1_to_v2, v2_to_v3, v3_to_v4, v4_to_v5, v5_to_v6];
+
+/// 1 -> 2 (M2-002): tracks gained `hidden`, `solo`, `height` and `colour`, all optional with the M1 behaviour as default, so the
+/// document needs no rewriting beyond the version. Bumping the version keeps older apps from opening (and flattening) files that use them.
+fn v1_to_v2(mut doc: Value) -> Result<Value, FileError> {
+    doc["schema_version"] = Value::from(2);
+    Ok(doc)
+}
+
+/// 2 -> 3 (M2-003): clips gained `transform` (identity when absent, not written when identity), so only the version changes; older apps
+/// must not open and flatten a file whose clips carry one.
+fn v2_to_v3(mut doc: Value) -> Result<Value, FileError> {
+    doc["schema_version"] = Value::from(3);
+    Ok(doc)
+}
+
+/// 3 -> 4 (M2-007): sequences gained `markers`, `range` and `loop_range`, all optional (none / none / false when absent, not written
+/// when empty), so only the version changes; older apps must not open and flatten a file that carries them.
+fn v3_to_v4(mut doc: Value) -> Result<Value, FileError> {
+    doc["schema_version"] = Value::from(4);
+    Ok(doc)
+}
+
+/// 4 -> 5 (M2 TL-19): sequences gained `background` (black when absent, not written when black), so only the version changes; older
+/// apps must not open and flatten a file that carries one.
+fn v4_to_v5(mut doc: Value) -> Result<Value, FileError> {
+    doc["schema_version"] = Value::from(5);
+    Ok(doc)
+}
+
+/// 5 -> 6 (M2 round 16, AU-01): clips gained `audio` (volume, fade_in, fade_out; full level and no fades when absent, not written when
+/// plain), so only the version changes; older apps must not open and flatten a file whose clips carry one.
+fn v5_to_v6(mut doc: Value) -> Result<Value, FileError> {
+    doc["schema_version"] = Value::from(6);
+    Ok(doc)
+}
 
 fn schema_version_of(doc: &Value) -> Option<u32> {
     doc.get("schema_version")?

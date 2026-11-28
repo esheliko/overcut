@@ -393,6 +393,31 @@ fn huge_trun_count_is_rejected_without_allocating() {
     assert!(matches!(probe_bytes(&d), Err(MediaError::Invalid(_))));
 }
 
+#[test]
+fn the_containers_colour_description_is_carried_with_its_range() {
+    // WebM `Colour` element: full range, bt709 primaries/matrix, sRGB transfer (13).
+    let p = probe_bytes(&fixture("colour_full.webm")).unwrap();
+    assert_eq!(
+        video(&p).colour,
+        ColourInfo {
+            primaries: 1,
+            transfer: 13,
+            matrix: 1,
+            full_range: Some(true)
+        }
+    );
+    // MP4 `colr`/nclx: the full-range flag.
+    let p = probe_bytes(&fixture("colour_full.mp4")).unwrap();
+    let c = video(&p).colour;
+    assert_eq!(
+        (c.primaries, c.transfer, c.matrix, c.full_range),
+        (1, 1, 1, Some(true))
+    );
+    // A file that declares nothing declares nothing (no guessed range): this H.264 has no `colr`.
+    let p = probe_bytes(&fixture("h264_aac.mp4")).unwrap();
+    assert_eq!(video(&p).colour.full_range, None);
+}
+
 /// One EBML element: `id`, an 8-byte size, the payload.
 fn ebml(id: &[u8], payload: &[u8]) -> Vec<u8> {
     let mut v = id.to_vec();
@@ -457,4 +482,192 @@ fn block_end_beyond_i64_ticks_does_not_overflow() {
     // The same shape in a sane file ends where it should.
     let ok = probe_bytes(&mkv_one_block(1000, 40)).unwrap();
     assert_eq!(ok.video().unwrap().duration.ticks(), 1040 * 705_600);
+}
+
+// ---- audio-only containers: WAV (PCM) and MP3 ----
+
+fn wav_bytes(channels: u16, rate: u32, bits: u16, tag: u16, frames: u32) -> Vec<u8> {
+    let block = channels * bits / 8;
+    let data = frames * u32::from(block);
+    let mut v = b"RIFF".to_vec();
+    v.extend((36 + data).to_le_bytes());
+    v.extend(b"WAVEfmt ");
+    v.extend(16u32.to_le_bytes());
+    v.extend(tag.to_le_bytes());
+    v.extend(channels.to_le_bytes());
+    v.extend(rate.to_le_bytes());
+    v.extend((rate * u32::from(block)).to_le_bytes());
+    v.extend(block.to_le_bytes());
+    v.extend(bits.to_le_bytes());
+    v.extend(b"LIST");
+    v.extend(3u32.to_le_bytes());
+    v.extend([1, 2, 3, 0]); // an odd-sized chunk plus its pad byte is skipped
+    v.extend(b"data");
+    v.extend(data.to_le_bytes());
+    v.extend(std::iter::repeat_n(0u8, data as usize));
+    v
+}
+
+#[test]
+fn wav_pcm16_is_one_audio_track_cut_into_packets() {
+    let d = wav_bytes(2, 44_100, 16, 1, 44_100 + 100); // 1 s and a bit
+    let p = probe_bytes(&d).unwrap();
+    assert_eq!(p.format, ContainerFormat::Wav);
+    assert!(p.video().is_none());
+    let a = p.audio().unwrap();
+    assert_eq!(
+        (a.codec.as_str(), a.sample_rate, a.channels),
+        ("pcm-s16", 44_100, 2)
+    );
+    assert_eq!(a.packets.len(), 11); // 44200 frames / 4096 rounded up
+    assert_eq!(a.packets[0].pts, Time::from_ticks(0));
+    assert_eq!(a.packets[0].size, 4096 * 4);
+    assert_eq!(a.packets[10].size, (44_200 - 10 * 4096) * 4);
+    // Packets tile the data exactly, in order, with no gaps in time.
+    for w in a.packets.windows(2) {
+        assert_eq!(w[0].pts + w[0].duration, w[1].pts);
+        assert_eq!(w[0].offset + u64::from(w[0].size), w[1].offset);
+    }
+    assert_eq!(a.duration, Time::from_sample_index(44_200, 44_100).unwrap());
+    let info = p.media_info();
+    assert_eq!(info.audio.unwrap().sample_count, 44_200);
+}
+
+#[test]
+fn wav_float_and_24_bit_are_named_and_compressed_is_refused() {
+    assert_eq!(
+        probe_bytes(&wav_bytes(1, 48_000, 32, 3, 100))
+            .unwrap()
+            .audio()
+            .unwrap()
+            .codec,
+        "pcm-f32"
+    );
+    assert_eq!(
+        probe_bytes(&wav_bytes(1, 48_000, 24, 1, 100))
+            .unwrap()
+            .audio()
+            .unwrap()
+            .codec,
+        "pcm-s24"
+    );
+    assert!(matches!(
+        probe_bytes(&wav_bytes(1, 48_000, 4, 0x11, 100)),
+        Err(MediaError::Unsupported(_))
+    ));
+}
+
+#[test]
+fn wav_hostile_input_never_panics() {
+    let good = wav_bytes(2, 44_100, 16, 1, 5000);
+    for cut in [0, 5, 11, 12, 20, 30, 44, 60] {
+        let _ = probe_bytes(&good[..cut.min(good.len())]);
+    }
+    let mut zero_rate = good.clone();
+    zero_rate[24..28].copy_from_slice(&0u32.to_le_bytes());
+    assert!(probe_bytes(&zero_rate).is_err());
+    let mut bad_align = good.clone();
+    bad_align[32..34].copy_from_slice(&7u16.to_le_bytes());
+    assert!(probe_bytes(&bad_align).is_err());
+    // A streamed WAV (data size 0) runs to the end of the file.
+    let mut streamed = good;
+    let at = streamed.windows(4).position(|w| w == b"data").unwrap() + 4;
+    streamed[at..at + 4].copy_from_slice(&0u32.to_le_bytes());
+    assert_eq!(
+        probe_bytes(&streamed)
+            .unwrap()
+            .audio()
+            .unwrap()
+            .packets
+            .len(),
+        2
+    );
+}
+
+/// `n` MPEG-1 Layer III frames, 128 kbps, 44.1 kHz, joint stereo: 417 bytes (or 418 with padding) of 1152 samples each.
+fn mp3_frames(n: usize, id3: bool, xing: bool) -> Vec<u8> {
+    let mut v = Vec::new();
+    if id3 {
+        v.extend(b"ID3\x04\x00\x00\x00\x00\x00\x0a"); // 10 bytes of tag body
+        v.extend([0u8; 10]);
+    }
+    for i in 0..n {
+        let pad = if i % 2 == 1 { 0x02 } else { 0 };
+        let size = 417 + usize::from(pad != 0);
+        let start = v.len();
+        v.extend([0xFF, 0xFB, 0x90 | pad, 0x64]);
+        v.resize(start + size, 0);
+        if xing && i == 0 {
+            v[start + 36..start + 40].copy_from_slice(b"Xing");
+        }
+    }
+    v
+}
+
+#[test]
+fn mp3_frames_become_packets_and_an_id3_tag_and_xing_frame_are_skipped() {
+    let plain = probe_bytes(&mp3_frames(40, false, false)).unwrap();
+    assert_eq!(plain.format, ContainerFormat::Mp3);
+    let a = plain.audio().unwrap();
+    assert_eq!(
+        (a.codec.as_str(), a.sample_rate, a.channels),
+        ("mp3", 44_100, 2)
+    );
+    assert_eq!(a.packets.len(), 40);
+    assert_eq!(a.packets[0].offset, 0);
+    assert_eq!(a.packets[1].offset, 417);
+    assert_eq!(a.packets[2].offset, 417 + 418);
+    assert_eq!(
+        a.duration,
+        Time::from_sample_index(40 * 1152, 44_100).unwrap()
+    );
+
+    let tagged = probe_bytes(&mp3_frames(40, true, true)).unwrap();
+    let t = tagged.audio().unwrap();
+    assert_eq!(t.packets.len(), 39, "the Xing frame is not sound");
+    assert_eq!(t.packets[0].offset, 20 + 417);
+    assert_eq!(t.packets[0].pts, Time::from_ticks(0));
+}
+
+#[test]
+fn mp3_trailing_junk_and_garbage_do_not_panic_or_pass_as_mp3() {
+    let mut d = mp3_frames(20, false, false);
+    d.extend(b"TAG");
+    d.extend([0u8; 125]); // an ID3v1 tag
+    assert_eq!(probe_bytes(&d).unwrap().audio().unwrap().packets.len(), 20);
+    // A lone sync-looking byte pair is not an MP3.
+    assert!(probe_bytes(&[0xFF, 0xFB, 0x90, 0x64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).is_err());
+    assert!(probe_bytes(&[0xFF; 64]).is_err());
+    let good = mp3_frames(10, false, false);
+    for cut in [0, 1, 3, 4, 100, 417, 600, 1000] {
+        let _ = probe_bytes(&good[..cut.min(good.len())]);
+    }
+    // MPEG Layer II is named, not "not a video or audio format".
+    let mut l2 = mp3_frames(5, false, false);
+    for f in [0usize, 417, 835, 1252, 1670] {
+        l2[f + 1] = 0xFD;
+    }
+    assert!(matches!(probe_bytes(&l2), Err(MediaError::Unsupported(m)) if m.contains("MP2")));
+}
+
+#[test]
+fn real_mp3_and_wav_files_from_ffmpeg() {
+    let m = probe_bytes(&fixture("tone.mp3")).unwrap();
+    assert_eq!(m.format, ContainerFormat::Mp3);
+    let a = m.audio().unwrap();
+    assert_eq!(
+        (a.codec.as_str(), a.sample_rate, a.channels),
+        ("mp3", 44_100, 1)
+    );
+    // About one second at 1152 samples per frame (the encoder adds padding frames; the Info frame is not counted).
+    let secs = a.duration.ticks() as f64 / 705_600_000.0;
+    assert!((0.98..1.1).contains(&secs), "{secs}");
+    let w = probe_bytes(&fixture("tone.wav")).unwrap();
+    assert_eq!(w.format, ContainerFormat::Wav);
+    let a = w.audio().unwrap();
+    assert_eq!(
+        (a.codec.as_str(), a.sample_rate, a.channels),
+        ("pcm-s16", 8_000, 1)
+    );
+    assert_eq!(w.media_info().audio.unwrap().sample_count, 4_000);
 }

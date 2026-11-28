@@ -30,12 +30,12 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
-/// Per-layer transform in sequence units; `params` order: centre x, centre y, scale x, scale y, rotation (radians clockwise), opacity, display rotation (degrees).
+/// Per-layer transform in sequence units; `params` order: centre x, centre y, scale x, scale y, rotation (radians clockwise), opacity, display rotation (degrees), crop left/top/right/bottom (fractions of the upright picture), flip x, flip y (0/1).
 #[derive(Clone, Copy)]
 struct Entry {
     w: u32,
     h: u32,
-    p: [f32; 7],
+    p: [f32; 13],
 }
 
 #[wasm_bindgen]
@@ -113,10 +113,15 @@ async fn open(
         .map_err(err)?;
     // Validation errors would otherwise abort the module (wgpu's default handler panics): report them to the console and carry on.
     device.on_uncaptured_error(Box::new(|e| {
+        GPU_ERRORS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         web_sys::console::error_1(&JsValue::from_str(&format!("wgpu: {e}")));
     }));
     Ok((instance, surface, adapter, device, queue))
 }
+
+/// Uncaptured GPU errors (validation, out of memory) since the module loaded. Reported in `alloc_stats` so a test can assert there were none:
+/// a rejected copy or draw is otherwise only a line in a Worker's console.
+static GPU_ERRORS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 #[wasm_bindgen]
 impl GpuRenderer {
@@ -191,8 +196,11 @@ impl GpuRenderer {
     pub fn alloc_stats(&self) -> String {
         let s = self.comp.alloc_stats();
         format!(
-            r#"{{"textures":{},"buffers":{},"bind_groups":{}}}"#,
-            s.textures, s.buffers, s.bind_groups
+            r#"{{"textures":{},"buffers":{},"bind_groups":{},"errors":{}}}"#,
+            s.textures,
+            s.buffers,
+            s.bind_groups,
+            GPU_ERRORS.load(std::sync::atomic::Ordering::Relaxed)
         )
     }
 
@@ -212,6 +220,20 @@ impl GpuRenderer {
     /// Start a frame: forget the previous layer list (the GPU slots stay).
     pub fn begin(&mut self) {
         self.entries.clear();
+    }
+
+    /// The project background for the frames rendered next (TL-19): `mode` 0 = black, 1 = flat colour (`r`, `g`, `b`, sRGB 0..=255), 2 = the bottom
+    /// layer blurred (`blur` 0..=100). Call it every frame, before `render`: it sticks until set again, so preview and export draw the same pixels.
+    pub fn set_background(&mut self, mode: u8, r: u8, g: u8, b: u8, blur: u8) {
+        self.comp.set_background(app_model::Background {
+            mode: match mode {
+                1 => app_model::BackgroundMode::Colour,
+                2 => app_model::BackgroundMode::Blur,
+                _ => app_model::BackgroundMode::Black,
+            },
+            colour: [r, g, b],
+            blur: blur.min(app_model::MAX_BLUR),
+        });
     }
 
     /// Next layer (bottom first) from RGBA bytes (sRGB, straight alpha), `w * h * 4` of them.
@@ -251,6 +273,17 @@ impl GpuRenderer {
         };
         let i = self.entries.len();
         let tex = self.comp.layer_texture(i, w, h).clone();
+        // The copy is checked against the source's own size, not the layer's: a source that is smaller than the caller said (or already closed, size 0)
+        // would make the GPU reject the copy (#209). Copy what both have; the slot keeps its last picture when there is nothing to copy.
+        let (sw, sh) = match &src {
+            wgpu::ExternalImageSource::VideoFrame(f) => (f.display_width(), f.display_height()),
+            wgpu::ExternalImageSource::ImageBitmap(b) => (b.width(), b.height()),
+            _ => (w, h),
+        };
+        let Some((cw, ch)) = app_render::external_copy_extent((w, h), (sw, sh)) else {
+            self.entries.push(e);
+            return Ok(());
+        };
         self.comp.queue().copy_external_image_to_texture(
             &wgpu::CopyExternalImageSourceInfo {
                 source: src,
@@ -266,8 +299,8 @@ impl GpuRenderer {
                 premultiplied_alpha: false,
             },
             wgpu::Extent3d {
-                width: w,
-                height: h,
+                width: cw,
+                height: ch,
                 depth_or_array_layers: 1,
             },
         );
@@ -358,6 +391,8 @@ impl GpuRenderer {
                 rotation: e.p[4],
                 opacity: e.p[5],
                 display_rotation: e.p[6].rem_euclid(360.0) as u16,
+                crop: [e.p[7], e.p[8], e.p[9], e.p[10]],
+                flip: [e.p[11] > 0.5, e.p[12] > 0.5],
             });
         }
         v
@@ -374,10 +409,10 @@ fn entry(w: u32, h: u32, p: &[f64]) -> Result<Entry, String> {
     if w == 0 || h == 0 {
         return Err("layer has no pixels".into());
     }
-    if p.len() != 7 {
-        return Err("layer params must be 7 numbers".into());
+    if p.len() != 13 {
+        return Err("layer params must be 13 numbers".into());
     }
-    let mut a = [0f32; 7];
+    let mut a = [0f32; 13];
     for (d, s) in a.iter_mut().zip(p) {
         *d = *s as f32;
     }

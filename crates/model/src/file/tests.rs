@@ -83,7 +83,7 @@ fn newer_schema_opens_read_only_and_refuses_to_write() {
     let mut f = ProjectFile::read(&bytes).unwrap();
     assert!(f.read_only());
     assert_eq!(f.found_version(), SCHEMA_VERSION + 1);
-    assert_eq!(f.project().name, "Fixture v1");
+    assert_eq!(f.project().name, "Fixture v6");
     assert_eq!(f.write().unwrap_err().code(), "read_only");
     assert_eq!(f.project_mut().unwrap_err().code(), "read_only");
     assert_eq!(
@@ -214,10 +214,10 @@ fn unsafe_entry_names_and_oversized_entries_are_refused() {
 
 #[test]
 fn save_bytes_creates_and_updates() {
-    let json = String::from_utf8(fixture(1)).unwrap();
+    let json = String::from_utf8(fixture(SCHEMA_VERSION)).unwrap();
     let fresh = save_bytes(&json, &[]).unwrap();
     let opened: Value = serde_json::from_str(&open_json(&fresh).unwrap()).unwrap();
-    assert_eq!(opened["project"]["name"], "Fixture v1");
+    assert_eq!(opened["project"]["name"], "Fixture v6");
     assert_eq!(opened["read_only"], false);
     assert_eq!(opened["migrated"], false);
     assert!(save_bytes("{", &[]).is_err());
@@ -279,4 +279,79 @@ fn canvas_choice_round_trips_and_old_files_read_as_not_fixed() {
     let s = &back.project().sequences[0];
     assert!(s.size_fixed && !s.rate_fixed);
     assert_eq!((s.resolution.width, s.resolution.height), (1080, 1350));
+}
+
+#[test]
+fn a_v1_file_opens_with_every_track_at_its_m1_behaviour_and_the_v2_one_keeps_its_track_props() {
+    let old = ProjectFile::read(&container(&fixture(1), &[])).unwrap();
+    assert_eq!(old.found_version(), 1);
+    assert!(old.migrated());
+    for t in &old.project().sequences[0].tracks {
+        assert!(!t.hidden && !t.solo && t.height.is_none() && t.colour.is_none());
+    }
+    let new = ProjectFile::read(&container(&fixture(2), &[])).unwrap();
+    let t = &new.project().sequences[0].tracks;
+    assert!(t[0].hidden && t[0].height == Some(64) && t[0].colour.as_deref() == Some("#2de2d6"));
+    assert!(t[1].solo);
+    // Defaults are not written: a file that never used them stays as small as before.
+    let json = String::from_utf8(
+        old.write()
+            .map(|b| open_json(&b).unwrap().into_bytes())
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        !json.contains("\"hidden\"") && !json.contains("\"solo\"") && !json.contains("\"colour\"")
+    );
+}
+
+#[test]
+fn a_v4_file_opens_with_a_black_background_and_the_v5_one_keeps_its_blur() {
+    use crate::project::{Background, BackgroundMode};
+    let old = ProjectFile::read(&container(&fixture(4), &[])).unwrap();
+    assert_eq!(old.found_version(), 4);
+    assert!(old.migrated());
+    assert_eq!(old.project().sequences[0].background, Background::default());
+    // Black is not written: a file that never chose a background stays as small as before.
+    let json = String::from_utf8(
+        old.write()
+            .map(|b| open_json(&b).unwrap().into_bytes())
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(!json.contains("\"background\""));
+    // A v5 file is one version behind now (round 16 added clip audio): it opens, migrates and keeps its blur.
+    let new = ProjectFile::read(&container(&fixture(5), &[])).unwrap();
+    assert!(new.migrated());
+    let b = new.project().sequences[0].background;
+    assert_eq!(
+        (b.mode, b.colour, b.blur),
+        (BackgroundMode::Blur, [18, 52, 86], 70)
+    );
+    // and it survives a save and reopen
+    let back = ProjectFile::read(&new.write().unwrap()).unwrap();
+    assert_eq!(back.project().sequences[0].background, b);
+}
+
+#[test]
+fn a_v5_file_opens_with_plain_clips_and_the_v6_one_keeps_volume_and_fades() {
+    use crate::{ClipAudio, Time};
+    let old = ProjectFile::read(&container(&fixture(5), &[])).unwrap();
+    assert_eq!(old.found_version(), 5);
+    assert!(old.migrated());
+    let clip = &old.project().sequences[0].tracks[0].clips[0];
+    assert!(clip.audio.is_default());
+    // A plain clip writes no `audio` key: a file that never used volume stays as small as before.
+    let json = open_json(&old.write().unwrap()).unwrap();
+    assert!(!json.contains("\"audio\":{"));
+    let new = ProjectFile::read(&container(&fixture(6), &[])).unwrap();
+    assert!(!new.migrated());
+    let want = ClipAudio {
+        volume: 0.5,
+        fade_in: Time::from_ticks(100),
+        fade_out: Time::from_ticks(200),
+    };
+    assert_eq!(new.project().sequences[0].tracks[0].clips[0].audio, want);
+    let back = ProjectFile::read(&new.write().unwrap()).unwrap();
+    assert_eq!(back.project().sequences[0].tracks[0].clips[0].audio, want);
 }

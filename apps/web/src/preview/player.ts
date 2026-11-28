@@ -5,8 +5,8 @@
  * the layers to the compositor. A frame that cannot be ready in time is skipped, never waited for.
  * Everything platform-specific (clock, audio output, renderer, media) is injected, so the logic runs under fake clocks in unit tests.
  */
-import { containScale, layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle } from "@app/engine-client";
-import { limit, mixSegment, sampleAtTicks, sourceSamplesFor } from "./audioMix";
+import { ClipStretchCache, layerOf, type AudioSegment, type DecodedFrame, type FrameDescription, type FrameStream, type LayerSource, type MediaHandle, type Stretcher } from "@app/engine-client";
+import { limit, mixSegment, mixStretched, sampleAtTicks, sourceSamplesFor } from "./audioMix";
 import type { RenderLayer, Renderer } from "./renderer";
 import { FrameCache, type Thumb } from "./scrubCache";
 import { frameAtTicks, frameStartTicks, positionAt, prefetchFrames, shuttle, TICKS_PER_SECOND, type Anchor, type Rate } from "./timing";
@@ -32,6 +32,8 @@ export interface PlayerDeps {
   /** Timeline length in ticks. */
   endTicks: number;
   evaluate(ticks: number, audioSamples: number): Promise<FrameDescription>;
+  /** Pitch-keeping stretch for clips whose speed is not 1 (the wasm `stretch_audio`); without it they are resampled (pitch shifts). */
+  stretch?: Stretcher;
   media(id: string): MediaHandle | undefined;
   renderer: Renderer;
   /** Audio output; without it the player runs against `fallbackClock` and is silent. */
@@ -147,6 +149,8 @@ export class Player {
   get isPlaying(): boolean { return this.playing; }
 
   /** True when nobody is playing or scrubbing and nothing happened for 400 ms: background work (the scrub strip) may run. */
+  /** Why `isIdle` is false, for the device report. */
+  idleState(): string { return `playing=${this.playing} scrubbing=${this.scrubbing} target=${!!this.scrubTarget} quietMs=${Math.round(performance.now() - this.lastActive)}`; }
   isIdle(): boolean { return !this.playing && !this.scrubbing && !this.scrubTarget && performance.now() - this.lastActive > 400; }
   get speed(): number { return this.rate; }
   get endFrame(): number { return Math.ceil((this.d.endTicks * this.d.rate.num) / (TICKS_PER_SECOND * this.d.rate.den)); }
@@ -344,7 +348,7 @@ export class Player {
         if (!frame) continue;
         layers.push(await this.layer(l, frame, media, layers.length));
       }
-      this.d.renderer.render(layers, this.d.size);
+      this.d.renderer.render(layers, this.d.size, desc.background);
     } finally {
       for (const h of held) h.release();
     }
@@ -359,12 +363,8 @@ export class Player {
   private thumbLayer(l: FrameDescription["layers"][number], t: Thumb<ImageBitmap>, media: MediaHandle): RenderLayer {
     const v = media.info.video!;
     const turned = v.rotation === 90 || v.rotation === 270;
-    const dw = turned ? v.height : v.width;
-    const dh = turned ? v.width : v.height;
-    const k = containScale({ width: dw, height: dh }, this.d.size);
-    const sx = l.transform.scale[0] * k * (dw / t.width);
-    const sy = l.transform.scale[1] * k * (dh / t.height);
-    return layerOf({ ...l, transform: { ...l.transform, scale: [sx, sy] } }, { source: t.bitmap, width: t.width, height: t.height, rotation: 0 });
+    const display = { width: turned ? v.height : v.width, height: turned ? v.width : v.height };
+    return layerOf(l, { source: t.bitmap, width: t.width, height: t.height, rotation: 0, display }, this.d.size);
   }
 
   // --- paused: scrub and step -------------------------------------------------------------------------------------
@@ -440,7 +440,7 @@ export class Player {
           }
         }
         if (this.scrubTarget || this.playing || this.disposed) return false; // stale: drop it
-        if (shown || !allowStandIns) this.d.renderer.render(layers, this.d.size);
+        if (shown || !allowStandIns) this.d.renderer.render(layers, this.d.size, desc.background);
         return shown;
       };
       const missing = wants.filter((w) => !w.exact);
@@ -456,17 +456,40 @@ export class Player {
       }
       // Stand-in first (only when something better than the held picture exists), then the exact frames.
       const standIn = await draw(true);
-      if (standIn) this.stats.firstUpdateMs.push(performance.now() - t0);
-      if (this.scrubTarget || this.playing) return;
-      await Promise.all(missing.map(async (w) => {
-        const t1 = performance.now();
-        const frame = await w.media.videoFrame(w.idx);
-        this.d.onSeek?.(w.l.media, performance.now() - t1);
-        w.exact = this.cache.put(w.l.media, frame);
-        pinned.push(w.exact);
+      const firstMs = performance.now() - t0;
+      if (standIn) this.stats.firstUpdateMs.push(firstMs);
+      // A newer target (or playback) replaced this scrub before its exact frame: it did not finish, so its first update is not counted either
+      // (`firstUpdateMs` and `scrubMs` stay one-to-one: every entry is a scrub that reached its exact frame).
+      const dropFirst = () => { if (standIn) { const i = this.stats.firstUpdateMs.lastIndexOf(firstMs); if (i >= 0) this.stats.firstUpdateMs.splice(i, 1); } };
+      if (this.scrubTarget || this.playing) { dropFirst(); return; }
+      // One decode per distinct picture: layers showing the same frame of the same media (a clip stacked on itself, a duplicate) share it. The handle runs
+      // "latest request wins", so asking for the same media several times at once cancelled all but the last and the scrub never reached its exact frame.
+      const distinct = new Map<string, typeof missing>();
+      for (const w of missing) {
+        const key = `${w.l.media}:${w.idx}`;
+        const group = distinct.get(key);
+        if (group) group.push(w); else distinct.set(key, [w]);
+      }
+      // Different media decode in parallel; two different pictures of one media go one after the other (the handle would cancel the first).
+      const perMedia = new Map<string, (typeof missing)[]>();
+      for (const group of distinct.values()) {
+        const list = perMedia.get(group[0]!.l.media);
+        if (list) list.push(group); else perMedia.set(group[0]!.l.media, [group]);
+      }
+      await Promise.all([...perMedia.values()].map(async (groups) => {
+        for (const group of groups) {
+          const first = group[0]!;
+          const t1 = performance.now();
+          const frame = await first.media.videoFrame(first.idx);
+          this.d.onSeek?.(first.l.media, performance.now() - t1);
+          const exact = this.cache.put(first.l.media, frame);
+          for (const w of group) w.exact = exact;
+          pinned.push(exact);
+        }
       }));
-      if (this.scrubTarget || this.playing) return;
+      if (this.scrubTarget || this.playing) { dropFirst(); return; }
       await draw(false);
+      if (this.scrubTarget || this.playing || this.disposed) { dropFirst(); return; } // replaced while the exact frame was being drawn
       const ms = performance.now() - t0;
       if (!standIn) this.stats.firstUpdateMs.push(ms); // nothing was shown before: the first update is the exact frame
       this.stats.scrubMs.push(ms);
@@ -627,10 +650,35 @@ export class Player {
     }
   }
 
+  private stretched?: ClipStretchCache;
+
+  /** Whole clips stretched once and kept (a few at a time); built on first use, rate = the audio output's. */
+  private stretchCache(rate: number): ClipStretchCache | undefined {
+    const stretch = this.d.stretch;
+    if (!stretch) return undefined;
+    return (this.stretched ??= new ClipStretchCache(rate, stretch, async (id, start, count) => {
+      const m = this.d.media(id);
+      const ch = m?.info.audio?.channels ?? 0;
+      const planar = [new Float32Array(count), new Float32Array(count)];
+      if (!m || !ch) return planar;
+      const pcm = await m.audio(start, count);
+      const frames = Math.min(count, Math.floor(pcm.length / ch));
+      for (let i = 0; i < frames; i++) {
+        planar[0]![i] = pcm[i * ch]!;
+        planar[1]![i] = pcm[i * ch + (ch > 1 ? 1 : 0)]!;
+      }
+      return planar;
+    }));
+  }
+
   private async mixOne(left: Float32Array, right: Float32Array, seg: AudioSegment, skip: number): Promise<void> {
     const media = this.d.media(seg.media);
     const ch = media?.info.audio?.channels;
     if (!media || !ch) return;
+    if (seg.speed.num !== seg.speed.den) {
+      const clip = await this.stretchCache(media.audioRate)?.get(seg);
+      if (clip) return mixStretched(left, right, seg, clip, skip);
+    }
     const start = sampleAtTicks(seg.source_start, media.audioRate);
     const src = await media.audio(start, sourceSamplesFor(seg));
     mixSegment(left, right, seg, src, ch, skip);

@@ -14,6 +14,8 @@ async function ready(page: Page) {
   await expect(page.getByTestId("preview-import")).toBeEnabled({ timeout: 20_000 });
   if ((page.viewportSize()?.width ?? 0) < 720) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
 }
+/** The preview Worker has opened the picture's decoder (the same signal preview.spec waits for): before that the preview can only show black, and a pixel read then says nothing. */
+const decoderOpen = (page: Page) => expect.poll(() => page.evaluate(async () => (await (window as unknown as { __overcutPreview: { media(): Promise<unknown[]> } }).__overcutPreview.media()).length), { timeout: 20_000 }).toBeGreaterThan(0);
 const pixel = (page: Page) => page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.probe(30, 30));
 
 test("a picture shows in the preview, lasts 5 s, and exports as a picture (not black, not an error)", async ({ page }, info) => {
@@ -22,6 +24,7 @@ test("a picture shows in the preview, lasts 5 s, and exports as a picture (not b
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "still_red.png"));
   await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 20_000 });
   await expect(page.getByTestId("timecode")).toContainText("/ 00:00:05:00");
+  await decoderOpen(page);
   await expect.poll(async () => (await pixel(page))[0], { timeout: 15_000 }).toBeGreaterThan(200); // red, not black
   const [, g, b] = await pixel(page);
   expect(g).toBeLessThan(60);
@@ -49,6 +52,7 @@ test("a portrait picture sets the canvas,", async ({ page }) => {
   await ready(page);
   await page.getByTestId("media-input").setInputFiles(resolve(FIX, "still_blue_portrait.jpg"));
   await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 20_000 });
+  await decoderOpen(page);
   await expect.poll(async () => (await pixel(page))[2], { timeout: 15_000 }).toBeGreaterThan(200); // blue
   const box = (await page.locator(".canvas").boundingBox())!;
   expect(box.height).toBeGreaterThan(box.width); // 200 x 300

@@ -1,0 +1,197 @@
+.insp { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 0 0 8px; } /* the panel body already insets by --panel-pad, so rows start at the same x as the tabs and the title (V-08) */
+.insp-empty { margin: 0; padding: 16px; color: var(--muted); }
+.insp-field { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.insp-field > span { flex: 1; color: var(--muted); font-size: var(--text-sm); }
+.insp-field:focus-within { box-shadow: 0 0 0 2px var(--focus-ring); }
+.insp-field input { outline: none; width: 64px; min-height: 44px; border: 0; background: none; color: var(--fg); text-align: end; font: inherit; }
+.insp-field em { color: var(--muted); font-style: normal; width: 1.2em; }
+.insp-row { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+.insp-row button { flex: 1 1 0; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); font-weight: 500; }
+.insp-row button[aria-pressed="true"] { background: var(--surface-3); box-shadow: inset 0 0 0 2px var(--accent); }
+.insp-row button:disabled { opacity: var(--disabled-opacity); }
+
+/* On-canvas transform handles (preview/TransformHandles.tsx): the box is the clip's visible rectangle, rotated with it. */
+.th { position: absolute; z-index: 3; pointer-events: none; box-shadow: 0 0 0 1.5px var(--accent); }
+.th-body { position: absolute; inset: 0; pointer-events: auto; cursor: move; touch-action: none; }
+.th-h, .th-rot { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; pointer-events: auto; touch-action: none; display: grid; place-items: center; }
+.th-h::after, .th-rot::after { content: ""; width: 14px; height: 14px; border-radius: 50%; background: var(--fg); box-shadow: 0 0 0 2px var(--accent); }
+.th-nw { left: 0; top: 0; cursor: nwse-resize; } .th-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.th-se { left: 100%; top: 100%; cursor: nwse-resize; } .th-sw { left: 0; top: 100%; cursor: nesw-resize; }
+.th-rot { left: 50%; top: -30px; cursor: grab; }
+.th-rot::after { background: var(--accent); box-shadow: 0 0 0 2px #fff; }
+/* Snap guides while a move catches the canvas centre or an edge (preview/TransformHandles.tsx): a hairline across the frame, outlined so it reads on any picture. */
+.th-guide { position: absolute; z-index: 3; pointer-events: none; background: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--stage) 55%, transparent); }
+.th-guide-v { top: 0; bottom: 0; inline-size: 1px; margin-inline-start: -0.5px; }
+.th-guide-h { left: 0; right: 0; block-size: 1px; margin-block-start: -0.5px; }
+
+/* The handles' 44 px hit areas can poke past the canvas edge: never let them widen the page. */
+.stage-view { overflow: clip; }
+
+/* While a clip is being transformed: the frame is outlined and everything outside it is dimmed, so a layer dragged off-canvas shows where the picture ends.
+   The handles (z-index 3) stay above the dim; the stage clips both, so nothing reaches outside the preview panel. */
+.canvas.framed { outline: 1.5px solid var(--line-strong); outline-offset: 0; }
+/* The dim is a mask (a clipped plain layer), not a 100vmax box-shadow: a shadow that size is rasterised on every repaint of the preview. */
+.canvas.framed::after { content: ""; position: absolute; inset: -60vmax; z-index: 2; pointer-events: none; background: color-mix(in srgb, var(--stage) 58%, transparent); clip-path: polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, 60vmax 60vmax, 60vmax calc(100% - 60vmax), calc(100% - 60vmax) calc(100% - 60vmax), calc(100% - 60vmax) 60vmax, 60vmax 60vmax); }
+.stage { overflow: clip; }
+
+/* Keyframes (M2-004 / M2-048): one row per field, diamond + previous / next key, easing picker under a field that sits on a key. */
+.insp { grid-template-columns: 1fr; }
+.insp-field { flex-wrap: wrap; padding: 0 4px 0 10px; gap: 0; }
+.insp-fl { flex: 1 1 0; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; }
+.insp-fl > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-fl input { outline: none; width: 56px; min-height: 44px; border: 0; background: none; color: var(--fg); text-align: end; font: inherit; appearance: textfield; -moz-appearance: textfield; }
+.insp-fl input::-webkit-inner-spin-button, .insp-fl input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.insp-fl em { color: var(--muted); font-style: normal; width: 1.2em; }
+.insp-kbtn { width: 44px; min-width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--muted); font-size: 22px; line-height: 1; }
+.insp-kbtn:disabled { opacity: 0.35; }
+.insp-kbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.insp-field[data-keystate="between"] .insp-diamond { color: var(--accent); }
+.insp-field[data-keystate="on"] .insp-diamond { color: var(--accent); background: var(--surface-3); }
+.insp-sub { flex: 1 1 100%; display: flex; align-items: center; gap: 4px; padding-inline-end: 0; }
+.insp-ease { flex: 1; min-width: 0; min-height: 44px; border: 0; border-radius: var(--radius-sm); background: var(--surface-3); color: var(--fg); font: inherit; padding: 0 8px; }
+.insp-between { flex: 1; text-align: center; color: var(--muted); font-size: var(--text-sm); }
+.insp-more { grid-column: 1 / -1; }
+.insp-more > summary { min-height: 44px; display: flex; align-items: center; padding: 0 10px; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); cursor: pointer; font-weight: 500; }
+.insp-more > summary:focus-visible { outline: 2px solid var(--accent); }
+.insp-more-body { display: grid; gap: 8px; padding-top: 8px; }
+
+/* Speed section (M2-008) */
+.insp-check { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.insp-check input { width: 22px; height: 22px; margin: 0; flex: none; }
+.insp-help { grid-column: 1 / -1; margin: 0; padding: 0 4px; color: var(--muted); font-size: var(--text-sm); }
+.insp-warn:empty { display: none; }
+.insp-warn { color: var(--fg); }
+
+/* Per-field reset arrow, label drag-scrub and the inline range note (F-01); the interpolation row is reserved once a clip has keyframes so the form stops jumping (F-02). */
+.insp-name { cursor: ew-resize; touch-action: pan-y; user-select: none; }
+.insp-fieldreset { width: 32px; min-width: 32px; height: 44px; color: var(--muted); }
+.insp-fieldreset:hover:not(:disabled) { color: var(--fg); background: var(--surface-3); }
+@media (pointer: coarse) { .insp-fieldreset { width: 44px; min-width: 44px; } }
+.insp-field { position: relative; }
+.insp-note { position: absolute; z-index: 2; inset-block-start: calc(100% - 6px); inset-inline-end: 8px; padding: 2px 8px; border-radius: var(--radius-xs); background: var(--surface-3); box-shadow: var(--elev-2); color: var(--fg); font-size: var(--text-xs); line-height: var(--lh-ui); pointer-events: none; } /* an overlay, so a note appearing never moves the form */
+.insp-note:empty { padding: 0; background: none; box-shadow: none; }
+.insp[data-anim] .insp-field:not(:has(.insp-sub)) { padding-block-end: 44px; } /* the row a keyframed field would show: held in reserve on the others */
+.insp-field[data-keystate="none"] .insp-diamond { color: var(--muted); }
+.insp-field { transition: box-shadow var(--dur-fast); }
+.insp-row button { transition: background var(--dur-fast), transform var(--dur-instant); }
+.insp-row button:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--surface-3); }
+.insp-row button:active:not(:disabled) { transform: scale(0.97); }
+
+/* Scrub on the number itself (Inspector.tsx): sideways cursor until the field is focused for typing; the picture's frame shows a focus ring for the arrow-key nudge. */
+.insp-field input[type="number"] { cursor: ew-resize; touch-action: pan-y; -moz-appearance: textfield; appearance: textfield; }
+.insp-field input[type="number"]:focus { cursor: text; }
+.insp-field input[type="number"]::-webkit-inner-spin-button, .insp-field input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.th-body:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* ---- r14 lane C: grouped sections, slider + number, clear states ---- */
+.insp-sections { gap: 0; padding: 0 0 var(--space-4, 16px); }
+.insp-sec { border-block-end: 1px solid var(--line); }
+.insp-sec-h { display: flex; align-items: center; } /* r15: not sticky (the sliver above a sticky header showed the rows scrolling under it; sections are short enough now) */
+.insp-sec-t { flex: 1; min-inline-size: 0; display: flex; align-items: center; gap: 8px; min-block-size: 44px; padding: 0 4px; border: 0; background: none; color: var(--fg); font: inherit; font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.02em; text-align: start; cursor: pointer; }
+.insp-sec-t svg { color: var(--muted); transition: transform var(--dur-fast) var(--ease-out); flex: none; }
+.insp-sec-t[aria-expanded="false"] svg { transform: rotate(-90deg); }
+[dir="rtl"] .insp-sec-t[aria-expanded="false"] svg { transform: rotate(90deg); }
+.insp-sec-t:hover { background: var(--surface-2); }
+.insp-sec-t:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.insp-sec-reset:disabled { visibility: hidden; }
+.insp-sec-b { display: grid; gap: 6px; padding: 2px 0 12px; animation: insp-open var(--dur-fast) var(--ease-out); }
+@keyframes insp-open { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .insp-sec-b { animation: none; } .insp-sec-t svg { transition: none; } }
+.insp-sec .insp { padding: 0; }
+
+/* A value: label and number on one line, the slider under it (the keyframe diamond and reset stay on the first line). */
+.insp-sec .insp-field { background: none; padding: 0 0 2px 4px; border-radius: 0; }
+.insp-sec .insp-fl { gap: 4px; }
+.insp-sec .insp-fl > .insp-name { color: var(--muted); font-size: var(--text-sm); }
+.insp-sec .insp-fl input { inline-size: 64px; min-block-size: 32px; padding: 0 6px; border-radius: var(--radius-xs); background: var(--surface-2); font-variant-numeric: tabular-nums; }
+.insp-sec .insp-fl input:focus { box-shadow: 0 0 0 2px var(--focus-ring); }
+.insp-sec .insp-fl em { inline-size: 1.1em; }
+.insp-field input.insp-slider { flex: 1 1 100%; order: 5; inline-size: 100%; margin: 0; padding: 0; block-size: 20px; min-block-size: 20px; background: none; appearance: none; -webkit-appearance: none; cursor: pointer; touch-action: pan-y; }
+.insp-slider::-webkit-slider-runnable-track { block-size: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--p), var(--surface-3) var(--p)); }
+.insp-slider::-moz-range-track { block-size: 4px; border-radius: 2px; background: var(--surface-3); }
+.insp-slider::-moz-range-progress { block-size: 4px; border-radius: 2px; background: var(--accent); }
+.insp-slider::-webkit-slider-thumb { -webkit-appearance: none; inline-size: 16px; block-size: 16px; margin-block-start: -6px; border-radius: 50%; border: 0; background: var(--fg); box-shadow: 0 0 0 2px var(--surface), var(--elev-1); transition: transform var(--dur-instant); }
+.insp-slider::-moz-range-thumb { inline-size: 16px; block-size: 16px; border-radius: 50%; border: 0; background: var(--fg); box-shadow: 0 0 0 2px var(--surface); }
+.insp-slider:active::-webkit-slider-thumb { transform: scale(1.15); }
+.insp-slider:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
+.insp-slider:disabled { opacity: var(--disabled-opacity); cursor: default; }
+@media (pointer: coarse) { .insp-field input.insp-slider { block-size: 44px; min-block-size: 44px; } .insp-sec .insp-fl input { min-block-size: 44px; block-size: 44px; } .insp-sec .insp-fl input { inline-size: 72px; } }
+.insp-field .insp-sub { order: 6; }
+.insp[data-anim] .insp-field:not(:has(.insp-sub)) { padding-block-end: 0; }
+.insp-sec .insp-row { padding-block-start: 4px; }
+
+/* Clear states: nothing selected (project summary), several clips, an audio clip. */
+.insp-pick { padding: 12px 4px 4px; }
+.insp-state { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 16px; text-align: center; }
+.insp-state strong { color: var(--fg); font-size: var(--text-base); }
+.insp-state p { margin: 0; max-inline-size: 30ch; color: var(--muted); font-size: var(--text-sm); }
+.insp-state-ic { display: grid; place-items: center; inline-size: 48px; block-size: 48px; border-radius: 50%; background: var(--surface-3); color: var(--accent); }
+
+/* Compact on a mouse: 32 px rows (the slider under the number), 44 px targets on touch. */
+@media (pointer: fine) { .insp-sec .insp-fl { min-block-size: 32px; } .insp-sec .insp-fl input { min-block-size: 28px; } }
+/* Touch: one row per value, label | slider | number | diamond, so a whole section fits a short phone sheet. */
+@media (pointer: coarse) {
+  .insp-sec .insp-field { flex-wrap: wrap; align-items: center; column-gap: 6px; padding-inline: 4px 0; }
+  .insp-sec .insp-fl { display: contents; }
+  .insp-sec .insp-fl > .insp-name { order: 1; flex: 0 0 66px; min-inline-size: 0; }
+  .insp-sec .insp-field input.insp-slider { order: 2; flex: 1 1 90px; inline-size: auto; min-inline-size: 0; }
+  .insp-sec .insp-fl input { order: 3; flex: 0 0 52px; inline-size: 52px; }
+  .insp-sec .insp-fl > em { order: 4; flex: none; inline-size: 1em; }
+  .insp-sec .insp-fieldreset { order: 5; }
+  .insp-sec .insp-diamond { order: 6; }
+  .insp-sec .insp-note { order: 7; }
+  .insp-sec .insp-sub { flex-basis: 100%; }
+}
+
+/* Scrolling a control into view (Tab, find) must not leave it under the sticky section header or the sticky Reset bar. */
+.insp-body { scroll-padding-block: 8px; }
+
+/* ---- r15 lane C: compact rows, group diamond, curve menu ---- */
+/* A value is label | number | reset | diamond over its slider: about 46 px, so Position, Scale, Rotation and Opacity fit a 1280x800 panel. */
+@media (pointer: fine) {
+  .insp-sec .insp-field { min-block-size: 0; padding-block-end: 0; }
+  .insp-sec .insp-fl { min-block-size: 28px; }
+  .insp-sec .insp-kbtn { min-inline-size: 28px; inline-size: 28px; block-size: 28px; }
+  .insp-sec .insp-fieldreset { inline-size: 28px; min-inline-size: 28px; block-size: 28px; }
+  .insp-field input.insp-slider { block-size: 24px; min-block-size: 24px; } /* WCAG 2.5.8: 24 px minimum target */
+  .insp-sec-b { gap: 2px; padding-block: 0 8px; }
+  .insp-sec-t { min-block-size: 36px; }
+  .insp-sec .insp-sub { min-block-size: 28px; }
+}
+.insp-sec-key { color: var(--muted); }
+.insp-sec-key[aria-pressed="true"] { color: var(--accent); background: var(--surface-3); }
+.insp-sec-reset { }
+.insp-ease { position: relative; flex: 1; min-inline-size: 0; }
+.insp-ease-btn { inline-size: 100%; min-block-size: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: var(--radius-xs); background: var(--surface-3); color: var(--fg); font: inherit; font-size: var(--text-sm); text-align: start; cursor: pointer; }
+.insp-ease-btn span { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-ease-btn svg:first-child { color: var(--accent); flex: none; }
+.insp-ease-btn:focus-visible, .insp-ease-pop button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.insp-ease-pop { position: absolute; z-index: 5; inset-inline: 0; inset-block-start: calc(100% + 4px); display: grid; padding: 4px; border-radius: var(--radius-sm); background: var(--surface-3); box-shadow: var(--elev-2); }
+.insp-ease-pop button { display: flex; align-items: center; gap: 8px; min-block-size: 36px; padding: 0 8px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--fg); font: inherit; font-size: var(--text-sm); text-align: start; cursor: pointer; }
+.insp-ease-pop button:hover { background: var(--surface-2); }
+.insp-ease-pop button[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+.insp-ease-pop svg { color: var(--accent); flex: none; }
+@media (pointer: coarse) { .insp-ease-btn { min-block-size: 44px; } .insp-ease-pop button { min-block-size: 44px; } }
+
+/* ---- r16 lane B ---- */
+/* The playhead note: an overlay on the panel's bottom edge (sticky), one line, never between two controls. */
+.insp .insp-hint { position: sticky; inset-block-end: 0; z-index: 3; margin-block-start: var(--space-2); box-shadow: var(--elev-2); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); min-block-size: 36px; padding: 2px 4px 2px 12px; font-size: var(--text-sm); }
+.insp .insp-hint button { min-block-size: 32px; padding-inline: 12px; font-size: var(--text-sm); }
+@media (pointer: coarse) { .insp .insp-hint { min-block-size: 48px; } .insp .insp-hint button { min-block-size: 40px; } }
+
+/* An active keyframe diamond is the accent colour, like every other active control (hover must not turn it white). */
+.insp-diamond[aria-pressed="true"], .insp-diamond[aria-pressed="true"]:hover:not(:disabled), .insp-sec-key[aria-pressed="true"], .insp-sec-key[aria-pressed="true"]:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
+
+/* Scroll cue: while there is more below the fold (`useScrollCue` sets data-more on the body), a fade sits over its bottom edge (no space of its own: negative margin). */
+.insp-fade { flex: none; block-size: 40px; margin-block-start: -40px; pointer-events: none; opacity: 0; background: linear-gradient(to bottom, transparent, var(--surface)); transition: opacity var(--dur-fast); }
+.insp-body[data-more] + .insp-fade { opacity: 1; }
+
+/* Duration (photo): the number and its two nudge buttons on one row. */
+[data-testid="duration-section"] .insp-field { flex-wrap: nowrap; align-items: center; }
+[data-testid="duration-section"] .insp-fl input { inline-size: 72px; }
+[data-testid="duration-section"] .insp-kbtn { background: var(--surface-3); color: var(--fg); font-size: 20px; }
+
+/* The save chip is clickable (save now) but stays a status. */
+.save-state { cursor: pointer; }
+.save-state:hover { background: var(--surface-3); color: var(--fg); }
+.save-state[data-just] .dot { background: var(--ok); }

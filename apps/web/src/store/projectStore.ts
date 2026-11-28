@@ -1,4 +1,4 @@
-import type { Editing, EditOutcome, Op, Project } from "@app/engine-client";
+import { applyEditPatch, type Editing, type EditOutcome, type Op, type Project } from "@app/engine-client";
 import { createContext, createElement, useContext, useSyncExternalStore, type ReactNode } from "react";
 
 /** What every panel reads. Replaced (never mutated) on each change, so a selector result is stable until its part changes. */
@@ -45,6 +45,7 @@ export class ProjectStore {
   private redoStack: (string | null)[] = [];
   private lastCoalesce: number | undefined;
   private recovered = false; // the engine held history before this session's first edit
+  private rev: number | null = null; // the engine revision `state.project` reflects (null until the first outcome after a read)
 
   readonly getState = (): ProjectState => this.state;
 
@@ -69,6 +70,7 @@ export class ProjectStore {
     this.redoStack = [];
     this.lastCoalesce = undefined;
     this.recovered = history.canUndo ?? false;
+    this.rev = null;
     if (!editing) {
       this.set({ project: null, canUndo: false, canRedo: false, selection: NO_SELECTION, undoLabel: null, redoLabel: null, undoSteps: NO_STEPS, redoSteps: NO_STEPS, earlierEdits: false });
       return Promise.resolve();
@@ -97,12 +99,26 @@ export class ProjectStore {
     return this.enqueue(async () => {
       const out = await call(ed);
       if (this.token !== mine) return out;
-      const project = out.changed ? await ed.project() : null;
+      const project = out.changed ? await this.next(ed, this.state.project, out) : null;
       if (this.token !== mine) return out;
       history?.(out.changed);
       this.publish(project, out);
       return out;
     });
+  }
+
+  /**
+   * The project after `out`: the engine's patch applied to our copy (every unchanged track and clip keeps its identity, nothing is re-read or
+   * re-parsed: ADR 0020), or the whole project when there is no patch, it does not fit, or the revisions are not consecutive (something else
+   * changed the engine's project since we last looked).
+   */
+  private async next(ed: Editing, cur: Project | null, out: EditOutcome): Promise<Project> {
+    const ok = cur && out.patch && (this.rev === null || out.revision === this.rev + 1);
+    this.rev = out.revision;
+    if (ok) {
+      try { return applyEditPatch(cur, out.patch!); } catch { /* does not fit: re-read below */ }
+    }
+    return ed.project();
   }
 
   /** Show an engine outcome: the new project (when it changed), undo/redo state and the step lists. */
@@ -125,6 +141,7 @@ export class ProjectStore {
     return this.enqueue(async () => {
       let out: EditOutcome | null = null;
       let moved = false;
+      let proj: Project | null = this.state.project; // our copy with every step's patch applied; null once a step had none
       while (this.token === mine) {
         const pos = this.undoStack.length;
         if (pos === target) break;
@@ -133,12 +150,15 @@ export class ProjectStore {
         out = o;
         if (!o.changed) break;
         moved = true;
+        const ok = proj && o.patch && (this.rev === null || o.revision === this.rev + 1);
+        this.rev = o.revision;
+        try { proj = ok ? applyEditPatch(proj!, o.patch!) : null; } catch { proj = null; }
         if (back) this.redoStack.push(this.undoStack.pop() ?? null);
         else this.undoStack.push(this.redoStack.pop() ?? null);
       }
       this.lastCoalesce = undefined;
       if (this.token !== mine || !out || !moved) return out;
-      this.publish(await ed.project(), out);
+      this.publish(proj ?? (await ed.project()), out);
       return out;
     });
   };

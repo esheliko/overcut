@@ -16,9 +16,8 @@ test("MP4 with AAC keeps its 'works in most apps' label; MP4 that only got Opus 
   assert.doesNotMatch(en[formatLabelKey({ id: "mp4-h264", audioCodec: "opus" })]!, /most apps|devices/i);
 });
 
-test("the heads-up says why the file may not play and does not claim WebM plays more widely", () => {
+test("the heads-up says where the file may lose its sound and does not claim WebM plays more widely", () => {
   const warn = en["export.warn.limited"]!;
-  assert.match(warn, /AAC/);
-  assert.match(warn, /Opus/);
+  assert.match(warn, /without sound/); // the Opus line (M2 wording): the label already says "with Opus sound", the note says who may not play it
   assert.doesNotMatch(warn, /widest|WebM/i);
 });

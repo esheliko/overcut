@@ -3,7 +3,7 @@
  * "playback" drives the preview Worker (PreviewHost: decode, compositor, player) on a hidden canvas; "exportSpeed" drives `engine.export`.
  * Both fail soft (unsupported / error / timeout with a reason) and report flat numbers like the Worker tests.
  */
-import { createEngine, ExportError, type ExportFailureDetail, type Project } from "@app/engine-client";
+import { PROJECT_SCHEMA_VERSION, createEngine, ExportError, type ExportFailureDetail, type Project } from "@app/engine-client";
 import { patternProject } from "../ExportHarness";
 import { PreviewHost } from "../preview/host";
 import { TICKS_PER_SECOND } from "../preview/timing";
@@ -17,7 +17,7 @@ const LIMIT_MS = 90_000;
 function layeredProject(seconds: number): Project {
   const clip = (n: number) => ({ id: hex(10 + n), media: hex(2), start: 0, source_in: 0, duration: seconds * TICKS_PER_SECOND });
   return {
-    id: hex(1), name: "device playback test", schema_version: 1,
+    id: hex(1), name: "device playback test", schema_version: PROJECT_SCHEMA_VERSION,
     media: [{ id: hex(2), kind: "video", name: "clip-gop30.mp4", uri: "file:clip-gop30.mp4" }],
     sequences: [{
       id: hex(3), name: "main", frame_rate: { num: 30, den: 1 }, resolution: { width: 1920, height: 1080 }, sample_rate: 48000,
@@ -36,16 +36,25 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
   canvas.style.cssText = "position:fixed;left:-9999px;top:0;width:960px;height:540px";
   document.body.appendChild(canvas);
   let host: PreviewHost | null = null;
+  const lap = { t: performance.now(), ms: {} as Record<string, number> };
+  const mark = (name: string): void => { const n = performance.now(); lap.ms[name] = Math.round(n - lap.t); lap.t = n; };
   try {
     host = new PreviewHost(canvas, { onFrame: () => undefined, onState: () => undefined, onError: () => undefined });
     const info = await Promise.race([host.ready, sleep(15_000).then(() => { throw new Error("the preview did not start in 15 s"); })]);
+    mark("t_start_ms");
     host.resize(960, 540);
     host.send({ type: "media", id: hex(2), file });
     host.configure({ project: JSON.stringify(layeredProject(SECONDS)), sequence: hex(3), rate: { num: 30, den: 1 }, size: { width: 1920, height: 1080 }, endTicks: SECONDS * TICKS_PER_SECOND });
     for (let i = 0; i < 150 && ((await host.rpc<unknown[]>({ name: "frames" })).length === 0); i++) await sleep(100);
     if ((await host.rpc<unknown[]>({ name: "frames" })).length === 0) throw new Error("the test clip could not be opened by the decoder");
+    mark("t_open_ms");
     host.player.seek(0);
-    await sleep(1500); // first frame drawn: also runs the upload-path measurement once, outside the timed run
+    // First frame drawn: the preview measures its upload path once the player is idle (about 1 to 3 s on a phone); wait for it so it is not inside the timed run.
+    for (let i = 0; i < 300 && !(await host.rpc<{ upload?: unknown }>({ name: "gpu" })).upload; i++) await sleep(100);
+    mark("t_upload_wait_ms");
+    const pre = await host.rpc<{ uploadState?: string }>({ name: "gpu" });
+    const preStats = await host.rpc<{ scrubMs?: number[] }>({ name: "stats" });
+    await sleep(500);
     type S = { presented: number; dropped: number; stalls: number; late: number[]; times: number[] };
     const s0 = await host.rpc<S>({ name: "stats" });
     const t0 = performance.now();
@@ -56,16 +65,20 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
       if (performance.now() - t0 > 1000 && !host.player.isPlaying) break; // reached the end
     }
     host.player.toggle();
+    mark("t_play_ms");
     const s1 = await host.rpc<S>({ name: "stats" });
-    const gpu = await host.rpc<{ upload?: { path: string; source: string } }>({ name: "gpu" });
+    const gpu = await host.rpc<{ upload?: { path: string; source: string; ms?: Record<string, number> }; uploadState?: string }>({ name: "gpu" });
     const times = s1.times.slice(s0.times.length);
     const span = times.length > 1 ? times[times.length - 1]! - times[0]! : 0;
     const late = s1.late.slice(s0.late.length).sort((a, b) => a - b);
     const presented = s1.presented - s0.presented;
     return {
-      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "n/a",
-      presented, dropped: s1.dropped - s0.dropped, stalls: s1.stalls - s0.stalls,
+      layers: 3, size: "1920x1080@30", backend: info.backend, upload_path: gpu.upload?.path ?? "NOT MEASURED", upload_source: gpu.upload?.source ?? "NOT MEASURED", upload_state: gpu.uploadState ?? "n/a", upload_state_before_play: pre.uploadState ?? "n/a", scrubs_before_play: preStats.scrubMs?.length ?? -1, upload_ms_frame: round1(gpu.upload?.ms?.frame), upload_ms_cpu: round1(gpu.upload?.ms?.cpu),
+      ...lap.ms, presented, dropped: s1.dropped - s0.dropped, stalls: s1.stalls - s0.stalls,
+      // stalls count layers whose next picture was not decoded yet when a frame was drawn: share of all layer draws (3 layers x frames wanted), so 222 can be read.
+      stall_pct: Math.round((100 * (s1.stalls - s0.stalls)) / Math.max(1, 3 * (presented + s1.dropped - s0.dropped))),
       fps: span ? Math.round(((times.length - 1) / span) * 10) / 10 : 0,
+      bound: boundBy(gpu.upload, stallPct(s0, s1, presented)),
       p95_late_ms: Math.round(late[Math.floor(late.length * 0.95)] ?? 0),
     };
   } finally {
@@ -74,11 +87,20 @@ async function playback(progress: (f: number) => void): Promise<Record<string, n
   }
 }
 
+const stallPct = (s0: { stalls: number; dropped: number }, s1: { stalls: number; dropped: number }, presented: number): number => Math.round((100 * (s1.stalls - s0.stalls)) / Math.max(1, 3 * (presented + s1.dropped - s0.dropped)));
+/** What limits playback, in words: no measurement, upload too slow for 3 layers in 33 ms, or the decoder not keeping up (stalls with a fast upload). */
+function boundBy(upload: { path: string; ms?: Record<string, number> } | undefined, stalls: number): string {
+  if (!upload) return "unknown: upload path NOT measured (see upload_state)";
+  const ms = upload.ms?.[upload.path];
+  if (typeof ms === "number" && ms * 3 > 33) return `gpu-upload: ${Math.round(ms * 3)} ms for 3 layers > 33 ms`;
+  return stalls > 5 ? "decode: frames not ready in time while the upload fits the budget" : "none";
+}
+
 /** One export through `engine.export`, flat numbers. `real` = the shipped clip through the production decoder; otherwise the synthetic test pattern. */
 async function exportOnce(engine: Awaited<ReturnType<typeof createEngine>>, real: File | null, progress: (f: number) => void): Promise<Record<string, number | string>> {
   const project = real
     ? ({
-        id: hex(1), name: "device export test", schema_version: 4,
+        id: hex(1), name: "device export test", schema_version: PROJECT_SCHEMA_VERSION,
         media: [{ id: hex(2), kind: "video", name: real.name, uri: `file:${real.name}` }],
         sequences: [{ id: hex(3), name: "main", frame_rate: { num: 30, den: 1 }, resolution: { width: 1920, height: 1080 }, sample_rate: 48000, tracks: [{ id: hex(4), kind: "video", locked: false, muted: false, name: "V1", clips: [{ id: hex(10), media: hex(2), start: 0, source_in: 0, duration: 5 * TICKS_PER_SECOND }] }] }],
       } as unknown as Project)
@@ -130,6 +152,7 @@ async function exportSpeed(progress: (f: number) => void): Promise<Record<string
   return out;
 }
 
+const round1 = (v: number | undefined): number => (typeof v === "number" ? Math.round(v * 10) / 10 : -1);
 const clip = (v: string | undefined, n: number): string => (v ?? "").replace(/\s+/g, " ").slice(0, n);
 
 /** The failure of an export, flat and short enough for the copied report: where it died, what the browser said, which encoder config was tried. */

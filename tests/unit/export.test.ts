@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { AudioMixer } from "../../packages/engine-client/src/export/audio-mix";
 import { createTestPatternAudio } from "../../packages/engine-client/src/export/media";
+import type { MediaAudio } from "../../packages/engine-client/src/export/media";
 import { createExportApi, exportNotYet, type WorkerLike } from "../../packages/engine-client/src/export/job";
 import { AUDIO_BLOCK, outputFrameTimes, runExport, type ExportEnv } from "../../packages/engine-client/src/export/pipeline";
 import { frameMicros, frameTicks, planExport, sampleMicros, sampleTicks, TICKS_PER_SECOND } from "../../packages/engine-client/src/export/plan";
@@ -109,7 +110,7 @@ test("mixer: places a segment at its offset and applies gain; silence elsewhere"
     close: () => undefined,
   };
   const mixer = new AudioMixer(48000, async () => media);
-  const seg = { track: "a", clip: "c", media: "m", out_start: 2, len: 4, source_start: 100 * 14700, speed: { num: 1, den: 1 }, gain: 0.5 };
+  const seg = { track: "a", clip: "c", media: "m", out_start: 2, len: 4, source_start: 100 * 14700, speed: { num: 1, den: 1 }, gain: 0.5, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 };
   const out = new Float32Array(16);
   await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 8, layers: [], audio: [seg] }, 8, out);
   assert.deepEqual(Array.from(out.subarray(0, 8)), [0, 0, 0.25, 0.25, 0.25, 0.25, 0, 0]);
@@ -125,10 +126,10 @@ test("mixer: values above 1 clamp, speed 2 reads every second source sample", as
   };
   const mixer = new AudioMixer(48000, async () => media);
   const out = new Float32Array(8);
-  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 4, layers: [], audio: [{ track: "a", clip: "c", media: "m", out_start: 0, len: 4, source_start: 10 * 14700, speed: { num: 2, den: 1 }, gain: 1 }] }, 4, out);
+  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 4, layers: [], audio: [{ track: "a", clip: "c", media: "m", out_start: 0, len: 4, source_start: 10 * 14700, speed: { num: 2, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] }, 4, out);
   assert.deepEqual(Array.from(out.subarray(0, 4)).map((v) => Math.round(v * 100)), [10, 12, 14, 16]);
   const loud = new Float32Array(8);
-  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 4, layers: [], audio: [{ track: "a", clip: "c", media: "m", out_start: 0, len: 4, source_start: 500 * 14700, speed: { num: 1, den: 1 }, gain: 1 }] }, 4, loud);
+  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 4, layers: [], audio: [{ track: "a", clip: "c", media: "m", out_start: 0, len: 4, source_start: 500 * 14700, speed: { num: 1, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] }, 4, loud);
   assert.equal(loud[0], 1);
 });
 
@@ -155,8 +156,8 @@ function fakeEnv(plan: ReturnType<typeof planExport>, over: { signal?: AbortCont
       video_time: ticks,
       sample: 0,
       audio_samples: n,
-      layers: [{ track: "v", clip: "c", media: "m", source_time: ticks, transform: { center: [0, 0], scale: [1, 1], rotation: 0 }, opacity: 1 }],
-      audio: n ? [{ track: "a", clip: "c", media: "m", out_start: 0, len: n, source_start: ticks, speed: { num: 1, den: 1 }, gain: 1 }] : [],
+      layers: [{ track: "v", clip: "c", media: "m", source_time: ticks, transform: { center: [0, 0], scale: [1, 1], rotation: 0 }, props: { position: [0, 0], scale: [1, 1], rotation: 0, anchor: [0, 0], crop: [0, 0, 0, 0], opacity: 1, flip: [false, false], fit: "contain" }, opacity: 1 }],
+      audio: n ? [{ track: "a", clip: "c", media: "m", out_start: 0, len: n, source_start: ticks, speed: { num: 1, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] : [],
     }),
     render: async (desc, index) => {
       if (over.failAt === index) throw new ExportError("encode_failed", "boom");
@@ -462,16 +463,44 @@ test("decoder adapter: ticks map to the media's own frame (floor), repeat withou
   const m = fakeMedia({ fps: { num: 24, den: 1 }, packets: 48 });
   const opened = await openBlobMedia(m.api, new Blob(["x"]), 48000, "clip");
   const at = (s: number) => Math.round(s * T);
-  const f1 = await opened.video!.frame(at(1)); // frame 24
+  const draw = async (ticks: number) => { const f = await opened.video!.frame(ticks); f.close(); return f; }; // what the export loop does: ask, draw, close
+  const f1 = await draw(at(1)); // frame 24
   assert.equal(f1.rotation, 90);
-  await opened.video!.frame(at(1) + 5); // same frame: no new decode
-  await opened.video!.frame(at(1 + 1 / 24) + 1); // frame 25
-  await opened.video!.frame(at(100)); // clamps to the last frame (47)
+  await draw(at(1) + 5); // same frame: no new decode
+  await draw(at(1 + 1 / 24) + 1); // frame 25
+  await draw(at(100)); // clamps to the last frame (47)
   assert.deepEqual(m.asked, [24, 25, 47]);
   assert.equal(m.counts().released, 2, "each replaced frame was released once");
   opened.video!.close();
   opened.audio!.close();
   assert.deepEqual(m.counts(), { released: 3, closed: 1 });
+});
+
+test("decoder adapter: two layers of one frame may read the same media at different times, and neither picture is released under the other", async () => {
+  const m = fakeMedia({ fps: { num: 30, den: 1 }, packets: 60 });
+  const opened = await openBlobMedia(m.api, new Blob(["x"]), 48000, "clip");
+  const at = (frame: number) => Math.round((frame * T) / 30);
+  for (let k = 0; k < 3; k++) {
+    // V1 reads source frame 24 + 2k (a 2x clip), V2 reads frame 12 + k (the same file at 1x): both are open while the compositor draws
+    const v1 = await opened.video!.frame(at(24 + 2 * k));
+    const v2 = await opened.video!.frame(at(12 + k));
+    assert.equal(m.counts().released, Math.max(0, 2 * k - 1), `frame ${k}: nothing the compositor still needs was released`);
+    v1.close();
+    v2.close();
+  }
+  assert.deepEqual(m.asked, [24, 12, 26, 13, 28, 14]);
+  // a picture asked for twice in one frame is decoded once and held until both users close it
+  const a = await opened.video!.frame(at(40));
+  const b = await opened.video!.frame(at(40));
+  assert.equal(a, b);
+  const before = m.counts().released;
+  a.close();
+  const c = await opened.video!.frame(at(41));
+  assert.equal(m.counts().released, before, "still held by the second user");
+  b.close();
+  c.close();
+  opened.video!.close();
+  assert.equal(m.asked.length, 8);
 });
 
 test("decoder adapter: sequential export decodes through one stream (each picture once), skips frames it does not need, restarts for a backward or far jump, and falls back when streaming fails", async () => {
@@ -491,7 +520,7 @@ test("decoder adapter: sequential export decodes through one stream (each pictur
   };
   const opened = await openBlobMedia({ open: async () => h } as MediaApi, new Blob(["x"]), 48000, "clip");
   const at = (frame: number) => Math.round((frame / 30) * T);
-  for (const f of [0, 1, 2, 4, 5]) await opened.video!.frame(at(f)); // frame 3 is skipped (a speed-up): pulled and released
+  for (const f of [0, 1, 2, 4, 5]) (await opened.video!.frame(at(f))).close(); // (ask, draw, close) frame 3 is skipped (a speed-up): pulled and released
   assert.deepEqual(starts, [0], "one stream for the whole forward run");
   assert.deepEqual(m.asked, [], "no random-access decode");
   assert.equal(streamReleased, 5, "skipped and replaced frames are released (the last one is still held)");
@@ -522,6 +551,46 @@ test("decoder adapter: a variable-frame-rate clip exports at its real speed (fra
   const opened = await openBlobMedia(m.api, new Blob(["x"]), 48000, "phone.mp4");
   for (const s of [0, 0.05, 0.1, 0.12, 0.2, 0.49, 0.5, 9]) await opened.video!.frame(Math.round(s * T));
   assert.deepEqual(m.asked, [0, 1, 2, 3], "each distinct picture is decoded once, the last one holds");
+});
+
+test("mixer: a clip whose speed is not 1 plays its pre-stretched audio (pitch kept), indexed from the clip's start", async () => {
+  const reads: number[][] = [];
+  const media: MediaAudio = {
+    read: async (start, count, out) => {
+      reads.push([start, count]);
+      for (const ch of out) for (let i = 0; i < count; i++) ch[i] = 1;
+    },
+    close: () => undefined,
+  };
+  // The fake stretcher halves the length (2x) and marks each output sample with its index / 10 (the mixer clamps at 1) so the offset is visible.
+  const stretch = (planar: Float32Array[], _rate: number, num: number, den: number): Float32Array[] => planar.map((c) => Float32Array.from({ length: Math.ceil((c.length * den) / num) }, (_, i) => (i + 1) / 10));
+  const mixer = new AudioMixer(48000, async () => media, stretch);
+  const seg = { track: "a", clip: "c", media: "m", out_start: 1, len: 3, source_start: 0, speed: { num: 2, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 14700 * 10, clip_source_len: 14700 * 20, clip_offset: 4 };
+  const out = new Float32Array(10);
+  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 5, layers: [], audio: [seg] }, 5, out);
+  assert.deepEqual(reads, [[10, 20]], "the whole clip window is read once: 20 source samples");
+  assert.deepEqual(Array.from(out.subarray(0, 5), (v) => Math.round(v * 10)), [0, 5, 6, 7, 0], "samples clip_offset.. of the stretched clip (1-based marks)");
+  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 5, layers: [], audio: [seg] }, 5, new Float32Array(10));
+  assert.equal(reads.length, 1, "the stretched clip is cached");
+});
+
+test("audio ends with the picture: the encoder's padding packet is dropped and a straddling one is cut back (#138)", async () => {
+  const { fitAudioPacket } = await import("../../packages/engine-client/src/export/mux");
+  const end = 2; // a 2 s edit: 96 000 samples, 100 Opus packets of 20 ms
+  assert.equal(fitAudioPacket(0, 0.02, end), 0.02);
+  assert.equal(fitAudioPacket(1.98, 0.02, end), 0.02, "the last real packet ends exactly at the end");
+  assert.equal(fitAudioPacket(2.0, 0.02, end), null, "the 101st, padded packet starts at the end: dropped");
+  assert.equal(fitAudioPacket(2.02, 0.02, end), null);
+  assert.ok(Math.abs((fitAudioPacket(1.99, 0.02, end) ?? 0) - 0.01) < 1e-12, "a packet that straddles the end is cut back to it");
+  assert.equal(fitAudioPacket(5, 0.02, undefined), 0.02, "no end: unchanged");
+  // Whatever the length, the kept packets add up to the edit's length within one packet (here: exactly).
+  for (const seconds of [0.5, 2, 7, 61.7]) {
+    const samples = Math.round(seconds * 48_000);
+    const packets = Math.ceil(samples / 960) + 1; // the encoder's flush adds one more
+    let kept = 0;
+    for (let i = 0; i < packets; i++) kept += fitAudioPacket((i * 960) / 48_000, 960 / 48_000, samples / 48_000) ?? 0;
+    assert.ok(Math.abs(kept - samples / 48_000) < 1e-9, `${seconds} s: ${kept}`);
+  }
 });
 
 test("decoder adapter: a decode failure names the clip and where in it (code media_failed, not 'reconnect it')", async () => {

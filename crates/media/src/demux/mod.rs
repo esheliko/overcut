@@ -1,4 +1,4 @@
-//! Container demuxers (MP4/MOV, WebM/Matroska) over the async [`Source`] trait. Pure `std`: no threads, no fs, WASM-safe.
+//! Container demuxers (MP4/MOV, WebM/Matroska, and audio-only WAV and MP3) over the async [`Source`] trait. Pure `std`: no threads, no fs, WASM-safe.
 //!
 //! Hand-rolled, read-only, no dependencies: the available crates read through blocking `Read + Seek`, which cannot sit on the host's
 //! async `Source` (browser Blobs, network ranges), and a small parser is easier to bound and fuzz. See `docs/features/media-io.md`.
@@ -8,8 +8,10 @@
 
 mod codec;
 mod matroska;
+mod mp3;
 mod mp4;
 mod reader;
+mod wav;
 
 use crate::{AudioInfo, MediaError, MediaInfo, Source, VideoInfo};
 use app_model::{Rational, Time, TICKS_PER_SECOND};
@@ -26,6 +28,10 @@ pub enum ContainerFormat {
     Mov,
     WebM,
     Matroska,
+    /// RIFF/WAVE PCM (audio only).
+    Wav,
+    /// MPEG Layer III (audio only).
+    Mp3,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +51,16 @@ pub struct Packet {
     pub keyframe: bool,
 }
 
+/// The colour description a container carries for a video track (WebM `Colour`, MP4 `colr`/`nclx`, VP9 `vpcC`), in the ISO 23001-8 code points
+/// WebCodecs' `VideoColorSpace` is derived from. `0` = not given; `full_range` is `None` when the container does not say (then the decoder decides).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ColourInfo {
+    pub primaries: u8,
+    pub transfer: u8,
+    pub matrix: u8,
+    pub full_range: Option<bool>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Track {
     pub id: u32,
@@ -59,6 +75,8 @@ pub struct Track {
     pub height: u32,
     /// Clockwise degrees to apply when displaying: 0, 90, 180 or 270 (from the MP4 `tkhd` matrix; WebM carries none here).
     pub rotation: u16,
+    /// Colour primaries, transfer, matrix and range the container declares (default: nothing declared; audio: always default).
+    pub colour: ColourInfo,
     pub sample_rate: u32,
     pub channels: u16,
     /// Container timescale for this track (ticks per second of the source timestamps), informational.
@@ -168,6 +186,12 @@ pub async fn probe<S: Source>(source: &S) -> Result<Probe, MediaError> {
     }
     if head[..4] == [0x1A, 0x45, 0xDF, 0xA3] {
         return matroska::probe(&mut r).await;
+    }
+    if wav::is_wav(&head) {
+        return wav::probe(&mut r).await;
+    }
+    if mp3::is_mp3(&head) {
+        return mp3::probe(&mut r).await;
     }
     match &head[4..8] {
         b"ftyp" | b"moov" | b"mdat" | b"wide" | b"free" | b"skip" | b"pnot" => {

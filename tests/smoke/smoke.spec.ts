@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { gutterShift } from "./timeline-geometry";
 const UNDO = /^Undo( (?!recovery).+)?$/, REDO = /^Redo( .+)?$/; // the label names the step ("Undo import of clip.mp4")
 
 test("the app loads and the WebAssembly engine answers", async ({ page }) => {
@@ -31,7 +32,7 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
     await expect(tools).toBeVisible();
     const box = (await tools.getByRole("button", { name: "Media" }).boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44); // touch target
-    expect(box.width).toBeGreaterThan((page.viewportSize()?.width ?? 0) * 0.8); // the one tool is a full-width bar button, not a lone tab in the corner
+    expect((await tools.boundingBox())!.width).toBeGreaterThan((page.viewportSize()?.width ?? 0) * 0.8); // the tools (Media, Edit) fill the bar, not lone tabs in the corner
     await expect(page.getByTestId("panel-tool")).toBeHidden();
     await tools.getByRole("button", { name: "Media" }).click();
     await expect(page.getByTestId("panel-tool")).toBeVisible();
@@ -43,8 +44,8 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
     await expect(tools).toHaveCount(0); // one tool and its panel always open: no rail to switch anything
   }
   expect(info.project.name).toMatch(/desktop|phone/);
-  // M1 shows only tools that work: no Audio, Text, Captions, Effects... promises.
-  if (phone) await expect(tools.getByRole("button")).toHaveCount(1);
+  // Only tools that work: Media and Edit (the clip transform, M2); no Audio, Text, Captions, Effects... promises.
+  await expect(tools.getByRole("button")).toHaveCount(phone ? 5 : 0); // nothing selected: Media, Overlay, Split, Canvas, Edit; wide screens dock Details and Media, so there is no rail at all
 });
 
 test("transport and timeline: play advances the playhead, the canvas timeline paints", async ({ page }) => {
@@ -111,6 +112,16 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
   const report = JSON.parse(await page.getByTestId("report").inputValue());
   expect(report.overcut_device_report).toBe(1);
   expect(Object.keys(report.tests)).toEqual(["decode", "seek", "gpuUpload", "fillRate", "playback", "exportSpeed"]);
+  // The test projects are built in code and must carry the CURRENT schema: UnsupportedVersion(n) means one was left behind (it happened: the export test kept schema 4).
+  for (const id of ["playback", "exportSpeed"] as const) {
+    const t = report.tests[id];
+    expect(`${id}: ${t.why ?? ""} ${t.reason ?? ""}`).not.toMatch(/UnsupportedVersion|schema/i);
+  }
+  // Where the export ran at all (this device has the codecs and a renderer) it must have succeeded, and playback must say what its upload path is.
+  if (report.tests.exportSpeed.status !== "unsupported") expect(report.tests.exportSpeed.status).toBe("ok");
+  if (report.tests.playback.status === "ok") {
+    expect(typeof report.tests.playback.bound).toBe("string");
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
   expect(outside).toEqual([]);
@@ -118,12 +129,13 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
 
 test("theme: follows the system, the toggle overrides it, the choice is remembered, and the page never scrolls sideways", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
+  await page.addInitScript(() => { try { if (!localStorage.getItem("overcut.theme")) localStorage.setItem("overcut.theme", "system"); } catch { /* ignore */ } }); // r14: a first run is dark; "follow the system" is now an explicit choice
   await page.goto("/");
   const html = page.locator("html");
   await expect(html).toHaveAttribute("data-theme", "light");
   const toggle = page.getByTestId("theme-toggle");
   // Below 480 px the toggle lives in the "..." menu (it stays open while the toggle is used).
-  if (!(await toggle.isVisible())) await page.getByRole("button", { name: "Menu" }).click();
+  if (!(await toggle.isVisible())) { await page.getByRole("button", { name: "Menu" }).click(); await page.getByTestId("menu-theme").click(); } // UX r15 D8: one "Theme: ..." row opens the choices
   // F3: the toggle opens a small menu (System, Dark, Light, High contrast). Esc closes it and gives focus back to the toggle.
   if (await toggle.isVisible()) {
     await toggle.click();
@@ -165,6 +177,8 @@ test("language and direction: the page declares lang and dir, and a right-to-lef
 
 test("timeline editing: select, split, delete, undo and redo go through the engine", async ({ page }, info) => {
   const phone = info.project.name === "phone";
+  // r15: this test places clips freely by pixel (move 1 s, then grab the end handle at a fixed x); the magnetic main track (on by default) snaps a moved clip against its neighbour, so it runs with magnetic off. Magnetic behaviour is covered by ux-r15-a.spec.ts.
+  await page.addInitScript(() => { try { localStorage.setItem("overcut.magnetic", "off"); } catch { /* storage blocked */ } });
   await page.goto("/?sample");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const summary = page.locator("#tl-summary");
@@ -174,11 +188,12 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
   const redo = page.getByRole("button", { name: REDO });
   await expect(summary).toContainText("2 tracks, 14 clips");
   await expect(undo).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+  if (!phone) await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled(); // the phone strip shows Delete only with a clip selected
 
-  // Sample layout at the default zoom (40 px/s): gutter 48 px, ruler 30 px, lane 52 px; the first video clip spans x 48..168.
+  // Sample layout at the default zoom (40 px/s): gutter 48 px, ruler 30 px, lane 60 px; the first video clip spans x 48..168.
   const box = (await canvas.boundingBox())!;
-  const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + x, box.y + y) : page.mouse.click(box.x + x, box.y + y));
+  const dg = await gutterShift(page);
+  const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + dg + x, box.y + y) : page.mouse.click(box.x + dg + x, box.y + y));
   await at(108, 30 + 26); // select the first clip
   await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
   await expect(live).toContainText("Clip 1");
@@ -208,16 +223,16 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
 
   if (phone) return; // pointer drags and the keyboard are exercised on desktop; touch rules are covered by the unit tests
   // Drag the clip 1 s later (one undo step), trim its end by 1 s with the handle, then undo both.
-  await page.mouse.move(box.x + 108, box.y + 56);
+  await page.mouse.move(box.x + dg + 108, box.y + 56);
   await page.mouse.down();
-  await page.mouse.move(box.x + 130, box.y + 56, { steps: 4 });
-  await page.mouse.move(box.x + 148, box.y + 56, { steps: 4 });
+  await page.mouse.move(box.x + dg + 130, box.y + 56, { steps: 4 });
+  await page.mouse.move(box.x + dg + 148, box.y + 56, { steps: 4 });
   await page.mouse.up();
   await expect(live).toContainText("Moved");
   await expect(undo).toBeEnabled();
-  await page.mouse.move(box.x + 206, box.y + 56); // its end handle (clip now spans 88..208)
+  await page.mouse.move(box.x + dg + 206, box.y + 56); // its end handle (clip now spans 88..208)
   await page.mouse.down();
-  await page.mouse.move(box.x + 166, box.y + 56, { steps: 6 });
+  await page.mouse.move(box.x + dg + 166, box.y + 56, { steps: 6 });
   await page.mouse.up();
   await expect(live).toContainText("Trimmed end");
   await page.keyboard.press("Control+z");
@@ -240,16 +255,22 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
   await expect(undo).toBeDisabled();
 });
 
-test("the timeline toolbar fits at 320 and 390 px: zoom + stays visible, inside the viewport, 44 px on touch", async ({ page }, info) => {
+test("the timeline toolbar is ONE row that fits at 320 and 390 px: undo, redo, tool picker and More inside the viewport, 44 px on touch", async ({ page }, info) => {
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
-    const plus = page.getByRole("button", { name: "Zoom in" });
-    await expect(plus).toBeVisible();
-    const box = (await plus.boundingBox())!;
-    expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width).toBeLessThanOrEqual(width);
-    if (info.project.name === "phone") { expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44); } // desktop pointers use a 36 px target
+    await expect(page.getByTestId("tl-more")).toBeVisible();
+    const rows = new Set<number>();
+    for (const b of [page.getByRole("button", { name: /^Undo/ }), page.getByRole("button", { name: /^Redo/ }), page.getByTestId("tl-tool"), page.getByTestId("tl-more")]) {
+      await expect(b).toBeVisible();
+      const box = (await b.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      rows.add(Math.round((box.y + box.height / 2) / 10)); // centres on one line (desktop and touch targets differ in height)
+      if (info.project.name === "phone") { expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44); } // desktop pointers use a 36 px target
+    }
+    expect(rows.size).toBe(1); // one row
+    if (width >= 360) await expect(page.getByTestId("tl-fit")).toBeVisible(); // zoom: pinch, Fit here, +/- in the More menu
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
   }
@@ -270,6 +291,7 @@ test("top bar on a small phone: project name truncates but stays editable, Expor
     await name.fill("A very long project name that cannot possibly fit in the bar");
     await expect(name).toHaveValue("A very long project name that cannot possibly fit in the bar");
     await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByTestId("menu-theme").click(); // UX r15 D8: the phone menu has ONE theme row; its choices show when it is open
     await expect(page.getByRole("menuitemradio", { name: "High contrast" })).toBeVisible(); // F3: the phone menu lists the theme choices
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   }
@@ -303,8 +325,8 @@ const PROFILES = [
   { name: "phone-landscape", w: 844, h: 390, inspector: false, docked: false },
   { name: "tablet", w: 820, h: 1180, inspector: false, docked: true },
   { name: "tablet", w: 1024, h: 768, inspector: false, docked: true },
-  { name: "desktop", w: 1280, h: 800, inspector: false, docked: true },
-  { name: "ultrawide", w: 3440, h: 1440, inspector: false, docked: true },
+  { name: "desktop", w: 1280, h: 800, inspector: true, docked: true },
+  { name: "ultrawide", w: 3440, h: 1440, inspector: true, docked: true },
 ] as const;
 for (const p of PROFILES) {
   test(`layout profile ${p.name} at ${p.w}x${p.h}: panels arranged, no overlap, no horizontal scroll, 44 px touch targets`, async ({ page }, info) => {
@@ -316,8 +338,8 @@ for (const p of PROFILES) {
     const preview = await box("panel-preview");
     const timeline = await box("panel-timeline");
     // docked layouts with one tool have no rail (its panel is always open); phones keep the bar or the side rail
-    if (p.docked) await expect(page.getByRole("navigation", { name: "Tools" })).toHaveCount(0);
-    const tools = p.docked ? await box("panel-tool") : (await page.getByRole("navigation", { name: "Tools" }).boundingBox())!;
+    if (p.inspector) await expect(page.getByRole("navigation", { name: "Tools" })).toHaveCount(0); // Media and Details both docked: nothing to switch. A tablet keeps its rail for the Edit sheet
+    const tools = p.inspector ? await box("panel-tool") : (await page.getByRole("navigation", { name: "Tools" }).boundingBox())!;
     for (const b of [preview, timeline, tools]) {
       expect(b.width).toBeGreaterThan(40);
       expect(b.height).toBeGreaterThan(40);
@@ -331,20 +353,19 @@ for (const p of PROFILES) {
     expect(overlap(timeline, tools)).toBe(false);
     expect(preview.height).toBeGreaterThan(p.h * 0.2); // the preview is never squeezed out
     expect(timeline.height).toBeGreaterThan(100);
-    if (p.name === "desktop" || p.name === "ultrawide") { // P3: the timeline toolbar is one row from 1100 px up, with every group still there
-      const tops = await page.locator(".tl-bars .tl-group").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-      expect(tops.length).toBe(2); // the edit group and the clip group (zoom is checked below)
-      expect(new Set(tops).size).toBe(1);
-      expect(await page.locator(".tl-bars .zoom").count()).toBe(1);
+    if (p.name === "desktop" || p.name === "ultrawide") { // P3: the timeline toolbar is one row from 1100 px up (M2: edit group with the tool and More pickers, then zoom)
+      expect(await page.locator('[data-testid="tl-bar"]').count()).toBe(1);
+      const tops = await page.locator('[data-testid="tl-bar"] > *').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+      expect(tops.length).toBeGreaterThanOrEqual(2); // the edit group and the zoom
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(12); // all on one row
+      expect(await page.locator('[data-testid="tl-bar"] .zoom').count()).toBe(1);
     }
     if (p.name === "phone-portrait" && p.w === 320) { // A5: the track area holds the ruler and two lanes (V1, A1) without clipping
-      expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(30 + 2 * 52);
+      expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(30 + 2 * 60);
     }
-    if (p.name === "phone-landscape") { // B3: both toolbar rows share one row, and the track area keeps at least 160 px
-      const rows = await page.locator(".tl-bars .tl-group").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-      expect(new Set(rows).size).toBe(1);
+    if (p.name === "phone-landscape") { // B3: one toolbar row, and the track area keeps at least 160 px
       expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(160);
-      for (const b of await page.locator(".tl-bars .icon-btn").all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      for (const b of await page.locator('[data-testid="tl-bar"] .icon-btn:visible').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44); // visible ones: the narrow side-by-side column hides zoom -/+ and ripple (pinch zooms)
     }
     expect(await page.getByTestId("panel-inspector").count()).toBe(p.inspector ? 1 : 0);
     if (p.docked) await expect(page.getByTestId("panel-tool")).toBeVisible();
@@ -366,16 +387,22 @@ for (const p of PROFILES) {
   });
 }
 
-test("holding Shift after selecting a clip does not outline the whole timeline; Shift+click still toggles the clip", async ({ page }) => {
+test("holding Shift after selecting a clip does not outline the whole timeline; Shift+click selects a range, Ctrl+click toggles", async ({ page }) => {
   await page.goto("/?sample");
   await expect(page.locator("#tl-summary")).toContainText("2 tracks, 14 clips");
   const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
+  const dg = await gutterShift(page);
   const stageFrame = () => page.evaluate(() => getComputedStyle(document.querySelector(".tl-stage")!, "::after").boxShadow);
-  await page.mouse.click(box.x + 108, box.y + 26 + 26); // the first clip, as in the editing test
+  await page.mouse.click(box.x + dg + 108, box.y + 26 + 26); // the first clip, as in the editing test
   await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
   await page.keyboard.down("Shift");
   expect(await stageFrame()).toBe("none"); // the keyboard focus frame must not appear for a bare modifier
-  await page.mouse.click(box.x + 108, box.y + 26 + 26);
+  await page.mouse.click(box.x + dg + 108, box.y + 26 + 26);
   await page.keyboard.up("Shift");
-  await expect(page.getByTestId("tl-selected")).toHaveCount(0); // Shift+click on a selected clip still toggles it off
+  // r16 (DESK-10): Shift+click is a range select, so Shift+click on the anchor keeps it as a range of one.
+  await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
+  await page.keyboard.down("ControlOrMeta");
+  await page.mouse.click(box.x + dg + 108, box.y + 26 + 26);
+  await page.keyboard.up("ControlOrMeta");
+  await expect(page.getByTestId("tl-selected")).toHaveCount(0); // Ctrl/Cmd+click on a selected clip toggles it off
 });

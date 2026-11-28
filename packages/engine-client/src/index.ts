@@ -8,14 +8,16 @@ export { createExportApi, exportNotYet, type ExportHost, type WorkerLike } from 
 import type { WorkerLike } from "./export/job";
 import type { GpuRenderer } from "./render";
 import type { Evaluator } from "./wasm";
+import type { Stretcher } from "./audio-stretch";
 export { probeExportFormats, type ExportFormatId, type ExportFormatOption, type ExportFormats } from "./export/options";
 export { defaultVideoBitrate } from "./export/presets";
 export { cleanupStaleExports, opfsStorage, type ExportStorage } from "./export/storage";
 export { registerMediaResolver, type MediaResolver, type OpenedMedia, type MediaVideo, type MediaAudio, type DrawableFrame } from "./export/media";
-export { containScale, layerOf, renderExportFrame, type GpuLayer, type GpuRenderer, type LayerSource, type RendererInfo } from "./render";
+export { containScale, fitScale, layerOf, placeLayer, renderExportFrame, type GpuLayer, type GpuRenderer, type LayerSource, type RendererInfo } from "./render";
 export type { Evaluator };
-export { createEditing, parseEditOutcome, type RawEditing } from "./editing";
+export { addMarkerOp, addTrackOp, createEditing, deleteMarkerOp, moveMarkerOp, moveTrackOp, newMarker, newTrack, parseEditOutcome, removeTrackOp, setMarkerPropsOp, setRangeOp, setTrackPropsOp, type RawEditing } from "./editing";
 export { probeHost } from "./probe";
+export { applyEditPatch, type ClipSplice, type EditPatch, type SequencePatch, type TrackPatch } from "./patch";
 
 /** True inside a Tauri shell (desktop or mobile app), false in a plain browser. */
 export const isTauri = (): boolean => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -42,6 +44,12 @@ export async function openMediaApi(): Promise<MediaApi> {
 export async function openEvaluator(projectJson: string): Promise<Evaluator> {
   return (await import("./wasm")).openWasmEvaluator(projectJson);
 }
+/** The pitch-keeping audio stretcher for clip speed (`docs/features/speed.md`). Browser and desktop webview (same wasm module). */
+export async function openStretcher(): Promise<Stretcher> {
+  return (await import("./wasm")).openWasmStretcher();
+}
+export { ClipStretchCache, MAX_STRETCH_SECONDS, type ReadPlanar, type Stretcher } from "./audio-stretch";
+export { segmentGain, type GainSegment } from "./audio-gain";
 export * from "./model.generated";
 export { codecName } from "./decode/errors";
 export { FINGERPRINT_WINDOW, fingerprintFile, fingerprintSize, relinkMedia, type Candidate, type RelinkResult, type Sliceable } from "./media";
@@ -50,6 +58,6 @@ export { MAX_AUTO, SnapshotStore, retain, type SnapshotInfo, type SnapshotKind }
 export { memoryStorage } from "./persist/memory";
 export { openProjectSession, ProjectSession, type OpenedSession, type RecoveryNote, type SaveStatus, type SessionOptions } from "./persist/session";
 export { acquireProjectLock, openProjectStorage } from "./persist/open";
-export { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_ID, copyName, deleteProjectData, migrateSingleProject, newProjectId, summarize, type ProjectEntry, type RegistryData } from "./persist/registry";
+export { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_ID, copyName, countClips, deleteProjectData, migrateSingleProject, newProjectId, summarize, summarizeExtra, type ProjectEntry, type RegistryData } from "./persist/registry";
 export { PROJECT_FILE } from "./persist/session";
 export { newId, newProject, PROJECT_SCHEMA_VERSION } from "./project";

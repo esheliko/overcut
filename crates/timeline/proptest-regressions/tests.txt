@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 7db2741ae2131e88aaf2a20b7feac1c8cd0c2d43cce1007b18df3264efde30a7 # shrinks to steps = [RemoveMedia { n: 226622571547413528 }]
+cc 904f3f5cfed503d69e0e09ebad81a2942fe88687ec6ff149b830b7ce07d1f479 # shrinks to steps = [RemoveMedia { n: 7555364748797347856 }, RemoveMedia { n: 4711025398522324901 }, AddTrack { video: false, index: 0, with_clip: false }]
+cc a3163d6774b693fafca3eb1b90aecdbdd99a2a908c2394de5ceb8654db80789d # shrinks to steps = [RemoveMedia { n: 3559720239562009128 }, RemoveMedia { n: 18175703524746581744 }, AddTrack { video: false, index: 0, with_clip: false }]
+cc 6a89a82b0b8a427be2c6f7e043fbdbb09b149a3b156e58164ee3f88cf1d63411 # shrinks to steps = [Insert { track: 0, media: 0, start: 0, source_in: 0, dur: 12, append: false }, Move { clip: 0, track: 0, start: 0 }, SetKey { clip: 0, prop: 0, t: 3, v: 1, easing: 0 }, TrimOut { clip: 0, delta: 2 }, SetKey { clip: 0, prop: 0, t: 0, v: 5, easing: 101 }, RippleTrim { clip: 0, out: false, delta: 5, all: false }, Split { clip: 0, frac: 2 }]

@@ -17,6 +17,7 @@ pub use colour::{
     linear_to_srgb, rgb_to_yuv, srgb_to_linear, yuv_params, yuv_to_rgb, YuvMatrix, YuvRange,
 };
 
+use app_model::{Background, BackgroundMode};
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -92,6 +93,43 @@ pub struct Layer<'a> {
     /// Display rotation of the media in degrees clockwise (0, 90, 180, 270; other values round to the nearest right angle). At 90/270 the layer's
     /// displayed width and height swap, so `scale` applies to the upright picture and the layer is upright without a `rotation` of its own.
     pub display_rotation: u16,
+    /// Crop of the upright picture as fractions removed from the left, top, right, bottom edge (`0 <= v < 1`, opposite edges sum below 1; M2-024).
+    /// `center`, `scale` and `rotation` still describe the whole uncropped picture, so cropping never moves the visible part.
+    pub crop: [f32; 4],
+    /// Mirror the (cropped) picture horizontally / vertically about its own centre. The crop is given on screen, after the mirror.
+    pub flip: [bool; 2],
+}
+
+/// Where the visible part of a layer lands: its centre and half size in output pixels (before `rotation` about the centre), from the whole
+/// picture's `center`, displayed size `dw` x `dh`, `scale` and `crop`. Pure, so it is unit tested without a GPU.
+pub fn visible_rect(
+    center: [f32; 2],
+    dw: f32,
+    dh: f32,
+    scale: [f32; 2],
+    rotation: f32,
+    crop: [f32; 4],
+) -> ([f32; 2], [f32; 2]) {
+    let [l, t, r, b] = crop.map(|v| v.clamp(0.0, 0.999));
+    let (w, h) = (dw * scale[0], dh * scale[1]);
+    let (ox, oy) = ((l - r) * 0.5 * w, (t - b) * 0.5 * h);
+    let (s, c) = rotation.sin_cos();
+    (
+        [center[0] + ox * c - oy * s, center[1] + ox * s + oy * c],
+        [
+            w * (1.0 - l - r).max(0.001) * 0.5,
+            h * (1.0 - t - b).max(0.001) * 0.5,
+        ],
+    )
+}
+
+/// What to copy from a platform image (`copy_external_image_to_texture`) into a layer texture of `layer` (w, h): the part both have.
+/// The copy is validated against the SOURCE's own size, so a copy sized by the layer overruns a source that is smaller (a different clip's
+/// frame, a thumbnail) or already closed (size 0) and the whole call is rejected. `None` when there is nothing to copy (closed or empty source):
+/// the slot keeps its last picture instead of the GPU reporting a validation error.
+pub fn external_copy_extent(layer: (u32, u32), source: (u32, u32)) -> Option<(u32, u32)> {
+    let (w, h) = (layer.0.min(source.0), layer.1.min(source.1));
+    (w > 0 && h > 0).then_some((w, h))
 }
 
 /// Rotation as the row-major matrix `[a, b, c, d]` taking a point of the displayed unit square (centred, y down) to the coded image (centred).
@@ -107,6 +145,114 @@ pub fn texture_matrix(display_rotation: u16) -> [f32; 4] {
 
 fn swaps_axes(display_rotation: u16) -> bool {
     matches!(((display_rotation as u32 + 45) / 90) % 4, 1 | 3)
+}
+
+/// True when `l` (first, bottom layer) already paints every pixel of a `width` x `height` output at full opacity and without a turn, so a
+/// blurred background behind it could not be seen and its passes are skipped. Pure, so it is unit tested without a GPU.
+pub fn layer_covers_output(l: &Layer, width: u32, height: u32) -> bool {
+    let (dw, dh) = if swaps_axes(l.display_rotation) {
+        (l.height, l.width)
+    } else {
+        (l.width, l.height)
+    };
+    let (c, half) = visible_rect(l.center, dw as f32, dh as f32, l.scale, l.rotation, l.crop);
+    let (s, co) = l.rotation.sin_cos();
+    l.opacity >= 0.999
+        && s.abs() < 1e-4
+        && co > 0.0
+        && c[0] - half[0] <= 0.5
+        && c[1] - half[1] <= 0.5
+        && c[0] + half[0] >= width as f32 - 0.5
+        && c[1] + half[1] >= height as f32 - 0.5
+}
+
+/// Long side of the blur targets in texels, and the blur's tap spacing in those texels for `Background::blur` 0..=100. The targets are sized from
+/// the output's *shape*, not its size (never above the output itself), so the blur is the same fraction of the picture at the preview's size and
+/// at the export's: preview and export show the same background.
+const BLUR_LONG: u32 = 48;
+/// The blur targets' size for an output of `w` x `h`: the long side `BLUR_LONG` (or the output's own, when smaller), the short side by aspect.
+pub fn backdrop_size(w: u32, h: u32) -> (u32, u32) {
+    let (w, h) = (w.max(1), h.max(1));
+    let k = (BLUR_LONG as f64 / f64::from(w.max(h))).min(1.0);
+    (
+        ((f64::from(w) * k).round() as u32).clamp(1, w),
+        ((f64::from(h) * k).round() as u32).clamp(1, h),
+    )
+}
+fn blur_step(strength: u8) -> f32 {
+    0.3 + f32::from(strength.min(100)) / 100.0 * 1.9
+}
+
+/// The shader's uniform block for `l` drawn into an output of `width` x `height`.
+fn layer_uniform(l: &Layer, width: u32, height: u32) -> LayerUniform {
+    let (s, c) = l.rotation.sin_cos();
+    let (mode, a, b) = match l.pixels {
+        Pixels::Rgba8Srgb(_) | Pixels::Resident => (0.0, [0.0; 4], [0.0; 4]),
+        Pixels::Yuv420 { range, matrix, .. } => {
+            let (a, b) = yuv_params(range, matrix);
+            (1.0, a, b)
+        }
+    };
+    let (dw, dh) = if swaps_axes(l.display_rotation) {
+        (l.height, l.width)
+    } else {
+        (l.width, l.height)
+    };
+    let crop = l.crop.map(|v| v.clamp(0.0, 0.999));
+    let (centre, half) = visible_rect(l.center, dw as f32, dh as f32, l.scale, l.rotation, crop);
+    LayerUniform {
+        rect: [centre[0], centre[1], half[0], half[1]],
+        rot: [c, s, l.opacity.clamp(0.0, 1.0), mode],
+        out_size: [width as f32, height as f32, 0.0, 0.0],
+        yuv_a: a,
+        yuv_b: b,
+        uv: texture_matrix(l.display_rotation),
+        crop,
+        flip: [l.flip[0] as u8 as f32, l.flip[1] as u8 as f32, 0.0, 0.0],
+    }
+}
+
+/// The uniform for the blurred background's source: the bottom layer `l`, upright, scaled to *cover* a `bw` x `bh` target, ignoring its own
+/// transform (so the backdrop stays put while the layer is animated).
+fn backdrop_uniform(l: &Layer, bw: u32, bh: u32) -> LayerUniform {
+    let mut u = layer_uniform(l, bw, bh);
+    let (dw, dh) = if swaps_axes(l.display_rotation) {
+        (l.height as f32, l.width as f32)
+    } else {
+        (l.width as f32, l.height as f32)
+    };
+    let k = (bw as f32 / dw).max(bh as f32 / dh);
+    u.rect = [bw as f32 / 2.0, bh as f32 / 2.0, dw * k / 2.0, dh * k / 2.0];
+    u.rot = [1.0, 0.0, 1.0, u.rot[3]];
+    u.crop = [0.0; 4];
+    u.flip = [0.0; 4];
+    u
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct BgParams {
+    dir: [f32; 2],
+    size: [f32; 2],
+}
+
+/// The blurred background's two small targets and the bind groups that read them (rebuilt only when the output size changes).
+struct Backdrop {
+    w: u32,
+    h: u32,
+    bw: u32,
+    bh: u32,
+    _a: wgpu::Texture,
+    a_view: wgpu::TextureView,
+    _b: wgpu::Texture,
+    b_view: wgpu::TextureView,
+    /// Reads A, blurs along x (writes B).
+    group_h: wgpu::BindGroup,
+    /// Reads B, blurs along y (writes A).
+    group_v: wgpu::BindGroup,
+    /// Reads A, stretched over the whole output.
+    group_up: wgpu::BindGroup,
+    ubufs: [wgpu::Buffer; 3],
 }
 
 /// Counts of GPU objects created by a [`Compositor`]. A steady-state frame must not change any of them.
@@ -127,6 +273,10 @@ struct LayerUniform {
     yuv_b: [f32; 4],
     /// Row-major 2x2 `texture_matrix` (display unit square -> coded image).
     uv: [f32; 4],
+    /// Crop in display space (left, top, right, bottom fractions); the quad covers only the visible part.
+    crop: [f32; 4],
+    /// Mirror flags in x and y (1 = mirrored).
+    flip: [f32; 4],
 }
 const UNIFORM_SIZE: u64 = std::mem::size_of::<LayerUniform>() as u64;
 
@@ -164,6 +314,7 @@ pub struct Compositor {
     accum: AccumFormat,
     layer_bgl: wgpu::BindGroupLayout,
     layer_pipe: wgpu::RenderPipeline,
+    prefilter_pipe: wgpu::RenderPipeline,
     present_bgl: wgpu::BindGroupLayout,
     present_pipe: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
@@ -178,6 +329,11 @@ pub struct Compositor {
     scratch: Vec<u8>,
     readback: Option<(wgpu::Buffer, u64)>,
     stats: AllocStats,
+    background: Background,
+    bg_bgl: wgpu::BindGroupLayout,
+    blur_pipe: wgpu::RenderPipeline,
+    copy_pipe: wgpu::RenderPipeline,
+    backdrop: Option<Backdrop>,
 }
 
 impl Compositor {
@@ -286,12 +442,58 @@ impl Compositor {
             accum.texture_format(),
             Some(premul),
         );
+        let prefilter_pipe = mk(
+            "backdrop source",
+            &layer_bgl,
+            "vs_layer",
+            "fs_layer_prefilter",
+            accum.texture_format(),
+            None,
+        );
         let present_pipe = mk(
             "present",
             &present_bgl,
             "vs_full",
             "fs_present",
             OUTPUT_FORMAT,
+            None,
+        );
+        let bg_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("backdrop"),
+            entries: &[
+                tex_entry(0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: NonZeroU64::new(std::mem::size_of::<BgParams>() as u64),
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let blur_pipe = mk(
+            "backdrop blur",
+            &bg_bgl,
+            "vs_full",
+            "fs_blur",
+            accum.texture_format(),
+            None,
+        );
+        let copy_pipe = mk(
+            "backdrop copy",
+            &bg_bgl,
+            "vs_full",
+            "fs_copy",
+            accum.texture_format(),
             None,
         );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -325,6 +527,7 @@ impl Compositor {
             accum,
             layer_bgl,
             layer_pipe,
+            prefilter_pipe,
             present_bgl,
             present_pipe,
             sampler,
@@ -343,7 +546,99 @@ impl Compositor {
                 buffers: 1,
                 bind_groups: 0,
             },
+            background: Background::default(),
+            bg_bgl,
+            blur_pipe,
+            copy_pipe,
+            backdrop: None,
         }
+    }
+
+    /// What is drawn behind the layers from now on (until set again): black, a flat colour, or the bottom layer blurred (TL-19,
+    /// `docs/features/background.md`). Preview and export call it before every frame, so both draw the same pixels.
+    pub fn set_background(&mut self, background: Background) {
+        self.background = background;
+    }
+
+    /// (Re)build the blur targets for an output of `w` x `h`: two small textures (A, B) and the bind groups that read them.
+    fn ensure_backdrop(&mut self, w: u32, h: u32) {
+        if self.backdrop.as_ref().is_some_and(|b| b.w == w && b.h == h) {
+            return;
+        }
+        let (bw, bh) = backdrop_size(w, h);
+        let mk_tex = |label| {
+            self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: bw,
+                    height: bh,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.accum.texture_format(),
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+        };
+        let (a, b) = (mk_tex("backdrop a"), mk_tex("backdrop b"));
+        let (a_view, b_view) = (
+            a.create_view(&Default::default()),
+            b.create_view(&Default::default()),
+        );
+        let mk_buf = || {
+            self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("backdrop params"),
+                size: std::mem::size_of::<BgParams>() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        let ubufs = [mk_buf(), mk_buf(), mk_buf()];
+        let group = |view: &wgpu::TextureView, ubuf: &wgpu::Buffer| {
+            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("backdrop"),
+                layout: &self.bg_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: ubuf.as_entire_binding(),
+                    },
+                ],
+            })
+        };
+        let (group_h, group_v, group_up) = (
+            group(&a_view, &ubufs[0]),
+            group(&b_view, &ubufs[1]),
+            group(&a_view, &ubufs[2]),
+        );
+        self.stats.textures += 2;
+        self.stats.buffers += 3;
+        self.stats.bind_groups += 3;
+        self.backdrop = Some(Backdrop {
+            w,
+            h,
+            bw,
+            bh,
+            _a: a,
+            a_view,
+            _b: b,
+            b_view,
+            group_h,
+            group_v,
+            group_up,
+            ubufs,
+        });
     }
 
     fn make_ubuf(device: &wgpu::Device, size: usize) -> wgpu::Buffer {
@@ -628,6 +923,8 @@ impl Compositor {
             rotation: 0.0,
             opacity: 1.0,
             display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
         };
         self.prepare_slot(i, &l);
     }
@@ -640,39 +937,41 @@ impl Compositor {
         view: Option<&wgpu::TextureView>,
     ) {
         self.ensure_target(width, height);
-        self.ensure_uniforms(layers.len());
+        // The blurred background needs the bottom layer's pixels and one more uniform slot (after the layers') for its cover-fit placement.
+        let blur = self.background.mode == BackgroundMode::Blur
+            && layers
+                .first()
+                .is_some_and(|l| !layer_covers_output(l, width, height));
+        self.ensure_uniforms(layers.len() + usize::from(blur));
+        if blur {
+            self.ensure_backdrop(width, height);
+        }
         self.scratch.clear();
-        self.scratch.resize(layers.len() * self.stride, 0);
+        self.scratch
+            .resize((layers.len() + usize::from(blur)) * self.stride, 0);
         for (i, l) in layers.iter().enumerate() {
             self.prepare_slot(i, l);
-            let (s, c) = l.rotation.sin_cos();
-            let (mode, a, b) = match l.pixels {
-                Pixels::Rgba8Srgb(_) | Pixels::Resident => (0.0, [0.0; 4], [0.0; 4]),
-                Pixels::Yuv420 { range, matrix, .. } => {
-                    let (a, b) = yuv_params(range, matrix);
-                    (1.0, a, b)
-                }
-            };
-            let (dw, dh) = if swaps_axes(l.display_rotation) {
-                (l.height, l.width)
-            } else {
-                (l.width, l.height)
-            };
-            let u = LayerUniform {
-                rect: [
-                    l.center[0],
-                    l.center[1],
-                    dw as f32 * l.scale[0] * 0.5,
-                    dh as f32 * l.scale[1] * 0.5,
-                ],
-                rot: [c, s, l.opacity.clamp(0.0, 1.0), mode],
-                out_size: [width as f32, height as f32, 0.0, 0.0],
-                yuv_a: a,
-                yuv_b: b,
-                uv: texture_matrix(l.display_rotation),
-            };
+            let u = layer_uniform(l, width, height);
             self.scratch[i * self.stride..i * self.stride + UNIFORM_SIZE as usize]
                 .copy_from_slice(bytemuck::bytes_of(&u));
+        }
+        if blur {
+            let bd = self.backdrop.as_ref().expect("backdrop");
+            let u = backdrop_uniform(&layers[0], bd.bw, bd.bh);
+            let at = layers.len() * self.stride;
+            self.scratch[at..at + UNIFORM_SIZE as usize].copy_from_slice(bytemuck::bytes_of(&u));
+            let step = blur_step(self.background.blur);
+            let (bw, bh) = (bd.bw as f32, bd.bh as f32);
+            let w = |i: usize, dir: [f32; 2], size: [f32; 2]| {
+                self.queue.write_buffer(
+                    &bd.ubufs[i],
+                    0,
+                    bytemuck::bytes_of(&BgParams { dir, size }),
+                );
+            };
+            w(0, [step / bw, 0.0], [bw, bh]);
+            w(1, [0.0, step / bh], [bw, bh]);
+            w(2, [0.0, 0.0], [width as f32, height as f32]);
         }
         if !layers.is_empty() {
             self.queue.write_buffer(&self.ubuf, 0, &self.scratch);
@@ -680,20 +979,77 @@ impl Compositor {
 
         let t = self.target.as_ref().expect("target");
         let mut enc = self.device.create_command_encoder(&Default::default());
+        if blur {
+            let bd = self.backdrop.as_ref().expect("backdrop");
+            let mut pass_to =
+                |label, view: &wgpu::TextureView, f: &mut dyn FnMut(&mut wgpu::RenderPass)| {
+                    let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some(label),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                                store: wgpu::StoreOp::Store,
+                            },
+                            depth_slice: None,
+                        })],
+                        ..Default::default()
+                    });
+                    f(&mut pass);
+                };
+            // 1. the bottom layer, cover-fit and downsampled, into A
+            pass_to("backdrop source", &bd.a_view, &mut |pass| {
+                pass.set_pipeline(&self.prefilter_pipe);
+                pass.set_bind_group(
+                    0,
+                    self.slots[0].group.as_ref().expect("bind group"),
+                    &[(layers.len() * self.stride) as u32],
+                );
+                pass.draw(0..6, 0..1);
+            });
+            // 2. blur along x: A -> B, 3. along y: B -> A
+            pass_to("backdrop blur x", &bd.b_view, &mut |pass| {
+                pass.set_pipeline(&self.blur_pipe);
+                pass.set_bind_group(0, &bd.group_h, &[]);
+                pass.draw(0..3, 0..1);
+            });
+            pass_to("backdrop blur y", &bd.a_view, &mut |pass| {
+                pass.set_pipeline(&self.blur_pipe);
+                pass.set_bind_group(0, &bd.group_v, &[]);
+                pass.draw(0..3, 0..1);
+            });
+        }
         {
+            let clear = match self.background.mode {
+                BackgroundMode::Colour => {
+                    let [r, g, b] = self
+                        .background
+                        .colour
+                        .map(|c| f64::from(srgb_to_linear(f32::from(c) / 255.0)));
+                    wgpu::Color { r, g, b, a: 1.0 }
+                }
+                _ => wgpu::Color::TRANSPARENT,
+            };
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("layers"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &t.acc_view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        load: wgpu::LoadOp::Clear(clear),
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
                 })],
                 ..Default::default()
             });
+            if blur {
+                let bd = self.backdrop.as_ref().expect("backdrop");
+                pass.set_pipeline(&self.copy_pipe);
+                pass.set_bind_group(0, &bd.group_up, &[]);
+                pass.draw(0..3, 0..1);
+            }
             pass.set_pipeline(&self.layer_pipe);
             for (i, slot) in self.slots.iter().take(layers.len()).enumerate() {
                 pass.set_bind_group(
@@ -894,4 +1250,130 @@ pub fn headless_compositor_with(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn headless_compositor(backends: wgpu::Backends) -> Option<(Compositor, wgpu::AdapterInfo)> {
     headless_compositor_with(backends, None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_blur_targets_follow_the_shape_not_the_size_of_the_output() {
+        // Preview and export (different sizes, one shape) blur by the same fraction of the picture.
+        assert_eq!(backdrop_size(360, 640), backdrop_size(1080, 1920));
+        assert_eq!(backdrop_size(1920, 1080), (48, 27));
+        assert_eq!(backdrop_size(1080, 1920), (27, 48));
+        assert_eq!(
+            backdrop_size(40, 22),
+            (40, 22),
+            "never above the output itself"
+        );
+        assert_eq!(backdrop_size(1, 1), (1, 1));
+        assert_eq!(backdrop_size(5000, 3), (48, 1));
+    }
+
+    #[test]
+    fn a_bottom_layer_that_fills_the_output_hides_the_backdrop() {
+        let layer = |center: [f32; 2], scale: [f32; 2], rotation: f32, opacity: f32| Layer {
+            width: 160,
+            height: 90,
+            pixels: Pixels::Resident,
+            center,
+            scale,
+            rotation,
+            opacity,
+            display_rotation: 0,
+            crop: [0.0; 4],
+            flip: [false; 2],
+        };
+        assert!(layer_covers_output(
+            &layer([80.0, 45.0], [1.0, 1.0], 0.0, 1.0),
+            160,
+            90
+        ));
+        assert!(layer_covers_output(
+            &layer([80.0, 45.0], [2.0, 2.0], 0.0, 1.0),
+            100,
+            100
+        ));
+        assert!(
+            !layer_covers_output(&layer([80.0, 45.0], [0.5, 0.5], 0.0, 1.0), 160, 90),
+            "smaller"
+        );
+        assert!(
+            !layer_covers_output(&layer([100.0, 45.0], [1.0, 1.0], 0.0, 1.0), 160, 90),
+            "moved"
+        );
+        assert!(
+            !layer_covers_output(&layer([80.0, 45.0], [1.0, 1.0], 0.0, 0.5), 160, 90),
+            "see-through"
+        );
+        assert!(
+            !layer_covers_output(&layer([80.0, 45.0], [1.0, 1.0], 0.3, 1.0), 160, 90),
+            "turned"
+        );
+        let mut cropped = layer([80.0, 45.0], [1.0, 1.0], 0.0, 1.0);
+        cropped.crop = [0.1, 0.0, 0.0, 0.0];
+        assert!(!layer_covers_output(&cropped, 160, 90), "cropped");
+        // a 16:9 picture on a 9:16 output does not cover it
+        assert!(!layer_covers_output(
+            &layer([45.0, 80.0], [90.0 / 160.0, 90.0 / 160.0], 0.0, 1.0),
+            90,
+            160
+        ));
+    }
+
+    #[test]
+    fn external_copy_never_exceeds_the_source() {
+        use super::external_copy_extent as ext;
+        assert_eq!(ext((160, 120), (160, 120)), Some((160, 120)));
+        assert_eq!(
+            ext((160, 120), (320, 180)),
+            Some((160, 120)),
+            "a bigger source is cropped, never overrun"
+        );
+        assert_eq!(
+            ext((320, 180), (160, 120)),
+            Some((160, 120)),
+            "a smaller source is copied whole"
+        );
+        assert_eq!(
+            ext((160, 120), (0, 0)),
+            None,
+            "a closed frame reports size 0"
+        );
+        assert_eq!(ext((0, 120), (160, 120)), None);
+    }
+
+    use super::visible_rect;
+
+    #[test]
+    fn visible_rect_is_the_whole_picture_without_a_crop() {
+        let (c, h) = visible_rect([100.0, 50.0], 40.0, 20.0, [2.0, 2.0], 0.7, [0.0; 4]);
+        assert_eq!(c, [100.0, 50.0]);
+        assert_eq!(h, [40.0, 20.0]);
+    }
+
+    #[test]
+    fn crop_shrinks_the_rect_and_shifts_its_centre_along_the_rotated_axes() {
+        // Remove the left half of an 80 x 20 picture: 40 wide, centred 20 px right of the picture centre.
+        let (c, h) = visible_rect(
+            [0.0, 0.0],
+            40.0,
+            10.0,
+            [2.0, 2.0],
+            0.0,
+            [0.5, 0.0, 0.0, 0.0],
+        );
+        assert_eq!((c, h), ([20.0, 0.0], [20.0, 10.0]));
+        // Rotated a quarter turn clockwise, "right" points down the screen.
+        let (c, _) = visible_rect(
+            [0.0, 0.0],
+            40.0,
+            10.0,
+            [2.0, 2.0],
+            std::f32::consts::FRAC_PI_2,
+            [0.5, 0.0, 0.0, 0.0],
+        );
+        assert!(c[0].abs() < 1e-4 && (c[1] - 20.0).abs() < 1e-4, "{c:?}");
+    }
 }

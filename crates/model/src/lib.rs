@@ -10,19 +10,30 @@
 //!
 //! Status: `time` (M1-001) and the document structs (M1-002, `docs/features/model.md`) are in; the `.overcut` container, migrations and relink fingerprints (M1-005, `docs/features/project-file.md`) are in `file`; ops and undo are `M1-003`.
 
+pub mod anim;
+pub mod audio;
+pub mod curve;
 pub mod file;
 pub mod ids;
 pub mod project;
 pub mod schema;
 pub mod time;
+pub mod transform;
 
+pub use anim::{AnimError, Animated, Easing, Keyframe};
+pub use audio::{ClipAudio, MAX_VOLUME};
 pub use file::{
     fingerprint, fingerprint_size, open_json, save_bytes, FileError, ProjectFile,
     FINGERPRINT_WINDOW,
 };
-pub use ids::{ClipId, Id, IdSource, LinkId, MediaId, ProjectId, SeqIds, SequenceId, TrackId};
+pub use ids::{
+    ClipId, Id, IdSource, LinkId, MarkerId, MediaId, ProjectId, SeqIds, SequenceId, TrackId,
+};
 pub use project::{
-    Clip, MediaKind, MediaRef, ModelError, Project, Resolution, Sequence, Track, TrackKind,
+    is_track_colour, marker_props_ok, Background, BackgroundMode, Clip, Marker, MarkerKind,
+    MediaKind, MediaRef, ModelError, Project, Resolution, Sequence, TimeRange, Track, TrackKind,
+    MAX_BLUR, MAX_MARKERS, MAX_MARKER_NAME, MAX_TRACK_HEIGHT, MAX_TRACK_NAME, MIN_TRACK_HEIGHT,
     SCHEMA_VERSION,
 };
 pub use time::{Rational, Time, TICKS_PER_SECOND};
+pub use transform::{ClipTransform, Fit, TransformError, TransformProp, TransformValues};

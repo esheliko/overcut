@@ -20,6 +20,7 @@ export function createTauriEngine(): Engine {
     journal: () => invoke<string>("editor_journal"),
     // Tauri serializes JSON numbers: ticks are safe integers (checked in createEditing), so Number is exact.
     evaluate: (sequence, ticks, audioSamples) => invoke<string>("editor_evaluate", { sequence, ticks: Number(ticks), audioSamples }),
+    snap: (sequence, params) => invoke<string>("editor_snap", { sequence, params }),
     takeLog: () => invoke<string>("editor_take_log"),
     checkpoint: () => invoke<string>("editor_checkpoint"),
     recover: (baseJson, checkpointJson, log) => invoke<string>("editor_recover", { baseJson, checkpointJson, log }),
@@ -58,6 +59,7 @@ export function createTauriEngine(): Engine {
       evaluate: (sequence, ticks, samples) => editing.evaluate(sequence, ticks, samples),
       media,
       openRenderer: async (canvas) => (await import("./wasm")).openWasmRenderer(canvas),
+      openStretcher: async () => (await import("./wasm")).openWasmStretcher(),
     }),
     peaks: {
       // PCM crosses IPC as JSON number arrays for now; native hosts will decode and extract in Rust without crossing (follow-up).

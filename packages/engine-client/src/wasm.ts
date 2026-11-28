@@ -4,6 +4,7 @@ import { createExportApi, type WorkerLike } from "./export/job";
 import { opfsStorage } from "./export/storage";
 import { createWebMedia, type WasmMediaClass } from "./decode/media";
 import type { GpuRenderer as GpuRendererClass } from "@app/wasm-pkg-gpu";
+import type { Stretcher } from "./audio-stretch";
 import { wrapRenderer, type GpuRenderer } from "./render";
 import { parseCapabilities, parseEngineInfo, parseOpenedProject, toProjectFileError, type Engine, type FrameDescription, type MediaApi } from "./types";
 
@@ -28,6 +29,7 @@ export async function createWasmEngine(opts: { spawnExportWorker: () => WorkerLi
     project: () => open().project(),
     journal: () => open().journal(),
     evaluate: (sequence, ticks, audioSamples) => open().evaluate(sequence, ticks, audioSamples),
+    snap: (sequence, paramsJson) => open().snap(sequence, paramsJson),
     takeLog: () => open().take_log(),
     checkpoint: () => open().checkpoint(),
     recover: (baseJson, checkpointJson, log) => {
@@ -103,8 +105,26 @@ export async function createWasmEngine(opts: { spawnExportWorker: () => WorkerLi
  * For the export Worker (`export/worker-entry.ts`): loads the engine inside the worker and opens the project snapshot. Lives here because this file is the
  * only one allowed to import the wasm package (`npm run check:boundaries`). Must not reference the worker URL (that would make the worker bundle itself).
  */
+/** Wraps the wasm `stretch_audio` (planar in, planar out). */
+const stretcherOf = (wasm: { stretch_audio(p: Float32Array, c: number, r: number, n: number, d: number): Float32Array }): Stretcher => (planar, rate, num, den) => {
+  const len = planar[0]?.length ?? 0;
+  const flat = new Float32Array(len * planar.length);
+  planar.forEach((c, i) => flat.set(c, i * len));
+  const out = wasm.stretch_audio(flat, planar.length, rate, num, den);
+  const n = planar.length ? out.length / planar.length : 0;
+  return planar.map((_, i) => out.slice(i * n, (i + 1) * n));
+};
+
+/** The pitch-keeping stretcher (Rust WSOLA in the wasm module; the desktop webview runs the same module, so PCM never crosses IPC). */
+export async function openWasmStretcher(): Promise<Stretcher> {
+  const wasm = await import("@app/wasm-pkg-gpu");
+  await wasm.default();
+  return stretcherOf(wasm);
+}
+
 export interface Evaluator {
   evaluate(sequence: string, ticks: number, samples: number): FrameDescription;
+  stretch: Stretcher;
   media: MediaApi;
   free(): void;
 }
@@ -115,6 +135,7 @@ export async function openWasmEvaluator(projectJson: string): Promise<Evaluator>
   const editor = new wasm.Editor(projectJson);
   return {
     evaluate: (sequence, ticks, samples) => JSON.parse(editor.evaluate(sequence, BigInt(ticks), samples)) as FrameDescription,
+    stretch: stretcherOf(wasm),
     media: createWebMedia(wasm.MediaFile as unknown as WasmMediaClass),
     free: () => editor.free(),
   };
@@ -145,7 +166,9 @@ async function webgpuWorks(wasm: { GpuRenderer: typeof GpuRendererClass }): Prom
     return false;
   } finally {
     frame?.close();
-    r?.dispose();
+    // A probe that failed mid-readback can leave the Rust object borrowed; freeing it then throws, and a throw from `finally` would replace the
+    // "WebGPU does not work, use WebGL2" answer with an error that kills the preview and export (seen headless: "take ownership ... while it was borrowed").
+    try { r?.dispose(); } catch { /* leaked probe, harmless */ }
   }
 }
 

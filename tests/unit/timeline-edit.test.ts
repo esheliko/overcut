@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { closeStartGap, seamOps, seamRange, seamTarget, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
+import { mainTrack, rollCuts, rollOps, rollRangeAll, snapTo } from "../../apps/web/src/timeline/ripple";
+import { closeStartGap, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
-import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
+import { applySelect, IDLE, longPress, markPreview, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
 import { buildScene, TICKS_PER_SECOND } from "../../apps/web/src/timeline/scene";
 import { canvasCommand, globalCommand, isModifierKey, type KeyLike } from "../../apps/web/src/timeline/shortcuts";
 import { LANE, RULER, timeToX, type View } from "../../apps/web/src/timeline/view";
@@ -13,6 +14,8 @@ const project = fixtureProject({ tracks: 4, clipsPerTrack: 6 });
 project.media[0]!.duration = 30 * TICKS_PER_SECOND;
 // Clip 1 has 10 s of source before it, so its start can be trimmed outwards.
 project.sequences[0]!.tracks[0]!.clips[1]!.source_in = 10 * TICKS_PER_SECOND;
+// Rows are shown video tracks first (highest on top), then audio: stack [A1, A2, V2, V1] shows as V1, V2, A1, A2.
+{ const tk = project.sequences[0]!.tracks; project.sequences[0]!.tracks = [tk[1]!, tk[3]!, tk[2]!, tk[0]!]; }
 const scene = buildScene(project);
 const FT = scene.frameTicks;
 const view = (o: Partial<View> = {}): View => ({ pps: 40, scrollX: 0, scrollY: 0, width: 900, height: 400, ...o });
@@ -53,12 +56,12 @@ test("move ops are ordered so no step overlaps a clip that has not moved yet", (
 test("a clip fits another track of the same kind only where it does not overlap, never a locked or other-kind track", () => {
   const last = scene.trackFirst[1]! - 1; // last clip of track 0, nothing after it
   assert.equal(fitsOnTrack(scene, last, 0, 0), true);
-  assert.equal(fitsOnTrack(scene, 0, 1, 0), false, "audio track");
-  assert.equal(fitsOnTrack(scene, 0, 2, 0), false, "overlaps clips already on track 2 at the same time");
-  assert.equal(fitsOnTrack(scene, 0, 2, 100 * TICKS_PER_SECOND), true);
+  assert.equal(fitsOnTrack(scene, 0, 2, 0), false, "audio track");
+  assert.equal(fitsOnTrack(scene, 0, 1, 0), false, "overlaps clips already on the other video track at the same time");
+  assert.equal(fitsOnTrack(scene, 0, 1, 100 * TICKS_PER_SECOND), true);
   assert.equal(fitsOnTrack(scene, 0, 0, -1), false, "before 0");
   const locked = buildScene({ ...project, sequences: [{ ...project.sequences[0]!, tracks: project.sequences[0]!.tracks.map((t, i) => (i === 2 ? { ...t, locked: true } : t)) }] });
-  assert.equal(fitsOnTrack(locked, 0, 2, 100 * TICKS_PER_SECOND), false);
+  assert.equal(fitsOnTrack(locked, 0, 1, 100 * TICKS_PER_SECOND), false);
 });
 
 test("trim ranges: neighbours, source length, speed, and one frame minimum", () => {
@@ -156,9 +159,11 @@ test("dragging a clip previews, clamps at neighbours, and commits ONE batch of o
   assert.equal(r.g.k, "move");
   const m = r.g as Extract<Gesture, { k: "move" }>;
   assert.equal(m.delta, snapDelta(0.5 * TICKS_PER_SECOND, 0, moveRoom(scene, [i]).right, FT));
-  r = pointerMove(c, r.g, mouse(x + 4000, y)); // far right: clamped by the next clip
-  assert.equal((r.g as Extract<Gesture, { k: "move" }>).delta, Math.floor(moveRoom(scene, [i]).right / FT) * FT);
-  const done = pointerUp(c, r.g, mouse(x + 4000, y));
+  // Just into the next clip (short of its middle): the move stops against it, the edge snapping flush.
+  const into = x + ((moveRoom(scene, [i]).right + 0.2 * scene.tDur[i + 1]!) / TICKS_PER_SECOND) * view().pps;
+  r = pointerMove(c, r.g, mouse(into, y));
+  assert.equal((r.g as Extract<Gesture, { k: "move" }>).delta, moveRoom(scene, [i]).right);
+  const done = pointerUp(c, r.g, mouse(into, y));
   assert.equal(done.fx.ops?.length, 1);
   assert.deepEqual(done.fx.ops![0], { op: "move", clip: scene.id[i], track: scene.trackId[0], start: scene.tStart[i]! + (r.g as Extract<Gesture, { k: "move" }>).delta });
   assert.equal(done.g.k, "idle");
@@ -175,7 +180,7 @@ test("dragging a single clip onto another track of the same kind moves it there;
   assert.equal((audio.g as Extract<Gesture, { k: "move" }>).track, 0, "video clips do not go onto audio tracks");
 });
 
-test("touch: tapping an unselected clip selects it, dragging it pans, dragging a selected clip moves it", () => {
+test("touch: tapping an unselected clip selects it, dragging it pans, a selected clip pans too, a long press picks it up to move", () => {
   const i = 1, x = cx(i), y = cy(0);
   let r = pointerDown(ctx(), touch(x, y));
   assert.equal(r.fx.select, undefined, "selection happens on release so a pan never selects");
@@ -183,7 +188,13 @@ test("touch: tapping an unselected clip selects it, dragging it pans, dragging a
   r = pointerMove(ctx(), r.g, touch(x + 30, y));
   assert.equal(r.g.k, "pan");
   r = pointerDown(ctx([i]), touch(x, y));
-  assert.equal(pointerMove(ctx([i]), r.g, touch(x + 30, y)).g.k, "move");
+  // UX r15 D6 (the old rule, "a drag on a selected clip moves it", was stale): a drag on a clip body always scrolls on touch
+  assert.equal(pointerMove(ctx([i]), r.g, touch(x + 30, y)).g.k, "pan");
+  // ...moving needs a long press, which keeps the selection (no collapse) and arms the move
+  const lp = longPress(ctx([i]), r.g);
+  assert.ok(lp, "long press picks the selected clip up");
+  assert.equal(lp.fx.select, undefined);
+  assert.equal(pointerMove(ctx([i]), lp.g, touch(x + 30, y)).g.k, "move");
   // empty space: tap seeks, drag pans
   const e = pointerDown(ctx(), touch(timeToX(view(), scene.end[0]! + 0.3), y));
   assert.equal(pointerMove(ctx(), e.g, touch(300, y)).g.k, "pan");
@@ -232,7 +243,7 @@ test("shortcuts: undo/redo/split/delete anywhere, selection keys only on the can
   assert.deepEqual(globalCommand(key({ key: "Delete" })), { c: "delete" });
   assert.deepEqual(globalCommand(key({ key: "Backspace" })), { c: "delete" });
   assert.deepEqual(canvasCommand(key({ key: "ArrowRight" }), true), { c: "go", dir: "right" });
-  assert.equal(canvasCommand(key({ key: "ArrowRight" }), false), null, "without a selection arrows move the playhead");
+  assert.deepEqual(canvasCommand(key({ key: "ArrowRight" }), false), { c: "step", frames: 1 }, "without a selection arrows move the playhead (stale: this used to be a null here and a switch in the canvas; the registry now owns it)");
   assert.deepEqual(canvasCommand(key({ key: "ArrowRight", altKey: true }), true), { c: "playhead", frames: 1 });
   assert.deepEqual(canvasCommand(key({ key: ",", code: "Comma" }), true), { c: "nudge", frames: -1 });
   assert.deepEqual(canvasCommand(key({ key: ">", code: "Period", shiftKey: true }), true), { c: "nudge", frames: 10 });
@@ -311,27 +322,80 @@ test("start-trimming an imported clip and its linked sound keeps the new start (
   assert.deepEqual(closeStartGap(pair, ops), ops, "the trimmed start must not be slid back to 0 (the end would move to 2.9 s with the start still at 0)");
 });
 
-test("a seam between two touching clips moves the boundary: the left end and the right start move together (issue #105)", () => {
+test("a seam between two touching clips moves the boundary as a roll: the left end and the right start move together (issue #105)", () => {
   const p = fixtureProject({ tracks: 2, clipsPerTrack: 2, clipSec: 4 });
   const c = p.sequences[0]!.tracks[0]!.clips;
   c[1]!.start = c[0]!.start + c[0]!.duration; // split: touching, one seam
   const s = buildScene(p);
   const ft = s.frameTicks, at = s.tStart[1]!;
   assert.equal(s.tStart[0]! + s.tDur[0]!, at, "the two clips touch");
-  // right: both clips move by the same amount, on whole frames, the left one first only when moving left
-  const right = seamTarget(s, 0, 1, at + ft * 10);
-  assert.equal(right, at + ft * 10);
-  const ops = seamOps(s, 0, 1, right);
-  assert.equal(ops[0]!.op, "trim_in", "the right clip starts first when the seam moves right, so the two never overlap");
-  assert.deepEqual(ops.map((o) => o.op), ["trim_in", "trim_out"]);
-  assert.equal((ops[0] as { clip: string }).clip, s.id[1]);
-  assert.equal((ops[1] as { end: number }).end, right);
-  // left: the right clip has no source before its start (source_in 0), so the seam cannot move left past it
-  assert.equal(seamTarget(s, 0, 1, at - ft * 10), at, "no source to reveal: clamped at the seam");
-  assert.equal(seamOps(s, 0, 1, at - ft * 3)[0]!.op, "trim_out", "moving left, the left clip shrinks first");
-  // the left clip keeps at least one frame, and the right clip keeps at least one frame
-  const far = seamTarget(s, 0, 1, at + 10_000 * ft);
-  assert.equal(far, s.tStart[1]! + s.tDur[1]! - ft, "the right clip keeps one frame");
-  assert.ok(far - s.tStart[0]! >= ft);
-  assert.equal(seamRange(s, 0, 1).at, at);
+  // A seam drag in Select is a roll of that cut (rollCuts / rollRangeAll / rollOps / snapTo in ripple.ts).
+  const cuts = rollCuts(s, 0, "end");
+  assert.deepEqual(cuts[0], [0, 1]);
+  const range = rollRangeAll(s, cuts);
+  // the right clip has no source before its start (source_in 0), so the seam cannot move left
+  assert.ok(range.lo === 0, "no source to reveal: nothing to the left");
+  // right: whole frames, the right clip keeps at least one frame
+  assert.equal(snapTo(s, ft * 10 + 3, range), ft * 10);
+  const far = snapTo(s, 10_000 * ft, range);
+  assert.ok(far <= s.tDur[1]! - ft, "the right clip keeps one frame");
+  assert.ok(s.tDur[0]! + far >= ft);
+  assert.ok(snapTo(s, -ft * 10, range) === 0, "clamped at the seam");
+  const ops = rollOps(s, cuts, ft * 10);
+  assert.deepEqual(ops, [{ op: "roll", left: s.id[0], right: s.id[1], to: at + ft * 10 }]);
+});
+
+test("pressing a seam in the Select tool trims the clip on the pointer's side; Alt rolls the cut (UX r15 DESK-1)", () => {
+  const p = fixtureProject({ tracks: 1, clipsPerTrack: 2, clipSec: 4 });
+  const c = p.sequences[0]!.tracks[0]!.clips;
+  c[1]!.start = c[0]!.start + c[0]!.duration;
+  p.media[0]!.duration = 30 * TICKS_PER_SECOND;
+  const s = buildScene(p);
+  const v = view();
+  const k: Ctx = { scene: s, view: v, selected: new Set(), selFlags: flagsOf(s, []) };
+  const x = timeToX(v, s.end[0]!), y = cy(0);
+  // left of the cut: the LEFT clip's end; right of it: the RIGHT clip's start; never both selected, never a roll
+  const left = pointerDown(k, mouse(x - 3, y));
+  assert.equal(left.g.k, "trim");
+  if (left.g.k === "trim") { assert.equal(left.g.clip, 0); assert.equal(left.g.edge, "end"); }
+  assert.deepEqual(left.fx.select, { mode: "set", ids: [s.id[0]] });
+  const right = pointerDown(k, mouse(x + 3, y));
+  assert.equal(right.g.k, "trim");
+  if (right.g.k === "trim") { assert.equal(right.g.clip, 1); assert.equal(right.g.edge, "start"); }
+  // Alt: the roll of that cut, both clips ghosted
+  const down = pointerDown(k, { ...mouse(x, y), alt: true });
+  assert.equal(down.g.k, "tool");
+  if (down.g.k !== "tool") return;
+  assert.equal(down.g.tool, "roll");
+  assert.ok(down.g.seam);
+  const to = x + 2.2 * s.frameTicks / TICKS_PER_SECOND * v.pps;
+  const up = pointerUp(k, pointerMove(k, down.g, mouse(to, y)).g, mouse(to, y));
+  assert.deepEqual(up.fx.ops, [{ op: "roll", left: s.id[0], right: s.id[1], to: s.tStart[1]! + 2 * s.frameTicks }]);
+});
+
+test("ripple edits (on by default): shortening a clip's end is a ripple trim that closes the gap, on every track; off, it is a plain trim (UX r15, owner direction)", () => {
+  const p = fixtureProject({ tracks: 2, clipsPerTrack: 2, clipSec: 4 });
+  for (const tr of p.sequences[0]!.tracks) { const cl = tr.clips; cl[1]!.start = cl[0]!.start + cl[0]!.duration; }
+  p.media[0]!.duration = 30 * TICKS_PER_SECOND;
+  const s = buildScene(p);
+  const v = view();
+  const main = mainTrack(s);
+  assert.ok(main >= 0);
+  const first = s.trackFirst[main]!;
+  const k: Ctx = { scene: s, view: v, selected: new Set(), selFlags: flagsOf(s, []), magnetic: true };
+  const x = timeToX(v, s.end[first]!), y = cy(main);
+  const down = pointerDown(k, mouse(x - 3, y));
+  assert.equal(down.g.k, "trim");
+  const to = x - 1.1 * s.frameTicks / TICKS_PER_SECOND * v.pps;
+  const up = pointerUp(k, pointerMove(k, down.g, mouse(to, y)).g, mouse(to, y));
+  assert.equal(up.fx.ops?.[0]?.op, "ripple_trim");
+  const off = pointerUp({ ...k, magnetic: false }, pointerMove(k, down.g, mouse(to, y)).g, mouse(to, y));
+  assert.equal(off.fx.ops?.[0]?.op, "trim_out");
+  // Another track ripples too.
+  const other = main === 0 ? 1 : 0, o = s.trackFirst[other]!;
+  const ox = timeToX(v, s.end[o]!), oy = cy(other);
+  const od = pointerDown(k, mouse(ox - 3, oy));
+  assert.equal(od.g.k, "trim");
+  const oto = ox - 1.1 * s.frameTicks / TICKS_PER_SECOND * v.pps;
+  assert.equal(pointerUp(k, pointerMove(k, od.g, mouse(oto, oy)).g, mouse(oto, oy)).fx.ops?.[0]?.op, "ripple_trim");
 });

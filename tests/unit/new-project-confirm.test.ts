@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { confirmBodyKey, toastDuration } from "../../apps/web/src/projectConfirm";
 import en from "../../apps/web/src/i18n/en.json" with { type: "json" };
 
 const copy = en as Record<string, string>;
@@ -20,7 +21,26 @@ test("without a persistence session there is no Versions snapshot, so the copy m
   const fallback = copy["project.new.bodyUnsaved"] ?? "";
   assert.match(fallback, /are lost/);
   assert.doesNotMatch(fallback, /Versions/);
-  assert.match(read("apps/web/src/App.tsx"), /what === "new" && !persistence\.session \? "project\.new\.bodyUnsaved" : `project\.\$\{what\}\.body`/);
+  // (The dialog now picks its copy with confirmBodyKey, covered below, for New and for Open.)
+  assert.match(read("apps/web/src/App.tsx"), /confirmBodyKey\(what, !!persistence\.session\)/);
+});
+
+test("Open project says the same as New: a copy is kept in Versions with a session, the unsaved copy without storage", () => {
+  assert.equal(confirmBodyKey("open", true), "project.open.body");
+  assert.equal(confirmBodyKey("open", false), "project.open.bodyUnsaved");
+  assert.equal(confirmBodyKey("new", true), "project.new.body");
+  assert.equal(confirmBodyKey("new", false), "project.new.bodyUnsaved");
+  assert.match(copy["project.open.body"] ?? "", /kept in Versions/);
+  assert.doesNotMatch(copy["project.open.body"] ?? "", /are lost/);
+  assert.match(copy["project.open.bodyUnsaved"] ?? "", /are lost/);
+  assert.doesNotMatch(copy["project.open.bodyUnsaved"] ?? "", /Versions/);
+  // The code takes the snapshot for Open too (App.tsx openFromFile -> replaceWith(..., "before-open")).
+  assert.match(read("apps/web/src/App.tsx"), /replaceWith\(file\.bytes, "before-open"\)/);
+});
+
+test("info toasts stay 3 s (at most 5 s)", () => {
+  assert.equal(toastDuration("Saved."), 3000); // R12: the checklist asks 3-5 s (was 2.5-4 s)
+  assert.ok(toastDuration("x".repeat(400)) <= 5000);
 });
 
 test("the New project confirm button uses the danger style; other confirms keep the safe one", () => {

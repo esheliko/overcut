@@ -2,6 +2,7 @@ import type { MediaRef, Project } from "../model.generated";
 import type { FrameDescription, MediaApi } from "../types";
 import { openBlobMedia } from "./blob-media";
 import { AudioMixer } from "./audio-mix";
+import type { Stretcher } from "../audio-stretch";
 import { layerOf, renderExportFrame, type GpuLayer, type GpuRenderer } from "../render";
 import { openMedia, type DrawableFrame, type MediaAudio, type MediaVideo, type OpenedMedia } from "./media";
 import { outputFrameTimes, type ExportEnv } from "./pipeline";
@@ -26,6 +27,8 @@ export interface WebEnvInput {
   storage: ExportStorage;
   /** The engine's `evaluate` for the snapshotted project (a wasm `Editor` in the worker). */
   evaluate(sequence: string, ticks: number, audioSamples: number): FrameDescription;
+  /** Pitch-keeping audio stretch for clips whose speed is not 1 (the wasm module in the worker). */
+  stretch?: Stretcher;
   /** The production decoder, used for media whose file is in `settings.sources`. */
   media?: MediaApi;
   /** Creates the GPU compositor (the same Rust one the preview uses) on the export's own canvas. */
@@ -140,7 +143,7 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
   }
   stage("encoding");
 
-  const mixer = new AudioMixer(plan.sampleRate, audioOf);
+  const mixer = new AudioMixer(plan.sampleRate, audioOf, input.stretch);
   let mime = "";
   const env: ExportEnv<VideoFrame> = {
     plan,
@@ -161,11 +164,11 @@ export async function createWebEnv(input: WebEnvInput): Promise<WebEnv> {
         const t = performance.now();
         const times = outputFrameTimes(plan, index);
         try {
-          return await renderExportFrame(renderer, canvas, capture, layers, seq, times);
+          return await renderExportFrame(renderer, canvas, capture, layers, seq, times, desc.background);
         } catch (e) {
           if (capture !== "canvas") throw e;
           capture = "readback"; // this browser cannot snapshot the canvas as a VideoFrame: the readback route always works
-          return await renderExportFrame(renderer, canvas, capture, layers, seq, times);
+          return await renderExportFrame(renderer, canvas, capture, layers, seq, times, desc.background);
         } finally {
           spent.composite += performance.now() - t;
         }

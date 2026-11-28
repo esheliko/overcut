@@ -20,14 +20,15 @@ export function parsePref(v: unknown): ThemePref {
   return THEME_PREFS.includes(v as ThemePref) ? (v as ThemePref) : "system";
 }
 
+/** First run (nothing stored) opens dark, like a pro editor; "follow the system" is an explicit choice that is stored too (r14). */
 export function loadPref(): ThemePref {
-  try { return parsePref(localStorage.getItem(STORE_KEY)); } catch { return "system"; }
+  try {
+    const v = localStorage.getItem(STORE_KEY);
+    return v === null ? "dark" : parsePref(v);
+  } catch { return "dark"; }
 }
 export function savePref(pref: ThemePref): void {
-  try {
-    if (pref === "system") localStorage.removeItem(STORE_KEY);
-    else localStorage.setItem(STORE_KEY, pref);
-  } catch { /* not persisted */ }
+  try { localStorage.setItem(STORE_KEY, pref); } catch { /* not persisted */ }
 }
 
 /** Set `<html data-theme>` and tell canvas code to re-read tokens. */
@@ -75,4 +76,13 @@ export function saveAccent(a: Accent): void {
 export function applyAccent(a: Accent, root: HTMLElement = document.documentElement): void {
   root.dataset.accent = a;
   root.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { theme: root.dataset.theme } }));
+}
+
+/** Canvas text uses `Inter`: ask for the faces the canvas draws with, then tell canvas code to repaint (same event as a theme change). Never throws; no fonts API = nothing to do. */
+export function redrawWhenFontsLoad(root: HTMLElement = document.documentElement): void {
+  const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+  if (!fonts?.load) return;
+  Promise.all(["500 12px Inter", "600 12px Inter", "700 12px Inter"].map((f) => fonts.load(f)))
+    .then(() => root.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: { theme: root.dataset.theme } })))
+    .catch(() => undefined);
 }

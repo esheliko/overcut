@@ -6,6 +6,7 @@ import { copyClips, planPlacement } from "../../apps/web/src/timeline/clipboard"
 import { deleteOps, expandLinks, flagsOf, groupReps, linkedTrimOps, mirrorTrims, moveOps, partnersOf, splitOps, trimRange, unlinkOps } from "../../apps/web/src/timeline/edit";
 import { applySelect, pointerUp, type Ctx } from "../../apps/web/src/timeline/interact";
 import { buildScene } from "../../apps/web/src/timeline/scene";
+import { newTrack } from "../../packages/engine-client/src/editing";
 import { newProject } from "../../packages/engine-client/src/project";
 import type { Project } from "../../packages/engine-client/src";
 
@@ -126,4 +127,23 @@ test("unlink gives one set_link null per linked clip, and nothing for an unlinke
   for (const t of p.sequences[0]!.tracks) for (const c of t.clips) delete c.link;
   const un = buildScene(p);
   assert.deepEqual(expandLinks(un, [un.id[0]!]).size, 1, "after unlinking, a click selects one clip");
+});
+
+test("paste: the sound of a pasted video takes a free audio track (or a new one) and the picture goes to the target lane, instead of the group going to the end", () => {
+  const p = structuredClone(project);
+  const seq = p.sequences[0]!;
+  const v2 = newTrack("2".repeat(32), "video", "V2");
+  seq.tracks.splice(1, 0, v2); // [V1, V2, A1]
+  const held = copyClips(p, new Set([scene.id[pic]!, scene.id[snd]!]));
+  // At 3 s: V1 (0-10 s) and A1 (0-10 s) are busy, V2 is free. Picture to V2 at 3 s, sound to a NEW audio track A2 at 3 s.
+  const plan = planPlacement(p, held, 3 * TICKS, v2.id, nid);
+  const add = plan.ops.find((o) => o.op === "add_track");
+  assert.ok(add && add.op === "add_track" && add.track.kind === "audio" && add.track.name === "A2" && add.index === seq.tracks.length);
+  const ins = plan.ops.filter((o) => o.op === "insert_clip").map((o) => (o.op === "insert_clip" ? o : null)!);
+  assert.equal(ins.length, 2);
+  assert.ok(ins.every((o) => o.clip.start === 3 * TICKS), "nothing was pushed later");
+  const pictureOp = ins.find((o) => o.track === v2.id), soundOp = ins.find((o) => o.track !== v2.id)!;
+  assert.ok(pictureOp && soundOp.track === (add as { track: { id: string } }).track.id);
+  assert.ok(pictureOp.clip.link && pictureOp.clip.link === soundOp.clip.link, "still a linked pair");
+  assert.ok(plan.ops.indexOf(add!) < plan.ops.indexOf(soundOp), "the track exists before its clip");
 });

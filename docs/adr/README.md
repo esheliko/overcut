@@ -18,11 +18,13 @@ Format: Context, Decision, Consequences, Status (`proposed` -> `accepted` -> may
 | [0012](0012-name.md) | Name and trademark check | **open: deferred by owner, revisit before M3 public beta** |
 | [0013](0013-reference-devices.md) | Reference devices for budgets | **accepted** (owner's devices; low-end Android via proxy) |
 | [0014](0014-governance-funding.md) | Governance and funding | **open: by M3** |
-| 0015 | Keyframes and animatable properties (written by spike S9, M2-001) | proposed (engineering; recommendation in plan 4b.3) |
-| 0016 | Proxies: codec, resolution, storage, resume (S10, M2-020) | proposed (engineering) |
+| [0015](0015-keyframes.md) | Keyframes and animatable properties (spike S9, M2-001) | **accepted** (bars met: wasm = native over 1M samples, ~100 ns per bezier eval) |
+| [0016](0016-proxies.md) | Proxies: codec, resolution, storage, resume (S10, M2-020) | proposed (engineering; container bars met, device bars are calibrated estimates until a device run) |
 | 0017 | A/V drift measurement and VFR policy (S11, M2-021) | proposed (engineering) |
 | 0018 | Export queue and resume (S12, M2-022) | proposed (engineering) |
 | 0019 | Optional crash-report endpoint (XT-06b, M2-053) | **open: owner-level** (first server, running cost; do not pick) |
+| [0020](0020-op-patches.md) | Edits report what they changed (op patches, M2 UX P-4) | **accepted** (engineering; additive, no ABI bump; bars met in UX round 10) |
+| [0021](0021-media-copies.md) | Keeping copies of imported media on the device (UX r16 F) | **accepted** (owner approved: within a 2 GB / half-quota budget, with a way to free space) |
 
 ## Open decisions (do not silently pick one)
-Open: **0012** (deferred to before M3 public beta) and **0014** (by M3). 0009, 0011 and 0013 accepted 2026-11-22 (0013: Mac and Windows specs assumed; low-end Android is an emulator-based calibrated proxy). Proposed 2026-11-24 for M2 (files are written by the spike named in each row, [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) section 4b.3): 0015-0018 are engineering decisions with a recommendation; **0019 needs the owner** (before M2-053 ships a remote endpoint; local-only crash reports need no decision). Each file ends with options and a recommendation.
+Open: **0012** (deferred to before M3 public beta) and **0014** (by M3). 0009, 0011 and 0013 accepted 2026-11-22 (0013: Mac and Windows specs assumed; low-end Android is an emulator-based calibrated proxy). Proposed 2026-11-24 for M2 (files are written by the spike named in each row, [IMPLEMENTATION_PLAN.md](../IMPLEMENTATION_PLAN.md) section 4b.3): 0015 accepted by S9; 0020 accepted 2026-11-27; 0016-0018 are engineering decisions with a recommendation; **0019 needs the owner** (before M2-053 ships a remote endpoint; local-only crash reports need no decision). Each file ends with options and a recommendation.

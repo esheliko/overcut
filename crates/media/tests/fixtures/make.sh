@@ -28,5 +28,11 @@ ffmpeg $Q -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" -c:a lib
 # Stills for tests/smoke/stills.spec.ts: a red landscape PNG and a blue portrait JPG.
 ffmpeg $Q -f lavfi -i "color=c=red:s=320x180" -frames:v 1 still_red.png
 ffmpeg $Q -f lavfi -i "color=c=0x2060ff:s=200x300" -frames:v 1 -q:v 5 still_blue_portrait.jpg
+# Full-range colour declared by the container (the shape of our own exports and most screen recordings): WebM `Colour` (range 2, bt709) and MP4 `colr`/nclx. Video only.
+ffmpeg $Q $V -c:v libvpx-vp9 -b:v 60k -g 15 -pix_fmt yuv420p -color_range pc -colorspace bt709 -color_primaries bt709 -color_trc iec61966-2-1 colour_full.webm
+ffmpeg $Q $V -c:v libx264 -g 15 -bf 0 -pix_fmt yuv420p -color_range pc -colorspace bt709 -color_primaries bt709 -color_trc bt709 colour_full.mp4
 # Phone-like: the audio track is shorter than the picture (1.5 s video, 1 s audio). Reading audio to the end of the picture used to fail with "out of range" in export.
 ffmpeg $Q -f lavfi -i testsrc=size=160x120:rate=30:duration=1.5 -f lavfi -i sine=frequency=440:sample_rate=48000:duration=1 -c:v libvpx-vp9 -b:v 100k -g 15 -c:a libopus -b:a 24k vp9_opus_short_audio.webm
+# Audio-only: an MP3 (libmp3lame, ID3v2 + Xing frame, mono 44.1 kHz) and a PCM WAV (mono 8 kHz, 16-bit).
+ffmpeg $Q -f lavfi -i sine=frequency=440:duration=1:sample_rate=44100 -ac 1 -c:a libmp3lame -b:a 64k tone.mp3
+ffmpeg $Q -f lavfi -i sine=frequency=440:duration=0.5:sample_rate=8000 -ac 1 -c:a pcm_s16le tone.wav

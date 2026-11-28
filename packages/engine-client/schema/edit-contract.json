@@ -49,7 +49,11 @@
       "clip": "00000000000000000000000000000064",
       "start": 0,
       "source_in": 10,
-      "duration": 20
+      "duration": 20,
+      "speed": {
+        "num": 3,
+        "den": 2
+      }
     },
     {
       "op": "set_media",
@@ -107,9 +111,246 @@
       "rate_fixed": false
     },
     {
+      "op": "set_background",
+      "sequence": "00000000000000000000000000000008",
+      "background": {
+        "mode": "blur",
+        "colour": [
+          18,
+          52,
+          86
+        ],
+        "blur": 70
+      }
+    },
+    {
       "op": "set_link",
       "clip": "00000000000000000000000000000065",
       "link": null
+    },
+    {
+      "op": "set_clip_transform",
+      "clip": "00000000000000000000000000000065",
+      "transform": {
+        "position_x": {
+          "value": 0.25
+        },
+        "scale_x": {
+          "value": 0.5
+        },
+        "scale_y": {
+          "value": 0.5
+        },
+        "rotation": {
+          "value": 12.5,
+          "keys": [
+            {
+              "t": 0,
+              "v": 0.0,
+              "easing": {
+                "kind": "linear"
+              }
+            },
+            {
+              "t": 1000,
+              "v": 45.0,
+              "easing": {
+                "kind": "hold"
+              }
+            }
+          ]
+        },
+        "anchor_x": {
+          "value": 0.0
+        },
+        "anchor_y": {
+          "value": 0.0
+        },
+        "position_y": {
+          "value": 0.0
+        },
+        "crop_left": {
+          "value": 0.1
+        },
+        "crop_top": {
+          "value": 0.0
+        },
+        "crop_right": {
+          "value": 0.0
+        },
+        "crop_bottom": {
+          "value": 0.0
+        },
+        "opacity": {
+          "value": 0.8
+        },
+        "flip_h": true,
+        "flip_v": false,
+        "fit": "cover"
+      }
+    },
+    {
+      "op": "set_keyframe",
+      "clip": "00000000000000000000000000000065",
+      "prop": "opacity",
+      "key": {
+        "t": 705600000,
+        "v": 0.5,
+        "easing": {
+          "kind": "bezier",
+          "x1": 0.42,
+          "y1": 0.0,
+          "x2": 0.58,
+          "y2": 1.0
+        }
+      }
+    },
+    {
+      "op": "move_keyframe",
+      "clip": "00000000000000000000000000000065",
+      "prop": "position_x",
+      "from": 0,
+      "to": 352800000,
+      "value": -0.25
+    },
+    {
+      "op": "delete_keyframe",
+      "clip": "00000000000000000000000000000065",
+      "prop": "rotation",
+      "t": 705600000
+    },
+    {
+      "op": "set_easing",
+      "clip": "00000000000000000000000000000065",
+      "prop": "scale_x",
+      "t": 0,
+      "easing": {
+        "kind": "hold"
+      }
+    },
+    {
+      "op": "add_track",
+      "sequence": "00000000000000000000000000000002",
+      "index": 1,
+      "track": {
+        "id": "00000000000000000000000000000070",
+        "kind": "video",
+        "name": "V2",
+        "muted": false,
+        "locked": false,
+        "hidden": true,
+        "solo": true,
+        "height": 64,
+        "colour": "#2de2d6",
+        "clips": []
+      }
+    },
+    {
+      "op": "remove_track",
+      "track": "00000000000000000000000000000070"
+    },
+    {
+      "op": "move_track",
+      "track": "00000000000000000000000000000003",
+      "index": 2
+    },
+    {
+      "op": "set_track_props",
+      "track": "00000000000000000000000000000003",
+      "name": "Titles",
+      "muted": true,
+      "solo": false,
+      "locked": false,
+      "hidden": true,
+      "height": null,
+      "colour": "#112233"
+    },
+    {
+      "op": "ripple_trim",
+      "clip": "00000000000000000000000000000010",
+      "edge": "out",
+      "delta": -4000,
+      "all_tracks": true
+    },
+    {
+      "op": "ripple_delete",
+      "clip": "00000000000000000000000000000010"
+    },
+    {
+      "op": "close_gap",
+      "track": "00000000000000000000000000000003",
+      "at": 12000,
+      "all_tracks": true
+    },
+    {
+      "op": "roll",
+      "left": "00000000000000000000000000000010",
+      "right": "00000000000000000000000000000011",
+      "to": 14000
+    },
+    {
+      "op": "slip",
+      "clip": "00000000000000000000000000000010",
+      "delta": -5000
+    },
+    {
+      "op": "slide",
+      "clip": "00000000000000000000000000000010",
+      "delta": 4000
+    },
+    {
+      "op": "set_clip_speed",
+      "clip": "00000000000000000000000000000010",
+      "speed": {
+        "num": 2,
+        "den": 1
+      },
+      "ripple": true
+    },
+    {
+      "op": "set_clip_audio",
+      "clip": "00000000000000000000000000000010",
+      "audio": {
+        "volume": 0.5,
+        "fade_in": 7056000,
+        "fade_out": 14112000
+      }
+    },
+    {
+      "op": "add_marker",
+      "sequence": "00000000000000000000000000000002",
+      "marker": {
+        "id": "00000000000000000000000000000030",
+        "time": 24000,
+        "kind": "chapter",
+        "name": "Intro",
+        "colour": "#2de2d6"
+      }
+    },
+    {
+      "op": "move_marker",
+      "marker": "00000000000000000000000000000030",
+      "time": 48000
+    },
+    {
+      "op": "set_marker_props",
+      "marker": "00000000000000000000000000000030",
+      "name": "Part one",
+      "kind": "marker",
+      "colour": null
+    },
+    {
+      "op": "delete_marker",
+      "marker": "00000000000000000000000000000030"
+    },
+    {
+      "op": "set_range",
+      "sequence": "00000000000000000000000000000002",
+      "range": {
+        "start": 12000,
+        "end": 96000
+      },
+      "looping": true
     }
   ],
   "outcome": {

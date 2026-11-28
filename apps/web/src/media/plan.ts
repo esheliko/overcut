@@ -3,7 +3,9 @@
  * which edit ops put it on the timeline. Unit tests: tests/unit/media-plan.test.ts. Behaviour: docs/features/media-bin.md.
  */
 import { adoptedFormat } from "../canvas";
-import type { Clip, MediaKind, MediaRef, Op, Project, Rational, Resolution } from "@app/engine-client";
+import { planSound } from "../timeline/soundLane";
+import type { Clip, MediaKind, MediaRef, Op, Project, Rational, Resolution, Track } from "@app/engine-client";
+import { countClips } from "@app/engine-client";
 
 /** Ticks per second (ADR 0010). */
 export const TICKS = 705_600_000;
@@ -56,12 +58,14 @@ export interface Probed {
 
 export const DEFAULT_RATE: Rational = { num: 30, den: 1 };
 
-export const clipCount = (p: Project): number => p.sequences.reduce((n, s) => n + s.tracks.reduce((m, t) => m + t.clips.length, 0), 0);
+/** Clips as a person counts them (a linked picture + sound is one). Zero exactly when the timeline is empty. */
+export const clipCount = (p: Project): number => countClips(p);
 
 /** End of the last clip on any track of the first sequence, in ticks. */
 export function timelineEnd(p: Project): number {
+  // Clips of a track are sorted and never overlap (`Project::validate`), so the last one ends last: O(tracks), not O(clips) (called on every render).
   let end = 0;
-  for (const t of p.sequences[0]?.tracks ?? []) for (const c of t.clips) end = Math.max(end, c.start + c.duration);
+  for (const t of p.sequences[0]?.tracks ?? []) { const c = t.clips[t.clips.length - 1]; if (c) end = Math.max(end, c.start + c.duration); }
   return end;
 }
 
@@ -96,10 +100,48 @@ export function importOps(p: Project, ref: MediaRef, probed: Probed): Op[] {
 }
 
 /** Where a clip of `length` should start: at `want` if both tracks are free there, else after everything already on the timeline. */
-export function placeAt(p: Project, want: number, length: number): number {
-  const tracks = p.sequences[0]?.tracks ?? [];
+export function placeAt(p: Project, want: number, length: number, only?: readonly string[]): number {
+  const tracks = (p.sequences[0]?.tracks ?? []).filter((t) => !only || only.includes(t.id));
   const free = tracks.every((t) => t.clips.every((c) => want + length <= c.start || c.start + c.duration <= want));
   return free ? Math.max(0, want) : timelineEnd(p);
+}
+
+/**
+ * The main video track (V1): the first unlocked video track. Pictures (video, photo) always append to its end.
+ * @see landingStart
+ */
+export const mainVideoTrack = (p: Project): Track | undefined => (p.sequences[0]?.tracks ?? []).find((t) => t.kind === "video" && !t.locked);
+
+/** End of the last clip on the main video track: where the next picture lands. Audio-only items never move this point (UX r16, DESK-1). */
+export function pictureEnd(p: Project): number {
+  const last = mainVideoTrack(p)?.clips[mainVideoTrack(p)!.clips.length - 1];
+  return last ? last.start + last.duration : 0;
+}
+
+/**
+ * The one rule for where media lands (CapCut's): a picture (video, photo) goes right after the last picture on V1, whatever else the project holds
+ * (music longer than the pictures never pushes it); sound-only media goes at `start` (a drop) or the playhead, on a free audio track (`insertOps`).
+ * A picture dropped on another video lane (a picture-in-picture) lands at the dropped time when the room is free there, else at the end of that lane.
+ * `start` is the dropped time; when absent, the playhead.
+ */
+export function landingStart(p: Project, media: MediaRef, o: { start?: number; playhead: number; track?: string }): number {
+  if (media.kind === "audio") return Math.max(0, o.start ?? o.playhead);
+  const main = mainVideoTrack(p);
+  const lane = o.track && o.track !== main?.id ? p.sequences[0]?.tracks.find((t) => t.id === o.track && t.kind === "video" && !t.locked) : undefined;
+  if (!lane) return pictureEnd(p);
+  const len = media.kind === "image" ? STILL_SECONDS * TICKS : media.duration ?? 0;
+  const want = Math.max(0, o.start ?? o.playhead);
+  const free = lane.clips.every((c) => want + len <= c.start || c.start + c.duration <= want);
+  const last = lane.clips[lane.clips.length - 1];
+  return free ? want : last ? last.start + last.duration : 0;
+}
+
+/** The tracks a media item goes on: the first unlocked video and audio track, except that `target` (a dropped-on lane) takes the slot of its own kind. */
+export function destTracks(p: Project, media: MediaRef, target?: string): { vt: Track | undefined; at: Track | undefined } {
+  const tracks = p.sequences[0]?.tracks ?? [];
+  const aim = tracks.find((t) => t.id === target && !t.locked);
+  const pick = (kind: Track["kind"]) => (aim && aim.kind === kind && (kind === "audio" || media.kind !== "audio") ? aim : tracks.find((t) => t.kind === kind && !t.locked));
+  return { vt: pick("video"), at: pick("audio") };
 }
 
 /**
@@ -107,10 +149,8 @@ export function placeAt(p: Project, want: number, length: number): number {
  * a matching clip on the first audio track; audio goes on the audio track; a still gets `STILL_SECONDS`. One array = one undo step.
  * Returns `null` when the sequence has no suitable track.
  */
-export function insertOps(p: Project, media: MediaRef, probed: Probed, start: number, ids: () => string = newId): Op[] | null {
-  const tracks = p.sequences[0]?.tracks ?? [];
-  const vt = tracks.find((t) => t.kind === "video" && !t.locked);
-  const at = tracks.find((t) => t.kind === "audio" && !t.locked);
+export function insertOps(p: Project, media: MediaRef, probed: Probed, start: number, ids: () => string = newId, target?: string): Op[] | null {
+  const { vt, at } = destTracks(p, media, target);
   const duration = media.kind === "image" ? STILL_SECONDS * TICKS : media.duration ?? 0;
   if (duration <= 0) return null;
   const link = ids(); // the picture and the sound of one video import are linked: they select, move, trim and cut together
@@ -118,12 +158,18 @@ export function insertOps(p: Project, media: MediaRef, probed: Probed, start: nu
   const ops: Op[] = [];
   if (media.kind === "audio") {
     if (!at) return null;
-    ops.push({ op: "insert_clip", track: at.id, clip: clip() });
+    // Like a video's sound: the first audio track that is free over the range, or a new one (music imported with videos lies under them, UX r15).
+    const snd = planSound(p, [{ start, end: start + duration, prefer: at.id }], ids);
+    ops.push(...snd.ops, { op: "insert_clip", track: snd.tracks[0]!, clip: clip() });
   } else {
     if (!vt) return null;
-    const withSound = media.kind === "video" && probed.hasAudio && at;
-    ops.push({ op: "insert_clip", track: vt.id, clip: clip(!!withSound) });
-    if (withSound) ops.push({ op: "insert_clip", track: at.id, clip: clip(true) });
+    const withSound = media.kind === "video" && probed.hasAudio;
+    ops.push({ op: "insert_clip", track: vt.id, clip: clip(withSound) });
+    if (withSound) {
+      // The sound goes to the first audio track that is free over the picture's range, or a new one: the picture never moves because the sound clashes.
+      const snd = planSound(p, [{ start, end: start + duration, prefer: at?.id }], ids);
+      ops.push(...snd.ops, { op: "insert_clip", track: snd.tracks[0]!, clip: clip(true) });
+    }
   }
   return ops;
 }

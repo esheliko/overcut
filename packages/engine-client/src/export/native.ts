@@ -3,6 +3,7 @@ import type { GpuLayer, GpuRenderer } from "../render";
 import { layerOf } from "../render";
 import type { FrameDescription, MediaApi } from "../types";
 import { AudioMixer } from "./audio-mix";
+import type { Stretcher } from "../audio-stretch";
 import { runExport, type AudioPort, type ExportEnv, type VideoPort } from "./pipeline";
 import { planExport, type ExportPlan } from "./plan";
 import { defaultVideoBitrate } from "./presets";
@@ -50,6 +51,8 @@ export interface NativeExportHost {
   media: MediaApi;
   /** The GPU compositor on the export's own canvas (the wasm renderer, as in the browser export). */
   openRenderer(canvas: OffscreenCanvas): Promise<GpuRenderer>;
+  /** The pitch-keeping audio stretcher (the wasm module in the webview); only asked for when a clip's speed is not 1. */
+  openStretcher?(): Promise<Stretcher>;
 }
 
 /** A composited frame as raw pixels: what the native encoder takes. */
@@ -172,7 +175,8 @@ export async function createNativeEnv(
     },
   };
 
-  const mixer = new AudioMixer(plan.sampleRate, audioOf);
+  const sped = project.sequences.some((s) => s.tracks.some((t) => t.clips.some((c) => !!c.speed && c.speed.num !== c.speed.den)));
+  const mixer = new AudioMixer(plan.sampleRate, audioOf, sped ? await host.openStretcher?.() : undefined);
   const seq = plan.sequence.resolution;
   let encoderName = session.encoder;
   const env: ExportEnv<RawFrame> = {
@@ -189,7 +193,7 @@ export async function createNativeEnv(
           drawn.push(frame);
           layers.push(layerOf(layer, frame, seq));
         }
-        const rgba = await renderer.readback(layers, seq, { width: plan.width, height: plan.height });
+        const rgba = await renderer.readback(layers, seq, { width: plan.width, height: plan.height }, desc.background);
         return { rgba, close: () => undefined };
       } finally {
         for (const d of drawn) d.close();

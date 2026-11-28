@@ -1,30 +1,90 @@
 /** Export (M1-035): the top-bar button and the progress chip; the dialog (full-screen sheet on a phone, modal on a desktop) loads on first use (ExportDialogView.tsx). Logic lives in model.ts, useExport.ts, deliver.ts. */
 import { ExportError, type Engine } from "@app/engine-client";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { announce } from "../a11y/announcer";
+import { EXPORT_EVENT } from "../commands/palette";
+import { withKey } from "../commands/keymap";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { TICKS } from "../media/plan";
 import { sequenceView } from "../PreviewPanel";
 import { useProjectStore, useStore } from "../store/projectStore";
+import { pictureGaps } from "../timeline/gaps";
+import { buildScene } from "../timeline/scene";
 import type { Source } from "./model";
 import { useExport, type ExportState } from "./useExport";
 
-const loadView = () => import("./ExportDialogView");
-const Dialog = lazy(() => loadView().then((m) => ({ default: m.Dialog })));
+const importView = () => import("./ExportDialogView");
+type View = Awaited<ReturnType<typeof importView>>;
+/** The dialog module once it has loaded. Kept here, not behind React.lazy: a lazy component suspends for a tick even when its chunk is already in, and React holds a suspended reveal back for 300 ms (the "export opens late" of UX r11). */
+let loadedView: View | null = null;
+const loadView = (): Promise<View> => importView().then((m) => (loadedView = m));
+const warmed = new Set<string>();
 
-export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileOf(id: string): Promise<File | null> }) {
+/** Media the project uses whose file this device cannot read right now (missing, or the browser is waiting for permission), by id, and the app's one-click way to get them back ("Allow access" / "Locate files"). */
+export interface OfflineMedia { ids: ReadonlyMap<string, string>; reconnect(): void }
+
+export function ExportControl({ engine, fileOf, projectName, offline }: { engine: Engine | null; fileOf(id: string): Promise<File | null>; projectName?: string | null; offline?: OfflineMedia }) {
   const { t, locale } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
   const view = sequenceView(project);
   const src: Source | null = useMemo(
-    () => (view.has ? { width: view.size.width, height: view.size.height, fps: view.rate.num / view.rate.den, seconds: view.endTicks / TICKS } : null),
-    [view.has, view.size.width, view.size.height, view.rate.num, view.rate.den, view.endTicks],
+    () => (view.has ? { width: view.size.width, height: view.size.height, fps: view.rate.num / view.rate.den, seconds: view.endTicks / TICKS, ...(projectName ? { name: projectName } : null) } : null),
+    [projectName, view.has, view.size.width, view.size.height, view.rate.num, view.rate.den, view.endTicks],
   );
   const [open, setOpen] = useState(false);
+  const [, loaded] = useState(0);
+  // What the dialog warns about (worked out only while it is open): black gaps in the picture, and clips whose file cannot be read (an encode would fail at the end).
+  const gaps = useMemo(() => (open ? pictureGaps(buildScene(project)) : []), [open, project]);
+  const needFile = useMemo(() => {
+    if (!open || !offline || offline.ids.size === 0) return 0;
+    let n = 0;
+    for (const tr of project?.sequences[0]?.tracks ?? []) for (const c of tr.clips) if (offline.ids.has(c.media)) n += 1;
+    return n;
+  }, [open, offline, project]);
+  const showGap = useCallback(() => {
+    const first = gaps[0];
+    setOpen(false);
+    if (!first || !src) return;
+    store.setPlayhead(Math.max(0, Math.round(first.start * src.fps)));
+    announce(t("export.gap.shown"));
+  }, [gaps, store, src, t]);
+  // Opened before the chunk was here (a cold first click): fetch it, then draw the dialog.
+  useEffect(() => { if (open && !loadedView) void loadView().then(() => loaded((n) => n + 1)); }, [open]);
+  /** Loads the dialog chunk and asks the browser which formats it can encode (once per size and rate), so the dialog opens ready. */
+  const warm = useCallback(() => {
+    if (!src) return;
+    const key = `${src.width}x${src.height}@${src.fps}`;
+    if (warmed.has(key)) return;
+    warmed.add(key);
+    void loadView().then((m) => m.prefetchExportProbe(src)).catch(() => warmed.delete(key));
+  }, [src]);
+  // The dialog's code is fetched once the engine is up and the browser is idle (before any clip exists), so the first Export click has nothing left to download.
+  useEffect(() => {
+    if (!engine) return;
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (h: number) => void };
+    const go = () => void loadView().catch(() => undefined);
+    if (w.requestIdleCallback) { const h = w.requestIdleCallback(go, { timeout: 3000 }); return () => w.cancelIdleCallback?.(h); }
+    const h = window.setTimeout(go, 2000);
+    return () => window.clearTimeout(h);
+  }, [engine]);
+  // Idle after the first clip lands: by the time the button is pressed the chunk and the answers are already here.
+  useEffect(() => {
+    if (!src || !engine) return;
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (h: number) => void };
+    if (w.requestIdleCallback) { const h = w.requestIdleCallback(warm, { timeout: 800 }); return () => w.cancelIdleCallback?.(h); }
+    const h = window.setTimeout(warm, 600);
+    return () => window.clearTimeout(h);
+  }, [src, engine, warm]);
   const openRef = useRef(false);
   openRef.current = open;
+  // The `app.export` command (Ctrl/Cmd+E, the palette): the same as pressing the button; with nothing to export it says so.
+  useEffect(() => {
+    const on = () => { if (!engine || !src) announce(t("export.needClip")); else setOpen(true); };
+    window.addEventListener(EXPORT_EVENT, on);
+    return () => window.removeEventListener(EXPORT_EVENT, on);
+  }, [engine, src, t]);
 
   const sources = useCallback(async (sequence: string): Promise<Record<string, Blob>> => {
     const p = store.getState().project;
@@ -67,14 +127,16 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
           <span className="export-chip-text">{t("export.chip.text", { percent })}</span>
         </button>
       ) : (
-        <button className="primary" data-testid="export-open" onPointerEnter={() => void loadView()} onFocus={() => void loadView()} disabled={!engine || !src} title={!src ? t("export.needClip") : undefined} onClick={() => setOpen(true)}>
+        <button className="primary" data-testid="export-open" onPointerEnter={warm} onFocus={warm} onTouchStart={warm} disabled={!engine || !src} title={!src ? t("export.needClip") : withKey(t("export.go"), "app.export")} onClick={() => setOpen(true)}>
           <Icon name="export" size={18} /><span>{t("export.label")}</span>
         </button>
       )}
-      {open && src && project && (
-        <Suspense fallback={<div className="export-loading" role="status">{t("export.loading")}</div>}>
-        <Dialog
+      {open && src && project && loadedView && (
+        <loadedView.Dialog
           src={src}
+          gaps={{ count: gaps.length, seconds: gaps.reduce((a, g) => a + (g.end - g.start), 0) }}
+          offline={{ clips: needFile, reconnect: offline?.reconnect ?? (() => undefined) }}
+          onShowGap={showGap}
           state={ex.state}
           locale={locale}
           onStart={(s) => void ex.start(project.sequences[0]!.id, s)}
@@ -83,7 +145,6 @@ export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileO
           onClose={close}
           onTuck={() => setOpen(false)}
         />
-        </Suspense>
       )}
     </>
   );

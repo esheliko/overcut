@@ -1,5 +1,6 @@
-import { parseRecovery, type Editing, type EditOutcome, type FrameDescription, type Op } from "./types";
-import type { Project } from "./model.generated";
+import type { EditPatch } from "./patch";
+import { parseRecovery, type SnapQuery, type SnapResult, type Editing, type EditOutcome, type FrameDescription, type Op, type TrackProps } from "./types";
+import type { Marker, MarkerId, MarkerKind, Project, SequenceId, Time, TimeRange, Track, TrackId, TrackKind } from "./model.generated";
 
 /** What each backend supplies: the engine's string-in, string-out editor calls. Rejections/throws carry the engine's message. */
 export interface RawEditing {
@@ -11,6 +12,7 @@ export interface RawEditing {
   journal(): Promise<string> | string;
   /** `ticks` is an exact integer (i64 on the engine side). */
   evaluate(sequence: string, ticks: bigint, audioSamples: number): Promise<string> | string;
+  snap(sequence: string, paramsJson: string): Promise<string> | string;
   takeLog(): Promise<string> | string;
   checkpoint(): Promise<string> | string;
   /** Returns the `Recovery` report JSON (snake_case, as the engine writes it). */
@@ -24,7 +26,9 @@ export function parseEditOutcome(json: string): EditOutcome {
   if (typeof o.revision !== "number" || typeof o.can_undo !== "boolean" || typeof o.can_redo !== "boolean" || typeof o.changed !== "boolean") {
     throw new Error("edit outcome has the wrong shape");
   }
-  return { revision: o.revision, can_undo: o.can_undo, can_redo: o.can_redo, changed: o.changed };
+  const out: EditOutcome = { revision: o.revision, can_undo: o.can_undo, can_redo: o.can_redo, changed: o.changed };
+  if (o.patch && typeof o.patch === "object" && Array.isArray((o.patch as { sequences?: unknown }).sequences)) out.patch = o.patch as EditPatch;
+  return out;
 }
 
 /** The coalesce key crosses as a u32. */
@@ -58,9 +62,71 @@ export function createEditing(raw: RawEditing): Editing {
         if (!Number.isInteger(audioSamples) || audioSamples < 0 || audioSamples > 0xffff_ffff) throw new Error("audioSamples must be an integer in 0..2^32-1");
         return JSON.parse(await raw.evaluate(sequence, BigInt(ticks), audioSamples)) as FrameDescription;
       }),
+    snap: (sequence: string, q: SnapQuery) =>
+      call(async () => {
+        const times = [q.t, q.tolerance, q.playhead ?? 0, q.span ?? 0, ...(q.markers ?? [])];
+        if (!times.every(Number.isSafeInteger) || q.tolerance < 0) throw new Error("snap times must be safe integers and tolerance >= 0");
+        return JSON.parse(await raw.snap(sequence, JSON.stringify(q))) as SnapResult;
+      }),
     takeLog: () => call(async () => raw.takeLog()),
     checkpoint: () => call(async () => raw.checkpoint()),
     recover: (base: Project | null, checkpoint: string | null, log: string) =>
       call(async () => parseRecovery(await raw.recover(base ? JSON.stringify(base) : null, checkpoint, log))),
   };
+}
+
+// ---- Track ops (M2-002, `docs/features/model.md`): small builders for `Editing.apply`. Ids come from the caller (`newId()`). ----
+
+/** A new, empty track. Pass it to `addTrackOp`. */
+export function newTrack(id: TrackId, kind: TrackKind, name: string): Track {
+  return { id, kind, name, muted: false, locked: false, clips: [] };
+}
+
+/** Add `track` at stack position `index` (0 = bottom, `tracks.length` = top). */
+export function addTrackOp(sequence: SequenceId, track: Track, index: number): Op {
+  return { op: "add_track", sequence, track, index };
+}
+
+/** Remove a track and its clips; one undo step brings both back. Locked tracks are refused by the engine. */
+export function removeTrackOp(track: TrackId): Op {
+  return { op: "remove_track", track };
+}
+
+/** Move a track to stack position `index` (counted after lifting it out, so `tracks.length - 1` is the top). */
+export function moveTrackOp(track: TrackId, index: number): Op {
+  return { op: "move_track", track, index };
+}
+
+/** Add a marker or chapter. Make the marker with `newMarker`; ids are the caller's. */
+export function addMarkerOp(sequence: SequenceId, marker: Marker): Op {
+  return { op: "add_marker", sequence, marker };
+}
+
+/** Move a marker to `time` ticks (>= 0). Send a drag's moves under one coalesce key to make it one undo step. */
+export function moveMarkerOp(marker: MarkerId, time: Time): Op {
+  return { op: "move_marker", marker, time };
+}
+
+/** Patch a marker's name, kind and colour (`colour: null` resets to the default); fields left out stay. */
+export function setMarkerPropsOp(marker: MarkerId, props: { name?: string; kind?: MarkerKind; colour?: string | null }): Op {
+  return { op: "set_marker_props", marker, ...props };
+}
+
+export function deleteMarkerOp(marker: MarkerId): Op {
+  return { op: "delete_marker", marker };
+}
+
+/** Set the in/out range (and loop it), or clear it with `null`. */
+export function setRangeOp(sequence: SequenceId, range: TimeRange | null, looping = false): Op {
+  return looping ? { op: "set_range", sequence, range, looping } : { op: "set_range", sequence, range };
+}
+
+/** A marker for `addMarkerOp`; `id` is a fresh 32-hex id (`newId`). */
+export function newMarker(id: string, time: Time, over: { kind?: MarkerKind; name?: string; colour?: string } = {}): Marker {
+  return { id, time, ...over };
+}
+
+/** Change some properties of a track (name, mute, solo, lock, hide, height, colour); see `TrackProps`. */
+export function setTrackPropsOp(track: TrackId, props: TrackProps): Op {
+  return { op: "set_track_props", track, ...props };
 }

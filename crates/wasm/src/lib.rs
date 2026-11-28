@@ -55,6 +55,10 @@ impl Editor {
     ) -> Result<String, String> {
         self.0.evaluate_json(sequence, ticks, audio_samples)
     }
+    /// Snap a time or dragged span to clip edges, playhead and markers; params and answer JSON in `docs/features/snapping.md`.
+    pub fn snap(&self, sequence: &str, params: &str) -> Result<String, String> {
+        self.0.snap_json(sequence, params)
+    }
     /// Commit-log lines (JSON Lines) produced since the last call; the host appends them to durable storage.
     pub fn take_log(&mut self) -> String {
         self.0.take_log()
@@ -102,6 +106,16 @@ pub fn media_fingerprint(size: f64, first: &[u8], last: &[u8]) -> Result<String,
 #[wasm_bindgen]
 pub fn capabilities(probe_json: &str) -> Result<String, String> {
     app_core::capabilities_json(probe_json, "web", None)
+}
+
+/// Pitch-keeping time stretch (`app_audio::stretch`, clip speed). `planar`: `channels` equal-length channels one after the other; the result is
+/// laid out the same way with `output_len(len, num, den)` samples per channel.
+#[wasm_bindgen]
+pub fn stretch_audio(planar: &[f32], channels: u32, rate: u32, num: u32, den: u32) -> Vec<f32> {
+    let n = channels.max(1) as usize;
+    let len = planar.len() / n;
+    let chans: Vec<&[f32]> = (0..n).map(|c| &planar[c * len..(c + 1) * len]).collect();
+    app_audio::stretch::stretch(&chans, rate, num, den).concat()
 }
 
 /// A waveform extraction in progress (`app_audio::peaks::PeaksBuilder`). PCM goes in as interleaved i16 chunks.

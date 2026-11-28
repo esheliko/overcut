@@ -65,6 +65,8 @@ Finding: scrubbing long-GOP media on a low phone misses budget on the proxy, so 
 
 **Scrub strip (done, `docs/features/preview.md` "Smooth scrubbing")**: clips the rule flags (estimated or measured seek p95 > 120 ms) get a background-built strip of small JPEGs, and the first picture of a scrub is the strip's picture of the exact frame (<= 1 frame off), so "first frame after seek <= 120 ms" is met by the strip while the exact frame still decodes in 200-380 ms (laptop/S24) or ~1.2 s (low proxy) and replaces it. The exact-frame time is unchanged by design (playback and export use the original). Container numbers on a 1280x720 GOP-150 fixture: stand-in distance p50/p95 12/83 -> 0/1 frames; exact frame ~95/175 ms before and after. **Not measured on a device**: re-run `/diagnostics` plus a real phone clip on the S24 before claiming the low-tier budget.
 
+**Proxies (S10, `docs/adr/0016-proxies.md`, container, software, not a device)**: 4K30 45 Mbps GOP-150 source -> 720p/540p GOP-30 no-B H.264 proxy: transcode 2.3-2.6x realtime on 4 vCPU (0.7x on one), size 0.9-1.5% of the source (synthetic, optimistic; budgeted by bitrate cap), random seek p50/p95 28/58 ms (720p) and 9/25 ms (540p) against 2003/4473 ms on the original (single thread). Laptop (~25/33 ms) and low-tier proxy (~76/128 ms at 720p, ~49/79 ms at 540p) are **calibrated estimates** from the seek model, not measurements; transcode speed on the laptop is unverified. Resume after `kill -9`: byte-identical output, lost work one 4 s segment.
+
 ## Measurement status per metric and tier
 `C` = measured in the container harness (trend number: shared Xeon CPU, software decode, no real GPU; compare only with a baseline from the same kind of machine). `D` = real-device number from `/diagnostics` (Windows laptop and Galaxy S24 so far, table above). `P` = calibrated proxy (S24 number scaled by the SoC benchmark ratio, ADR 0013; always labelled). `-` = not measured anywhere yet.
 
@@ -97,6 +99,24 @@ The 4x CPU throttle approximates a phone but is not one; a throttled-container n
 - **Devices** (`npm run perf:device -- --tier <low|mid|laptop|desktop> [--name <slug>] <pasted /diagnostics line or file>`): stores `tests/perf/devices/<slug>.json` and prints the numbers against that tier's budget. For the low tier pass the Galaxy S24 report with `--proxy-ratio <SoC ratio>`: the file is marked "calibrated proxy" with the ratio used. Device files are the record that a hardware bar was proven (plan section 4a).
 - **Frame-time instrumentation** is compiled in (preview stats: presented, dropped, late); a debug overlay is still to come.
 - **Microbenchmarks** for render graph, DSP and cache follow with those modules; add them to `tests/perf/run.mjs` and `metrics.mjs` in the PR that adds the module.
+
+## E2 gate: editing ops (M2-011, measured 2026-11-25 in the container, 4-core Xeon 2.3 GHz, release)
+- **Property run** (`npm run test:e2` = `PROPTEST_CASES=10000 cargo test -p app-timeline --release`): all 34 op kinds in the S7 (29 at the time of the first run; the five marker ops of M2-007 joined later) generator, 10,000 random sequences each for the two properties, 0 failures. Whole `app-timeline` suite 3.7 s wall; 100,000 cases (the S7 bar) 33 s, 0 failures.
+- **Op bench** (`cargo run --release -p app-timeline --example bench`, JSON keys `mix_20x250_*` and `mix_20x1000_*`; `BENCH_KINDS=1` prints each op kind): the compound edit mix (move, trim, split, ripple trim incl. all-tracks, slip, slide, transform, delete, each undone after) on 20 tracks.
+  | Project | mean per op | worst op | budget |
+  |---|---|---|---|
+  | 20 tracks x 250 = 5k clips | 0.016 ms | 0.76 ms (all-tracks ripple trim from the start) | <= 2 ms |
+  | 20 tracks x 1000 = 20k clips (stress) | 0.22 ms | 12.9 ms (same ripple, moves 20k clips) | none (4x the budget size) |
+  Single-clip ops stay under 0.2 ms even at 20k clips. Before this gate a ripple over n clips was O(n^2) (each step prepended its inverse): 3.3 ms worst at 5k and 35 ms at 20k. What is left is one linear `find_clip` per shifted clip; an id index is the next lever if a UI test needs it.
+
+## Edit latency (M2 UX P-4, ADR 0020)
+- The engine reports what an edit changed (`EditOutcome.patch`); the UI no longer re-reads and re-parses the whole project after each edit, and the preview Worker's project JSON is built from cached per-clip and per-track strings. Cost of the patch itself: `ops_apply_patch_ms` in the op bench (apply one op, diff against the shadow copy, advance the shadow) 0.18 ms native at 5k clips on 5 tracks, against 0.003 ms for the bare apply; the budget is <= 8 ms apply + patch on the low phone.
+- Measured in the browser (`/?sample=2h`, 2300 clips, split then undo, key press to the Undo button state and a painted frame, median of 10, container Chromium with software GL): see the PR for the before/after table; what is left at 4x is mostly React commit, layout and paint, not project size.
+
+## Background blur (TL-19, `docs/features/background.md`)
+- Cost: three passes over a 128 x 72 (or 72 x 128) target and one full-canvas textured draw, i.e. about one extra layer's fill; no per-frame allocation (targets are built once per output shape and size). It is skipped when the bottom layer already covers the canvas.
+- Measured 2026-11-27 in the container (4 shared vCPU, **software rasteriser** llvmpipe, GL backend, release; `cargo test -p app-render --test golden --release blur_background_cost -- --ignored --nocapture`): one 1080p layer on a 1080 x 1920 canvas, GPU work only: black 21-23 ms, colour 20-22 ms, **blur +4 to +8 ms** (27-29 ms; run-to-run noise on a shared machine). Round 10 (quality rewrite: 10 x 10 prefilter, cubic enlargement, dim, dither; targets 48 texels): same machine and harness, **blur +20 to +22 ms** (vulkan 43 ms, GL 50 ms against black 23-28 ms), almost all of it the full-canvas draw with four fetches and the dither on 2 million pixels in software; the passes over the 48 x 27 target are noise. Still one full-canvas pass, so a GPU pays a fraction of a millisecond. A software rasteriser is orders of magnitude slower per pixel than the reference laptop's GPU and the blur's share is one extra full-canvas pass, so on the laptop it is a fraction of a millisecond; **the 60 fps bar (16.7 ms) for one layer with blur is a laptop field number, not proven here** (same status as the other 60 fps rows: field validation).
+- The 3-layer compositor bench (`bench` in the preview Worker) is unchanged: it draws on a black background.
 
 ## Design rules that keep it fast
 1. Nothing heavy on the UI thread; engine in a Worker (web) / dedicated threads (native).

@@ -1,6 +1,7 @@
 /** Duplicate, copy / cut / paste and numeric timing (TL-02): pure planning on top of the existing ops, so everything is `insert_clip`, `delete`,
  *  `trim_in` and `trim_out` through `Engine.editing` (ADR 0006), in integer ticks (ADR 0010). Nothing here touches the project. */
 import type { Clip, Op, Project } from "@app/engine-client";
+import { planSound } from "./soundLane";
 
 /** A copied clip and the track it came from. A deep copy: later edits to the project never change the clipboard. */
 export interface Held { readonly track: string; readonly clip: Clip }
@@ -21,20 +22,27 @@ export interface Placement { readonly ops: Op[]; readonly placed: number; readon
  * `targetTrack` when every held clip came from ONE track and that track is unlocked and of the same kind, else each clip's own track
  * (skipped when it is gone, locked, or the kind does not fit). If anything would overlap, the whole group moves later to the next free slot
  * (never overwrites, never splits the group). `newId` supplies the 32-hex ids of the copies.
+ * The SOUND of a pasted video (an audio clip linked to a picture in the same group) does not move the group: it takes the first audio track that is free
+ * over its range, or a new audio track, all in the same batch (one undo step).
+ * `otherLane` (paste): when the chosen lane is taken at `at`, the group goes to the first free lane of the same kind AT `at` before it is pushed later.
  */
-export function planPlacement(p: Project, held: readonly Held[], at: number, targetTrack: string | null, newId: () => string): Placement {
+export function planPlacement(p: Project, held: readonly Held[], at: number, targetTrack: string | null, newId: () => string, otherLane = false): Placement {
   const tracks = sequenceOf(p)?.tracks ?? [];
   const byId = new Map(tracks.map((t) => [t.id, t]));
   if (held.length === 0) return { ops: [], placed: 0, skipped: 0, start: at };
-  const sources = new Set(held.map((h) => h.track));
+  // Sound followers: audio clips whose link partner (a picture) is in the group. They are placed after the picture is, on any free audio track.
+  const kindOf = (id: string) => byId.get(id)?.kind;
+  const pictureLinks = new Set(held.filter((h) => h.clip.link && kindOf(h.track) === "video").map((h) => h.clip.link!));
+  const isFollower = (h: Held) => kindOf(h.track) === "audio" && !!h.clip.link && pictureLinks.has(h.clip.link);
+  const sources = new Set(held.filter((h) => !isFollower(h)).map((h) => h.track));
   const retarget = targetTrack !== null && sources.size === 1 ? byId.get(targetTrack) : undefined;
-  const from = byId.get(held[0]!.track);
+  const from = byId.get([...sources][0]!);
   const useTarget = retarget && !retarget.locked && (!from || from.kind === retarget.kind) ? retarget : undefined;
 
   const items: { track: string; clip: Clip }[] = [];
   let skipped = 0;
   for (const h of held) {
-    const dest = useTarget ?? byId.get(h.track);
+    const dest = (isFollower(h) ? undefined : useTarget) ?? byId.get(h.track);
     const src = byId.get(h.track);
     if (!dest || dest.locked || (src && src.kind !== dest.kind)) { skipped++; continue; }
     items.push({ track: dest.id, clip: h.clip });
@@ -43,10 +51,20 @@ export function planPlacement(p: Project, held: readonly Held[], at: number, tar
 
   const anchor = Math.min(...items.map((i) => i.clip.start));
   let shift = Math.max(at, 0) - anchor;
+  const follower = (i: { track: string; clip: Clip }) => kindOf(i.track) === "audio" && !!i.clip.link && pictureLinks.has(i.clip.link);
+  const leads = items.filter((i) => !follower(i));
+  // The lane is taken where the playhead is: use the first free lane of the same kind at that spot, rather than pushing the group later (never to the project's end).
+  const free = (trackId: string, sh: number) => leads.every((it) => byId.get(trackId)!.clips.every((o) => !(o.start < it.clip.start + sh + it.clip.duration && o.start + o.duration > it.clip.start + sh)));
+  const lane = leads[0]?.track;
+  if (otherLane && lane && leads.every((i) => i.track === lane) && !free(lane, shift)) {
+    const kind = byId.get(lane)!.kind;
+    const other = tracks.find((t) => t.kind === kind && !t.locked && t.id !== lane && free(t.id, shift));
+    if (other) for (const it of leads) it.track = other.id;
+  }
   // Slide later until nothing overlaps: a blocker on a destination track pushes the group to just after it. Each pass passes at least one clip, so it ends.
   for (let pass = 0; pass <= tracks.reduce((n, t) => n + t.clips.length, 0) + 1; pass++) {
     let bump = shift;
-    for (const it of items) {
+    for (const it of leads) {
       const s = it.clip.start + shift, e = s + it.clip.duration;
       for (const other of byId.get(it.track)!.clips) {
         if (other.start < e && other.start + other.duration > s) bump = Math.max(bump, other.start + other.duration - it.clip.start);
@@ -59,12 +77,16 @@ export function planPlacement(p: Project, held: readonly Held[], at: number, tar
   const uses = new Map<string, number>();
   for (const it of items) if (it.clip.link) uses.set(it.clip.link, (uses.get(it.clip.link) ?? 0) + 1);
   const links = new Map<string, string>();
-  const ops: Op[] = items.map((it) => {
+  const followers = items.filter(follower);
+  const sound = planSound(p, followers.map((f) => ({ start: f.clip.start + shift, end: f.clip.start + shift + f.clip.duration, prefer: f.track })), newId);
+  const ops: Op[] = [...sound.ops];
+  for (const it of items) {
     const { link, ...rest } = it.clip;
     const copy: Clip = { ...rest, id: newId(), start: it.clip.start + shift };
     if (link && uses.get(link)! > 1) { if (!links.has(link)) links.set(link, newId()); copy.link = links.get(link)!; }
-    return { op: "insert_clip", track: it.track, clip: copy };
-  });
+    const k = followers.indexOf(it);
+    ops.push({ op: "insert_clip", track: k >= 0 ? sound.tracks[k]! : it.track, clip: copy });
+  }
   return { ops, placed: items.length, skipped, start: anchor + shift };
 }
 

@@ -4,7 +4,7 @@
 use super::codec;
 use super::reader::{invalid, Reader};
 use super::{
-    analyze_steps, snap_fps, to_time, ContainerFormat, Packet, Probe, Track, TrackKind,
+    analyze_steps, snap_fps, to_time, ColourInfo, ContainerFormat, Packet, Probe, Track, TrackKind,
     MAX_PACKETS_PER_TRACK, MAX_TRACKS,
 };
 use crate::{MediaError, Source};
@@ -126,10 +126,26 @@ fn parse_tracks(d: &[u8]) -> Result<Vec<Entry>, MediaError> {
         let cid = String::from_utf8_lossy(get(&k, 0x86).unwrap_or(&[])).into_owned();
         let private = get(&k, 0x63A2).unwrap_or(&[]).to_vec();
         let (mut width, mut height, mut rate, mut channels) = (0u32, 0u32, 0u32, 0u16);
+        let mut colour = ColourInfo::default();
         if let Some(v) = get(&k, 0xE0) {
             let vk = children(v)?;
             width = get(&vk, 0xB0).map_or(0, uint).try_into().unwrap_or(0);
             height = get(&vk, 0xBA).map_or(0, uint).try_into().unwrap_or(0);
+            if let Some(c) = get(&vk, 0x55B0) {
+                // Colour: MatrixCoefficients 0x55B1, Range 0x55B9 (1 broadcast, 2 full), TransferCharacteristics 0x55BA, Primaries 0x55BB.
+                let ck = children(c)?;
+                let code = |id| get(&ck, id).map_or(0, uint).try_into().unwrap_or(0u8);
+                colour = ColourInfo {
+                    matrix: code(0x55B1),
+                    transfer: code(0x55BA),
+                    primaries: code(0x55BB),
+                    full_range: match get(&ck, 0x55B9).map(uint) {
+                        Some(1) => Some(false),
+                        Some(2) => Some(true),
+                        _ => None,
+                    },
+                };
+            }
         }
         if let Some(a) = get(&k, 0xE1) {
             let ak = children(a)?;
@@ -148,6 +164,7 @@ fn parse_tracks(d: &[u8]) -> Result<Vec<Entry>, MediaError> {
                 width,
                 height,
                 rotation: 0,
+                colour,
                 sample_rate: rate,
                 channels,
                 timescale: 0,

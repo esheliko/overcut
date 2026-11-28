@@ -1,6 +1,7 @@
 import type { ExportApi } from "./export/types";
-import type { Clip, ClipId, LinkId, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TrackId } from "./model.generated";
+import type { Background, Clip, ClipAudio, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
+import type { EditPatch } from "./patch";
 
 export * from "./capabilities";
 
@@ -58,6 +59,14 @@ export interface OpenMediaOptions {
   gpu?: boolean;
 }
 
+/** The colour description a container declares for a video track (ISO 23001-8 code points; 0 = not given). `fullRange` is null when the container does not say. */
+export interface ColourInfo {
+  primaries: number;
+  transfer: number;
+  matrix: number;
+  fullRange: boolean | null;
+}
+
 export interface TrackInfo {
   /** WebCodecs codec string. */
   codec: string;
@@ -65,6 +74,8 @@ export interface TrackInfo {
   height: number;
   /** Clockwise degrees to apply when displaying (frames are returned in coded orientation). */
   rotation: number;
+  /** Colour primaries, transfer, matrix and range from the container (WebM `Colour`, MP4 `colr`/`vpcC`); absent when it declares none. Video only. */
+  colour?: ColourInfo | null;
   sampleRate: number;
   channels: number;
   durationTicks: number;
@@ -219,6 +230,21 @@ export function parseOpenedProject(json: string): OpenedProject {
   return { project: o.project as Project, readOnly: o.read_only, foundVersion: o.found_version, migrated: o.migrated, entries: o.entries.map(String) };
 }
 
+/** The animatable numbers of a clip's transform (mirrors `app_model::TransformProp`). */
+export type TransformProp =
+  | "position_x"
+  | "position_y"
+  | "scale_x"
+  | "scale_y"
+  | "rotation"
+  | "anchor_x"
+  | "anchor_y"
+  | "crop_left"
+  | "crop_top"
+  | "crop_right"
+  | "crop_bottom"
+  | "opacity";
+
 /**
  * One edit (ADR 0006; mirrors `app_timeline::Op`, kept in sync by `schema/edit-contract.json`, which both sides test against).
  * Ops address things by id; ids they create (`clip` in insert_clip, `new_id` in split) come from the caller: 32 lowercase hex chars.
@@ -233,15 +259,83 @@ export type Op =
   | { op: "move"; clip: ClipId; track: TrackId; start: Time }
   /** Link the clip to others sharing `link`, or with `null` let it edit alone (TL-05). */
   | { op: "set_link"; clip: ClipId; link: LinkId | null }
+  /** Replace the clip's transform (position, scale, rotation, anchor, crop, flip, opacity, fit). One drag = many of these = one undo step. */
+  | { op: "set_clip_transform"; clip: ClipId; transform: ClipTransform }
+  /** Replace the clip's volume and fades (round 16). One slider drag = many of these = one undo step. */
+  | { op: "set_clip_audio"; clip: ClipId; audio: ClipAudio }
+  /** Add a keyframe to one animatable property, or replace the key at the same clip-relative time (M2-004, `docs/features/keyframes.md`). */
+  | { op: "set_keyframe"; clip: ClipId; prop: TransformProp; key: Keyframe }
+  /** Move the key at `from` to `to` (refused when another key is there) and optionally give it `value`. A drag = many of these = one undo step. */
+  | { op: "move_keyframe"; clip: ClipId; prop: TransformProp; from: Time; to: Time; value?: number }
+  | { op: "delete_keyframe"; clip: ClipId; prop: TransformProp; t: Time }
+  /** Change the easing of the segment leaving the key at `t`. */
+  | { op: "set_easing"; clip: ClipId; prop: TransformProp; t: Time; easing: Easing }
   | { op: "delete"; clip: ClipId }
-  | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time }
+  /** Add a marker or chapter (TL-07, M2-007, `docs/features/markers.md`). The marker's id is the caller's; time >= 0; name 0-120 chars without surrounding spaces; colour `#rrggbb`. */
+  | { op: "add_marker"; sequence: SequenceId; marker: Marker }
+  /** Move a marker (time >= 0). A drag = many of these under one coalesce key = one undo step. */
+  | { op: "move_marker"; marker: MarkerId; time: Time }
+  /** Patch a marker; fields left out stay. `colour`: a value sets it, `null` resets it. */
+  | { op: "set_marker_props"; marker: MarkerId; name?: string; kind?: MarkerKind; colour?: string | null }
+  | { op: "delete_marker"; marker: MarkerId }
+  /** Set the in/out range and whether playback loops over it; `range: null` clears it (`looping` must then be false). Needs 0 <= start < end. */
+  | { op: "set_range"; sequence: SequenceId; range: TimeRange | null; looping?: boolean }
+  /** `speed` left out = unchanged; given, `duration` must read whole source ticks at it (the inverse of `set_clip_speed` uses this). */
+  | { op: "set_clip"; clip: ClipId; start: Time; source_in: Time; duration: Time; speed?: Rational }
+  /**
+   * Set a clip's playback speed, 1/4..4 (anything else is refused, `BadSpeed`). The clip keeps its start and source window, so its length becomes
+   * `source length / speed`, rounded down to the whole ticks that speed reads exactly (under a millisecond lost). Without `ripple` the clip must
+   * still fit its neighbours (`Overlap`); with it the later clips of the same track shift by the change. One undo step.
+   */
+  | { op: "set_clip_speed"; clip: ClipId; speed: Rational; ripple?: boolean }
   | { op: "set_media"; media: MediaId; uri: string; hash: string | null }
   | { op: "set_media_tags"; media: MediaId; tags: string[] }
   | { op: "add_media"; media: MediaRef }
   | { op: "remove_media"; media: MediaId }
   | { op: "set_sequence_format"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution }
   /** The project canvas (PM-01). `*_fixed` false = follows the first picture imported ("match first clip"). */
-  | { op: "set_canvas"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution; size_fixed: boolean; rate_fixed: boolean };
+  | { op: "set_canvas"; sequence: SequenceId; frame_rate: Rational; resolution: Resolution; size_fixed: boolean; rate_fixed: boolean }
+  | { op: "set_background"; sequence: SequenceId; background: Background }
+  /** Add a track at stack position `index` (0 = bottom of the stack = drawn first; `tracks.length` = top). The id is the caller's. */
+  | { op: "add_track"; sequence: SequenceId; track: Track; index: number }
+  /** Remove a track and its clips (undo restores both). A locked track is refused. */
+  | { op: "remove_track"; track: TrackId }
+  /** Move a track to stack position `index` (in the order after it is lifted out; `tracks.length - 1` = top). */
+  | { op: "move_track"; track: TrackId; index: number }
+  /** Change track properties; fields left out stay as they are (`TrackProps`). Valid on a locked track. */
+  | ({ op: "set_track_props"; track: TrackId } & TrackProps)
+  /**
+   * Ripple trim (TL-04): move one edge of the clip by `delta` ticks (positive = later) and shift everything that starts at/after its old end by the
+   * length change. `in` keeps the start and moves `source_in`. `all_tracks`: also shift the other UNLOCKED tracks (sync); locked tracks never move.
+   * An edit that would overlap anything, run past the media or empty the clip is refused whole.
+   */
+  | { op: "ripple_trim"; clip: ClipId; edge: "in" | "out"; delta: Time; all_tracks?: boolean }
+  /** Delete the clip and pull everything after it earlier by its length (`all_tracks` as in `ripple_trim`). */
+  | { op: "ripple_delete"; clip: ClipId; all_tracks?: boolean }
+  /** Close the empty gap on `track` that contains `at` (also the gap before the first clip). Refused (`NotInGap`) when `at` is on a clip or after the last one. */
+  | { op: "close_gap"; track: TrackId; at: Time; all_tracks?: boolean }
+  /** Roll: move the cut between two touching clips of a track (`left` ends where `right` starts) to `to`. Refused (`NotAdjacent`) otherwise. */
+  | { op: "roll"; left: ClipId; right: ClipId; to: Time }
+  /** Slip: shift the clip's source window by `delta` SOURCE ticks; position and length stay. */
+  | { op: "slip"; clip: ClipId; delta: Time }
+  /** Slide: move the clip by `delta` ticks; neighbours that touch it give/take the difference at their adjacent edge. */
+  | { op: "slide"; clip: ClipId; delta: Time };
+
+/**
+ * A track patch (`set_track_props`): leave a field out to keep it. `height` / `colour`: a value sets it, `null` resets to the default.
+ * `name` is 1-64 characters without surrounding spaces; `height` 24-400 (UI px); `colour` is `#rrggbb`.
+ * `hidden` takes the track out of the output; `muted` silences / blanks it; `solo` limits output to the soloed tracks of the same kind
+ * (video solos never silence audio and vice versa); hide and mute win over solo.
+ */
+export interface TrackProps {
+  name?: string;
+  muted?: boolean;
+  solo?: boolean;
+  locked?: boolean;
+  hidden?: boolean;
+  height?: number | null;
+  colour?: string | null;
+}
 
 /** What the engine reports after every edit. Re-read `project()` when `revision` moved. */
 export interface EditOutcome {
@@ -250,6 +344,8 @@ export interface EditOutcome {
   can_redo: boolean;
   /** False for an undo/redo that had nothing to do. */
   changed: boolean;
+  /** What this edit changed (ADR 0020). Absent when nothing changed or the engine could not express the change as a patch: then re-read `project()`. */
+  patch?: EditPatch;
 }
 
 export interface Editing {
@@ -271,6 +367,11 @@ export interface Editing {
    * samples starting there (0 = video only). See docs/features/evaluate.md.
    */
   evaluate(sequence: string, ticks: number, audioSamples?: number): Promise<FrameDescription>;
+  /**
+   * Snap a time (or a dragged span) to the sequence's clip edges, the playhead and markers (TL-03, `docs/features/snapping.md`). Tolerance in ticks, inclusive.
+   * Cheap (a linear pass in the engine); call it per pointer move. Priority on ties: playhead, marker, clip edge.
+   */
+  snap(sequence: string, query: SnapQuery): Promise<SnapResult>;
   /**
    * The commit records (edits, undos, redos) produced since the last call, as JSON Lines; empty when nothing changed.
    * Autosave appends them to durable storage after every edit (`docs/features/persistence.md`).
@@ -299,7 +400,22 @@ export interface VideoLayer {
   /** Source time in ticks (floor to the media's own frame grid). */
   source_time: number;
   transform: Transform;
+  /** The clip's own placement at this frame (units as `ClipTransform`; scale 1 = the size `fit` gives; crop = left, top, right, bottom). */
+  props: TransformValues;
+  /** 0..=1, the clip's opacity at this frame. */
   opacity: number;
+}
+
+export interface TransformValues {
+  position: [number, number];
+  scale: [number, number];
+  /** Degrees clockwise. */
+  rotation: number;
+  anchor: [number, number];
+  crop: [number, number, number, number];
+  opacity: number;
+  flip: [boolean, boolean];
+  fit: Fit;
 }
 
 export interface AudioSegment {
@@ -312,7 +428,17 @@ export interface AudioSegment {
   /** Source time in ticks of the segment's first sample. */
   source_start: number;
   speed: { num: number; den: number };
+  /** The clip's volume (linear, 0..2). The fades come on top: `segmentGain`. */
   gain: number;
+  /** Fade in / out of the whole clip in samples (already shortened to fit) and the clip's length in samples. */
+  fade_in: number;
+  fade_out: number;
+  clip_len: number;
+  /** The clip's first source tick and the source ticks it reads in all: the window the pitch-keeping stretch turns into the clip's length. */
+  clip_source_in: number;
+  clip_source_len: number;
+  /** Samples from the clip's first sample to this segment's first sample (an index into the stretched clip). */
+  clip_offset: number;
 }
 
 export interface FrameDescription {
@@ -325,6 +451,28 @@ export interface FrameDescription {
   layers: VideoLayer[];
   /** Samples not covered are silence. */
   audio: AudioSegment[];
+  /** What is drawn behind `layers` (TL-19). Absent = black. */
+  background?: Background;
+}
+
+/** Input of `Editing.snap`. All times are integer ticks. */
+export interface SnapQuery {
+  /** The time to snap, or the START of the dragged span when `span` is given. */
+  t: number;
+  tolerance: number;
+  playhead?: number | null;
+  /** Clips that are being dragged: their own edges are not targets. */
+  exclude?: ClipId[];
+  markers?: number[];
+  /** Length of the dragged span: either its start or its end snaps, whichever moves less. */
+  span?: number | null;
+}
+
+/** `time` is where `t` ends up (the new start for a span), `delta = time - t`, `hit` the target snapped to (`null` = none in range). */
+export interface SnapResult {
+  time: number;
+  delta: number;
+  hit: { time: number; kind: "playhead" | "marker" | "clip_edge" } | null;
 }
 
 /** What `Editing.recover` did. Mirrors `app_timeline::Recovery`. */
@@ -339,7 +487,7 @@ export interface Recovery {
   validLog: string;
 }
 
-export const EXPECTED_ABI = 1;
+export const EXPECTED_ABI = 5;
 
 export function parseEngineInfo(json: string): EngineInfo {
   const v: unknown = JSON.parse(json);

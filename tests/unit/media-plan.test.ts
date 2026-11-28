@@ -64,6 +64,13 @@ test("a video with sound becomes two clips in ONE op list (one undo step); audio
   const audioOps = insertOps(p, song, { kind: "audio", durationTicks: 3 * TICKS, hasAudio: true, hasVideo: false }, 0)!;
   assert.deepEqual(audioOps.map((o) => (o.op === "insert_clip" ? o.track : "")), [a!.id]);
 
+  // Music that would overlap a clip already on the first audio track goes to a new audio track at the same start (it lies under the pictures).
+  const busy = { ...p, sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t) => (t.id === a!.id ? { ...t, clips: [{ id: "c0", media: "m1", start: 0, source_in: 0, duration: 2 * TICKS }] } : t)) }] };
+  const under = insertOps(busy, song, { kind: "audio", durationTicks: 3 * TICKS, hasAudio: true, hasVideo: false }, 0, counter())!;
+  const put = under.find((o) => o.op === "insert_clip")!;
+  assert.ok(put.op === "insert_clip" && put.track !== a!.id && put.clip.start === 0);
+  assert.ok(under.some((o) => o.op === "add_track"));
+
   const still = mediaRef("m3", "p.jpg", "u", { kind: "image", durationTicks: null, hasAudio: false, hasVideo: true }, null);
   const stillOps = insertOps(p, still, { kind: "image", durationTicks: null, hasAudio: false, hasVideo: true }, 0)!;
   assert.equal(stillOps.length, 1);
@@ -75,7 +82,7 @@ test("placement: the wanted spot when free, else after everything; a project wit
   const ref = mediaRef("m1", "v.mp4", "u", video, null);
   const first = insertOps(p, ref, video, 0, counter())!;
   p = { ...p, media: [ref], sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t, i) => ({ ...t, clips: [first[i]!.op === "insert_clip" ? first[i]!.clip : (undefined as never)] })) }] };
-  assert.equal(clipCount(p), 2);
+  assert.equal(clipCount(p), 1); // picture + linked sound is one clip to a person
   assert.equal(timelineEnd(p), 10 * TICKS);
   assert.equal(placeAt(p, 12 * TICKS, 5 * TICKS), 12 * TICKS); // free
   assert.equal(placeAt(p, 4 * TICKS, 2 * TICKS), 10 * TICKS); // inside a clip: goes to the end
@@ -112,4 +119,17 @@ test("probe: the tracks decide the kind, so an audio-only .webm named as video i
   assert.equal(iconForKind(ok.probed.kind), "audio");
   assert.equal(iconForKind(video.kind), "video");
   await assert.rejects(probeFile(engineWith({ container: "webm", durationTicks: 0 }), new File(["x"], "empty.webm"), "video"), /no picture or sound/);
+});
+
+test("clip count: a linked picture+sound pair is one clip, detached audio and separate imports count on their own", () => {
+  let p = emptyProject("x");
+  const ref = mediaRef("m1", "v.mp4", "u", video, null);
+  const ops = insertOps(p, ref, video, 0, counter())!;
+  const clips = ops.map((o) => (o.op === "insert_clip" ? o.clip : (undefined as never)));
+  p = { ...p, media: [ref], sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t, i) => ({ ...t, clips: clips[i] ? [clips[i]!] : [] })) }] };
+  assert.equal(clipCount(p), 1);
+  const detached = { ...clips[1]!, link: undefined };
+  p = { ...p, sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t, i) => (i === 1 ? { ...t, clips: [detached] } : t)) }] };
+  assert.equal(clipCount(p), 2);
+  assert.equal(clipCount(emptyProject("y")), 0);
 });

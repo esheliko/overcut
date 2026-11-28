@@ -37,9 +37,87 @@
     "sequences"
   ],
   "$defs": {
+    "Animated": {
+      "type": "object",
+      "properties": {
+        "keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Keyframe"
+          }
+        },
+        "value": {
+          "description": "The value when there are no keys.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "value"
+      ]
+    },
+    "Background": {
+      "description": "The project background (TL-19): shown behind every layer, so only where the layers leave the canvas uncovered.",
+      "type": "object",
+      "properties": {
+        "blur": {
+          "description": "Blur strength 0..=100 (50 = the default look); used by `Blur`.",
+          "type": "integer",
+          "format": "uint8",
+          "default": 50,
+          "maximum": 255,
+          "minimum": 0
+        },
+        "colour": {
+          "description": "sRGB 8-bit red, green, blue; used by `Colour`.",
+          "type": "array",
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "items": {
+            "type": "integer",
+            "format": "uint8",
+            "maximum": 255,
+            "minimum": 0
+          },
+          "maxItems": 3,
+          "minItems": 3
+        },
+        "mode": {
+          "$ref": "#/$defs/BackgroundMode",
+          "default": "black"
+        }
+      }
+    },
+    "BackgroundMode": {
+      "description": "How the empty part of the canvas is filled.",
+      "oneOf": [
+        {
+          "description": "Opaque black (the M1 behaviour).",
+          "type": "string",
+          "const": "black"
+        },
+        {
+          "description": "One flat colour, `Background::colour`.",
+          "type": "string",
+          "const": "colour"
+        },
+        {
+          "description": "The bottom-most picture of the frame, scaled to fill the canvas and blurred by `Background::blur`.",
+          "type": "string",
+          "const": "blur"
+        }
+      ]
+    },
     "Clip": {
       "type": "object",
       "properties": {
+        "audio": {
+          "description": "Volume and fades (round 16, schema 6). The plain clip is the default and is not written.",
+          "$ref": "#/$defs/ClipAudio"
+        },
         "duration": {
           "description": "Length on the timeline (source length is `duration * speed`).",
           "$ref": "#/$defs/Time"
@@ -76,6 +154,10 @@
         "start": {
           "description": "Where the clip starts on the sequence timeline.",
           "$ref": "#/$defs/Time"
+        },
+        "transform": {
+          "description": "Position, scale, rotation, crop, flip, opacity and fit (M2-003). The identity is the default and is not written.",
+          "$ref": "#/$defs/ClipTransform"
         }
       },
       "required": [
@@ -86,13 +168,277 @@
         "duration"
       ]
     },
+    "ClipAudio": {
+      "description": "Linear gain, fade in and fade out of one clip. `Default` is the plain clip (full level, no fades) and is not written.",
+      "type": "object",
+      "properties": {
+        "fade_in": {
+          "description": "Length of the rise from silence at the clip's start, in ticks (`>= 0`). Not written when 0.",
+          "$ref": "#/$defs/Time"
+        },
+        "fade_out": {
+          "description": "Length of the fall to silence at the clip's end, in ticks (`>= 0`). Not written when 0.",
+          "$ref": "#/$defs/Time"
+        },
+        "volume": {
+          "description": "Linear gain, `0..=MAX_VOLUME` (shown as 0-200%). 1 = as recorded; 0 = muted. Not written when 1.",
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
     "ClipId": {
       "type": "string",
       "pattern": "^[0-9a-f]{32}$"
     },
+    "ClipTransform": {
+      "description": "Position, scale, rotation, anchor, crop, flip, opacity and fit of one clip. `Default` is the identity.",
+      "type": "object",
+      "properties": {
+        "anchor_x": {
+          "description": "The point rotation, scale and flip pivot on, as an offset from the picture centre in picture widths / heights.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "anchor_y": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "crop_bottom": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "crop_left": {
+          "description": "Fraction of the source picture removed from each edge, `0..1`; `left + right < 1` and `top + bottom < 1`.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "crop_right": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "crop_top": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "fit": {
+          "$ref": "#/$defs/Fit",
+          "default": "contain"
+        },
+        "flip_h": {
+          "type": "boolean",
+          "default": false
+        },
+        "flip_v": {
+          "type": "boolean",
+          "default": false
+        },
+        "opacity": {
+          "description": "`0..=1`.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 1.0
+          }
+        },
+        "position_x": {
+          "description": "Offset of the anchor from the canvas centre, in canvas widths (+ right). 0 = centred.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "position_y": {
+          "description": "Offset in canvas heights (+ down).",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "rotation": {
+          "description": "Degrees clockwise around the anchor.",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 0.0
+          }
+        },
+        "scale_x": {
+          "description": "1 = the size `fit` gives. Must be > 0 (flip is separate).",
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 1.0
+          }
+        },
+        "scale_y": {
+          "$ref": "#/$defs/Animated",
+          "default": {
+            "value": 1.0
+          }
+        }
+      }
+    },
+    "Easing": {
+      "oneOf": [
+        {
+          "description": "Keeps this key's value until the next key (a step).",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "hold"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "linear"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "CSS-style `cubic-bezier`; `x1` and `x2` must be in `[0,1]`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "bezier"
+            },
+            "x1": {
+              "type": "number",
+              "format": "double"
+            },
+            "x2": {
+              "type": "number",
+              "format": "double"
+            },
+            "y1": {
+              "type": "number",
+              "format": "double"
+            },
+            "y2": {
+              "type": "number",
+              "format": "double"
+            }
+          },
+          "required": [
+            "kind",
+            "x1",
+            "y1",
+            "x2",
+            "y2"
+          ]
+        }
+      ]
+    },
+    "Fit": {
+      "description": "How the picture is first sized into the canvas, before scale applies.",
+      "oneOf": [
+        {
+          "description": "Whole picture visible, bars where the shapes differ (the M1 behaviour).",
+          "type": "string",
+          "const": "contain"
+        },
+        {
+          "description": "Picture covers the canvas, the overflow is cut off.",
+          "type": "string",
+          "const": "cover"
+        },
+        {
+          "description": "Picture is stretched to the canvas shape.",
+          "type": "string",
+          "const": "stretch"
+        }
+      ]
+    },
+    "Keyframe": {
+      "type": "object",
+      "properties": {
+        "easing": {
+          "description": "Shape of the segment from this key to the next (ignored on the last key).",
+          "$ref": "#/$defs/Easing",
+          "default": {
+            "kind": "linear"
+          }
+        },
+        "t": {
+          "description": "Clip-relative time (0 = the clip's first tick on the timeline).",
+          "$ref": "#/$defs/Time"
+        },
+        "v": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "t",
+        "v"
+      ]
+    },
     "LinkId": {
       "type": "string",
       "pattern": "^[0-9a-f]{32}$"
+    },
+    "Marker": {
+      "description": "A point on the sequence's timeline (ticks, `>= 0`) with a name and an optional colour.",
+      "type": "object",
+      "properties": {
+        "colour": {
+          "description": "`#rrggbb`; `None` = the default colour.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/MarkerId"
+        },
+        "kind": {
+          "$ref": "#/$defs/MarkerKind"
+        },
+        "name": {
+          "description": "0-120 characters, no surrounding spaces. Empty is allowed (an unnamed marker).",
+          "type": "string"
+        },
+        "time": {
+          "$ref": "#/$defs/Time"
+        }
+      },
+      "required": [
+        "id",
+        "time"
+      ]
+    },
+    "MarkerId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "MarkerKind": {
+      "description": "A plain marker (a flag on the ruler) or a chapter (also exported as a chapter mark).",
+      "type": "string",
+      "enum": [
+        "marker",
+        "chapter"
+      ]
     },
     "MediaId": {
       "type": "string",
@@ -202,14 +548,40 @@
     "Sequence": {
       "type": "object",
       "properties": {
+        "background": {
+          "description": "What shows where no clip covers the canvas (TL-19, `docs/features/background.md`). Absent in older files = black.",
+          "$ref": "#/$defs/Background"
+        },
         "frame_rate": {
           "$ref": "#/$defs/Rational"
         },
         "id": {
           "$ref": "#/$defs/SequenceId"
         },
+        "loop_range": {
+          "description": "True while playback loops over `range` (needs a range). Absent = false.",
+          "type": "boolean"
+        },
+        "markers": {
+          "description": "Markers and chapters (TL-07, M2-007, `docs/features/markers.md`), ordered by time then id. Absent in older files = none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Marker"
+          }
+        },
         "name": {
           "type": "string"
+        },
+        "range": {
+          "description": "The in/out range (render range, loop range). `None` = the whole sequence. Absent in older files = none.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "rate_fixed": {
           "description": "Same for `frame_rate`: true once the user picked a frame rate; while false the first picture imported sets it.",
@@ -253,6 +625,22 @@
       "type": "integer",
       "format": "int64"
     },
+    "TimeRange": {
+      "description": "A half-open stretch of the timeline: `start <= t < end`, `0 <= start < end`.",
+      "type": "object",
+      "properties": {
+        "end": {
+          "$ref": "#/$defs/Time"
+        },
+        "start": {
+          "$ref": "#/$defs/Time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ]
+    },
     "Track": {
       "type": "object",
       "properties": {
@@ -262,6 +650,26 @@
           "items": {
             "$ref": "#/$defs/Clip"
           }
+        },
+        "colour": {
+          "description": "Label colour as `#rrggbb`; `None` = the theme's default for the kind. Schema 2.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "height": {
+          "description": "Row height in UI pixels (`MIN_TRACK_HEIGHT..=MAX_TRACK_HEIGHT`); `None` = the view's default for the kind. Schema 2.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "hidden": {
+          "description": "Out of the output entirely (eye off): neither drawn nor heard. Added in schema 2; absent = false.",
+          "type": "boolean"
         },
         "id": {
           "$ref": "#/$defs/TrackId"
@@ -273,10 +681,15 @@
           "type": "boolean"
         },
         "muted": {
+          "description": "Silent (audio) / not drawn (video). The track keeps its clips and its place in the stack.",
           "type": "boolean"
         },
         "name": {
           "type": "string"
+        },
+        "solo": {
+          "description": "While any track of a kind is soloed, only the soloed tracks of that kind are drawn / heard. Schema 2; absent = false.",
+          "type": "boolean"
         }
       },
       "required": [

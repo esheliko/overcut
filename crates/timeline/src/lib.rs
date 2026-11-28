@@ -17,7 +17,10 @@ mod editor;
 mod evaluate;
 mod history;
 mod op;
+mod patch;
 mod recovery;
+mod ripple;
+mod snap;
 
 pub use apply::{apply, apply_all, OpError};
 pub use editor::{EditOutcome, Editor};
@@ -25,8 +28,10 @@ pub use evaluate::{
     evaluate, evaluate_into, AudioSegment, FrameDescription, Transform, VideoLayer,
 };
 pub use history::{journal_from_jsonl, journal_to_jsonl, replay, CoalesceKey, History};
-pub use op::{Inverse, Op};
+pub use op::{Edge, Inverse, Op};
+pub use patch::{apply_patch, diff, EditPatch, SequencePatch, Splice, TrackPatch};
 pub use recovery::Recovery;
+pub use snap::{snap, snap_span, targets_of, Snap, Target, TargetKind};
 
 #[cfg(test)]
 mod tests;

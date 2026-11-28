@@ -5,13 +5,16 @@ import { applyLocale, initialLocale, I18nProvider } from "./i18n";
 import { startNetworkCapture } from "./privacy/networkLog";
 import { watchInstallPrompt } from "./install";
 import { ErrorBoundary, ForcedError } from "./errorScreen/ErrorScreen";
-import { applyAccent, applyTheme, loadAccent, loadPref } from "./theme/theme";
+import { applyAccent, applyTheme, loadAccent, loadPref, redrawWhenFontsLoad } from "./theme/theme";
+import "./theme/fonts.css";
 import "./theme/tokens.css";
 import "./styles.css";
+import "./interaction-states.css";
 
 // Set theme, language and direction before the first paint so there is no flash of the wrong theme.
 applyTheme(loadPref());
 applyAccent(loadAccent());
+redrawWhenFontsLoad(); // the timeline canvas draws once with the fallback font, then again as soon as Inter is in (same width everywhere)
 watchInstallPrompt(); // the browser fires `beforeinstallprompt` early: keep it until the menu can offer it
 applyLocale(initialLocale());
 startNetworkCapture(); // the visible network log (Privacy menu, /diagnostics)

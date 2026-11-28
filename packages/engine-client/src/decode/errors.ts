@@ -37,6 +37,7 @@ export function codecName(codec: string): string {
   if (c.startsWith("mp4a")) return "AAC";
   if (c === "opus") return "Opus";
   if (c === "mp3") return "MP3";
+  if (c.startsWith("pcm-")) return "WAV";
   if (c === "vorbis") return "Vorbis";
   if (c === "flac") return "FLAC";
   return codec;

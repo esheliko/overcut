@@ -1,0 +1,34 @@
+# Clip transform (M2-003, TL-13, TL-14)
+
+**Behaviour.** Every clip has a `transform`: position, scale, rotation, anchor, crop, flip, opacity and fit. The default is the identity and is not written to the file, so M1 projects open and save unchanged (schema v2 -> v3, `crates/model/fixtures/project.v3.json`).
+
+**Data** (`crates/model/src/transform.rs`). All numbers are `Animated` (ADR 0015), so keyframes (M2-004) need no format change.
+- `position_x/y`: offset of the anchor from the canvas centre, in canvas widths / heights (resolution independent). 0 = centred.
+- `scale_x/y`: 1 = the size `fit` gives; must be > 0 (mirroring is `flip_h/v`).
+- `rotation`: degrees clockwise about the anchor.
+- `anchor_x/y`: pivot as an offset from the picture centre, in picture widths / heights.
+- `crop_left/top/right/bottom`: fraction of the source removed per edge, `0 <= v < 1`, opposite edges sum to < 1.
+- `opacity`: `0..=1`. `fit`: `contain` (M1 look), `cover`, `stretch`.
+
+**Edit.** `Op::SetClipTransform { clip, transform }` replaces the whole transform; the inverse is the old one. A drag sends many under one `History` key (one undo step). Invalid values: `OpError::BadTransform`, project unchanged. Not allowed on a locked track.
+
+**Evaluate.** `VideoLayer.props` carries the values at the frame (clip-relative time, clamped so bezier overshoot cannot leave the valid range) and `opacity` equals `props.opacity`. `VideoLayer.transform` is still the unmodified canvas-centre placement. The compositor (M2-024) builds the matrix from `props` and the media size.
+
+**Edge cases.** Split: the left half keeps the transform; the right half gets values continued at the cut with later keys re-based (a bezier segment cut in two is approximated by the same easing over the shorter span). Trimming the head does not move keys (ADR 0015). Opacity 0 still produces a layer (the compositor may skip it).
+
+**Tests.** Unit and property tests in `app-model::transform`; `SetClipTransform` in the S7 generator (valid and invalid values: apply then inverse restores, errors change nothing); v3 fixture migration; wire example in `edit-contract.json` (Rust and TS); ABI 2 -> 3 (`VideoLayer` gained `props`).
+
+## Inspector and on-canvas handles (M2)
+- **Where.** The Details panel's Video tab (`apps/web/src/inspector/Inspector.tsx`): docked on wide screens, the tool sheet on phones (the Edit tool). Shown for exactly one selected video clip (its linked sound is ignored); otherwise a hint.
+- **Fields.** Position X/Y (% of the canvas), scale (%, uniform: both axes), rotation (degrees), opacity (%), four crop edges (%), fit (fit / fill / stretch), flip H/V, reset. Every control is at least 44 px tall. Values are clamped in `transformModel.ts` to what the engine accepts (scale 1% to 2000%, opposite crops always leave a picture), so `SetClipTransform` is never refused.
+- **Handles** (`apps/web/src/preview/TransformHandles.tsx`): over the preview while the playhead is on the selected clip. Drag the picture to move, a corner to scale about the pivot, the round handle to rotate (Shift snaps to 15 degrees). Targets are 44 px. **Moving snaps** (R11): within 6 screen px the picture's centre catches the canvas centre and its left / right / top / bottom edge catches the matching canvas edge, each axis on its own; a hairline guide (`.th-guide`) shows what it caught and goes when the drag ends; hold Alt to move freely (`snapMove` in `inspector/transformModel.ts`, unit test + `inspector.spec.ts`). The handles are not mounted while the clip plays, and the Details fields follow the playhead frame by frame only when a property is animated, so playback does not re-render them. The box is the clip's visible (cropped) rectangle, from `placeLayer`; the picture's shape comes from the bin's probed size (the canvas shape until known; rotated media is not accounted for yet).
+- **Undo.** One drag, or one field focus session, shares one coalescing key (`newGestureKey`), so it is one undo step. Flip, fit and reset are their own steps.
+- **Not yet.** Anchor editing, non-uniform scale, keyframes (M2-004), handles for clips whose probe is still pending use the canvas shape.
+- **Tests.** `tests/unit/transform-model.test.ts` (clamps, coalescing key, keyframes kept), `tests/smoke/inspector.spec.ts` (fields, undo, reset, desktop drag = one undo step).
+
+## Keyboard and scrub (M2 UX r12)
+- The selected picture's frame on the preview takes focus (click it, or Tab): arrow keys move it 1 canvas pixel, Shift+arrow 10. Commands `picture.nudge*` (context `preview`, remappable, not in the palette). A burst of presses (600 ms apart at most) is one undo step; the arrows do not step the playhead while the frame is focused.
+- Details numbers scrub from the number itself as well as the label: 4 px = one step, Shift x10, Alt x0.1, Escape puts the old value back, one drag = one undo step; a tap focuses the field for typing; Shift/Alt+Up/Down step a focused field x10 / x0.1.
+
+## M2 UX r16 (lane B): Details tabs follow the clip
+`inspector/detailsModel.ts`: a picture gets Video | Speed, a photo Photo | Duration (a number of seconds, whole frames, one `trim_out`; no room = a plain message), a sound Audio | Speed (no Video tab). Each new kind of selection opens on its own first tab. The Audio tab renders `AudioControls` (`inspector/AudioControls.tsx`), the slot for lane D's volume and fade. The multi-select header and the toolbar chip use one formatter (`selectionText`), a linked picture + sound counting as one clip. "Playhead is off this clip" is a sticky one-line note at the panel's bottom edge, so it never moves a control. A bottom fade shows while the body is clipped (`useScrollCue`).

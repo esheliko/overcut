@@ -9,7 +9,7 @@ import { frameStartTicks } from "./timing";
 import { ThumbStore } from "./scrubCache";
 import { createRemoteMedia, type NativeCall } from "./nativeMedia";
 import { StripManager } from "./strip/manager";
-import { chooseUploadPath, median, uploadKey, type UploadChoice, type UploadPath } from "./uploadPath";
+import { chooseUploadPath, median, parseChoice, uploadKey, UPLOAD_PATHS, type UploadChoice, type UploadPath } from "./uploadPath";
 
 reportWorkerNetwork(); // visible network log (XT-06)
 const scope = self as unknown as {
@@ -42,48 +42,111 @@ const requestUpload = (key: string): Promise<unknown> => new Promise((res) => { 
 
 // --- how decoded frames reach the GPU: measured per device on the first real frame, cached by GPU + browser version (uploadPath.ts) ------------
 let upload: UploadChoice | undefined;
-let deciding: Promise<UploadChoice> | undefined;
+let deciding: Promise<void> | undefined;
+/** The last measuring run was disturbed by playback: nothing was stored, measure again on the next idle frame. */
+let disturbed = false;
+/** Where the upload-path decision is (for `rpc gpu` and the device report): `none` until a GPU frame was drawn. */
+let uploadState = "none";
 const rgbaSlots: Uint8Array[] = [];
 const thumbs = new ThumbStore<ImageBitmap>();
 /** Background scrub strips for clips that seek slowly (`strip/`, docs/features/preview.md "Smooth scrubbing"). Waits while the player is busy. */
 const strips = new StripManager({ idle: () => player?.isIdle() ?? true, progress: (progress) => post({ type: "strip", progress }) });
 
-/** p50 of one upload path (ms): a fresh scratch compositor (never presented, so it can read back) draws `sample` into 64x64 and waits for the GPU. */
-async function measureUpload(path: UploadPath, sample: VideoFrame, width: number, height: number): Promise<number | null> {
+/**
+ * p50 of each upload path (ms), measured on a scratch compositor (never presented, so it can read back; the 64x64 readback waits for the GPU) with
+ * `sample` drawn each time. The two paths run alternately (frame, cpu, frame, cpu...) after 4 warm-up rounds, so whatever else the device is doing
+ * hits both alike; 12 timed rounds each.
+ */
+async function measureUploads(sample: VideoFrame, width: number, height: number): Promise<Record<UploadPath, number | null>> {
   const c = new OffscreenCanvas(64, 64);
   const r = await openRenderer(c, gpu!.info.backend);
   try {
     r.resize(64, 64);
-    const buf = path === "cpu" ? new Uint8Array(sample.allocationSize({ format: "RGBA" })) : undefined;
-    const times: number[] = [];
-    for (let i = 0; i < 13; i++) {
-      const t0 = performance.now();
-      let source: LayerSource = sample;
-      if (buf) { await sample.copyTo(buf, { format: "RGBA" }); source = { rgba: buf }; }
-      await r.readback([{ source, width, height, rotation: 0, center: [width / 2, height / 2], scale: [1, 1], angle: 0, opacity: 1 }], { width, height }, { width: 64, height: 64 });
-      if (i >= 3) times.push(performance.now() - t0);
+    const buf = new Uint8Array(sample.allocationSize({ format: "RGBA" }));
+    const times: Record<UploadPath, number[]> = { frame: [], cpu: [] };
+    const failed: Record<UploadPath, boolean> = { frame: false, cpu: false };
+    for (let i = 0; i < 16; i++) {
+      if (player?.isPlaying) break; // playback started: the run is void anyway (`undisturbed`), stop taking the GPU from it at once
+      for (const path of UPLOAD_PATHS) {
+        if (failed[path]) continue;
+        try {
+          const t0 = performance.now();
+          let source: LayerSource = sample;
+          if (path === "cpu") { await sample.copyTo(buf, { format: "RGBA" }); source = { rgba: buf }; }
+          await r.readback([{ source, width, height, rotation: 0, center: [width / 2, height / 2], scale: [1, 1], angle: 0, opacity: 1 }], { width, height }, { width: 64, height: 64 });
+          if (i >= 4) times[path].push(performance.now() - t0);
+        } catch { failed[path] = true; }
+      }
     }
-    return median(times);
+    return { frame: failed.frame ? null : median(times.frame), cpu: failed.cpu ? null : median(times.cpu) };
   } finally {
     r.dispose();
   }
 }
 
-function decideUpload(f: DecodedFrame & { kind: "gpu" }): Promise<UploadChoice> {
+function decideUpload(sample: VideoFrame, width: number, height: number): Promise<UploadChoice> {
   const key = uploadKey(gpu!.info.backend, gpu!.info.adapter, navigator.userAgent);
+  disturbed = false;
   return chooseUploadPath({
     key,
     cached: requestUpload,
     save: (k, value) => post({ type: "upload-set", key: k, value }),
-    measure: (p) => measureUpload(p, f.frame, f.width, f.height),
+    measure: async () => null,
+    measureAll: () => measureUploads(sample, width, height),
+    // The run only counts if the player stayed idle the whole time (a clip being decoded and played shares the GPU with the measurement).
+    undisturbed: () => (disturbed = !(player?.isIdle() && !player.isPlaying)) === false,
   });
 }
 
-/** The compositor's pixels for a decoded frame, by the chosen path. The first GPU frame ever seen triggers the (cached) measurement. */
+/** Waits for the player to be idle (400 ms without play or scrub), measures on a clone of the first GPU frame, retries when playback disturbed the run. */
+async function decideWhenIdle(f: DecodedFrame & { kind: "gpu" }): Promise<void> {
+  uploadState = "asking-cache";
+  const stored = parseChoice(await requestUpload(uploadKey(gpu!.info.backend, gpu!.info.adapter, navigator.userAgent)).catch(() => null));
+  if (stored) { upload = stored; uploadState = "cached"; deciding = undefined; return; } // a cached choice needs no measuring, so no waiting for idle either
+  const sample = f.frame.clone();
+  try {
+    for (let tries = 0; !upload && tries < 40; tries++) {
+      uploadState = `waiting-idle (try ${tries})`;
+      while (!(player?.isIdle() && !player.isPlaying)) {
+        uploadState = `waiting-idle (try ${tries}) ${player?.idleState() ?? "no player"}`;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      uploadState = `measuring (try ${tries})`;
+      const u = await decideUpload(sample, f.width, f.height).catch((e): UploadChoice => { uploadState = `measure-threw: ${e instanceof Error ? e.message : String(e)}`.slice(0, 120); return { path: "frame", ms: {}, source: "default" }; });
+      if (!disturbed) { upload = u; uploadState = `done (${u.source})`; }
+    }
+  } catch (e) {
+    uploadState = `failed: ${e instanceof Error ? e.message : String(e)}`.slice(0, 120);
+  } finally {
+    sample.close();
+    deciding = undefined;
+  }
+}
+
+/**
+ * Safety net for a wrong choice (a measurement can still be fooled by a busy device): while playing on the `cpu` path, if over 2 seconds more than half
+ * the frames were dropped, the `frame` path takes over and replaces the stored choice. `frame` never needs a CPU copy, so it is the safe side to fall back to.
+ */
+let guardLast = { presented: 0, dropped: 0 };
+setInterval(() => {
+  if (!player?.isPlaying || upload?.path !== "cpu") { guardLast = { presented: player?.stats.presented ?? 0, dropped: player?.stats.dropped ?? 0 }; return; }
+  const presented = player.stats.presented - guardLast.presented, dropped = player.stats.dropped - guardLast.dropped;
+  if (presented + dropped < 20) return; // too little to judge; keep counting
+  guardLast = { presented: player.stats.presented, dropped: player.stats.dropped };
+  if (dropped > presented) {
+    upload = { path: "frame", ms: upload.ms, source: "measured" };
+    post({ type: "upload-set", key: uploadKey(gpu!.info.backend, gpu!.info.adapter, navigator.userAgent), value: upload });
+  }
+}, 2000);
+
+/**
+ * The compositor's pixels for a decoded frame, by the chosen path. Until the (cached) measurement is in, frames take the `frame` path, which has never
+ * lost on a real device; the measurement waits for an idle player so it does not compete with decoding and playback.
+ */
 async function uploadSource(f: DecodedFrame, slot: number): Promise<LayerSource> {
-  if (f.kind === "cpu") return { rgba: f.rgba };
-  upload ??= await (deciding ??= decideUpload(f).catch((): UploadChoice => ({ path: "frame", ms: {}, source: "default" })));
-  if (upload.path === "frame") return f.frame;
+  if (f.kind === "cpu") { if (uploadState === "none") uploadState = "cpu-frames: decoder delivers RGBA, no GPU upload path to measure"; return { rgba: f.rgba }; }
+  if (!upload && !deciding) deciding = decideWhenIdle(f);
+  if (!upload || upload.path === "frame") return f.frame;
   try {
     const n = f.frame.allocationSize({ format: "RGBA" });
     let buf = rgbaSlots[slot];
@@ -156,17 +219,19 @@ function startPlayer(c: PreviewConfig): void {
     endTicks: c.endTicks,
     sequence: c.sequence,
     evaluate: async (ticks, n) => (ev && cfg?.sequence ? ev.evaluate(cfg.sequence, ticks, n) : idleDescription(ticks, n)),
+    stretch: (planar, rate, num, den) => (ev?.stretch ? ev.stretch(planar, rate, num, den) : planar),
     media: (id) => handles.get(id),
     upload: uploadSource,
     standIn: (id, seconds) => thumbs.nearest(id, seconds),
     strip: (id, index) => strips.picture(id, index),
     onSeek: (id, ms) => strips.noteSeek(id, ms),
     renderer: {
-      render: (layers, seq) => {
-        g.present(layers, seq);
+      render: (layers, seq, background) => {
+        g.present(layers, seq, background);
         // A probe asked for the pixels: the bitmap is taken right after the present, in the same task (a canvas is cleared once it is shown).
         const want = pendingCapture;
         if (want) { pendingCapture = undefined; want(createImageBitmap(canvas!)); }
+        if (settled) { void settled.last?.then((b) => b.close(), () => undefined); settled.last = createImageBitmap(canvas!); } // `shot`: keep the latest, the exact one
       },
       dispose: () => undefined,
     },
@@ -190,10 +255,49 @@ async function rpc(r: PreviewRpc): Promise<unknown> {
     case "position": return { frame: player?.frame ?? 0, playing: player?.isPlaying ?? false, ticks: player?.position() ?? 0 };
     case "frames": return [...handles.values()].map((h) => h.stats());
     case "strip": return strips.stats();
-    case "gpu": return { info: gpu?.info, alloc: gpu?.allocStats(), canvas: backing, upload };
+    case "gpu": return { info: gpu?.info, alloc: gpu?.allocStats(), canvas: backing, upload, uploadState };
     case "probe": return probe(r.x, r.y);
+    case "shot": { const d = await settledShot(); return { width: d.width, height: d.height, data: d.data }; }
     case "bench": return bench(r.width, r.height, r.frames);
     case "parity": return parity(r.frame);
+    case "poster": return poster();
+  }
+}
+
+const POSTER_W = 320, POSTER_H = 180, POSTER_MAX = 15_000;
+/**
+ * The project card's poster: the frame on the canvas right now (re-presented once, in the same task as the capture), fitted into 320x180 and
+ * encoded as JPEG (quality 0.7, lowered until it is under 15 KB). `null` for an all-black picture (an empty spot of the timeline: the card keeps its
+ * old poster or its placeholder) or when no frame arrives within a second. Runs in this Worker, never on the UI thread.
+ */
+async function poster(): Promise<Blob | null> {
+  if (!player || !canvas) return null;
+  const bmp = await new Promise<ImageBitmap | null>((resolve) => {
+    const timer = setTimeout(() => { pendingCapture = undefined; resolve(null); }, 1000);
+    pendingCapture = (p) => void p.then((b) => { clearTimeout(timer); resolve(b); }, () => { clearTimeout(timer); resolve(null); });
+    if (player && !player.isPlaying) player.seek(player.frame);
+  });
+  if (!bmp) return null;
+  try {
+    const c = new OffscreenCanvas(POSTER_W, POSTER_H);
+    const g = c.getContext("2d", { willReadFrequently: true })!;
+    g.fillStyle = "#0b0b0d";
+    g.fillRect(0, 0, POSTER_W, POSTER_H);
+    const k = Math.min(POSTER_W / bmp.width, POSTER_H / bmp.height);
+    const w = bmp.width * k, h = bmp.height * k;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(bmp, (POSTER_W - w) / 2, (POSTER_H - h) / 2, w, h);
+    const d = g.getImageData(0, 0, POSTER_W, POSTER_H).data;
+    let lit = false;
+    for (let i = 0; i < d.length; i += 64) if (d[i]! > 24 || d[i + 1]! > 24 || d[i + 2]! > 24) { lit = true; break; }
+    if (!lit) return null;
+    for (const quality of [0.7, 0.55, 0.4, 0.28]) {
+      const blob = await c.convertToBlob({ type: "image/jpeg", quality });
+      if (blob.size <= POSTER_MAX) return blob;
+    }
+    return null;
+  } finally {
+    bmp.close();
   }
 }
 
@@ -252,17 +356,53 @@ async function capture(): Promise<ImageData> {
 
 let pendingCapture: ((bmp: Promise<ImageBitmap>) => void) | undefined;
 
-/** Pixel of what the preview presents (test only): the player draws the current frame again and the canvas is read the moment it is presented. */
-async function probe(x: number, y: number): Promise<number[]> {
+/** What the preview presents (test only): the player draws the current frame again and the canvas is read the moment it is presented. */
+async function presented(): Promise<ImageData> {
+  // Bounded: a probe runs on the message chain, so one whose draw never presents (a failed decode, a draw superseded and dropped) would hold up every
+  // message behind it (media, config, the next probe) for good. After 2 s it gives up with an error and the caller asks again.
   const bmp = await new Promise<ImageBitmap>((resolve, reject) => {
-    pendingCapture = (p) => void p.then(resolve, reject);
+    const timer = setTimeout(() => { pendingCapture = undefined; reject(new Error("the preview presented no frame within 2 s")); }, 2000);
+    pendingCapture = (p) => void p.then((b) => { clearTimeout(timer); resolve(b); }, (e) => { clearTimeout(timer); reject(e); });
     if (player && !player.isPlaying) player.seek(player.frame);
   });
   const c = new OffscreenCanvas(bmp.width, bmp.height);
   const g = c.getContext("2d", { willReadFrequently: true })!;
   g.drawImage(bmp, 0, 0);
   bmp.close();
-  const d = g.getImageData(0, 0, c.width, c.height);
+  return g.getImageData(0, 0, c.width, c.height);
+}
+
+let settled: { last?: Promise<ImageBitmap> } | undefined;
+
+/**
+ * The picture the preview settles on (test only): the player draws the current frame again (stand-ins first where an exact frame is not cached, as when
+ * two layers read one media), and the canvas is read after the LAST present of that draw, the exact frame, which `scrubMs` reports done.
+ */
+async function settledShot(): Promise<ImageData> {
+  if (!player) throw new Error("open a project first");
+  const n = player.stats.scrubMs.length;
+  const mine: { last?: Promise<ImageBitmap> } = {};
+  settled = mine;
+  try {
+    player.seek(player.frame);
+    const until = performance.now() + 10_000;
+    while (player.stats.scrubMs.length <= n && performance.now() < until) await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 50)); // the exact present is the last one: let it land
+    const bmp = await mine.last;
+    if (!bmp) throw new Error("the preview presented no frame");
+    const c = new OffscreenCanvas(bmp.width, bmp.height);
+    const g = c.getContext("2d", { willReadFrequently: true })!;
+    g.drawImage(bmp, 0, 0);
+    bmp.close();
+    return g.getImageData(0, 0, c.width, c.height);
+  } finally {
+    if (settled === mine) settled = undefined;
+  }
+}
+
+/** Pixel of what the preview presents (test only). */
+async function probe(x: number, y: number): Promise<number[]> {
+  const d = await presented();
   const i = (Math.min(d.height - 1, y) * d.width + Math.min(d.width - 1, x)) * 4;
   return [d.data[i]!, d.data[i + 1]!, d.data[i + 2]!];
 }
@@ -286,7 +426,7 @@ async function parity(frame: number): Promise<unknown> {
       layers.push(layerOf(l, { source: f.kind === "gpu" ? f.frame : { rgba: f.rgba }, width: f.width, height: f.height, rotation: h.info.video.rotation }, a.size));
     }
     const times = { timestamp: 0, duration: 1 };
-    gpu.present(layers, a.size);
+    gpu.present(layers, a.size, desc.background);
     const shown = (await capture()).data;
     // The exporter has its own compositor on its own canvas (a worker of its own in the app); a renderer that has presented cannot read back on
     // WebGPU in Chromium, so each export mode gets a fresh one here too.
@@ -295,7 +435,7 @@ async function parity(frame: number): Promise<unknown> {
       const r = await openRenderer(c, gpu!.info.backend);
       try {
         r.resize(c.width, c.height);
-        const vf = await renderExportFrame(r, c, mode, layers, a.size, times);
+        const vf = await renderExportFrame(r, c, mode, layers, a.size, times, desc.background);
         const out = new Uint8Array(vf.allocationSize({ format: "RGBA" }));
         await vf.copyTo(out, { format: "RGBA" });
         vf.close();

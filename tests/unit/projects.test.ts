@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { memoryStorage } from "../../packages/engine-client/src/persist/memory";
 import { CHECKPOINT_FILE, JOURNAL_FILE, PROJECT_FILE } from "../../packages/engine-client/src/persist/session";
 import { SnapshotStore } from "../../packages/engine-client/src/persist/snapshots";
-import { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_FILE, copyName, deleteProjectData, migrateSingleProject, newProjectId, summarize } from "../../packages/engine-client/src/persist/registry";
-import { shapeBox, startScreen, whenLabel } from "../../apps/web/src/projectsView";
+import { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_FILE, copyName, deleteProjectData, migrateSingleProject, newProjectId, summarize, summarizeExtra } from "../../packages/engine-client/src/persist/registry";
+import { autoProjectName, isArchived, libraryView, shapeBox, startScreen, whenLabel } from "../../apps/web/src/projectsView";
 import type { Project } from "../../packages/engine-client/src/model.generated";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
@@ -108,8 +108,16 @@ test("a project's row facts are counted from the project itself", () => {
   assert.deepEqual(summarize({ sequences: [] } as unknown as Project), { width: undefined, height: undefined, clips: 0 });
 });
 
+test("a project's length and tint for its card come from the project", () => {
+  const project = { sequences: [{ tracks: [{ colour: null, clips: [{ start: 0, duration: 100 }] }, { colour: "#ff8800", clips: [{ start: 50, duration: 400 }] }] }] } as unknown as Project;
+  assert.deepEqual(summarizeExtra(project), { ticks: 450, colour: "#ff8800" });
+  assert.deepEqual(summarizeExtra({ sequences: [] } as unknown as Project), { ticks: 0, colour: undefined });
+});
+
 test("list view helpers: first screen, real canvas shape, relative times", () => {
-  assert.deepEqual([0, 1, 2, 9].map(startScreen), ["new", "editor", "home", "home"]);
+  assert.deepEqual([0, 1, 2, 9].map((n) => startScreen(n)), ["new", "editor", "home", "home"]);
+  assert.equal(startScreen(0, 2), "home", "only archived projects left: show the library, never create a project behind the person's back");
+  assert.equal(startScreen(1, 3), "editor");
   assert.deepEqual(shapeBox(1920, 1080, 44), { w: 44, h: 25 });
   assert.deepEqual(shapeBox(1080, 1920, 44), { w: 25, h: 44 });
   assert.deepEqual(shapeBox(undefined, undefined, 44), { w: 44, h: 25 }, "unknown canvas draws the default shape, not a made-up one");
@@ -119,4 +127,35 @@ test("list view helpers: first screen, real canvas shape, relative times", () =>
   assert.equal(whenLabel(now - 3 * 3_600_000, now, "en", "just now"), "3 hours ago");
   assert.equal(whenLabel(now - 86_400_000, now, "en", "just now"), "yesterday");
   assert.match(whenLabel(now - 30 * 86_400_000, now, "en", "just now"), /Oct/);
+});
+
+test("archive: a row is tucked away and restored without touching anything else; a bad archived value reads as active", async () => {
+  const storage = memoryStorage();
+  const reg = new ProjectRegistry(storage, undefined, clock());
+  await reg.add({ id: "a", name: "Keep", width: 1920, height: 1080, clips: 2 });
+  await reg.add({ id: "b", name: "Old" });
+  await reg.update("b", { archived: 5000 });
+  let rows = await reg.list();
+  assert.equal(rows.find((e) => e.id === "b")!.archived, 5000);
+  assert.deepEqual(rows.find((e) => e.id === "a"), { id: "a", name: "Keep", created: rows.find((e) => e.id === "a")!.created, modified: rows.find((e) => e.id === "a")!.modified, width: 1920, height: 1080, clips: 2 });
+  const view = libraryView(rows, "archived");
+  assert.deepEqual([view.shown.map((e) => e.id), view.active, view.archived], [["b"], 1, 1]);
+  assert.deepEqual(libraryView(rows, "active").shown.map((e) => e.id), ["a"]);
+  await reg.update("b", { archived: undefined }); // restore
+  rows = await reg.list();
+  assert.equal("archived" in rows.find((e) => e.id === "b")!, false);
+  assert.equal(libraryView(rows, "archived").shown.length, 0);
+  // A hand-edited or damaged value is not an archive.
+  await storage.writeAtomic(REGISTRY_FILE, bytes(JSON.stringify({ v: 1, current: null, items: [{ id: "x", modified: 1, name: "", archived: "yes" }, { id: "y", modified: 1, name: "", archived: 7 }] })));
+  const damaged = (await reg.read())!.items;
+  assert.deepEqual(damaged.map((e) => [e.id, isArchived(e)]), [["x", false], ["y", true]]);
+});
+
+test("autoProjectName: dated, then numbered when the day's name is taken", () => {
+  const d = new Date(2026, 10, 28);
+  const first = autoProjectName([], d, "en-GB");
+  assert.equal(first, "Project 28 Nov");
+  assert.equal(autoProjectName([first], d, "en-GB"), "Project 28 Nov 2");
+  assert.equal(autoProjectName([first, "Project 28 Nov 2"], d, "en-GB"), "Project 28 Nov 3");
+  assert.equal(autoProjectName([], d, "en-GB", "Projet {date}"), "Projet 28 Nov");
 });

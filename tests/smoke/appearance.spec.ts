@@ -1,14 +1,17 @@
 import { expect, test } from "@playwright/test";
 
 /** UX-05 accent colours and PM-12 install affordance (menu). No network: the install how-to is local text. */
-test("accent: pick a colour in the menu, it applies at once, is remembered after a reload, and stays within the screen", async ({ page }) => {
+test("accent: pick a colour beside the theme, it applies at once, is remembered after a reload, and stays within the screen", async ({ page }) => {
   await page.goto("/");
   const html = page.locator("html");
   await expect(html).toHaveAttribute("data-accent", "teal");
-  await page.getByRole("button", { name: "Menu" }).click();
+  // r15: the swatches sit with the theme (the theme popover; on small phones the theme rows of the menu), not in the menu's Preview section.
+  const themeButton = page.getByTestId("theme-toggle");
+  if (await themeButton.isVisible()) await themeButton.click();
+  else { await page.getByRole("button", { name: "Menu" }).click(); await page.getByTestId("menu-theme").click(); } // UX r15 D8: on a phone the theme is one row; the swatches show once it is open
   const picker = page.getByTestId("accent-picker");
   await expect(picker).toBeVisible();
-  const swatches = picker.getByRole("radio");
+  const swatches = picker.getByRole("menuitemradio");
   await expect(swatches).toHaveCount(7);
   for (const s of await swatches.all()) expect((await s.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   const before = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
@@ -39,7 +42,7 @@ test("install: nothing is offered unasked; a browser install prompt adds an Inst
   await page.getByRole("button", { name: "Menu" }).click();
   const item = page.getByTestId("menu-install");
   await expect(item).toBeVisible();
-  expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await item.boundingBox())!.height).toBeGreaterThanOrEqual(test.info().project.name === "phone" ? 43.5 : 31.5); // menu rows: 44 px on touch, 32 px desktop density with a mouse (V-11)
   await item.click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __prompted?: boolean }).__prompted)).toBe(true);
   await expect(item).toHaveCount(0); // used once; the menu closed

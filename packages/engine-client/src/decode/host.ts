@@ -1,3 +1,5 @@
+import type { ColourInfo } from "../types";
+import { colourSpaceInit } from "./colour";
 import { codecName, MediaDecodeError, unsupported } from "./errors";
 import { readPackets, type ByteSource, type PacketJson } from "./blob-source";
 import { assemble, type AudioBlock } from "./resample";
@@ -5,7 +7,7 @@ import { avcLengthSize, packetsToDecode, readBatches } from "./seek-plan";
 
 /** Everything the host needs to open the two decoders; filled from the probe (`MediaFile.info()`, `videoDescription()`). */
 export interface HostTracks {
-  video?: { codec: string; width: number; height: number; description: Uint8Array };
+  video?: { codec: string; width: number; height: number; description: Uint8Array; colour?: ColourInfo | null };
   audio?: { codec: string; sampleRate: number; channels: number; description: Uint8Array };
 }
 
@@ -54,7 +56,7 @@ export class WebCodecsHost {
       const r = await VideoDecoder.isConfigSupported(cfg).catch(() => ({ supported: false }));
       if (!r.supported) throw unsupported("video", tracks.video.codec);
     }
-    if (tracks.audio) {
+    if (tracks.audio && !isPcm(tracks.audio.codec)) {
       if (typeof AudioDecoder === "undefined") throw new MediaDecodeError("unsupported", "This browser has no WebCodecs audio decoder. Use a current Chrome, Edge, Safari or Firefox.");
       const r = await AudioDecoder.isConfigSupported(audioConfig(tracks.audio)).catch(() => ({ supported: false }));
       if (!r.supported) throw unsupported("audio", tracks.audio.codec);
@@ -181,6 +183,12 @@ export class WebCodecsHost {
     if (!track) throw new MediaDecodeError("invalid", "no audio track");
     const req = JSON.parse(requestJson) as { start: number; count: number; rate: number; fromStart: boolean; packets: PacketJson[] };
     const blocks: AudioBlock[] = [];
+    if (isPcm(track.codec)) {
+      // WAV: the packets are raw samples, no codec involved (nothing to prime, so no pre-skip shift).
+      const bytes = await readPackets(this.src, req.packets, () => false);
+      req.packets.forEach((p, i) => blocks.push({ ts: p.ts, planes: pcmPlanes(track.codec, track.channels, bytes[i]!) }));
+      return assemble(blocks, track.sampleRate, track.channels, req.start, req.count, req.rate, 0);
+    }
     const dec = this.audioDecoder(track, (d) => {
       try {
         const planes: Float32Array[] = [];
@@ -250,13 +258,40 @@ export class WebCodecsHost {
   }
 }
 
+/** WAV packets carry `pcm-u8`, `pcm-s16`, `pcm-s24`, `pcm-s32` or `pcm-f32` (WebCodecs' names); they are converted here, not by an `AudioDecoder`. */
+export const isPcm = (codec: string): boolean => codec.startsWith("pcm-");
+
+/** Interleaved little-endian PCM bytes to one f32 plane per channel (full scale = 1). */
+export function pcmPlanes(codec: string, channels: number, bytes: Uint8Array): Float32Array[] {
+  const width = codec === "pcm-u8" ? 1 : codec === "pcm-s16" ? 2 : codec === "pcm-s24" ? 3 : 4;
+  const frames = Math.floor(bytes.byteLength / (width * channels));
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const planes = Array.from({ length: channels }, () => new Float32Array(frames));
+  let at = 0;
+  for (let f = 0; f < frames; f++) {
+    for (let c = 0; c < channels; c++, at += width) {
+      let v: number;
+      switch (codec) {
+        case "pcm-u8": v = (view.getUint8(at) - 128) / 128; break;
+        case "pcm-s16": v = view.getInt16(at, true) / 32768; break;
+        case "pcm-s24": v = ((view.getUint8(at) | (view.getUint8(at + 1) << 8) | (view.getInt8(at + 2) << 16))) / 8388608; break;
+        case "pcm-s32": v = view.getInt32(at, true) / 2147483648; break;
+        default: v = view.getFloat32(at, true);
+      }
+      planes[c]![f] = v;
+    }
+  }
+  return planes;
+}
+
 /** Pre-skip samples (48 kHz) from an `OpusHead` description (bytes 10-11, little endian). */
 function opusPreSkip(head: Uint8Array): number {
   return head.length >= 12 ? head[10]! | (head[11]! << 8) : 0;
 }
 
 function videoConfig(t: NonNullable<HostTracks["video"]>): VideoDecoderConfig {
-  return { codec: t.codec, codedWidth: t.width, codedHeight: t.height, ...(t.description.length ? { description: t.description } : {}) };
+  const colorSpace = colourSpaceInit(t.colour);
+  return { codec: t.codec, codedWidth: t.width, codedHeight: t.height, ...(t.description.length ? { description: t.description } : {}), ...(colorSpace ? { colorSpace } : {}) };
 }
 
 function audioConfig(t: NonNullable<HostTracks["audio"]>): AudioDecoderConfig {

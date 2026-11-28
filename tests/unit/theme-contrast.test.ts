@@ -56,12 +56,20 @@ const PAIRS: [string, string, number, string][] = [
   ["bg", "fg", 4.5, "play button, toast"],
   ["bg", "danger", 4.5, "text on the danger (destructive) confirm button"],
   ["stage-fg", "stage", 4.5, "preview hint text"],
+  // r16: the label colour on every clip kind (video, photo, overlay; audio is checked in the token comment, 11:1 or more)
+  ...["clip", "clip-photo", "clip-overlay"].map((bg): [string, string, number, string] => ["clip-ink", bg, 4.5, `clip label on ${bg}`]),
   // non-text (3:1): focus ring, status dots
   ["focus-ring", "bg", 3, "focus ring"],
   ["focus-ring", "surface", 3, "focus ring"],
   ["focus-ring", "surface-2", 3, "focus ring"],
+  ["focus-ring", "surface-3", 3, "focus ring"],
   ["ok", "surface-2", 3, "status dot"],
   ["danger", "surface-2", 3, "status dot"],
+  // control borders (WCAG 1.4.11, V-02): the border of a field, a toolbar dropdown, a checkbox box or a keycap must be 3:1 on every surface it sits on
+  ...["bg", "surface", "surface-2", "surface-3"].map((bg): [string, string, number, string] => ["line-strong", bg, 3, "control border"]),
+  // non-text state colours: selected-tool fill vs the bar, accent as a stroke (playhead, selection outline) on the lanes
+  ["accent", "surface-3", 3, "accent stroke on a raised surface"],
+  ["fg", "surface-3", 3, "icon on a hovered control"],
 ];
 
 /** Every accent (UX-05) on top of every theme: the overrides in tokens.css, merged over the theme's tokens. Teal is the base set. */
@@ -98,7 +106,10 @@ for (const [theme, tokens] of COMBOS) {
 }
 
 /** A disabled toolbar icon is `--fg` at the `.icon-btn:disabled` opacity (styles.css). It must still read against the bars: 3:1, the non-text bar. */
-const DISABLED_ICON_OPACITY = Number(/\.icon-btn:disabled\s*\{\s*opacity:\s*([\d.]+)/.exec(readFileSync(new URL("../../apps/web/src/styles.css", import.meta.url), "utf8"))?.[1] ?? NaN);
+const DISABLED_ICON_OPACITY = (() => { // r16: the rule uses the --disabled-opacity token (theme/tokens.css), a literal number is still accepted
+  const m = /\.icon-btn:disabled\s*\{\s*opacity:\s*(?:([\d.]+)|var\(--disabled-opacity\))/.exec(readFileSync(new URL("../../apps/web/src/styles.css", import.meta.url), "utf8"));
+  return m ? Number(m[1] ?? THEMES.dark["disabled-opacity"]) : NaN;
+})();
 for (const [theme, tokens] of COMBOS) {
   test(`theme ${theme}: a disabled toolbar icon still reads on the bars (3:1)`, () => {
     assert.ok(DISABLED_ICON_OPACITY >= 0.5, `.icon-btn:disabled opacity ${DISABLED_ICON_OPACITY} is below 0.5`);
@@ -140,7 +151,7 @@ test("high-contrast borders are visible (3:1)", () => {
 });
 
 test("all themes define the same colour roles", () => {
-  const roles = ["bg", "surface", "surface-2", "surface-3", "line", "line-strong", "fg", "muted", "accent", "accent-ink", "accent-soft", "danger", "ok", "stage", "stage-fg", "clip", "shadow", "focus-ring"];
+  const roles = ["bg", "surface", "surface-2", "surface-3", "line", "line-strong", "fg", "muted", "accent", "accent-ink", "accent-soft", "danger", "ok", "stage", "stage-fg", "clip", "shadow", "scrim", "elev-1", "elev-2", "elev-3", "focus-ring"];
   for (const [theme, tokens] of Object.entries(THEMES)) for (const r of roles) assert.ok(tokens[r], `${theme} lacks --${r}`);
 });
 
@@ -155,7 +166,7 @@ test("the dark theme keeps the original shell colours", () => {
 test("reduced motion zeroes every duration token", () => {
   const m = /@media \(prefers-reduced-motion: reduce\) \{\s*:root \{([^}]*)\}/.exec(css);
   assert.ok(m);
-  for (const d of ["dur-instant", "dur-fast", "dur-base", "dur-slow"]) assert.match(m[1]!, new RegExp(`--${d}: 0s`));
+  for (const d of ["dur-instant", "dur-fast", "dur-base", "dur-slow", "dur-menu", "dur-dialog", "dur-toast"]) assert.match(m[1]!, new RegExp(`--${d}: 0s`));
 });
 
 test("the shell stylesheet uses tokens: no colour literals, no physical left/right outside LTR islands", () => {
@@ -167,4 +178,16 @@ test("the shell stylesheet uses tokens: no colour literals, no physical left/rig
   const physical = /(margin|padding|border)-(left|right)|text-align:\s*(left|right)|[\s{;](left|right):|float:\s*(left|right)/;
   const bad = stripped.split("\n").filter((l) => !island.test(l) && physical.test(l));
   assert.deepEqual(bad, [], "use logical properties (inline-start/end) so RTL mirrors");
+});
+
+test("type, radius and easing tokens form a ladder (V-03/V-04/V-09)", () => {
+  const root = THEMES.dark;
+  const px = (n: string) => parseFloat(root[n]!);
+  const scale = ["text-xs", "text-sm", "text-base", "text-md", "text-lg", "text-xl"].map(px);
+  assert.deepEqual(scale, [...scale].sort((a, b) => a - b), "type scale ascends");
+  assert.equal(new Set(scale).size, scale.length, "no two steps share a size");
+  const radii = ["radius-xs", "radius-sm", "radius-md", "radius-lg"].map(px);
+  assert.deepEqual(radii, [...radii].sort((a, b) => a - b));
+  assert.match(root["ease-out"]!, /^cubic-bezier\(/);
+  assert.match(root["ease-in-out"]!, /^cubic-bezier\(/);
 });

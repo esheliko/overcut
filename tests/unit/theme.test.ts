@@ -78,3 +78,15 @@ test("install: prompt where the browser gives one, how-to on iOS, nothing when i
   assert.equal(isIos("Mozilla/5.0 (Macintosh)", "MacIntel", 0), false);
   assert.equal(isIos("Mozilla/5.0 (X11; Linux x86_64)", "Linux x86_64", 0), false);
 });
+
+test("r14: a first run (nothing stored) is dark, an explicit choice including 'system' is kept", async () => {
+  const store = new Map<string, string>();
+  (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+  const { loadPref, savePref } = await import("../../apps/web/src/theme/theme");
+  assert.equal(loadPref(), "dark");
+  savePref("system");
+  assert.equal(loadPref(), "system");
+  savePref("light");
+  assert.equal(loadPref(), "light");
+  delete (globalThis as { localStorage?: unknown }).localStorage;
+});

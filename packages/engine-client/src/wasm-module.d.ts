@@ -41,12 +41,16 @@ declare module "@app/wasm-pkg" {
     journal(): string;
     /** `FrameDescription` JSON; `ticks` is a BigInt (i64 in Rust). */
     evaluate(sequence: string, ticks: bigint, audioSamples: number): string;
+    /** Snap result JSON for a query JSON (`docs/features/snapping.md`). */
+    snap(sequence: string, params: string): string;
     take_log(): string;
     checkpoint(): string;
     static recover(baseJson: string | undefined, checkpointJson: string | undefined, log: string): Editor;
     recovery(): string | undefined;
   }
   export function capabilities(probe_json: string): string;
+  /** Pitch-keeping time stretch by `num/den`; `planar` and the result hold `channels` equal-length channels one after the other. */
+  export function stretch_audio(planar: Float32Array, channels: number, rate: number, num: number, den: number): Float32Array;
   /** A waveform extraction. Mirrors `PeaksJob` in crates/wasm/src/lib.rs. */
   export class PeaksJob {
     constructor(sampleRate: number, channels: number, resume: Uint8Array);
@@ -78,6 +82,7 @@ declare module "@app/wasm-pkg-gpu" {
     alloc_stats(): string;
     resize(w: number, h: number): void;
     begin(): void;
+    set_background(mode: number, r: number, g: number, b: number, blur: number): void;
     add_rgba(rgba: Uint8Array, w: number, h: number, params: Float64Array): void;
     add_external(source: unknown, w: number, h: number, params: Float64Array): void;
     render(seqW: number, seqH: number, outW: number, outH: number, present: boolean): void;

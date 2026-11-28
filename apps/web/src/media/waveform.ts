@@ -4,6 +4,7 @@
 import type { Engine, MediaRef, PeaksView } from "@app/engine-client";
 import { fingerprint, type MediaCache } from "./cache";
 import type { MediaHost } from "./host";
+import { pace } from "./pace";
 import { extractPeaks } from "./peaks-job";
 
 export const TILE_COLS = 512;
@@ -116,11 +117,12 @@ export class WaveformService {
       const g = c.getContext("2d") as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
       g.fillStyle = st.color;
       const mid = h / 2, k = (h / 2 - 1) / 32768;
+      // Mirrored bars (the loudest side of each column, drawn symmetrically about the middle line) at 85% of the height, every column: a filled shape, not a dotted line (r14).
       for (let i = 0; i < TILE_COLS; i++) {
         const lo = cols[i * 2]!, hi = cols[i * 2 + 1]!;
         if (lo > hi) continue; // no data yet
-        const y0 = mid - hi * k, y1 = mid - lo * k;
-        g.fillRect(i, y0, 1, Math.max(1, y1 - y0));
+        const amp = Math.max(1, Math.max(hi, -lo) * k * 0.85);
+        g.fillRect(i, mid - amp, 1, amp * 2);
       }
       const wholeBinsEnd = Math.floor(view.frames / 256) * 256;
       const final = view.complete || (index + 1) * TILE_COLS * fpp <= wholeBinsEnd;
@@ -157,7 +159,7 @@ export class WaveformService {
     const t0 = performance.now();
     try {
       const r = await extractPeaks({
-        engine: this.engine, host: this.host, cache: this.cache, media: e.media,
+        engine: this.engine, host: this.host, cache: this.cache, media: e.media, pace, chunkSeconds: 0.5, // short steps: a 2 s audio decode is a 50-100 ms task on a slow phone
         onFile: (file, progress) => {
           // Parse in order; a slow parse must not let an older file replace a newer one.
           publishing = publishing.then(async () => {

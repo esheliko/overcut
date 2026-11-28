@@ -1,10 +1,12 @@
 import { acquireProjectLock, newProject, openProjectSession, openProjectStorage, type Engine, type ProjectSession, type RecoveryNote, type SaveStatus } from "@app/engine-client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { reportSaveStatus } from "./errorScreen/crash";
 import { useI18n } from "./i18n";
-import { sampleProject } from "./timeline/fixture";
+import { Icon } from "./icons";
+import { setKeptOwner } from "./media/kept";
+import { longSampleProject, sampleProject } from "./timeline/fixture";
 
-type Hook = { session: ProjectSession; kill(): void; storageKind: string };
+type Hook = { session: ProjectSession; engine: Engine; kill(): void; storageKind: string };
 
 /**
  * Opens (or recovers) the project and keeps it saved: every edit is in durable storage right after it is made, a crash is repaired on the next
@@ -27,20 +29,22 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
     let release: (() => void) | undefined;
     let current: ProjectSession | undefined;
     let terminate: (() => void) | undefined;
-    const e2e = new URLSearchParams(location.search).has("e2e"); // test hook: exposes the session as window.__overcut
-    const sample = new URLSearchParams(location.search).has("sample");
+    const e2e = new URLSearchParams(location.search).has("e2e"); // test hook: exposes the session as window.__overcut (`?e2e` also seeds one offline media item; `?e2e=bare` does not)
+    const sampleParam = new URLSearchParams(location.search).get("sample");
+    const sample = sampleParam !== null; // `?sample=2h` is a two-hour project (zoom and overview tests)
     void (async () => {
       try {
         release = await acquireProjectLock(projectId);
         if (!alive) return release(); // effect already torn down (React strict mode in dev)
         const storage = await openProjectStorage(projectId);
         terminate = storage.terminate;
+        setKeptOwner(projectId);
         if (!alive) return terminate?.();
         const opened = await openProjectSession(engine, storage, {
           createProject: () => {
             // A new project is empty: the first import fills it (M1-032). `?sample` (tests, demos) starts with sample clips instead.
-            const p = sample ? { ...sampleProject(), name: "Untitled project" } : newProject("Untitled project");
-            if (e2e) p.media.push({ id: "00000000000000000000000000000e2e", kind: "video", name: "e2e.mp4", uri: "media/e2e.mp4", hash: null, duration: 600 * 705_600_000 });
+            const p = sample ? { ...(sampleParam === "2h" ? longSampleProject() : sampleProject()), name: "Untitled project" } : newProject("Untitled project");
+            if (e2e && new URLSearchParams(location.search).get("e2e") !== "bare") p.media.push({ id: "00000000000000000000000000000e2e", kind: "video", name: "e2e.mp4", uri: "media/e2e.mp4", hash: null, duration: 600 * 705_600_000 });
             return p;
           },
           onStatus: (s, err) => {
@@ -56,7 +60,7 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
         setSession(opened.session);
         reportSaveStatus("saved");
         setRecovered(opened.recovered);
-        if (e2e) (window as unknown as { __overcut: Hook }).__overcut = { session: opened.session, kill: () => terminate?.(), storageKind: storage.kind };
+        if (e2e) (window as unknown as { __overcut: Hook }).__overcut = { session: opened.session, engine, kill: () => terminate?.(), storageKind: storage.kind };
       } catch (err) {
         reportSaveStatus("error");
         if (alive) setProblem(err instanceof Error ? err.message : String(err));
@@ -82,13 +86,19 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
       setProblem(err instanceof Error ? err.message : String(err));
     }
   };
-  return { ready: session !== null, session, epoch, recovered, status, problem, undoRecovery, dismiss: () => setRecovered(null) };
+  const dismiss = useCallback(() => setRecovered(null), []);
+  return { ready: session !== null, session, epoch, recovered, status, problem, undoRecovery, dismiss };
 }
 
 /** Small, non-blocking notes: what was recovered (with an undo) and why saving is not working. */
 export function PersistenceNotes({ state, extra }: { state: ReturnType<typeof usePersistence>; extra?: ReactNode }) {
   const { t } = useI18n();
   const { recovered, problem, undoRecovery, dismiss } = state;
+  useEffect(() => {
+    if (!recovered) return;
+    const h = setTimeout(dismiss, 6000); // the note is a courtesy: it leaves on its own so it never sits over the lowest tracks
+    return () => clearTimeout(h);
+  }, [recovered, dismiss]);
   if (!recovered && !problem && !extra) return null;
   return (
     <div className="persist-notes">
@@ -98,7 +108,7 @@ export function PersistenceNotes({ state, extra }: { state: ReturnType<typeof us
         <div className="persist-note" role="status" data-testid="recovery-note">
           <span>{t("persist.recovered")}</span>
           <button onClick={() => void undoRecovery()}>{t("persist.undo-recovery")}</button>
-          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={dismiss}>×</button>
+          <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={dismiss}><Icon name="close" size={18} /></button>
         </div>
       )}
     </div>

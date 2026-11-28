@@ -1,7 +1,8 @@
 /** Pure editing logic for the canvas timeline (M1-034): limits, snapping to whole frames, and the `Op`s to send to `Engine.editing`.
  *  Never mutates anything: the UI computes what to ask for, the engine decides and owns the project (ADR 0006).
  *  Times are integer ticks here (Float64 holds them exactly); the canvas converts to seconds for drawing only. */
-import type { Op } from "@app/engine-client";
+import { addTrackOp, newTrack, type Op } from "@app/engine-client";
+import { newId } from "../media/plan";
 import { firstEndingAfter, TICKS_PER_SECOND as TPS, type Scene } from "./scene";
 
 export const clampN = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
@@ -87,16 +88,147 @@ export function moveToTrackOp(scene: Scene, i: number, track: number, delta: num
   return { op: "move", clip: scene.id[i]!, track: scene.trackId[track]!, start: scene.tStart[i]! + delta };
 }
 
-/** Can clip `i` (shifted by `delta`) sit on `track` without overlapping anything there? Kind must match and the track be unlocked. */
-export function fitsOnTrack(scene: Scene, i: number, track: number, delta: number): boolean {
+/** Can clip `i` (shifted by `delta`) sit on `track` without overlapping anything there? Kind must match and the track be unlocked.
+ *  `leaving` are clips that move away in the same edit: they do not count as obstacles. */
+export function fitsOnTrack(scene: Scene, i: number, track: number, delta: number, leaving: readonly number[] = []): boolean {
   if (track < 0 || track >= scene.trackCount || scene.trackLocked[track] || scene.trackKind[track] !== scene.trackKind[scene.clipTrack[i]!]) return false;
   const s = scene.tStart[i]! + delta, e = s + scene.tDur[i]!;
   if (s < 0) return false;
   const lo = scene.trackFirst[track]!, hi = scene.trackFirst[track + 1]!;
   for (let k = firstEndingAfter(scene, lo, hi, (s + 1) / TPS); k < hi && scene.tStart[k]! < e; k++) {
-    if (k !== i && scene.tStart[k]! < e && scene.tStart[k]! + scene.tDur[k]! > s) return false;
+    if (k !== i && scene.tStart[k]! < e && scene.tStart[k]! + scene.tDur[k]! > s && !leaving.includes(k)) return false;
   }
   return true;
+}
+
+/** Position of row `track` among the rows of its own kind (display order), and the row at position `ord` of `kind` (-1 when there is none). */
+function kindOrdinal(scene: Scene, track: number): number {
+  let n = 0;
+  for (let t = 0; t < track; t++) if (scene.trackKind[t] === scene.trackKind[track]) n++;
+  return n;
+}
+function kindRow(scene: Scene, kind: number, ord: number): number {
+  let n = 0;
+  for (let t = 0; t < scene.trackCount; t++) if (scene.trackKind[t] === kind && n++ === ord) return t;
+  return -1;
+}
+
+/** A lane change: the selected clips of one kind (`movers`) and the row each lands on (`dest`, parallel). */
+export interface LaneMove { movers: number[]; dest: number[] }
+
+/** Dragging the selection onto row `track`: every selected clip of that row's kind moves by the same number of lanes of its kind
+ *  (the first of them lands on `track`); all or nothing, so null when any would leave the stack or `track` is where they already are.
+ *  Clips of the other kind (a linked sound) keep their own track. Fit and locks are checked by `laneShift`. */
+export function laneChanger(scene: Scene, sel: readonly number[], track: number): LaneMove | null {
+  const kind = scene.trackKind[track]!;
+  const movers = sel.filter((i) => scene.trackKind[scene.clipTrack[i]!] === kind);
+  if (movers.length === 0) return null;
+  const d = kindOrdinal(scene, track) - kindOrdinal(scene, scene.clipTrack[movers[0]!]!);
+  if (d === 0) return null;
+  const dest: number[] = [];
+  for (const i of movers) {
+    const to = kindRow(scene, kind, kindOrdinal(scene, scene.clipTrack[i]!) + d);
+    if (to < 0) return null;
+    dest.push(to);
+  }
+  return { movers, dest };
+}
+
+/** The row each of `sel` shows on while a lane change is previewed (parallel to `sel`). */
+export function laneTracks(scene: Scene, sel: readonly number[], mv: LaneMove): number[] {
+  return sel.map((i) => { const k = mv.movers.indexOf(i); return k >= 0 ? mv.dest[k]! : scene.clipTrack[i]!; });
+}
+
+/** Moving the selection by about `dx` ticks with the movers changing lane: the shift (whole frames; the other selected clips keep their room), or null when any mover does not fit its new lane. */
+export function laneShift(scene: Scene, sel: readonly number[], flags: Uint8Array, mv: LaneMove, dx: number): number | null {
+  const rest = sel.filter((i) => !mv.movers.includes(i));
+  const room = rest.length ? moveRoom(scene, rest, flags) : { left: Infinity, right: Infinity };
+  let first = Infinity;
+  for (const m of mv.movers) first = Math.min(first, scene.tStart[m]!);
+  const d = snapDelta(dx, -Math.min(room.left, first), room.right, scene.frameTicks);
+  return mv.movers.every((m, k) => fitsOnTrack(scene, m, mv.dest[k]!, d, mv.movers)) ? d : null;
+}
+
+/** Where a lane change lands, all of it: the shift, the row of every selected clip (parallel to `sel`; a row >= `scene.trackCount` is a NEW audio track) and how many new audio tracks it needs. */
+export interface LanePlan { delta: number; to: number[]; fresh: number }
+
+/** Like `laneShift`, but a linked SOUND does not hold the picture back: the picture lands at the dropped time and each sound goes to its own track when it is free
+ *  there, else the first unlocked audio track that is, else a new one (A2 ...): the same rule as a drop from the bin (`soundLane.ts`). Null when a picture does not fit. */
+export function lanePlan(scene: Scene, sel: readonly number[], flags: Uint8Array, mv: LaneMove, dx: number, vacate = false): LanePlan | null {
+  const rest = sel.filter((i) => !mv.movers.includes(i));
+  const sounds = scene.trackKind[mv.dest[0]!] === 0 && rest.every((i) => scene.trackKind[scene.clipTrack[i]!] === 1);
+  if (!sounds) {
+    const d = laneShift(scene, sel, flags, mv, dx);
+    return d === null ? null : { delta: d, to: laneTracks(scene, sel, mv), fresh: 0 };
+  }
+  let first = Infinity;
+  for (const i of sel) first = Math.min(first, scene.tStart[i]!);
+  const delta = snapDelta(dx, -first, Infinity, scene.frameTicks);
+  if (!mv.movers.every((m, k) => fitsOnTrack(scene, m, mv.dest[k]!, delta, mv.movers))) return null;
+  const held = new Map<number, { s: number; e: number }[]>();
+  const free = (row: number, s: number, e: number): boolean => {
+    if (row < scene.trackCount) {
+      if (scene.trackLocked[row]) return false;
+      for (let k = scene.trackFirst[row]!; k < scene.trackFirst[row + 1]!; k++) {
+        if (flags[k]) continue; // selected clips are all on the move
+        if (scene.tStart[k]! < e && scene.tStart[k]! + scene.tDur[k]! > s) return false;
+      }
+    }
+    return !(held.get(row) ?? []).some((h) => h.s < e && h.e > s);
+  };
+  const audioRows: number[] = [];
+  for (let t = 0; t < scene.trackCount; t++) if (scene.trackKind[t] === 1) audioRows.push(t);
+  let fresh = 0;
+  const to = sel.map((i) => { const k = mv.movers.indexOf(i); return k >= 0 ? mv.dest[k]! : scene.clipTrack[i]!; });
+  const order = rest.map((i) => sel.indexOf(i)).sort((a, b) => scene.tStart[sel[a]!]! - scene.tStart[sel[b]!]!);
+  for (const n of order) {
+    const i = sel[n]!, s = scene.tStart[i]! + delta, e = s + scene.tDur[i]!;
+    const own = scene.clipTrack[i]!;
+    // `vacate` (a clip lifted off the magnetic main track): its sound leaves its old lane too, so the hole can close on both without the sounds drifting from their pictures.
+    const rows = [...(vacate ? [] : [own]), ...audioRows.filter((r) => !vacate || r !== own), ...Array.from({ length: fresh }, (_, f) => scene.trackCount + f)];
+    let row = rows.find((r) => free(r, s, e));
+    if (row === undefined) row = scene.trackCount + fresh++;
+    to[n] = row;
+    held.set(row, [...(held.get(row) ?? []), { s, e }]);
+  }
+  return { delta, to, fresh };
+}
+
+/** Ops for a lane change: the movers to their new tracks and time, the rest of the selection shifted in place (one undo step).
+ *  Movers go furthest-first in the direction of travel, so a clip never lands on a lane its neighbour has not left yet. */
+export function laneOps(scene: Scene, sel: readonly number[], mv: LaneMove, delta: number, plan?: LanePlan, ids: () => string = newId): Op[] {
+  const rest = sel.filter((i) => !mv.movers.includes(i));
+  const up = mv.dest[0]! < scene.clipTrack[mv.movers[0]!]!;
+  const order = mv.movers.map((_, k) => k).sort((x, y) => (up ? 1 : -1) * (mv.dest[x]! - mv.dest[y]!));
+  const lane = [...order.map((k) => moveToTrackOp(scene, mv.movers[k]!, mv.dest[k]!, delta))];
+  if (!plan || (plan.fresh === 0 && rest.every((i) => plan.to[sel.indexOf(i)] === scene.clipTrack[i]))) return [...(rest.length ? moveOps(scene, rest, delta) : []), ...lane];
+  const made: string[] = [], ops: Op[] = [];
+  let audio = 0;
+  for (let t = 0; t < scene.trackCount; t++) if (scene.trackKind[t] === 1) audio++;
+  for (let f = 0; f < plan.fresh; f++) {
+    made.push(ids());
+    ops.push(addTrackOp(scene.sequenceId, newTrack(made[f]!, "audio", `A${audio + f + 1}`), scene.trackCount + f));
+  }
+  const sounds = (delta > 0 ? [...rest].reverse() : rest).map((i) => {
+    const row = plan.to[sel.indexOf(i)]!;
+    return { op: "move" as const, clip: scene.id[i]!, track: row >= scene.trackCount ? made[row - scene.trackCount]! : scene.trackId[row]!, start: scene.tStart[i]! + delta };
+  });
+  return [...ops, ...sounds, ...lane];
+}
+
+/** One lane up (`up`: toward the top of the stack) or down for the selection: the picture clips when any are selected (a linked sound keeps its track), else the sound clips.
+ *  They must all sit on one track and fit unchanged at their times on the nearest unlocked lane of the same kind; null when there is no such lane or no room. */
+export function laneStepOps(scene: Scene, sel: readonly number[], dir: "up" | "down"): { ops: Op[]; track: number } | null {
+  const video = sel.filter((i) => scene.trackKind[scene.clipTrack[i]!] === 0);
+  const movers = video.length ? video : sel;
+  if (movers.length === 0 || new Set(movers.map((i) => scene.clipTrack[i]!)).size !== 1) return null;
+  const from = scene.clipTrack[movers[0]!]!, kind = scene.trackKind[from];
+  let to = from + (dir === "up" ? -1 : 1);
+  while (to >= 0 && to < scene.trackCount && (scene.trackKind[to] !== kind || scene.trackLocked[to])) to += dir === "up" ? -1 : 1;
+  if (to < 0 || to >= scene.trackCount) return null;
+  if (!movers.every((i) => fitsOnTrack(scene, i, to, 0))) return null;
+  // Several clips moving together must not collide with each other either (they were on one track, so they did not overlap and still do not).
+  return { ops: movers.map((i) => moveToTrackOp(scene, i, to, 0)), track: to };
 }
 
 export type Edge = "start" | "end";
@@ -160,6 +292,18 @@ export function mirrorTrims(scene: Scene, ops: Op[]): Op[] {
 
 /** Ops that let the selected clips edit alone (`set_link` null), one per linked clip; empty when none is linked. */
 export const unlinkOps = (scene: Scene, sel: readonly number[]): Op[] => sel.filter((i) => scene.link[i]).map((i) => ({ op: "set_link" as const, clip: scene.id[i]!, link: null }));
+
+/** Why `linkOps` has nothing to do: "kinds" when the selection lacks a picture or a sound, "linked" when it is already one linked group. */
+export type LinkWhy = "kinds" | "linked";
+/** Ops that link the selected picture and sound clips into ONE group (UX r15: unlink had no way back): every selected clip gets the same new link id, so they select,
+ *  move, trim and delete together from now on. Times stay as they are (the user lines them up first). Empty with the reason when it cannot apply. */
+export function linkOps(scene: Scene, sel: readonly number[], id: string): { ops: Op[]; why: LinkWhy | null } {
+  const kinds = new Set(sel.map((i) => scene.trackKind[scene.clipTrack[i]!]));
+  if (kinds.size < 2) return { ops: [], why: "kinds" };
+  const links = new Set(sel.map((i) => scene.link[i]!));
+  if (links.size === 1 && !links.has("")) return { ops: [], why: "linked" };
+  return { ops: sel.map((i) => ({ op: "set_link" as const, clip: scene.id[i]!, link: id })), why: null };
+}
 
 /** Deleting the first thing in the project would leave an empty stretch before everything else, and the export would start with
  *  black and silence. For an edit made only of delete / trim-end ops that moved the project's first start later, append moves that
@@ -266,33 +410,4 @@ const tc = (sec: number) => `${Math.floor(sec / 60)}:${(sec % 60).toFixed(2).pad
 /** Spoken description of a clip. */
 export function describeClip(scene: Scene, i: number): Say {
   return { key: "timeline.say.clip", values: { name: scene.name[i]!, track: scene.trackName[scene.clipTrack[i]!]!, from: tc(scene.start[i]!), to: tc(scene.end[i]!) } };
-}
-
-/** The seam between clip `l` and the clip `r` that starts where it ends (issue #105). Dragging it moves the boundary: `l` ends at
- *  the new boundary and `r` starts there, by the same amount. The boundary stays a whole number of frames, `l` and `r` keep at
- *  least one frame, `r` cannot reveal more source than it has before its start, `l` cannot run past its media, and nothing goes
- *  before the timeline start. `at` is the current boundary (ticks). */
-export function seamRange(scene: Scene, l: number, r: number): { min: number; max: number; at: number } {
-  const ft = scene.frameTicks, at = scene.tStart[r]!;
-  const numR = scene.speedNum[r]! || 1, denR = scene.speedDen[r]! || 1;
-  const reveal = Math.floor((scene.tSrcIn[r]! * denR) / numR);
-  const numL = scene.speedNum[l]! || 1, denL = scene.speedDen[l]! || 1;
-  const md = scene.mediaDur[l]!;
-  const tail = md > 0 ? scene.tStart[l]! + Math.floor(((md - scene.tSrcIn[l]!) * denL) / numL) : Infinity;
-  const min = Math.max(scene.tStart[l]! + ft, at - reveal, 0);
-  const max = Math.min(tail, scene.tStart[r]! + scene.tDur[r]! - ft);
-  return { min, max, at };
-}
-
-/** The seam boundary closest to `desired` (ticks), inside `seamRange` and on a whole frame. */
-export function seamTarget(scene: Scene, l: number, r: number, desired: number): number {
-  const s = seamRange(scene, l, r);
-  return s.at + snapDelta(desired - s.at, s.min - s.at, s.max - s.at, scene.frameTicks);
-}
-
-/** The ops that move a seam to `value`: the left clip's end and the right clip's start (and their linked partners), in an order
- *  that never overlaps two clips mid-way: the right side goes first when the seam moves right, the left side first when it moves left. */
-export function seamOps(scene: Scene, l: number, r: number, value: number): Op[] {
-  const left = linkedTrimOps(scene, l, "end", value), right = linkedTrimOps(scene, r, "start", value);
-  return value > scene.tStart[r]! ? [...right, ...left] : [...left, ...right];
 }
