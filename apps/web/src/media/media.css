@@ -6,7 +6,7 @@
 .bin-view-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 /* The pill replaces the tiny check: it says it in words and counts the uses. */
-.bin .bin-on-timeline { inline-size: auto; block-size: auto; display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 1px 5px; border-radius: var(--radius-full, 999px); background: var(--accent-soft); color: var(--accent); font-size: var(--text-2xs, 11px); font-weight: 600; line-height: 1.5; white-space: nowrap; flex: none; }
+.bin .bin-on-timeline { inline-size: auto; block-size: auto; display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 1px 5px; border-radius: var(--radius-full, 999px); background: var(--accent-soft); color: var(--accent-text); font-size: var(--text-2xs, 11px); font-weight: 600; line-height: 1.5; white-space: nowrap; flex: none; }
 .bin .bin-card:active:not([data-status="offline"]) { transform: scale(0.985); }
 .bin .bin-card { transition: background var(--dur-fast), transform var(--dur-instant), border-color var(--dur-fast); }
 .bin .bin-card[data-on] { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }

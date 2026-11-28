@@ -855,3 +855,8 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .topbar-projects:hover { background: var(--surface-2); color: var(--fg); }
 .topbar-projects:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; }
 @media (max-width: 700px) { .topbar-projects { inline-size: 44px; block-size: 44px; padding: 0; justify-content: center; margin-inline-start: 0; } .topbar-projects span { display: none; } }
+
+/* r15: Versions name field outlined like the other controls (it was a grey filled box); headings of Media and Details sit on the same line */
+.versions-save input { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--fg); }
+.versions-save input:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; }
+.theme-pop .menu-sep { block-size: 1px; margin: 4px 8px; background: var(--line); }
