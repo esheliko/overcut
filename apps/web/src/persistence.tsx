@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { reportSaveStatus } from "./errorScreen/crash";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
+import { setKeptOwner } from "./media/kept";
 import { longSampleProject, sampleProject } from "./timeline/fixture";
 
 type Hook = { session: ProjectSession; engine: Engine; kill(): void; storageKind: string };
@@ -37,6 +38,7 @@ export function usePersistence(engine: Engine | null, projectId: string | null) 
         if (!alive) return release(); // effect already torn down (React strict mode in dev)
         const storage = await openProjectStorage(projectId);
         terminate = storage.terminate;
+        setKeptOwner(projectId);
         if (!alive) return terminate?.();
         const opened = await openProjectSession(engine, storage, {
           createProject: () => {

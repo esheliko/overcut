@@ -563,7 +563,8 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     if (scene.loop) { ctx.strokeStyle = p.accent; ctx.setLineDash([4, 3]); ctx.strokeRect(rx0 + 0.5, RULER - 8.5, Math.max(0, rx1 - rx0 - 1), 6); ctx.setLineDash([]); }
   }
   let lastMarkerX = -1e9;
-  for (const m of scene.markers) {
+  for (let k = 0; k < scene.markers.length; k++) {
+    const m = scene.markers[k]!;
     const dragged = ui.markerDrag?.id === m.id;
     const x = Math.round(timeToX(v, dragged ? ui.markerDrag!.sec : m.sec)) + 0.5;
     if (x < gut(v) - 12 || x > W + 12) continue;
@@ -572,12 +573,23 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     const col = m.colour ?? p.accent;
     ctx.fillStyle = col; ctx.strokeStyle = col;
     ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.moveTo(x, RULER); ctx.lineTo(x, H); ctx.stroke(); ctx.globalAlpha = 1;
-    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, 10); ctx.lineTo(x, RULER); ctx.stroke(); ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, RULER); ctx.stroke(); ctx.lineWidth = 1;
+    // A pennant 14 x 12 px (a chapter: a 16 px diamond), big enough to see and to aim at (UX r16, DESK-11).
     ctx.beginPath();
-    if (m.chapter) { ctx.moveTo(x, 12); ctx.lineTo(x + 6, 18); ctx.lineTo(x, 24); ctx.lineTo(x - 6, 18); }
-    else { ctx.moveTo(x, 11); ctx.lineTo(x + 11, 15.5); ctx.lineTo(x, 20); }
+    if (m.chapter) { ctx.moveTo(x, 4); ctx.lineTo(x + 8, 12); ctx.lineTo(x, 20); ctx.lineTo(x - 8, 12); }
+    else { ctx.moveTo(x, 4); ctx.lineTo(x + 14, 10); ctx.lineTo(x, 16); }
     ctx.closePath(); ctx.fill();
-    if (m.name && v.pps >= MARKER_NAME_PPS) { ctx.fillStyle = p.fg; ctx.textBaseline = "top"; ctx.textAlign = "left"; ctx.font = FONT; ctx.fillText(m.name.length > 14 ? `${m.name.slice(0, 13)}…` : m.name, x + (m.chapter ? 9 : 14), 13); }
+    // The name sits beside the flag when there is room: up to the next marker, shortened with an ellipsis.
+    if (m.name && v.pps >= MARKER_NAME_PPS) {
+      const next = scene.markers[k + 1];
+      const room = Math.min(W, next ? timeToX(v, next.sec) : W) - x - (m.chapter ? 14 : 20);
+      if (room >= 24) {
+        ctx.fillStyle = p.fg; ctx.textBaseline = "top"; ctx.textAlign = "left"; ctx.font = FONT;
+        let name = m.name;
+        if (ctx.measureText(name).width > room) { while (name.length > 1 && ctx.measureText(`${name}…`).width > room) name = name.slice(0, -1); name = `${name}…`; }
+        ctx.fillText(name, x + (m.chapter ? 11 : 18), 6);
+      }
+    }
   }
   ctx.restore();
 

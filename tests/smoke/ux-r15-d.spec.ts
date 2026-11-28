@@ -19,6 +19,8 @@ const importOne = async (page: Page, phone: boolean) => {
 };
 
 test("a file that cannot survive a reload says 'choose it again' in ONE compact row (icon, text, action, close), at 360 and 390", async ({ page }, info) => {
+  // r16 F: imports keep a copy in OPFS where there is one. This test is about a browser that cannot (no OPFS on the page), so it hides it.
+  await page.addInitScript(() => { (navigator.storage as unknown as { getDirectory?: unknown }).getDirectory = undefined; });
   test.skip(!isPhone(info), "phone only");
   test.setTimeout(120_000);
   for (const width of [360, 390]) {

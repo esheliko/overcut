@@ -340,10 +340,10 @@ test("export presets at 720p: YouTube, X and Facebook each get their own true li
 // E1: MP4 is the format we name first; WebM is said plainly, and the copy never contradicts itself.
 test("export format copy: MP4 never says 'plays everywhere' next to a limited mark; WebM says what it is for", async () => {
   const en = JSON.parse(readFileSync(resolve(here, "../../apps/web/src/i18n/en.json"), "utf8")) as Record<string, string>;
-  assert.equal(en["export.format.mp4-h264"], "MP4 (H.264), works in most apps and devices");
-  assert.equal(en["export.format.mp4-h264.opus"], "MP4 (H.264) with Opus sound"); // Opus in MP4: no "works in most apps" claim; the label names the sound, the note says what plays
+  assert.equal(en["export.format.mp4-h264"], "MP4 · works in most apps and phones"); // r16: plain words, no codec names
+  assert.equal(en["export.format.mp4-h264.opus"], "MP4 · the sound may not play in some apps"); // Opus in MP4: no "works in most apps" claim; the label names the sound, the note says what plays
   assert.match(en["export.warn.limited"]!, /^Plays in browsers, VLC and most phones\. Some older apps \(e\.g\. QuickTime\) may play it without sound\.$/);
-  assert.equal(en["export.format.webm-vp9"], "WebM (VP9), for the web");
+  assert.equal(en["export.format.webm-vp9"], "WebM · for browsers and VLC");
   assert.ok(!/everywhere/i.test(en["export.format.mp4-h264"]));
   assert.ok(!("export.format.limited" in en), "the 'limited support' suffix is gone: the warning note says it instead");
   assert.match(en["export.format.noMp4"]!, /can't make MP4, so the file is WebM/);
