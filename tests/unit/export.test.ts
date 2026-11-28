@@ -110,7 +110,7 @@ test("mixer: places a segment at its offset and applies gain; silence elsewhere"
     close: () => undefined,
   };
   const mixer = new AudioMixer(48000, async () => media);
-  const seg = { track: "a", clip: "c", media: "m", out_start: 2, len: 4, source_start: 100 * 14700, speed: { num: 1, den: 1 }, gain: 0.5, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 };
+  const seg = { track: "a", clip: "c", media: "m", out_start: 2, len: 4, source_start: 100 * 14700, speed: { num: 1, den: 1 }, gain: 0.5, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 };
   const out = new Float32Array(16);
   await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 8, layers: [], audio: [seg] }, 8, out);
   assert.deepEqual(Array.from(out.subarray(0, 8)), [0, 0, 0.25, 0.25, 0.25, 0.25, 0, 0]);
@@ -126,10 +126,10 @@ test("mixer: values above 1 clamp, speed 2 reads every second source sample", as
   };
   const mixer = new AudioMixer(48000, async () => media);
   const out = new Float32Array(8);
-  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 4, layers: [], audio: [{ track: "a", clip: "c", media: "m", out_start: 0, len: 4, source_start: 10 * 14700, speed: { num: 2, den: 1 }, gain: 1, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] }, 4, out);
+  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 4, layers: [], audio: [{ track: "a", clip: "c", media: "m", out_start: 0, len: 4, source_start: 10 * 14700, speed: { num: 2, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] }, 4, out);
   assert.deepEqual(Array.from(out.subarray(0, 4)).map((v) => Math.round(v * 100)), [10, 12, 14, 16]);
   const loud = new Float32Array(8);
-  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 4, layers: [], audio: [{ track: "a", clip: "c", media: "m", out_start: 0, len: 4, source_start: 500 * 14700, speed: { num: 1, den: 1 }, gain: 1, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] }, 4, loud);
+  await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 4, layers: [], audio: [{ track: "a", clip: "c", media: "m", out_start: 0, len: 4, source_start: 500 * 14700, speed: { num: 1, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] }, 4, loud);
   assert.equal(loud[0], 1);
 });
 
@@ -157,7 +157,7 @@ function fakeEnv(plan: ReturnType<typeof planExport>, over: { signal?: AbortCont
       sample: 0,
       audio_samples: n,
       layers: [{ track: "v", clip: "c", media: "m", source_time: ticks, transform: { center: [0, 0], scale: [1, 1], rotation: 0 }, props: { position: [0, 0], scale: [1, 1], rotation: 0, anchor: [0, 0], crop: [0, 0, 0, 0], opacity: 1, flip: [false, false], fit: "contain" }, opacity: 1 }],
-      audio: n ? [{ track: "a", clip: "c", media: "m", out_start: 0, len: n, source_start: ticks, speed: { num: 1, den: 1 }, gain: 1, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] : [],
+      audio: n ? [{ track: "a", clip: "c", media: "m", out_start: 0, len: n, source_start: ticks, speed: { num: 1, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 0, clip_source_len: 0, clip_offset: 0 }] : [],
     }),
     render: async (desc, index) => {
       if (over.failAt === index) throw new ExportError("encode_failed", "boom");
@@ -565,7 +565,7 @@ test("mixer: a clip whose speed is not 1 plays its pre-stretched audio (pitch ke
   // The fake stretcher halves the length (2x) and marks each output sample with its index / 10 (the mixer clamps at 1) so the offset is visible.
   const stretch = (planar: Float32Array[], _rate: number, num: number, den: number): Float32Array[] => planar.map((c) => Float32Array.from({ length: Math.ceil((c.length * den) / num) }, (_, i) => (i + 1) / 10));
   const mixer = new AudioMixer(48000, async () => media, stretch);
-  const seg = { track: "a", clip: "c", media: "m", out_start: 1, len: 3, source_start: 0, speed: { num: 2, den: 1 }, gain: 1, clip_source_in: 14700 * 10, clip_source_len: 14700 * 20, clip_offset: 4 };
+  const seg = { track: "a", clip: "c", media: "m", out_start: 1, len: 3, source_start: 0, speed: { num: 2, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_source_in: 14700 * 10, clip_source_len: 14700 * 20, clip_offset: 4 };
   const out = new Float32Array(10);
   await mixer.mix({ time: 0, frame: 0, video_time: 0, sample: 0, audio_samples: 5, layers: [], audio: [seg] }, 5, out);
   assert.deepEqual(reads, [[10, 20]], "the whole clip window is read once: 20 source samples");

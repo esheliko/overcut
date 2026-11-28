@@ -6,6 +6,7 @@ import { onThemeChange } from "../theme/tokens";
 import { DARK, drawBubble, drawPlayheadStrip, drawTimeline, HEAD_W, newOverlay, paletteFromCss, type Bubble, type DrawStats, type Overlay, type Palette } from "./draw";
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
 import { handleAt, hitTest, trackAtY } from "./hit";
+import { audioHit } from "./audioEdit";
 import { headerPart } from "./header";
 import { BIN_DRAG_TYPE } from "../media/sources";
 import { snapDrop } from "./arrange";
@@ -73,7 +74,7 @@ type Props = {
 
 const TAP_SLOP = 8;
 /** Cursor for a gesture in progress (T-05): a carried clip is grabbed, an edge or the ruler scrub is a horizontal drag, a marquee crosses. */
-const cursorFor = (g: Gesture): string => g.k === "move" || g.k === "tdrag" || (g.k === "marker" && g.moved) ? "grabbing" : g.k === "tool" ? toolCursor(g.tool) : g.k === "trim" || g.k === "scrub" ? "ew-resize" : g.k === "marquee" ? "crosshair" : "";
+const cursorFor = (g: Gesture): string => g.k === "move" || g.k === "tdrag" || (g.k === "marker" && g.moved) ? "grabbing" : g.k === "tool" ? toolCursor(g.tool) : g.k === "audio" ? (g.part === "vol" ? "ns-resize" : "ew-resize") : g.k === "trim" || g.k === "scrub" ? "ew-resize" : g.k === "marquee" ? "crosshair" : "";
 
 /** Canvas timeline: ruler, tracks, clips, playhead. State that changes every frame lives in refs, not React state. */
 /** Height (px) of the strip at the top of the first picture lane where a dropped card makes a new track above it. */
@@ -417,6 +418,8 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     if (g.k !== "move") snapped.current = null;
     o.ghosts = null; o.ghostTracks = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
     markPreview(flags.current, g);
+    const au = o.audio; // a volume line / fade handle drag: the painter shows the dragged values
+    if (g.k === "audio" && g.moved) { au.clip = g.clip; au.part = g.part === "vol" ? 1 : g.part === "in" ? 2 : 3; au.volume = g.to.volume; au.fadeIn = g.to.fadeIn; au.fadeOut = g.to.fadeOut; } else { au.clip = -1; au.part = 0; }
     if (g.k === "trim") { // a linked partner (the clip's sound or picture) is trimmed by the same amount on release, so it previews with it (customer r15: the sound only jumped on release)
       const sc = live.current.scene, L = sc.link[g.clip];
       if (L) for (let i = 0; i < flags.current.length; i++) if (i !== g.clip && sc.link[i] === L) flags.current[i] = 2;
@@ -523,6 +526,8 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
         const sc = live.current.scene, v = view.current;
         const t = trackAtY(sc, v, p.y);
         const part = t >= 0 && p.x < gut(v) ? headerPart(v, p.x, p.y - RULER + v.scrollY - t * LANE, sc.trackKind[t]!) : null;
+        const ah = !part && t >= 0 ? audioHit(sc, v, flags.current, p.x, p.y, false) : null; // the volume line and fade handles of a selected sound
+        if (ah) { setCursor(ah.part === "vol" ? "ns-resize" : "ew-resize"); return; }
         const body = !part && t >= 0 && p.x >= gut(v) && !handleAt(sc, v, flags.current, p.x, p.y, false, true) && hitTest(sc, v, p.x, p.y, 0).kind === "clip";
         setCursor(part ? (part === "name" ? "grab" : "pointer") : p.y < RULER && p.x >= gut(v) ? "pointer" : handleAt(sc, v, flags.current, p.x, p.y, false, true) ? (live.current.tool !== "select" ? toolCursor(live.current.tool) : "ew-resize") : live.current.tool !== "select" ? (hitTest(sc, v, p.x, p.y, 0).kind === "clip" ? toolCursor(live.current.tool) : "crosshair") : body ? "grab" : "");
       }

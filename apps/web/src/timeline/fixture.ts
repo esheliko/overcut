@@ -1,5 +1,5 @@
 /** Deterministic sample projects for the timeline view (no media loaded yet) and for the S8 benchmark. */
-import type { Clip, MediaRef, Project, Track } from "@app/engine-client";
+import { PROJECT_SCHEMA_VERSION, type Clip, type MediaRef, type Project, type Track } from "@app/engine-client";
 import { TICKS_PER_SECOND } from "./scene";
 
 const hex = (n: number) => n.toString(16).padStart(32, "0");
@@ -32,7 +32,7 @@ export function fixtureProject({ tracks, clipsPerTrack, clipSec = 4 }: FixtureOp
     out.push({ id: hex(id++), kind, name: `${kind === "video" ? "V" : "A"}${Math.floor(t / 2) + 1}`, clips, locked: false, muted: false });
   }
   return {
-    id: hex(id++), name: "Sample", schema_version: 5, media,
+    id: hex(id++), name: "Sample", schema_version: PROJECT_SCHEMA_VERSION, media,
     sequences: [{ id: hex(id++), name: "Main", frame_rate: { num: 30, den: 1 }, resolution: { width: 1920, height: 1080 }, sample_rate: 48000, tracks: out }],
   };
 }

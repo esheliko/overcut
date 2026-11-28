@@ -78,7 +78,7 @@
 ## 5. Audio (AU)
 | ID | Feature | Pri | M | CC | Notes |
 |---|---|---|---|---|---|
-| AU-01 | Waveforms on clips; volume, fade in/out, keyframed gain, pan | P0 | M1-M3 | = | Waveform M1, rest M3 |
+| AU-01 | Waveforms on clips; volume, fade in/out, keyframed gain, pan | P0 | M1-M3 | = | Waveform M1; **clip volume (0-200%), fade in/out and Mute clip pulled into M2** (round-16 journey evidence: add music is the headline first-time task; `features/clip-audio.md`); keyframed gain and pan stay M3 |
 | AU-02 | Multi-track mixer, solo/mute, master limiter | P0 | M3 | = | |
 | AU-03 | Extract audio from video; detach/attach | P0 | M2 | = | |
 | AU-04 | Auto ducking of music under speech | P1 | M3 | = | |

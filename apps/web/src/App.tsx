@@ -25,6 +25,8 @@ import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/pro
 import { Inspector, selectedVideoClip } from "./inspector/Inspector";
 import { ticksPerFrame, ticksToFrame } from "./inspector/keyframeModel";
 import { SpeedSection } from "./inspector/Speed";
+import { AudioSection } from "./inspector/AudioSection";
+import { soundTarget } from "./inspector/audioModel";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
 import { CANVAS_EVENT } from "./inspector/Inspector";
@@ -136,13 +138,15 @@ function Library({ tool, bin, onCollapse }: { tool: Tool; bin: BinProps; onColla
 }
 
 /** Only tabs with real content. Animation lives inline in Video (keyframes); Audio and Adjust come back when they are built. Speed shows only while a clip is selected. */
-type DetailTab = "video" | "speed";
+type DetailTab = "video" | "audio" | "speed";
 /** The first crop field, once the panel has drawn (best effort: a collapsed group simply keeps focus where it was). */
 const focusCrop = () => { setTimeout(() => document.querySelector<HTMLElement>('[data-testid="insp-crop_left"]')?.focus(), 120); };
 function Details({ onCollapse }: { onCollapse?: () => void }) {
   const { t, dir } = useI18n();
   const hasSelection = useProjectStore((s) => s.selection.size > 0);
-  const tabs: readonly DetailTab[] = hasSelection ? ["video", "speed"] : ["video"];
+  // Audio (volume and fades, r16): shown for a sound clip and for a picture that has sound; a sound on its own has no Video tab (nothing to move or crop).
+  const sound = useProjectStore((s) => { const x = soundTarget(s.project, s.selection); return x ? (x.picture ? 2 : 1) : 0; }); // 0 none, 1 a sound alone, 2 a picture with sound
+  const tabs: readonly DetailTab[] = !hasSelection ? ["video"] : sound === 1 ? ["audio", "speed"] : sound === 2 ? ["video", "audio", "speed"] : ["video", "speed"];
   const first = useRef(takeDetailsRequest()); // a Speed or Crop request that opened this panel
   const [picked, setTab] = useState<DetailTab>(first.current?.tab ?? "video");
   // The toolbar's Speed and Crop (and the phone strip's) ask for a tab; the shell has already opened this panel.
@@ -157,7 +161,7 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
     return () => window.removeEventListener(DETAILS_EVENT, on);
   }, []);
   useEffect(() => { if (first.current?.focus === "crop") focusCrop(); first.current = null; }, []);
-  const tab: DetailTab = tabs.includes(picked) ? picked : "video";
+  const tab: DetailTab = tabs.includes(picked) ? picked : tabs[0]!;
   const roving = useRovingTabindex(tabs.length, { rtl: dir === "rtl", onMove: (i) => setTab(tabs[i]!) });
   return (
     <>
@@ -171,7 +175,7 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
         </div>
       )}
       <div className="panel-body insp-body">
-        {tab === "speed" ? <SpeedSection /> : <Inspector />}
+        {tab === "speed" ? <SpeedSection /> : tab === "audio" ? <AudioSection /> : <Inspector />}
       </div>
     </>
   );

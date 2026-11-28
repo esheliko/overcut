@@ -20,6 +20,8 @@ export interface Background {
 export type BackgroundMode = "black" | "colour" | "blur";
 
 export interface Clip {
+  /** Volume and fades (round 16, schema 6). The plain clip is the default and is not written. */
+  audio?: ClipAudio;
   /** Length on the timeline (source length is `duration * speed`). */
   duration: Time;
   id: ClipId;
@@ -35,6 +37,16 @@ Only the editing layer acts on it; evaluation and export ignore it. Absent in fi
   start: Time;
   /** Position, scale, rotation, crop, flip, opacity and fit (M2-003). The identity is the default and is not written. */
   transform?: ClipTransform;
+}
+
+/** Linear gain, fade in and fade out of one clip. `Default` is the plain clip (full level, no fades) and is not written. */
+export interface ClipAudio {
+  /** Length of the rise from silence at the clip's start, in ticks (`>= 0`). Not written when 0. */
+  fade_in?: Time;
+  /** Length of the fall to silence at the clip's end, in ticks (`>= 0`). Not written when 0. */
+  fade_out?: Time;
+  /** Linear gain, `0..=MAX_VOLUME` (shown as 0-200%). 1 = as recorded; 0 = muted. Not written when 1. */
+  volume?: number;
 }
 
 export type ClipId = string;
