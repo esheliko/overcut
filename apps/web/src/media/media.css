@@ -21,7 +21,10 @@
 .bin .bin-list[data-view="grid"] .bin-thumb { inline-size: 100%; block-size: auto; aspect-ratio: 16 / 9; border-radius: 0; }
 .bin .bin-list[data-view="grid"] .bin-dur { inset-block-end: 6px; inset-inline-end: 6px; padding: 1px 5px; font-size: var(--text-xs); }
 .bin .bin-list[data-view="grid"] .bin-text { padding-inline: 8px; }
-.bin .bin-list[data-view="grid"] .bin-text strong { -webkit-line-clamp: 1; }
+.bin .bin-list[data-view="grid"] .bin-text strong { -webkit-line-clamp: 2; } /* r15 customer: "names are cut off, I can't tell which clip is which": two lines in a card */
+.bin .bin-list[data-view="grid"] .bin-meta { display: none; } /* r15 customer: the card was tall for three clips; size and resolution stay in the card's tooltip and the list view */
+/* r15 customer: "too many controls for three clips": Filter and sort is an icon button (its name stays for screen readers and the tooltip); the "on" dot still shows */
+.bin-bar .bin-filter-toggle:not(.bin-relink-all) > span:not(.bin-on) { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .bin .bin-list[data-view="grid"] .bin-act { position: absolute; inset-block-start: 6px; inset-inline-end: 6px; translate: none; opacity: 1; background: color-mix(in srgb, var(--bg) 72%, transparent); color: var(--fg); border-radius: var(--radius-sm); backdrop-filter: blur(4px); min-inline-size: 36px; min-block-size: 36px; }
 .bin .bin-list[data-view="grid"] .bin-overlay-btn { inset-inline-end: 46px; }
 .bin .bin-list[data-view="grid"] .bin-tag-btn:not(.bin-overlay-btn) { inset-inline-end: 86px; }

@@ -748,7 +748,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 }
 
 @media (pointer: fine) { .bin-card[data-on] .bin-act.icon-btn { min-width: 36px; min-height: 36px; padding: 0; } } /* the always-visible add button must not squeeze the card text onto a third line */
-@media (pointer: fine) { .bin-card[data-on] .bin-text strong { -webkit-line-clamp: 1; } } /* one-line names on a desktop card (the full name is the tooltip) */
+/* r15: names keep two lines on desktop cards too (customer: could not tell clips apart); the full name is still the tooltip */
 
 /* Export dialog while the browser is asked what it can encode: the final layout in grey (no jump when the answer arrives), see export/ExportDialogView.tsx */
 .export-skel { display: flex; flex-direction: column; gap: var(--space-4); }
