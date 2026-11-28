@@ -57,7 +57,21 @@ Fixed while integrating:
 | Desktop 1440x900, 3 files imported, clip selected | ![](img/r15-before-desktop.png) | ![](img/r15-after-desktop.png) |
 | Phone 390x844, 2 files imported, clip selected | ![](img/r15-before-phone.png) | ![](img/r15-after-phone.png) |
 
+## Customer feedback that arrived during the round (M2 preview, Windows/Chrome), handled in #257
+| Report | Before | Now |
+|---|---|---|
+| "Why do I need the undo toast" | Every Undo/Redo showed "Undid …" as a toast | Announced to screen readers only; the timeline change and the named Undo button are the feedback |
+| The linked sound jumps only on release while trimming | Only the dragged clip had a ghost | Linked partners show the same trim live ([screenshot](img/r15-trim-linked-live.png)) |
+| "The playhead pulses when the trim completes" | The commit cue was drawn at the playhead after any trim | Trims emit no cue; split, ripple delete, close gap and paste keep theirs |
+| "+" hover also lights "−" | The zoom controls sat in a `<label>`, which passes its hover to the first button | A plain group (lane A); checked in a browser |
+| Timeline More menu "I don't understand a thing there" | 30 rows, 5 in View | 24 rows on desktop, 2 in View; rows for buttons already in the bar only on phones; "Track settings…" |
+| App menu too long, "especially View" | 7 accent swatches and a 5-line paragraph | "Preview" section with one switch and a one-line hint; swatches next to the theme |
+| Owner: trimming should ripple by default, like CapCut | Only the main track rippled | Every track ripples while "Ripple edits" is on (the default, `Alt+G` or the bar toggle); off leaves a gap |
+| Details: "why is it there if I can't change anything" | A muted line over read-only rows | "Nothing selected" with what to do; Canvas and Background open their editor |
+| Media: names cut off, the 3rd clip needed a scroll | One-line names plus a meta line | Two-line names, no meta line in the grid (it stays in the tooltip and the list view) |
+
 ## Still open (next round)
+- Media posters after a reload while file permission is pending. They are not stored, so the card is blank until access is allowed. This needs a small poster cache.
 - From lane A, not done for lack of budget:
   - DESK-6: timeline height at 1440x900.
   - DESK-12 / FIRST-10: selection counts disagree between the toolbar and Details.
