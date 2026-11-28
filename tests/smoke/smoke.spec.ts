@@ -177,6 +177,8 @@ test("language and direction: the page declares lang and dir, and a right-to-lef
 
 test("timeline editing: select, split, delete, undo and redo go through the engine", async ({ page }, info) => {
   const phone = info.project.name === "phone";
+  // r15: this test places clips freely by pixel (move 1 s, then grab the end handle at a fixed x); the magnetic main track (on by default) snaps a moved clip against its neighbour, so it runs with magnetic off. Magnetic behaviour is covered by ux-r15-a.spec.ts.
+  await page.addInitScript(() => { try { localStorage.setItem("overcut.magnetic", "off"); } catch { /* storage blocked */ } });
   await page.goto("/?sample");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const summary = page.locator("#tl-summary");
