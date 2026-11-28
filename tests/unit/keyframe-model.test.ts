@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { EASE_IN_OUT, LINEAR, HOLD, clipKeyTimes, easingId, easingOps, evalAnimated, keyState, neighbourKey, setKeyOps, toggleKeyOps } from "../../apps/web/src/inspector/keyframeModel";
+import { EASE_IN_OUT, LINEAR, HOLD, clipKeyTimes, easingId, easingOps, evalAnimated, keyState, neighbourKey, setKeyOps, toggleKeyOps, groupKeyOps, TRANSFORM_GROUP } from "../../apps/web/src/inspector/keyframeModel";
 import { isIdentity, snapMove, snapRotation, valuesOf } from "../../apps/web/src/inspector/transformModel";
 
 const anim = { value: 0, keys: [{ t: 0, v: 0, easing: LINEAR }, { t: 1000, v: 100, easing: HOLD }, { t: 2000, v: 50 }] };
@@ -106,4 +106,20 @@ test("opacityKeyOps: a key at the playhead, removed again on a second press, not
   const keyed = { ...(clip as object), transform: { opacity: { value: 1, keys: [{ t: 15 * tpf, v: 1, easing: LINEAR }, { t: 40 * tpf, v: 0.5, easing: LINEAR }] } } } as never;
   const off = opacityKeyOps(keyed, rate, 45)!;
   assert.deepEqual(off, [{ op: "delete_keyframe", clip: "c1", prop: "opacity", t: 15 * tpf }]);
+});
+
+test("groupKeyOps: one diamond keys position, scale and rotation together, and takes them away together", () => {
+  const add = groupKeyOps("c1", undefined, TRANSFORM_GROUP, 500, 10);
+  assert.equal(add.length, TRANSFORM_GROUP.length);
+  assert.ok(add.every((o) => o.op === "set_keyframe"));
+  // After adding: every prop has a lone key at 500 -> removing makes them static (one set_clip_transform), no deletes.
+  const tr = { position_x: { value: 0, keys: [{ t: 500, v: 0 }] }, position_y: { value: 0, keys: [{ t: 500, v: 0 }] }, scale_x: { value: 1, keys: [{ t: 500, v: 1 }] }, scale_y: { value: 1, keys: [{ t: 500, v: 1 }] }, rotation: { value: 0, keys: [{ t: 500, v: 0 }] } };
+  const gone = groupKeyOps("c1", tr, TRANSFORM_GROUP, 500, 10);
+  assert.deepEqual(gone.map((o) => o.op), ["set_clip_transform"]);
+  // Only some props keyed: the diamond completes the group.
+  const part = groupKeyOps("c1", { position_x: tr.position_x }, TRANSFORM_GROUP, 500, 10);
+  assert.equal(part.length, TRANSFORM_GROUP.length - 1);
+  // Two keys on a prop: removing deletes just this one.
+  const two = { ...tr, rotation: { value: 0, keys: [{ t: 500, v: 0 }, { t: 900, v: 5 }] } };
+  assert.deepEqual(groupKeyOps("c1", two, TRANSFORM_GROUP, 500, 10).map((o) => o.op), ["set_clip_transform", "delete_keyframe"]);
 });

@@ -142,7 +142,8 @@ test("the last choice is remembered, junk and private mode are survivable, a sta
 });
 
 test("the saved file gets a readable name", () => {
-  assert.equal(saveName("mwt5k7ql-0-1sssd1.webm", new Date("2026-11-23T10:00:00Z")), "OverCut export 2026-11-23.webm");
+  assert.equal(saveName("mwt5k7ql-0-1sssd1.webm", null, new Date("2026-11-23T10:00:00Z")), "OverCut export 2026-11-23.webm");
+  assert.equal(saveName("x.mp4", "  Summer: trip/1 "), "Summer trip1.mp4");
 });
 
 test("every failure has a friendly message key", () => {

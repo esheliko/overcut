@@ -145,3 +145,7 @@
 :root { --clip-audio: #1c3a33; --clip-audio-wave: #5fd1a8; --clip-audio-strip: #3ddc97; }
 :root[data-theme="light"] { --clip-audio: #cdeee0; --clip-audio-wave: #17704e; --clip-audio-strip: #1f8a62; }
 :root[data-theme="high-contrast"] { --clip-audio: #003d2b; --clip-audio-wave: #6dffb8; --clip-audio-strip: #6dffb8; }
+
+/* r15 (FIRST-17): accent used as TEXT on a surface or on --accent-soft. The raw accent is a fill colour; in the light theme an orange or yellow accent as text measured 4.37:1, so text takes a darker mix there. */
+:root { --accent-text: var(--accent); }
+:root[data-theme="light"] { --accent-text: color-mix(in srgb, var(--accent) 72%, #000); }

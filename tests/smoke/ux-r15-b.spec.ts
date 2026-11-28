@@ -53,7 +53,7 @@ test("Add as overlay asks which media (a picker), never picks one silently", asy
 test("a file that cannot be read gets a two-line card with Details, and the format chips list only what imports", async ({ page }, info) => {
   const phone = info.project.name === "phone";
   await boot(page);
-  await expect(page.locator(".drop-formats")).not.toContainText(/MP3|WAV/);
+  await expect(page.locator(".drop-formats")).toContainText("MP3"); // r15 C: MP3 and WAV import now, so their chips are back (the chips come from IMPORT_FORMATS, unit-checked against the importer)
   await expect(page.locator(".drop-formats")).toContainText("M4A");
   await page.getByTestId("media-input").setInputFiles({ name: "fake.mp4", mimeType: "video/mp4", buffer: Buffer.from("this is not an mp4 at all") });
   const lineCount = (loc: ReturnType<Page["locator"]>) => loc.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
@@ -121,9 +121,11 @@ test("portrait tablet 768x1024: the empty Media drop zone fits its panel, the pa
   test.skip(info.project.name === "phone", "a tablet viewport is set below");
   await page.setViewportSize({ width: 768, height: 1024 });
   await boot(page);
-  const lib = (await page.getByTestId("panel-tool").boundingBox())!;
-  const drop = (await page.getByTestId("import-empty").boundingBox())!;
-  const stage = (await page.getByTestId("panel-preview").boundingBox())!;
+  // The preview's placeholder section is swapped for the real one when its chunk arrives: wait until a box can be read (a detached element has none).
+  const boxOf = async (id: string) => { let b = null; await expect.poll(async () => (b = await page.getByTestId(id).boundingBox()) !== null).toBe(true); return b!; };
+  const lib = await boxOf("panel-tool");
+  const drop = await boxOf("import-empty");
+  const stage = await boxOf("panel-preview");
   expect(drop.y + drop.height).toBeLessThanOrEqual(lib.y + lib.height + 1); // the drop zone is not cut off
   expect(lib.y + lib.height).toBeLessThanOrEqual(stage.y + 1); // Media does not sit over the preview
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);

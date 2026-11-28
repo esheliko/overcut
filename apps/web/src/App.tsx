@@ -15,7 +15,7 @@ import { useKeyboardInset } from "./layout/useKeyboardInset";
 import { Home } from "./Home";
 import { capturePoster } from "./posterSource";
 import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects, projectBytes, setArchived } from "./projects";
-import { isArchived, startScreen } from "./projectsView";
+import { isArchived, startScreen, autoProjectName } from "./projectsView";
 import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
 import { confirmBodyKey, toastDuration } from "./projectConfirm";
 import { canvasSummary, hasPicture } from "./canvas";
@@ -261,7 +261,7 @@ export function App() {
 }
 
 function Editor({ store }: { store: ProjectStore }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [themePref, setThemePref] = useState<ThemePref>(loadPref);
   const [engine, setEngine] = useState<EngineState>({ status: "loading" });
   const [core, setCore] = useState<Engine | null>(null);
@@ -665,7 +665,7 @@ function Editor({ store }: { store: ProjectStore }) {
     setHomeBusy(true);
     try { await run(); } catch (e) { fail("projects.failed", e); } finally { setHomeBusy(false); }
   };
-  const homeNew = () => void homeTask(async () => { const e = await createProject(core!, ""); await refreshList(); openEntry(e); announce(t("project.new.done")); });
+  const homeNew = () => void homeTask(async () => { const e = await createProject(core!, autoProjectName((await (await getRegistry()).list()).map((x) => x.name), new Date(), locale, t("projects.auto"))); await refreshList(); openEntry(e); announce(t("project.new.done")); });
   const homeOpenFile = () => void homeTask(async () => {
     const file = await pickProjectFile();
     if (!file) return;
@@ -817,6 +817,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {showHome ? <Home entries={list} current={lastId} busy={homeBusy} onOpen={(e) => openEntry(e)} onNew={homeNew} onOpenFile={homeOpenFile} onRename={homeRename} onDuplicate={homeDuplicate} onArchive={homeArchive} onExport={homeExport} onDelete={homeDelete} /> : <>
       <header className="topbar">
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
+          <button type="button" className="topbar-projects" data-testid="topbar-projects" onClick={() => void goHome()} aria-label={t("menu.projects")} title={t("menu.projects")}><Icon name="chevronLeft" size={16} /><span>{t("menu.projects")}</span></button>
         </div>
         <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} readOnly={openId === null} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
@@ -832,7 +833,7 @@ function Editor({ store }: { store: ProjectStore }) {
             <span className="chip-text">{t(`save.state.${saveState}`)}</span>
           </span>
           <button className="icon-btn palette-btn" aria-label={t("palette.open")} title={`${t("palette.open")} (${paletteKey()})`} data-testid="palette-open" onClick={() => setPalette(true)}><Icon name="search" size={20} /></button>
-          <ExportControl engine={core} fileOf={media.fileOf} />
+          <ExportControl engine={core} fileOf={media.fileOf} projectName={name} />
           {!compact && <ThemeMenu pref={themePref} onPick={pickTheme} />}
           <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts"), onPalette: () => setPalette(true) }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
         </div>

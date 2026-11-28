@@ -10,9 +10,11 @@ async function ready(page: Page) {
 test("the project name has a visible bottom edge at rest (WCAG 1.4.11); 44 px tall on a phone", async ({ page }, info) => {
   await ready(page);
   const field = page.getByLabel("Project name");
-  const edge = await field.evaluate((el) => { const c = getComputedStyle(el); return { w: c.borderBottomWidth, color: c.borderBottomColor }; });
-  expect(edge.w).toBe("1px");
-  expect(edge.color).not.toMatch(/rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)|transparent/);
+  // r15: the edge is a straight 1 px gradient line (border-bottom + radius drew a curved "smile"); it must be there and not transparent.
+  const edge = await field.evaluate((el) => { const c = getComputedStyle(el); return { img: c.backgroundImage, size: c.backgroundSize }; });
+  expect(edge.img).toMatch(/linear-gradient\(rgb/);
+  expect(edge.img).not.toMatch(/rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)|transparent/);
+  expect(edge.size).toMatch(/ 1px$/);
   if (info.project.name === "phone") expect((await field.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 });
 

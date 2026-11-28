@@ -62,15 +62,16 @@ test("inspector: fields edit the selected clip's transform, undo reverts, reset 
   const diamond = page.getByTestId("insp-key-opacity");
   const opacity = page.getByTestId("insp-opacity");
   await expect(diamond).toHaveAttribute("aria-pressed", "false");
-  expect((await diamond.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await diamond.boundingBox())!.height).toBeGreaterThanOrEqual(phone ? 44 : 28); // r15: 28 px on a mouse, 44 on touch
   await diamond.click();
   await expect(diamond).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByTestId("insp-ease-opacity")).toHaveValue("linear");
+  await expect(page.getByTestId("insp-ease-opacity")).toHaveAttribute("data-value", "linear");
   await opacity.fill("40");
   await expect(opacity).toHaveValue("40");
   await expect(diamond).toHaveAttribute("aria-pressed", "true");
-  await page.getByTestId("insp-ease-opacity").selectOption("hold");
-  await expect(page.getByTestId("insp-ease-opacity")).toHaveValue("hold");
+  await page.getByTestId("insp-ease-opacity").click();
+  await page.getByTestId("insp-ease-opacity-hold").click();
+  await expect(page.getByTestId("insp-ease-opacity")).toHaveAttribute("data-value", "hold");
   await diamond.click();
   await expect(diamond).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByTestId("insp-ease-opacity")).toHaveCount(0);

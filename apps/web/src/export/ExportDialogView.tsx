@@ -271,6 +271,25 @@ function Setup({ src, shot, locale, onStart }: { src: Source; shot: string | nul
   );
 }
 
+/** While an export runs: ask for a screen Wake Lock (a dimmed or locked phone throttles the page) and say when the page was in the background, where the export may have slowed or paused. Returns true after such a stretch. */
+function useKeepAwake(): boolean {
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    let lock: { release(): Promise<void> } | null = null;
+    let alive = true;
+    const ask = () => {
+      const nav = navigator as Navigator & { wakeLock?: { request(type: "screen"): Promise<{ release(): Promise<void> }> } };
+      if (!nav.wakeLock || document.visibilityState !== "visible") return;
+      void nav.wakeLock.request("screen").then((l) => { if (alive) lock = l; else void l.release().catch(() => undefined); }).catch(() => undefined);
+    };
+    const onVis = () => { if (document.visibilityState === "hidden") setAway(true); else ask(); };
+    ask();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { alive = false; document.removeEventListener("visibilitychange", onVis); void lock?.release().catch(() => undefined); };
+  }, []);
+  return away;
+}
+
 // ---- 2. progress ----
 function Progress({ state, src, shot, onCancel, onTuck }: { state: Extract<ExportState, { phase: "running" }>; src: Source; shot: string | null; onCancel(): void; onTuck(): void }) {
   const { t, locale } = useI18n();
@@ -278,11 +297,17 @@ function Progress({ state, src, shot, onCancel, onTuck }: { state: Extract<Expor
   const fraction = p?.fraction ?? 0;
   const percent = Math.floor(fraction * 100);
   const finishing = p?.phase === "finalizing";
-  const smooth = useRef<number | null>(null);
-  // The raw estimate jumps with every batch of frames: an exponential average keeps the number from flickering up and down.
-  if (p?.etaMs != null && !finishing) smooth.current = smooth.current === null ? p.etaMs : smooth.current * 0.85 + p.etaMs * 0.15;
-  const eta = smooth.current !== null && !finishing ? etaSeconds(smooth.current) : null;
+  // Time left from the rate over the last 10 s (a moving average): the engine's own estimate jumps with every batch of frames.
+  const samples = useRef<{ at: number; f: number }[]>([]);
+  const now = performance.now();
+  const last = samples.current[samples.current.length - 1];
+  if (p && !finishing && (!last || now - last.at >= 500)) samples.current.push({ at: now, f: fraction });
+  while (samples.current.length > 2 && now - samples.current[0]!.at > 10_000) samples.current.shift();
+  const first = samples.current[0];
+  const rate = first && now - first.at >= 3_000 && fraction > first.f ? (fraction - first.f) / (now - first.at) : 0;
+  const eta = !finishing && rate > 0 ? etaSeconds((1 - fraction) / rate) : null;
   const left = eta === null ? t("export.eta.estimating") : eta >= 60 ? t("export.eta.minutes", { minutes: Math.ceil(eta / 60) }) : t("export.eta.seconds", { seconds: eta });
+  const away = useKeepAwake();
   return (
     <>
       <div className="ex-stage"><PreviewFrame shot={shot} width={src.width} height={src.height}><span className="ex-frame-dim" aria-hidden="true" /></PreviewFrame></div>
@@ -295,6 +320,7 @@ function Progress({ state, src, shot, onCancel, onTuck }: { state: Extract<Expor
         <span>{finishing ? "" : left}</span>
       </p>
       <p className="export-note">{t("export.readonly")}</p>
+      <p className="export-note ex-awake" data-testid="export-awake" role={away ? "alert" : undefined}>{t(away ? "export.awake.paused" : "export.awake")}</p>
       <div className="export-actions">
         <button className="export-secondary" onClick={onTuck} data-testid="export-minimize">{t("export.keepEditing")}</button>
         <button className="export-secondary export-danger" onClick={onCancel} data-testid="export-cancel">{t("export.cancel")}</button>
@@ -351,17 +377,48 @@ function H264Notice({ codecs, onEnabled }: { codecs: DesktopCodecs; onEnabled():
   );
 }
 
+/** A frame of the finished file itself (a third of the way in), so the done card shows what was made, not a black placeholder. Falls back to `fallback`. */
+function useOutputFrame(file: Blob, fallback: string | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let dead = false;
+    const src = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.muted = true;
+    v.preload = "auto";
+    v.playsInline = true;
+    const cleanup = () => { v.removeAttribute("src"); v.load(); URL.revokeObjectURL(src); };
+    v.onloadedmetadata = () => { v.currentTime = Number.isFinite(v.duration) ? v.duration / 3 : 0; };
+    v.onseeked = () => {
+      try {
+        const c = document.createElement("canvas");
+        const w = Math.min(480, v.videoWidth);
+        c.width = w;
+        c.height = Math.max(1, Math.round((w * v.videoHeight) / v.videoWidth));
+        c.getContext("2d")?.drawImage(v, 0, 0, c.width, c.height);
+        if (!dead) setUrl(c.toDataURL("image/jpeg", 0.72));
+      } catch { /* keep the fallback */ }
+      cleanup();
+    };
+    v.onerror = cleanup;
+    v.src = src;
+    return () => { dead = true; };
+  }, [file]);
+  return url ?? fallback;
+}
+
 // ---- 3. done ----
 function Done({ state, src, shot, locale, onClose, onAgain }: { state: Extract<ExportState, { phase: "done" }>; src: Source; shot: string | null; locale: string; onClose(): void; onAgain(): void }) {
   const { t } = useI18n();
   const { result } = state;
-  const file = useMemo(() => new File([state.file], saveName(result.fileName), { type: state.file.type }), [state.file, result.fileName]);
+  const file = useMemo(() => new File([state.file], saveName(result.fileName, src.name), { type: state.file.type }), [state.file, result.fileName, src.name]);
   const [note, setNote] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const share = useMemo(() => !getDesktop() && canShareFile(file), [file]);
   const kind = result.mime.startsWith("video/webm") ? "WebM" : "MP4";
   const desktop = getDesktop();
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const still = useOutputFrame(state.file, shot);
   const run = async (what: "save" | "share") => {
     setFailed(false);
     try {
@@ -380,7 +437,7 @@ function Done({ state, src, shot, locale, onClose, onAgain }: { state: Extract<E
   useEffect(() => { if (note) announce(note); }, [note]);
   return (
     <>
-      <div className="ex-stage"><PreviewFrame shot={shot} width={src.width} height={src.height} badge={<span className="export-ok" aria-hidden="true"><Icon name="check" size={22} /></span>} /></div>
+      <div className="ex-stage"><PreviewFrame shot={still} width={src.width} height={src.height} badge={<span className="export-ok" aria-hidden="true"><Icon name="check" size={22} /></span>} /></div>
       <dl className="export-facts" data-testid="export-done">
         <div><dt>{t("export.fact.file")}</dt><dd data-testid="export-filename">{file.name}</dd></div>
         <div><dt>{t("export.fact.size")}</dt><dd data-testid="export-filesize">{formatBytes(result.fileBytes, locale)}</dd></div>

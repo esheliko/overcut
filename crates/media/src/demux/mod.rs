@@ -1,4 +1,4 @@
-//! Container demuxers (MP4/MOV, WebM/Matroska) over the async [`Source`] trait. Pure `std`: no threads, no fs, WASM-safe.
+//! Container demuxers (MP4/MOV, WebM/Matroska, and audio-only WAV and MP3) over the async [`Source`] trait. Pure `std`: no threads, no fs, WASM-safe.
 //!
 //! Hand-rolled, read-only, no dependencies: the available crates read through blocking `Read + Seek`, which cannot sit on the host's
 //! async `Source` (browser Blobs, network ranges), and a small parser is easier to bound and fuzz. See `docs/features/media-io.md`.
@@ -8,8 +8,10 @@
 
 mod codec;
 mod matroska;
+mod mp3;
 mod mp4;
 mod reader;
+mod wav;
 
 use crate::{AudioInfo, MediaError, MediaInfo, Source, VideoInfo};
 use app_model::{Rational, Time, TICKS_PER_SECOND};
@@ -26,6 +28,10 @@ pub enum ContainerFormat {
     Mov,
     WebM,
     Matroska,
+    /// RIFF/WAVE PCM (audio only).
+    Wav,
+    /// MPEG Layer III (audio only).
+    Mp3,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -180,6 +186,12 @@ pub async fn probe<S: Source>(source: &S) -> Result<Probe, MediaError> {
     }
     if head[..4] == [0x1A, 0x45, 0xDF, 0xA3] {
         return matroska::probe(&mut r).await;
+    }
+    if wav::is_wav(&head) {
+        return wav::probe(&mut r).await;
+    }
+    if mp3::is_mp3(&head) {
+        return mp3::probe(&mut r).await;
     }
     match &head[4..8] {
         b"ftyp" | b"moov" | b"mdat" | b"wide" | b"free" | b"skip" | b"pnot" => {
