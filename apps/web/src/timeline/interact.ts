@@ -3,7 +3,8 @@
  *  Touch rules: a tap selects; a drag on an unselected clip pans; a drag on an already selected clip moves it; handles of a selected clip are 44 px targets. */
 import type { Op } from "@app/engine-client";
 import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, lanePlan, type LanePlan, type LaneMove, type Say, inRect, linkedTrimOps, moveOps, moveRoom, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
-import { hopOps, planHop, snapMove, SNAP_PX } from "./arrange";
+import { hopOps, planHop, snapMove } from "./arrange";
+import { snapPx } from "./snapStore";
 import { handleAt, hitTest, seamAt, trackAtY } from "./hit";
 import { headerPart, type HeaderPart } from "./header";
 import { frameTick, markerAt, moveMarkerPlan } from "./markers";
@@ -221,7 +222,7 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
       // Past a neighbour's middle the selection jumps over it (reorder); otherwise it slides, pulled onto edges and the playhead.
       const hop = planHop(scene, g.sel, dx, g.sel[0]!);
       if (hop) return { g: { ...g, delta: hop.shift, track, mv: null, to: null, hop: hop.n, guide: hop.edge }, fx: NONE };
-      const snap = snapMove(scene, g.sel, delta, -g.room.left, g.room.right, c.playhead ?? null, (SNAP_PX / view.pps) * TPS);
+      const snap = snapMove(scene, g.sel, delta, -g.room.left, g.room.right, c.playhead ?? null, (snapPx() / view.pps) * TPS);
       return { g: { ...g, delta: snap.delta, track, mv: null, to: null, hop: 0, guide: snap.guide }, fx: NONE };
     }
     case "trim": {

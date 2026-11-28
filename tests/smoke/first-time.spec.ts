@@ -14,7 +14,7 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   // No dead promises: only tools that work (Media, and Edit for the clip transform from M2) in the rail; the Details panel is docked on wide screens.
   const rail = page.getByRole("navigation", { name: "Tools" }).getByRole("button");
   if (phone) {
-    await expect(rail).toHaveCount(2); // Media and Edit open sheets
+    await expect(rail).toHaveCount(5); // nothing selected: the global tools (Media, Overlay, Split, Canvas, Edit)
     await expect(rail.first()).toHaveText("Media");
     await expect(rail.last()).toHaveText("Edit");
   } else await expect(rail).toHaveCount(0); // Media is always open and Details is docked on a wide screen: no rail with a single tool

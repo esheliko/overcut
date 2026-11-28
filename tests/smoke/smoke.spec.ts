@@ -45,7 +45,7 @@ test("the editor shell adapts: tool bar and sheet on a phone, tool panel always 
   }
   expect(info.project.name).toMatch(/desktop|phone/);
   // Only tools that work: Media and Edit (the clip transform, M2); no Audio, Text, Captions, Effects... promises.
-  await expect(tools.getByRole("button")).toHaveCount(phone ? 2 : 0); // wide screens dock Details and Media, so there is no rail at all
+  await expect(tools.getByRole("button")).toHaveCount(phone ? 5 : 0); // nothing selected: Media, Overlay, Split, Canvas, Edit; wide screens dock Details and Media, so there is no rail at all
 });
 
 test("transport and timeline: play advances the playhead, the canvas timeline paints", async ({ page }) => {
@@ -185,7 +185,7 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
   const redo = page.getByRole("button", { name: REDO });
   await expect(summary).toContainText("2 tracks, 14 clips");
   await expect(undo).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+  if (!phone) await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled(); // the phone strip shows Delete only with a clip selected
 
   // Sample layout at the default zoom (40 px/s): gutter 48 px, ruler 30 px, lane 52 px; the first video clip spans x 48..168.
   const box = (await canvas.boundingBox())!;
@@ -252,13 +252,13 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
   await expect(undo).toBeDisabled();
 });
 
-test("the timeline toolbar is ONE row that fits at 320 and 390 px: undo, redo, split, delete, tool picker and More inside the viewport, 44 px on touch", async ({ page }, info) => {
+test("the timeline toolbar is ONE row that fits at 320 and 390 px: undo, redo, tool picker and More inside the viewport, 44 px on touch", async ({ page }, info) => {
   for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
     await expect(page.getByTestId("tl-more")).toBeVisible();
     const rows = new Set<number>();
-    for (const b of [page.getByRole("button", { name: /^Undo/ }), page.getByRole("button", { name: /^Redo/ }), page.getByRole("button", { name: "Split at playhead" }), page.getByRole("button", { name: /^Delete/ }), page.getByTestId("tl-tool"), page.getByTestId("tl-more")]) {
+    for (const b of [page.getByRole("button", { name: /^Undo/ }), page.getByRole("button", { name: /^Redo/ }), page.getByTestId("tl-tool"), page.getByTestId("tl-more")]) {
       await expect(b).toBeVisible();
       const box = (await b.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
