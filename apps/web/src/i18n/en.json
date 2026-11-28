@@ -70,6 +70,7 @@
   "timeline.speed.custom": "Custom speed…",
   "timeline.crop": "Crop",
   "timeline.snap.tip": "Snap to clips and the playhead",
+  "timeline.magnetic.tip": "Magnetic main track: trims and deletes close the gap",
   "strip.canvas": "Canvas",
   "strip.split": "Split",
   "strip.detach": "Detach",

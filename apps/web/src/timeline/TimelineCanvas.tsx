@@ -21,6 +21,7 @@ import { TICKS_PER_SECOND, type Scene } from "./scene";
 import type { Tool } from "./ripple";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, viewForRange, wheelZoomFactor, xToTime, zoomAt, zoomKeeping, type View } from "./view";
 import { zoomStore } from "./zoomStore";
+import { magneticStore } from "./magneticStore";
 import { timecode } from "../timecode";
 
 export type CanvasHandle = { view: View; invalidate: () => void; draw: () => void; stats: DrawStats; el: HTMLCanvasElement; /** Called after a frame whose zoom, scroll or width changed (the overview bar follows it). */ onView?: () => void };
@@ -296,7 +297,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     l.onFrame(clamp(Math.round(xToTime(view.current, x) * l.fps), 0, l.endFrame));
   };
   const stopFling = () => { cancelAnimationFrame(gesture.current.fling); gesture.current.fling = 0; };
-  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, tool: live.current.tool, playhead: Math.round((fr.current / live.current.fps) * TICKS_PER_SECOND) });
+  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, tool: live.current.tool, magnetic: magneticStore.get(), playhead: Math.round((fr.current / live.current.fps) * TICKS_PER_SECOND) });
   /** Drag from the media bin: a guide line shows where the card will land (snapped), the drop puts it there. */
   const dropAt = (e: React.DragEvent) => {
     const l = live.current;

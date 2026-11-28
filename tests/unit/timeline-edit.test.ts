@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { rollCuts, rollOps, rollRangeAll, snapTo } from "../../apps/web/src/timeline/ripple";
+import { mainTrack, rollCuts, rollOps, rollRangeAll, snapTo } from "../../apps/web/src/timeline/ripple";
 import { closeStartGap, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
@@ -339,7 +339,7 @@ test("a seam between two touching clips moves the boundary as a roll: the left e
   assert.deepEqual(ops, [{ op: "roll", left: s.id[0], right: s.id[1], to: at + ft * 10 }]);
 });
 
-test("pressing a seam in the Select tool starts a roll of that cut and releasing it applies the roll op (issue #105)", () => {
+test("pressing a seam in the Select tool trims the clip on the pointer's side; Alt rolls the cut (UX r15 DESK-1)", () => {
   const p = fixtureProject({ tracks: 1, clipsPerTrack: 2, clipSec: 4 });
   const c = p.sequences[0]!.tracks[0]!.clips;
   c[1]!.start = c[0]!.start + c[0]!.duration;
@@ -348,13 +348,41 @@ test("pressing a seam in the Select tool starts a roll of that cut and releasing
   const v = view();
   const k: Ctx = { scene: s, view: v, selected: new Set(), selFlags: flagsOf(s, []) };
   const x = timeToX(v, s.end[0]!), y = cy(0);
-  const down = pointerDown(k, mouse(x, y));
+  // left of the cut: the LEFT clip's end; right of it: the RIGHT clip's start; never both selected, never a roll
+  const left = pointerDown(k, mouse(x - 3, y));
+  assert.equal(left.g.k, "trim");
+  if (left.g.k === "trim") { assert.equal(left.g.clip, 0); assert.equal(left.g.edge, "end"); }
+  assert.deepEqual(left.fx.select, { mode: "set", ids: [s.id[0]] });
+  const right = pointerDown(k, mouse(x + 3, y));
+  assert.equal(right.g.k, "trim");
+  if (right.g.k === "trim") { assert.equal(right.g.clip, 1); assert.equal(right.g.edge, "start"); }
+  // Alt: the roll of that cut, both clips ghosted
+  const down = pointerDown(k, { ...mouse(x, y), alt: true });
   assert.equal(down.g.k, "tool");
   if (down.g.k !== "tool") return;
   assert.equal(down.g.tool, "roll");
   assert.ok(down.g.seam);
-  assert.deepEqual(down.fx.select, { mode: "set", ids: [s.id[0], s.id[1]] }, "a mouse press selects both clips");
-  const moved = pointerMove(k, down.g, mouse(x + 2.2 * s.frameTicks / TICKS_PER_SECOND * v.pps, y));
-  const up = pointerUp(k, moved.g, mouse(x + 2.2 * s.frameTicks / TICKS_PER_SECOND * v.pps, y));
+  const to = x + 2.2 * s.frameTicks / TICKS_PER_SECOND * v.pps;
+  const up = pointerUp(k, pointerMove(k, down.g, mouse(to, y)).g, mouse(to, y));
   assert.deepEqual(up.fx.ops, [{ op: "roll", left: s.id[0], right: s.id[1], to: s.tStart[1]! + 2 * s.frameTicks }]);
+});
+
+test("magnetic main track: shortening the end of a main-track clip is a ripple trim that closes the gap; other tracks trim freely (UX r15)", () => {
+  const p = fixtureProject({ tracks: 2, clipsPerTrack: 2, clipSec: 4 });
+  for (const tr of p.sequences[0]!.tracks) { const cl = tr.clips; cl[1]!.start = cl[0]!.start + cl[0]!.duration; }
+  p.media[0]!.duration = 30 * TICKS_PER_SECOND;
+  const s = buildScene(p);
+  const v = view();
+  const main = mainTrack(s);
+  assert.ok(main >= 0);
+  const first = s.trackFirst[main]!;
+  const k: Ctx = { scene: s, view: v, selected: new Set(), selFlags: flagsOf(s, []), magnetic: true };
+  const x = timeToX(v, s.end[first]!), y = cy(main);
+  const down = pointerDown(k, mouse(x - 3, y));
+  assert.equal(down.g.k, "trim");
+  const to = x - 1.1 * s.frameTicks / TICKS_PER_SECOND * v.pps;
+  const up = pointerUp(k, pointerMove(k, down.g, mouse(to, y)).g, mouse(to, y));
+  assert.equal(up.fx.ops?.[0]?.op, "ripple_trim");
+  const off = pointerUp({ ...k, magnetic: false }, pointerMove(k, down.g, mouse(to, y)).g, mouse(to, y));
+  assert.equal(off.fx.ops?.[0]?.op, "trim_out");
 });

@@ -5,12 +5,12 @@ import type { Op } from "@app/engine-client";
 import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, lanePlan, type LanePlan, type LaneMove, type Say, inRect, linkedTrimOps, moveOps, moveRoom, snapDelta, trimRange, trimTarget, type Edge } from "./edit";
 import { hopOps, planHop, snapMove } from "./arrange";
 import { snapPx } from "./snapStore";
-import { handleAt, hitTest, seamAt, trackAtY } from "./hit";
+import { handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart, type HeaderPart } from "./header";
 import { frameTick, markerAt, moveMarkerPlan } from "./markers";
 import { reorderTrack, rowAt, toggleTrack } from "./tracks";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
-import { cutAt, rippleRange, rippleTrimOps, rollCuts, rollOps, rollRangeAll, slideOps, slideRange, slipOps, slipRange, snapTo, type Range, type Tool } from "./ripple";
+import { cutAt, magneticTrimOps, onMagnetic, rippleRange, rippleTrimOps, rollCuts, rollOps, rollRangeAll, slideOps, slideRange, slipOps, slipRange, snapTo, type Range, type Tool } from "./ripple";
 import { gut, LANE, RULER, xToTime, type View } from "./view";
 
 export type PointerKind = "mouse" | "touch" | "pen";
@@ -25,6 +25,8 @@ export interface Ctx {
   playhead?: number | null;
   /** The tool chosen in the toolbar (select when absent). */
   tool?: Tool;
+  /** Magnetic main track (UX r15): trims on the lowest video track ripple, so no gap opens or stays. Off when absent. */
+  magnetic?: boolean;
 }
 export interface Effects {
   select?: { mode: "set" | "toggle" | "add"; ids: string[] };
@@ -125,7 +127,7 @@ function toolDown(c: Ctx, e: PEvent): R | null {
     if (cuts.length === 0) return { g: IDLE, fx: { say: { key: "timeline.say.noCut" }, visible: true } };
     const r = rollRangeAll(scene, cuts);
     if (r.lo === 0 && r.hi === 0) return { g: IDLE, fx: { ...pick(i), say: { key: "timeline.say.noRoom.roll" }, visible: true } }; // fresh imports have no spare footage: say so instead of doing nothing
-    return { g: { k: "tool", tool, sx: e.x, clip: i, edge: edge.edge, cuts, lo: r.lo, hi: r.hi, delta: 0 }, fx: pick(i) };
+    return { g: { k: "tool", tool, sx: e.x, clip: i, edge: edge.edge, cuts, lo: r.lo, hi: r.hi, delta: 0, seam: true }, fx: pick(i) };
   }
   if (body.kind !== "clip") return null;
   const i = body.clip;
@@ -133,19 +135,6 @@ function toolDown(c: Ctx, e: PEvent): R | null {
   if (!r) return locked();
   if (r.lo === 0 && r.hi === 0) return { g: IDLE, fx: { ...pick(i), say: { key: tool === "slip" ? "timeline.say.noRoom.slip" : "timeline.say.noRoom.slide" }, visible: true } };
   return { g: { k: "tool", tool, sx: e.x, clip: i, edge: null, cuts: [], lo: r.lo, hi: r.hi, delta: 0 }, fx: { ...pick(i), say: describeClip(scene, i) } };
-}
-
-/** Dragging the seam between two touching clips in the Select tool is a roll of that cut (#105): the boundary moves, both clips follow,
- *  with the roll tool's frame snapping, guide line, linked-clip rules and "no extra footage" notice. `pickBoth`: select both clips. */
-function seamDown(c: Ctx, e: PEvent, sm: { left: number; right: number }, pickBoth: boolean): R | null {
-  const { scene } = c;
-  if (scene.trackLocked[scene.clipTrack[sm.left]!] || scene.trackLocked[scene.clipTrack[sm.right]!]) return null;
-  const cuts = rollCuts(scene, sm.left, "end");
-  if (cuts.length === 0) return null;
-  const pick: Effects = pickBoth ? { select: { mode: "set", ids: [scene.id[sm.left]!, scene.id[sm.right]!] } } : NONE;
-  const r = rollRangeAll(scene, cuts);
-  if (r.lo === 0 && r.hi === 0) return { g: IDLE, fx: { ...pick, say: { key: "timeline.say.noRoom.roll" }, visible: true } };
-  return { g: { k: "tool", tool: "roll", sx: e.x, clip: sm.left, edge: "end", cuts, lo: r.lo, hi: r.hi, delta: 0, seam: true }, fx: pick };
 }
 
 export function pointerDown(c: Ctx, e: PEvent): R {
@@ -163,9 +152,9 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     const r = trimRange(scene, hd.clip, hd.edge);
     return { g: { k: "trim", sx: e.x, clip: hd.clip, edge: hd.edge, orig: r.at, value: r.at }, fx: NONE };
   }
-  const eh = touch ? null : handleAt(scene, view, c.selFlags, e.x, e.y, false, true); // mouse: an edge of an unselected clip trims it (and selects it)
-  const seam = touch ? null : seamAt(scene, view, c.selFlags, e.x, e.y, false, true); // mouse: any seam moves, selecting both clips
-  if (seam && (!eh || seam.left === eh.clip || seam.right === eh.clip)) { const r = seamDown(c, e, seam, true); if (r) return r; }
+  // Mouse: an edge of an unselected clip trims it (and selects it). At a cut between two touching clips the pointer's side picks the clip: dragging trims THAT
+  // clip (CapCut, UX r15 DESK-1); rolling the cut is the Roll tool or Alt.
+  const eh = touch ? null : handleAt(scene, view, c.selFlags, e.x, e.y, false, true);
   if (eh && !scene.trackLocked[scene.clipTrack[eh.clip]!]) {
     const r = trimRange(scene, eh.clip, eh.edge);
     return { g: { k: "trim", sx: e.x, clip: eh.clip, edge: eh.edge, orig: r.at, value: r.at }, fx: { select: { mode: "set", ids: [scene.id[eh.clip]!] } } };
@@ -227,6 +216,10 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "trim": {
       const desired = g.orig + ((e.x - g.sx) / view.pps) * TPS;
+      if (c.magnetic && onMagnetic(scene, g.clip)) { // a ripple trim may also grow into the next clip (it is pushed along): the range is the ripple range
+        const rr = rippleRange(scene, g.clip, g.edge);
+        if (rr) return { g: { ...g, value: g.orig + snapTo(scene, desired - g.orig, rr) }, fx: NONE };
+      }
       const value = trimTarget(scene, g.clip, g.edge, desired);
       return { g: { ...g, value }, fx: NONE };
     }
@@ -286,7 +279,7 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     }
     case "trim": {
       if (g.value === g.orig) return { g: IDLE, fx: NONE };
-      const ops = linkedTrimOps(scene, g.clip, g.edge, g.value);
+      const ops = c.magnetic && onMagnetic(scene, g.clip) ? magneticTrimOps(scene, g.clip, g.edge, g.value) : linkedTrimOps(scene, g.clip, g.edge, g.value);
       return { g: IDLE, fx: { ops, say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
     }
     case "tool": {

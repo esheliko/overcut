@@ -9,7 +9,7 @@ import { Icon } from "./icons";
 import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
 import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
-import { closeGapOps, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
+import { closeGapOps, magneticTrimOps, onMagnetic, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { clipboardState } from "./commands/availability";
 import { COMMAND_EVENT, EXPORT_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
 import { addMarkerPlan, clearRangePlan, frameTick, loopPlan, markerAtTick, moveMarkerPlan, rangePlan } from "./timeline/markers";
@@ -20,6 +20,7 @@ import { ToolbarMenu } from "./timeline/ToolbarMenu";
 import { ToolButton } from "./layout/ToolButton";
 import { requestDetails } from "./layout/toolStrip";
 import { snapStore } from "./timeline/snapStore";
+import { magneticStore } from "./timeline/magneticStore";
 import type { IconName } from "./icons";
 import { chordLabel } from "./commands/registry";
 import { currentKeymap } from "./commands/keymap";
@@ -235,7 +236,10 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       }
       case "delete": {
         if (mine.length === 0) { speak(locked ?? say("timeline.say.nothingToDelete")); break; }
-        commit(deleteOps(sc, mine), say("timeline.say.deleted", { count: mine.length }));
+        // Magnetic main track (r15): deleting on the lowest video track closes the hole (with its linked sound); other tracks keep their gap.
+        const rip = magneticStore.get() ? mine.filter((i) => onMagnetic(sc, i)) : [];
+        const rest = rip.length ? mine.filter((i) => !rip.includes(i)) : mine;
+        commit([...rippleDeleteOps(sc, rip), ...(rest.length ? deleteOps(sc, rest) : [])], say("timeline.say.deleted", { count: mine.length }), undefined, rip.length ? Math.min(...rip.map((i) => sc.start[i]!)) : undefined);
         setSelected(NO_SELECTION);
         break;
       }
@@ -327,7 +331,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
         const r = trimRange(sc, i, cmd.edge);
         const value = cmd.c === "trimBy" ? trimTarget(sc, i, cmd.edge, r.at + cmd.frames * ft) : clampN(tick, r.min, r.max);
         if (value === r.at) { speak(say("timeline.say.cantTrim")); break; }
-        commit(linkedTrimOps(sc, i, cmd.edge, value), say("timeline.say.trimmed", { edge: cmd.edge, name: sc.name[i]! }), undefined, value / TICKS_PER_SECOND);
+        commit(magneticStore.get() && onMagnetic(sc, i) ? magneticTrimOps(sc, i, cmd.edge, value) : linkedTrimOps(sc, i, cmd.edge, value), say("timeline.say.trimmed", { edge: cmd.edge, name: sc.name[i]! }), undefined, value / TICKS_PER_SECOND);
         break;
       }
       case "copy": case "cut": case "duplicate": {
@@ -464,6 +468,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
         <div className="tl-right">
           {!none && <span className="tl-sel" data-testid="tl-selected" title={withLinked ? t("timeline.selected.linked", { count: clipCount }) : undefined}>{withLinked ? t("timeline.selected.linked", { count: clipCount }) : t("timeline.selected", { count: clipCount })}</span>}
           <SnapToggle />
+          <MagneticToggle />
           <ZoomBar onFit={fit} />
         </div>
       </div>
@@ -545,4 +550,11 @@ const SnapToggle = memo(function SnapToggle() {
   const { t } = useI18n();
   const on = useSyncExternalStore(snapStore.subscribe, snapStore.get, snapStore.get);
   return <ToolButton icon="magnet" label={t("timeline.snap.tip")} pressed={on} className="tl-toggle" testid="tl-snap" onClick={() => snapStore.set(!on)} />;
+});
+
+/** Magnetic main track (UX r15): trimming or deleting on the lowest video track closes the gap. On by default, kept on this device; other tracks stay free. */
+const MagneticToggle = memo(function MagneticToggle() {
+  const { t } = useI18n();
+  const on = useSyncExternalStore(magneticStore.subscribe, magneticStore.get, magneticStore.get);
+  return <ToolButton icon="magnetTrack" label={t("timeline.magnetic.tip")} pressed={on} className="tl-toggle" testid="tl-magnetic" onClick={() => magneticStore.set(!on)} />;
 });

@@ -6,6 +6,8 @@ import { clipDetail, formatDur, formatTick, gut, LANE, MARKER_NAME_PPS, minorDiv
 import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
 import { formatSpeed } from "../inspector/speedModel";
 import { CUE_MS } from "./commitCue";
+import { mainTrack } from "./ripple";
+import { pictureGaps } from "./gaps";
 import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
 
 export interface Palette {
@@ -332,6 +334,25 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
         }
       }
     }
+  }
+
+  // Gaps in the picture (r15): where no video clip plays the export is black, so the main track shows those stretches hatched, never as plain empty lane.
+  const main = mainTrack(scene);
+  if (main >= firstTrack && main <= lastTrack) {
+    const gaps = pictureGaps(scene), y = RULER + main * LANE - v.scrollY;
+    let ink = false;
+    for (let n = 0; n < gaps.length; n++) {
+      const g = gaps[n]!;
+      if (g.end <= t0 || g.start >= t1) continue;
+      const x0 = Math.max(gut(v), timeToX(v, g.start)), x1 = Math.min(W, timeToX(v, g.end));
+      if (x1 - x0 < 3) continue;
+      if (!ink) { ctx.save(); ctx.strokeStyle = p.muted; ctx.lineWidth = 1; ctx.globalAlpha = 0.5; ink = true; }
+      ctx.save(); ctx.beginPath(); ctx.rect(x0, y + 3, x1 - x0, LANE - 7); ctx.clip();
+      ctx.beginPath();
+      for (let hx = x0 - LANE; hx < x1; hx += 9) { ctx.moveTo(hx, y + LANE - 4); ctx.lineTo(hx + LANE, y + 3); }
+      ctx.stroke(); ctx.restore();
+    }
+    if (ink) ctx.restore();
   }
 
   // Drop zone (r14): a soft invitation under the tracks while the project is thin (video and its sound, at most two tracks in use); a drop or paste still lands where it always did.
