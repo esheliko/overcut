@@ -110,9 +110,11 @@ test("an edit leaves a brief cue on the timeline (off under reduced motion), too
   await page.keyboard.press("s");
   await expect(canvas).toHaveAttribute("data-cue", "split");
   await expect(canvas).not.toHaveAttribute("data-cue", /.+/, { timeout: 2000 }); // it ends by itself within a third of a second
-  await expect(page.getByTestId("tl-tool")).toHaveAttribute("title", "Edit tool: Select. Change tool (V)");
+  await expect(page.getByTestId("tl-tool")).toHaveAttribute("aria-label", "Edit tool: Select. Change tool");
+  await expect(page.getByTestId("tl-tool").locator("xpath=..").locator(".tb-tip")).toContainText("V"); // the tooltip names the key as a keycap
   await page.keyboard.press("y");
-  await expect(page.getByTestId("tl-tool")).toHaveAttribute("title", /Slip\. Change tool \(Y\)/);
+  await expect(page.getByTestId("tl-tool")).toHaveAttribute("aria-label", /Slip\. Change tool/);
+  await expect(page.getByTestId("tl-tool").locator("xpath=..").locator(".tb-tip")).toContainText("Y");
   const b = (await canvas.boundingBox())!;
   await page.mouse.move(b.x + (await gutterShift(page)) + 68, b.y + 56, { steps: 3 });
   expect(await canvas.evaluate((el) => (el as HTMLElement).style.cursor)).toContain("data:image/svg+xml");

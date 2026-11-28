@@ -48,6 +48,8 @@ import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop
 import { useShellProfile } from "./layout/useShellProfile";
 import { Splitter } from "./layout/Splitter";
 import { SheetHandle } from "./layout/SheetHandle";
+import { ToolStrip } from "./layout/ToolStrip";
+import { DETAILS_EVENT, takeDetailsRequest, type DetailsRequest } from "./layout/toolStrip";
 import { MiniTransport } from "./layout/MiniTransport";
 import { useCollapsed } from "./layout/useCollapsed";
 import type { Detent } from "./layout/sheet";
@@ -130,11 +132,26 @@ function Library({ tool, bin, onCollapse }: { tool: Tool; bin: BinProps; onColla
 
 /** Only tabs with real content. Animation lives inline in Video (keyframes); Audio and Adjust come back when they are built. Speed shows only while a clip is selected. */
 type DetailTab = "video" | "speed";
+/** The first crop field, once the panel has drawn (best effort: a collapsed group simply keeps focus where it was). */
+const focusCrop = () => { setTimeout(() => document.querySelector<HTMLElement>('[data-testid="insp-crop_left"]')?.focus(), 120); };
 function Details({ onCollapse }: { onCollapse?: () => void }) {
   const { t, dir } = useI18n();
   const hasSelection = useProjectStore((s) => s.selection.size > 0);
   const tabs: readonly DetailTab[] = hasSelection ? ["video", "speed"] : ["video"];
-  const [picked, setTab] = useState<DetailTab>("video");
+  const first = useRef(takeDetailsRequest()); // a Speed or Crop request that opened this panel
+  const [picked, setTab] = useState<DetailTab>(first.current?.tab ?? "video");
+  // The toolbar's Speed and Crop (and the phone strip's) ask for a tab; the shell has already opened this panel.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<DetailsRequest>).detail;
+      setTab(d.tab);
+      takeDetailsRequest();
+      if (d.focus === "crop") focusCrop();
+    };
+    window.addEventListener(DETAILS_EVENT, on);
+    return () => window.removeEventListener(DETAILS_EVENT, on);
+  }, []);
+  useEffect(() => { if (first.current?.focus === "crop") focusCrop(); first.current = null; }, []);
   const tab: DetailTab = tabs.includes(picked) ? picked : "video";
   const roving = useRovingTabindex(tabs.length, { rtl: dir === "rtl", onMove: (i) => setTab(tabs[i]!) });
   return (
@@ -686,6 +703,16 @@ function Editor({ store }: { store: ProjectStore }) {
     if (opening) setDetent(id === "edit" ? "peek" : "half"); // Edit starts small so the picture and the timeline stay in view
   };
   const closeSheet = useCallback(() => setSheet(false), []);
+  // The toolbar's Speed and Crop and the phone strip's: show Details where this layout keeps it (the docked column, the tablet's tool panel, the phone's sheet).
+  useEffect(() => {
+    const open = () => {
+      if (wide) { setInspCollapsed(false); return; }
+      setTool("edit");
+      if (roomy) setLibCollapsed(false); else { setSheet(true); setDetent("peek"); }
+    };
+    window.addEventListener(DETAILS_EVENT, open);
+    return () => window.removeEventListener(DETAILS_EVENT, open);
+  }, [wide, roomy, setInspCollapsed, setLibCollapsed]);
   // WCAG 2.4.11 Focus Not Obscured: on a phone the open tool sheet is drawn over the timeline. When keyboard focus moves from the sheet to a control it
   // would cover, the sheet steps aside (closes) instead of leaving focus on something nobody can see.
   useEffect(() => {
@@ -755,7 +782,8 @@ function Editor({ store }: { store: ProjectStore }) {
       </header>
 
       <main className="workspace" ref={workspaceRef} data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined} data-lib={roomy && libCollapsed ? "collapsed" : undefined} data-insp={inspCollapsed ? "collapsed" : undefined}>
-        {!railHidden && <nav className="tools" aria-label={t("tools.nav")}>
+        {!roomy && !showHome && <ToolStrip mediaOpen={sheet && active.id === "media"} editOpen={sheet && active.id === "edit"} canOverlay={openId !== null} onMedia={() => pick("media")} onEdit={() => pick("edit")} onCanvas={() => setDialog("canvas")} />}
+        {roomy && !railHidden && <nav className="tools" aria-label={t("tools.nav")}>
           {rail.map((x) => (
             <button key={x.id} className="tool" aria-pressed={activeId === x.id && (roomy || sheet)} onClick={() => pick(x.id)}>
               <Icon name={x.icon} size={24} />

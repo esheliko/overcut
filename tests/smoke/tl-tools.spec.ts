@@ -7,7 +7,7 @@ test("the tool picker names the tool, tints when it is not Select, and Esc on th
   await page.goto("/?sample");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const picker = page.getByTestId("tl-tool");
-  await expect(picker).toHaveText(/Select/);
+  await expect(picker).toHaveAttribute("aria-label", /Select/); // an icon button now: the name is the label
   await expect(picker).toHaveAttribute("data-tool", "select");
   await picker.click();
   for (const k of ["select", "ripple", "roll", "slip", "slide"]) {
@@ -17,7 +17,7 @@ test("the tool picker names the tool, tints when it is not Select, and Esc on th
   }
   await page.getByTestId("tl-tool-slip").click();
   await expect(picker).toHaveAttribute("data-tool", "slip");
-  await expect(picker).toHaveClass(/on/); // tinted: nobody is stuck in a tool without noticing
+  await expect(picker).toHaveAttribute("aria-pressed", "true"); // tinted: nobody is stuck in a tool without noticing
   await picker.click();
   await expect(page.getByTestId("tl-tool-slip")).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Escape"); // closes the menu
