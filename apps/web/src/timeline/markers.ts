@@ -58,3 +58,20 @@ export const clearRangePlan = (scene: Scene): Plan => (scene.range ? { ops: [set
 export const loopPlan = (scene: Scene): Plan => (scene.range
   ? { ops: [setRangeOp(scene.sequenceId, scene.range, !scene.loop)], say: { key: scene.loop ? "timeline.say.range.loopOff" : "timeline.say.range.loopOn" } }
   : none("timeline.say.range.none"));
+
+/**
+ * Where Up / Down (edit points) and Shift+Up / Down (markers) take the playhead from `tick`: the nearest clip start or end on ANY track (markers: marker
+ * positions) strictly before or after it, or null when there is none that way. Pure; scans each clip once (a key press, not a frame).
+ */
+export function jumpTarget(scene: Scene, tick: number, to: "prevCut" | "nextCut" | "prevMarker" | "nextMarker"): number | null {
+  const next = to === "nextCut" || to === "nextMarker";
+  const gap = Math.max(1, Math.floor(scene.frameTicks / 2)); // the playhead is on a whole frame: an edge within half a frame of it is "here"
+  let best: number | null = null;
+  const see = (at: number) => {
+    if (next ? at < tick + gap : at > tick - gap) return;
+    if (best === null || (next ? at < best : at > best)) best = at;
+  };
+  if (to === "prevMarker" || to === "nextMarker") for (const m of scene.markers) see(m.ticks);
+  else for (let i = 0; i < scene.clipCount; i++) { see(scene.tStart[i]!); see(scene.tStart[i]! + scene.tDur[i]!); }
+  return best;
+}

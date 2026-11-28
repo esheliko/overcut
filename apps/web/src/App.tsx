@@ -390,9 +390,10 @@ function Editor({ store }: { store: ProjectStore }) {
     announce,
     refused: (m) => setRefusals((all) => (all.includes(m) ? all : [...all, m])),
     // One import rule: the file is in the bin; on an empty timeline (or a drop onto it) it is on the timeline too, else the person is told and can add it in one tap.
-    result: ({ ids, placed }) => {
-      if (placed) { if (!roomyRef.current) setSheet(false); return; }
-      showToast(t("media.addedToBin", { count: ids.length }), { label: t("media.addShort"), run: () => { for (const id of ids) void mediaRef.current?.addToTimeline(id); setToast(null); } });
+    result: ({ placed, binOnly }) => {
+      if (binOnly.length === 0) { if (placed && !roomyRef.current) setSheet(false); return; }
+      // Sound-only files went on the timeline (UX r16); the videos that did not are only in the bin: say so, one tap adds them (in order, each after the last picture).
+      showToast(t("media.addedToBin", { count: binOnly.length }), { label: t("media.addShort"), run: () => { void (async () => { for (const id of binOnly) await mediaRef.current?.addToTimeline(id); })(); setToast(null); } });
     },
   });
   const mediaRef = useRef(media);

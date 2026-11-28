@@ -106,6 +106,36 @@ export function placeAt(p: Project, want: number, length: number, only?: readonl
   return free ? Math.max(0, want) : timelineEnd(p);
 }
 
+/**
+ * The main video track (V1): the first unlocked video track. Pictures (video, photo) always append to its end.
+ * @see landingStart
+ */
+export const mainVideoTrack = (p: Project): Track | undefined => (p.sequences[0]?.tracks ?? []).find((t) => t.kind === "video" && !t.locked);
+
+/** End of the last clip on the main video track: where the next picture lands. Audio-only items never move this point (UX r16, DESK-1). */
+export function pictureEnd(p: Project): number {
+  const last = mainVideoTrack(p)?.clips[mainVideoTrack(p)!.clips.length - 1];
+  return last ? last.start + last.duration : 0;
+}
+
+/**
+ * The one rule for where media lands (CapCut's): a picture (video, photo) goes right after the last picture on V1, whatever else the project holds
+ * (music longer than the pictures never pushes it); sound-only media goes at `start` (a drop) or the playhead, on a free audio track (`insertOps`).
+ * A picture dropped on another video lane (a picture-in-picture) lands at the dropped time when the room is free there, else at the end of that lane.
+ * `start` is the dropped time; when absent, the playhead.
+ */
+export function landingStart(p: Project, media: MediaRef, o: { start?: number; playhead: number; track?: string }): number {
+  if (media.kind === "audio") return Math.max(0, o.start ?? o.playhead);
+  const main = mainVideoTrack(p);
+  const lane = o.track && o.track !== main?.id ? p.sequences[0]?.tracks.find((t) => t.id === o.track && t.kind === "video" && !t.locked) : undefined;
+  if (!lane) return pictureEnd(p);
+  const len = media.kind === "image" ? STILL_SECONDS * TICKS : media.duration ?? 0;
+  const want = Math.max(0, o.start ?? o.playhead);
+  const free = lane.clips.every((c) => want + len <= c.start || c.start + c.duration <= want);
+  const last = lane.clips[lane.clips.length - 1];
+  return free ? want : last ? last.start + last.duration : 0;
+}
+
 /** The tracks a media item goes on: the first unlocked video and audio track, except that `target` (a dropped-on lane) takes the slot of its own kind. */
 export function destTracks(p: Project, media: MediaRef, target?: string): { vt: Track | undefined; at: Track | undefined } {
   const tracks = p.sequences[0]?.tracks ?? [];

@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { magneticStore } from "../timeline/magneticStore";
 import { useI18n } from "../i18n";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { announce } from "../a11y/announcer";
@@ -15,7 +16,10 @@ export function SpeedSection(): ReactNode {
   const project = useProjectStore((s) => s.project);
   const selection = useProjectStore((s) => s.selection);
   const readOnly = useProjectStore((s) => s.readOnly);
-  const [ripple, setRipple] = useState(false);
+  // "Move later clips to follow" follows the Magnetic main track until the person decides otherwise here, so the two never contradict (UX r16, DESK-5).
+  const magnetic = useSyncExternalStore(magneticStore.subscribe, magneticStore.get, magneticStore.get);
+  const [choice, setRipple] = useState<boolean | null>(null);
+  const ripple = choice ?? magnetic;
   const [message, setMessage] = useState("");
   const target = speedTarget(project, selection);
   if (!target) return <p className="insp-empty">{t("speed.none")}</p>;
