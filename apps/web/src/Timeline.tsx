@@ -42,6 +42,8 @@ import { TrackMenu, type TrackAction, type TrackMenuTarget } from "./timeline/Tr
 import { addTrack, removeTrack, renameTrack, reorderTrack, toggleTrack, TRACK_SAY_KEYS } from "./timeline/tracks";
 import { useProjectStore, useStore } from "./store/projectStore";
 /** Touch screens have nothing to drop files from: the empty-timeline hint only mentions what they can do. */
+/** The phone bar (<= 480 px) drops the zoom buttons and the clip tools, so the More menu carries them there; wider bars show them, and More does not repeat them (customer r15: "too long, I don't understand a thing there"). */
+const narrowBar = (): boolean => typeof matchMedia === "function" && matchMedia("(max-width: 480px)").matches;
 const coarsePointer = (): boolean => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
 export const TIMELINE_SECONDS = 60;
@@ -527,10 +529,9 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
             { id: "addv", section: t("timeline.more.tracks"), disabled: off, label: t("timeline.track.addVideo"), testid: "track-add-video", onSelect: () => trackAction({ a: "add", kind: "video" }) },
             { id: "adda", disabled: off, label: t("timeline.track.addAudio"), testid: "track-add-audio", onSelect: () => trackAction({ a: "add", kind: "audio" }) },
             { id: "topts", label: t("timeline.track.optionsButton"), disabled: off || oneIdx.length === 0, reason: t("timeline.why.select"), testid: "tl-track-options", onSelect: () => openMenu({ kind: "track", track: scene.clipTrack[oneIdx[0]!]! }, bar!) },
-            ...(onImport ? [{ id: "import", disabled: off, label: t("cmd.media.import"), hint: keyHint("media.import"), testid: "tl-import", onSelect: () => run({ c: "import" }) }] : []),
             ...(onAddMedia ? [
               { id: "addm", disabled: off, label: t("timeline.addMedia.atPlayhead"), testid: "tl-add-media", onSelect: () => run({ c: "addMedia", overlay: false }) },
-              { id: "addo", disabled: off, label: t("timeline.addMedia.overlay"), testid: "tl-add-overlay", onSelect: () => run({ c: "addMedia", overlay: true }) },
+              ...(narrowBar() ? [{ id: "addo", disabled: off, label: t("timeline.addMedia.overlay"), testid: "tl-add-overlay", onSelect: () => run({ c: "addMedia", overlay: true }) }] : []),
             ] : []),
             { id: "rin", section: t("timeline.more.markers"), label: t("timeline.range.in"), disabled: off, hint: keyHint("range.in"), testid: "tl-range-in", onSelect: () => run({ c: "range", what: "in" }) },
             { id: "rout", label: t("timeline.range.out"), disabled: off, hint: keyHint("range.out"), testid: "tl-range-out", onSelect: () => run({ c: "range", what: "out" }) },
@@ -540,9 +541,10 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
             { id: "mark", label: t("timeline.marker.add"), disabled: off, hint: keyHint("marker.add"), testid: "tl-marker-add", onSelect: () => run({ c: "marker" }) },
             { id: "medit", label: t("timeline.marker.edit"), disabled: off || !scene.markers.some((m) => m.ticks === Math.round((store.getState().playhead * TICKS_PER_SECOND) / FPS)), reason: t("timeline.why.marker"), testid: "tl-marker-edit", onSelect: () => run({ c: "markerEdit" }) },
             { id: "zsel", section: t("timeline.more.view"), label: t("timeline.zoomSelection"), hint: keyHint("view.zoomSelection"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-zoom-selection", onSelect: () => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { c: "zoom", how: "selection" } })) },
-            { id: "zin", label: t("timeline.zoomIn"), hint: "+", onSelect: () => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user") },
-            { id: "zout", label: t("timeline.zoomOut"), hint: "-", onSelect: () => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user") },
-            { id: "fit", label: t("timeline.fit"), hint: "0", testid: "tl-fit-menu", onSelect: fit },
+            ...(narrowBar() ? [
+              { id: "zin", label: t("timeline.zoomIn"), hint: "+", onSelect: () => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user") },
+              { id: "zout", label: t("timeline.zoomOut"), hint: "-", onSelect: () => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user") },
+            ] : []),
             { id: "history", disabled: off, label: t("timeline.history"), testid: "tl-history", onSelect: () => setDialog("history") },
           ]} />}
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}

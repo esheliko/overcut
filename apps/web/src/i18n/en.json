@@ -858,7 +858,7 @@
   "cmd.transport.stepForward": "Step forward one frame",
   "cmd.transport.toStart": "Go to start",
   "cmd.transport.toEnd": "Go to end",
-  "timeline.track.optionsButton": "Track options (of the selected clip's track)",
+  "timeline.track.optionsButton": "Track settings…",
   "timeline.track.add": "Add a track",
   "timeline.track.addVideo": "Add video track",
   "timeline.track.addAudio": "Add audio track",
