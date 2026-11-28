@@ -58,11 +58,12 @@ test("first import: rail shows only working tools, the zoom fits the clip, undo 
   expect(toastBox && timelineBox && toastBox.y + toastBox.height <= timelineBox.y + 1).toBe(true);
   await expect(page.locator("#tl-summary")).toContainText("1 clip");
 
-  // Undo names the import; using it announces and shows what was undone.
+  // Undo names the import; using it announces what was undone (no toast since r15: the timeline change is the feedback).
   const undo = page.getByRole("button", { name: "Undo import of flash_click.mp4" });
   await expect(undo).toBeVisible();
   await undo.click();
-  await expect(page.locator(".toast")).toContainText("Undid import of flash_click.mp4");
+  await expect(page.locator('[data-announcer="polite"]')).toContainText("Undid import of flash_click.mp4");
+  await expect(page.locator(".toast")).not.toContainText("Undid");
   await expect(page.locator("#tl-summary")).toContainText("0 clips");
   await expect(page.getByRole("button", { name: "Redo import of flash_click.mp4" })).toBeVisible();
 

@@ -202,7 +202,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     const what = which === "undo" ? undoLabelRef.current : redoLabelRef.current;
     (which === "undo" ? p.undo() : p.redo())
       .then((out) => {
-        if (out?.changed && what) { const s = say(which === "undo" ? "timeline.say.undid" : "timeline.say.redid", { what }); speak(s); onNotice(t(s.key, s.values)); } // a visible hint too: "Undid import of clip.mp4"
+        if (out?.changed && what) speak(say(which === "undo" ? "timeline.say.undid" : "timeline.say.redid", { what })); // announced, not toasted: the change on the timeline is the feedback and the Undo/Redo buttons name the step (customer feedback r15: an undo toast after every move is noise)
         else speak(say(DONE[which][out?.changed ? 0 : 1]));
       })
       .catch(() => onNotice(t("timeline.say.failed")));
