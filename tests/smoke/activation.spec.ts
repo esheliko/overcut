@@ -36,7 +36,7 @@ test("first-time journey: import, cut the start off, export, save", async ({ pag
   // The timeline fits itself to the new clips right after an import (a frame or two later): read the zoom once it has settled.
   let pps = 0;
   await expect.poll(async () => { const a = Number(await canvas.getAttribute("data-pps")); await page.waitForTimeout(150); const b = Number(await canvas.getAttribute("data-pps")); pps = b; return a === b && b > 0; }).toBe(true);
-  const gutter = 48 + (await gutterShift(page)), ruler = 30, lane = 52;
+  const gutter = 48 + (await gutterShift(page)), ruler = 30, lane = 60;
   const at = (sec: number, row: number) => ({ x: box.x + gutter + sec * pps, y: box.y + ruler + lane * (row + 0.5) });
   const pointer = async (p: { x: number; y: number }) => (phone ? page.touchscreen.tap(p.x, p.y) : page.mouse.click(p.x, p.y));
   await hit(() => pointer({ x: box.x + gutter + 1 * pps, y: box.y + ruler / 2 }));

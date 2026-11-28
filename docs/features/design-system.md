@@ -5,6 +5,8 @@ Source of truth: `apps/web/src/theme/tokens.css` (colours, type, radius, elevati
 ## Rules
 - **Type**: Inter variable (latin + latin-ext, SIL OFL, files and licence in `theme/fonts/`, no CDN). Scale `--text-2xs 11 / xs 12 / sm 13 / base 14 / md 16 / lg 18 / xl 22`. Weights 400 / 500 / 600; 700 only on primary buttons. Numerals that change (timecode, sizes) use tabular figures.
 - **Lines**: `--line-strong` (control borders) is at least 3:1 on every surface (WCAG 1.4.11, pinned by `tests/unit/theme-contrast.test.ts`); `--line` is the quiet panel edge.
+- **Shell (r14)**: flush panels separated by 1 px dividers (the workspace paints `--line` behind a 1 px grid gap); no floating cards, gaps or shadows between Media, Preview, Details and Timeline. Panel headers 38 px with a mouse, 44 px on touch. The preview sits on `--stage`. Dark is the default on a first run; an explicit choice (including "system") wins.
+- **Timeline clips (r14)**: 60 px lanes, 6 px clip corners, full-bleed filmstrip, name and duration in dark chips, filled mirrored waveform, selection = 3 px accent border + white trim handles, 2 px playhead.
 - **Radius ladder**: `--radius-xs` 4 keycaps, `--radius-sm` 8 controls, `--radius-md` 12 cards/panels/menus/toasts, `--radius-lg` 16 dialogs and sheets, `--radius-full` pills.
 - **Elevation**: `--elev-1` cards, `--elev-2` menus/popovers/toasts, `--elev-3` dialogs/sheets. `--scrim` dims the app under dialogs in every theme (blur where supported).
 - **Accent** is for the primary action, selection, focus and the playhead. Secondary actions are outline or ghost. The timecode is `--fg`.

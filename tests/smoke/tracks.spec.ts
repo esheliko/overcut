@@ -10,7 +10,7 @@ test("tracks: add a track, rename it from its header menu, video tracks have no 
   const canvas = page.getByTestId("timeline-canvas");
   const box = (await canvas.boundingBox())!;
   // Add a video track: with the toolbar button (desktop) or from a header menu (phone, where the toolbar button makes room).
-  const header = async (row: number, dx: number, dy: number) => (phone ? page.touchscreen.tap(box.x + dx, box.y + 30 + row * 52 + dy) : page.mouse.click(box.x + dx, box.y + 30 + row * 52 + dy));
+  const header = async (row: number, dx: number, dy: number) => (phone ? page.touchscreen.tap(box.x + dx, box.y + 30 + row * 60 + dy) : page.mouse.click(box.x + dx, box.y + 30 + row * 52 + dy));
   if (phone) { await header(0, 20, 20); await page.getByTestId("track-add-video").click(); }
   else { await page.getByTestId("tl-more").click(); await page.getByTestId("track-add-video").click(); }
   await expect(summary).toContainText("3 tracks");

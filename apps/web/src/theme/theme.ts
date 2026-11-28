@@ -20,14 +20,15 @@ export function parsePref(v: unknown): ThemePref {
   return THEME_PREFS.includes(v as ThemePref) ? (v as ThemePref) : "system";
 }
 
+/** First run (nothing stored) opens dark, like a pro editor; "follow the system" is an explicit choice that is stored too (r14). */
 export function loadPref(): ThemePref {
-  try { return parsePref(localStorage.getItem(STORE_KEY)); } catch { return "system"; }
+  try {
+    const v = localStorage.getItem(STORE_KEY);
+    return v === null ? "dark" : parsePref(v);
+  } catch { return "dark"; }
 }
 export function savePref(pref: ThemePref): void {
-  try {
-    if (pref === "system") localStorage.removeItem(STORE_KEY);
-    else localStorage.setItem(STORE_KEY, pref);
-  } catch { /* not persisted */ }
+  try { localStorage.setItem(STORE_KEY, pref); } catch { /* not persisted */ }
 }
 
 /** Set `<html data-theme>` and tell canvas code to re-read tokens. */

@@ -129,6 +129,7 @@ test("device check: reachable from the menu, shows capabilities, runs the test, 
 
 test("theme: follows the system, the toggle overrides it, the choice is remembered, and the page never scrolls sideways", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
+  await page.addInitScript(() => { try { if (!localStorage.getItem("overcut.theme")) localStorage.setItem("overcut.theme", "system"); } catch { /* ignore */ } }); // r14: a first run is dark; "follow the system" is now an explicit choice
   await page.goto("/");
   const html = page.locator("html");
   await expect(html).toHaveAttribute("data-theme", "light");
@@ -187,7 +188,7 @@ test("timeline editing: select, split, delete, undo and redo go through the engi
   await expect(undo).toBeDisabled();
   if (!phone) await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeDisabled(); // the phone strip shows Delete only with a clip selected
 
-  // Sample layout at the default zoom (40 px/s): gutter 48 px, ruler 30 px, lane 52 px; the first video clip spans x 48..168.
+  // Sample layout at the default zoom (40 px/s): gutter 48 px, ruler 30 px, lane 60 px; the first video clip spans x 48..168.
   const box = (await canvas.boundingBox())!;
   const dg = await gutterShift(page);
   const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + dg + x, box.y + y) : page.mouse.click(box.x + dg + x, box.y + y));
@@ -357,7 +358,7 @@ for (const p of PROFILES) {
       expect(await page.locator('[data-testid="tl-bar"] .zoom').count()).toBe(1);
     }
     if (p.name === "phone-portrait" && p.w === 320) { // A5: the track area holds the ruler and two lanes (V1, A1) without clipping
-      expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(30 + 2 * 52);
+      expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(30 + 2 * 60);
     }
     if (p.name === "phone-landscape") { // B3: one toolbar row, and the track area keeps at least 160 px
       expect((await page.locator(".tl-stage").boundingBox())!.height).toBeGreaterThanOrEqual(160);

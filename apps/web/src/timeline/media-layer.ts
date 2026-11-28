@@ -13,7 +13,7 @@ import { LANE, type View } from "./view";
 /** Geometry shared with draw.ts's clip body (y offset inside the lane and height). */
 export const BODY_Y = 3, BODY_H = LANE - 7;
 const WAVE_H = BODY_H - 4;
-const FILM_Y = 5, FILM_H = LANE - 11;
+const FILM_Y = BODY_Y, FILM_H = BODY_H; // r14: the filmstrip is full-bleed inside the rounded body (the name chip floats over it)
 
 export class MediaLayer {
   readonly waveforms: WaveformService;
@@ -64,10 +64,11 @@ export class MediaLayer {
 export function drawWaveform(ctx: CanvasRenderingContext2D, layer: MediaLayer, scene: Scene, i: number, x: number, a: number, b: number, y: number, v: View, p: Palette) {
   const m = scene.mediaById.get(scene.media[i]!);
   const mid = y + BODY_Y + BODY_H / 2;
+  const a0 = ctx.globalAlpha; // a muted or hidden track is drawn faded: keep that
   ctx.fillStyle = p.audioWave;
-  ctx.globalAlpha = 0.5;
+  ctx.globalAlpha = a0 * 0.5;
   ctx.fillRect(a, mid, b - a, 1); // baseline: visible while data is on its way, under the waveform otherwise
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = a0;
   if (!m) return;
   const e = layer.waveforms.request(m);
   if (!e.view || e.sampleRate === 0) return;
@@ -80,6 +81,7 @@ export function drawWaveform(ctx: CanvasRenderingContext2D, layer: MediaLayer, s
   const t1 = Math.floor((src + (b - x) / v.pps) / tileSec);
   const top = y + BODY_Y + 2;
   ctx.imageSmoothingEnabled = false; // tile columns map ~1:1 to pixels; nearest is much cheaper to rasterize than bilinear
+  ctx.globalAlpha = a0 * 0.88; // a loud clip fills the lane: keep the shape quieter than the name chips
   for (let t = t0; t <= t1; t++) {
     const tile = layer.waveforms.tile(e, bucket, t);
     if (!tile) continue;
@@ -89,6 +91,7 @@ export function drawWaveform(ctx: CanvasRenderingContext2D, layer: MediaLayer, s
     const sx = ((x0 - tx) / tileW) * TILE_COLS, sw = ((x1 - x0) / tileW) * TILE_COLS;
     ctx.drawImage(tile.canvas as CanvasImageSource, sx, 0, sw, tile.canvas.height, x0, top, x1 - x0, WAVE_H);
   }
+  ctx.globalAlpha = a0;
 }
 
 /** Filmstrip for clip `i`; slots without a bitmap yet are drawn as `p.videoTile` rectangles. */
@@ -110,7 +113,7 @@ export function drawFilmstrip(ctx: CanvasRenderingContext2D, layer: MediaLayer, 
     const x0 = Math.max(a, sx), x1 = Math.min(b, sx + slotW, clipEnd);
     if (x1 - x0 < 2) continue;
     const bmp = m ? layer.thumbs.get(m, fp, iv, k) : null;
-    if (!bmp) { ctx.fillRect(x0 + 1, ty, x1 - x0 - 2, FILM_H); continue; }
+    if (!bmp) { ctx.fillRect(x0, ty, x1 - x0, FILM_H); continue; }
     // "Cover": fit the slot, crop what overflows, so thumbnails of any aspect tile without distortion.
     const slotAspect = slotW / FILM_H, imgAspect = bmp.width / bmp.height;
     let cw = bmp.width, ch = bmp.height, cx = 0, cy = 0;

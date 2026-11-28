@@ -9,7 +9,7 @@ test("mouse: dragging the second clip over the first reorders them; one undo put
   const canvas = page.getByTestId("timeline-canvas");
   const first = page.getByTestId("tl-clip-list").locator("li").first();
   const before = await first.textContent();
-  // Sample at 40 px/s: gutter 48, ruler 30, lane 52. Clip 0 spans x 48..168, clip 1 x 218..478 on the first video track.
+  // Sample at 40 px/s: gutter 48, ruler 30, lane 60. Clip 0 spans x 48..168, clip 1 x 218..478 on the first video track.
   const box = (await canvas.boundingBox())!;
   const y = box.y + 30 + 26;
   const dg = await gutterShift(page);

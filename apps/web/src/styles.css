@@ -79,7 +79,8 @@ h2, p { margin: 0; }
 .sheet-scrim { position: fixed; z-index: 19; inset-inline: 0; inset-block: calc(var(--top, 52px) + env(safe-area-inset-top)) calc(68px + env(safe-area-inset-bottom)); background: var(--scrim); animation: scrim-in var(--dur-base) var(--ease-out); }
 @keyframes rise { from { transform: translateY(24px); opacity: 0; } }
 
-.panel-head { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 var(--panel-pad); } /* Media and Details share one header height and one inset (V-08) */
+.panel-head { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 var(--panel-pad); }
+@media (pointer: fine) { .panel-head { min-height: 38px; } } /* r14: compact panel headers with a mouse (44 px on touch) */ /* Media and Details share one header height and one inset (V-08) */
 .panel-head h2 { font-size: var(--text-sm); font-weight: 600; color: var(--muted); }
 .pill { padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: var(--text-xs); font-weight: 600; }
 .search { display: flex; align-items: center; gap: 8px; margin: 4px var(--panel-pad) 8px; padding: 0 12px; height: max(40px, var(--target)); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--muted); }
@@ -103,8 +104,8 @@ h2, p { margin: 0; }
 
 /* Preview */
 .stage { container: stage / inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
-.stage-view { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 12px; container-type: size; }
-.canvas { position: relative; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); max-height: 100cqh; display: grid; place-items: center; background: var(--stage); border-radius: var(--radius-sm); box-shadow: 0 0 0 1px var(--line-strong), inset 0 0 0 1px color-mix(in srgb, var(--stage-fg) 8%, transparent), 0 6px 20px color-mix(in srgb, var(--stage) 40%, transparent); transition: width var(--dur-slow) ease, aspect-ratio var(--dur-slow) ease; }
+.stage-view { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 12px; container-type: size; background: var(--stage); } /* r14: the picture sits on the darkest surface, darker than the chrome */
+.canvas { position: relative; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); max-height: 100cqh; display: grid; place-items: center; background: var(--stage); border-radius: 0; box-shadow: 0 0 0 1px var(--line); transition: width var(--dur-slow) ease, aspect-ratio var(--dur-slow) ease; }
 .preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: var(--stage); }
 .scrub-prep { position: absolute; bottom: 8px; inset-inline-start: 8px; max-width: calc(100% - 16px); padding: 2px 10px; border-radius: 999px; background: var(--surface-3); color: var(--muted); font: 500 12px/1.6 var(--font-ui, inherit); pointer-events: none; }
 .rate-badge { position: absolute; top: 8px; inset-inline-end: 8px; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--fg); font: 700 12px/1.6 var(--font-mono); direction: ltr; }
@@ -128,7 +129,9 @@ h2, p { margin: 0; }
 
 /* Timeline */
 .timeline { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); border-top: 1px solid var(--line); }
+@container editor (min-width: 720px) { .timeline { border-top: 0; } } 
 .tl-bar { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 6px; min-height: 48px; border-bottom: 1px solid var(--line); }
+@container editor (min-width: 720px) { .tl-bar { padding-inline: 8px 12px; } } /* r14: flush panels, keep the toolbar off the window edge */
 .tl-group, .zoom { display: flex; align-items: center; gap: 0; }
 @media (min-width: 600px) { .tl-bar > .tl-group { flex: 0 0 auto; } } /* tablet and up: the tools never shrink into each other (a phone keeps shrinking them: the pill is hidden there and the bar must fit 320 px): the zoom slider and the selection pill give way first (820 px with a linked clip selected overlapped "More") */
 @media (pointer: coarse) and (min-width: 360px) { .tl-group, .zoom { gap: 4px; } .sep { margin: 0 2px; } } /* I-02: touch buttons do not touch */
@@ -227,14 +230,14 @@ h2, p { margin: 0; }
 
 /* Tablet and up: rail | tool panel | preview over a full-width timeline */
 @container editor (min-width: 720px) {
-  .workspace { --lib-w: minmax(240px, 300px); --insp-w: 300px; grid-template-columns: 84px var(--lib-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--tl-row, clamp(200px, 38%, 380px)); grid-template-areas: "tools library stage" "timeline timeline timeline"; gap: 6px; padding: 0 6px 6px; }
+  .workspace { --lib-w: minmax(240px, 300px); --insp-w: 300px; grid-template-columns: 84px var(--lib-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--tl-row, clamp(200px, 38%, 380px)); grid-template-areas: "tools library stage" "timeline timeline timeline"; gap: 1px; padding: 0; background: var(--line); } /* r14: flush panels, the 1 px gaps show the divider colour */
   .workspace[data-lib="collapsed"] { --lib-w: 52px; }
   .workspace[data-insp="collapsed"] { --insp-w: 52px; }
-  .tools, .library, .stage, .timeline { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .tools, .library, .stage, .timeline { border: 0; border-radius: 0; overflow: hidden; }
   .stage { background: var(--surface); }
   .tools { flex-direction: column; padding: 8px 6px; overflow-y: auto; overflow-x: hidden; }
   .tool { width: 100%; min-height: 58px; flex: 0 0 auto; }
-  .library, .library[data-open="true"] { display: flex; position: static; height: auto; padding-top: 4px; border-radius: var(--radius); border: 1px solid var(--line); box-shadow: none; animation: none; }
+  .library, .library[data-open="true"] { display: flex; position: static; height: auto; padding-top: 0; border-radius: 0; border: 0; box-shadow: none; animation: none; }
   .library::before, .library[data-open="true"]::before, .sheet-close { display: none; }
   /* One tool (Media) and its panel always open: no rail, its column goes to the panels */
   .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
@@ -268,11 +271,11 @@ h2, p { margin: 0; }
   .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr) var(--insp-w); grid-template-areas: "library stage inspector" "timeline timeline timeline"; }
   .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
   .workspace[data-lib="collapsed"] { --lib-w: 52px; }
-  .inspector { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .inspector { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border: 0; border-radius: 0; overflow: hidden; }
 }
 /* Ultrawide (>= 1900 px and at least 2:1): wider side panels, the timeline gets the extra width and more height */
 @container editor (min-width: 1900px) and (min-aspect-ratio: 2/1) {
-  .workspace { --lib-w: 360px; --insp-w: 380px; grid-template-columns: 96px var(--lib-w) minmax(0, 1fr) var(--insp-w); grid-template-rows: minmax(0, 1fr) var(--tl-row, clamp(240px, 42%, 460px)); gap: 8px; padding: 0 8px 8px; }
+  .workspace { --lib-w: 360px; --insp-w: 380px; grid-template-columns: 96px var(--lib-w) minmax(0, 1fr) var(--insp-w); grid-template-rows: minmax(0, 1fr) var(--tl-row, clamp(240px, 42%, 460px)); gap: 1px; padding: 0; }
   .workspace[data-inspector="false"] { grid-template-columns: 96px var(--lib-w) minmax(0, 1fr); }
   .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr) var(--insp-w); }
   .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); }
@@ -282,7 +285,7 @@ h2, p { margin: 0; }
 /* Phone landscape (short screen on its side): slim tool rail | preview | timeline, side by side. The picture gets the full height (it was a 34 x 19 px
    thumbnail when the timeline sat under it); the tool panel slides in from the side over the preview. */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) {
-  .workspace { grid-template-columns: 72px minmax(0, 48fr) minmax(0, 52fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "tools stage timeline"; gap: 4px; padding: 0 4px 4px; }
+  .workspace { grid-template-columns: 72px minmax(0, 48fr) minmax(0, 52fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "tools stage timeline"; gap: 1px; padding: 0; background: var(--line); }
   /* One toolbar row, 44 px tall (scrolls sideways when the column is narrow), then the track area */
   .tl-bar { min-height: 44px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; }
   .tl-bar .tl-sel, .tl-bar .tl-wide, .tl-bar .zoom input { display: none; } /* the column is narrow: pinch zooms, the fit button stays */
@@ -296,7 +299,7 @@ h2, p { margin: 0; }
   .sheet-close { display: inline-grid; top: 6px; }
   .sheet-scrim { inset-block-end: 0; inset-inline-start: calc(72px + env(safe-area-inset-left)); } /* no bottom tool bar on its side: the backdrop reaches the bottom and leaves the rail usable */
   .persist-notes { bottom: 12px; }
-  .stage { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; padding-block-end: 0; }
+  .stage { border: 0; border-radius: 0; overflow: hidden; padding-block-end: 0; }
   .panel-collapse { display: none; }
   .timeline { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 }

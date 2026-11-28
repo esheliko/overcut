@@ -9,7 +9,8 @@ export const GUTTER = 48;
 export const GUTTER_WIDE = 172;
 export const GUTTER_COMPACT = 60;
 export const RULER = 30;
-export const LANE = 52;
+/** Lane height (r14: was 52). One height for every track: per-kind heights would put hit-testing, drag rows and scrolling on a cumulative table (see docs/m2/ux-r14-a-look.md). */
+export const LANE = 60;
 export const END_PAD = 96;
 
 export interface View {
