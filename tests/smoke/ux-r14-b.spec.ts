@@ -20,7 +20,7 @@ test("clip actions: an icon toolbar on desktop, a tool strip on the phone, both 
     await expect(del).toBeDisabled();
     await del.locator("xpath=..").hover();
     await expect(del.locator("xpath=..").locator(".tb-tip")).toContainText("Select a clip first");
-    for (const id of ["tl-speed", "tl-crop", "tl-ripple-delete", "tl-duplicate-btn"]) await expect(page.getByTestId(id)).toBeDisabled();
+    for (const id of ["tl-speed", "tl-duplicate-btn"]) await expect(page.getByTestId(id)).toBeDisabled();
   }
 
   const box = (await canvas.boundingBox())!; // measured now: the toolbar above may have settled
@@ -39,7 +39,7 @@ test("clip actions: an icon toolbar on desktop, a tool strip on the phone, both 
     await page.getByTestId("strip-back").click();
     await expect(strip).toHaveAttribute("data-mode", "global");
   } else {
-    for (const id of ["tl-speed", "tl-crop", "tl-ripple-delete", "tl-duplicate-btn"]) await expect(page.getByTestId(id)).toBeEnabled();
+    for (const id of ["tl-speed", "tl-duplicate-btn"]) await expect(page.getByTestId(id)).toBeEnabled();
     await page.getByTestId("tl-speed").click();
     await expect(page.getByTestId("tl-speed-menu")).toBeVisible();
     await page.keyboard.press("Escape");

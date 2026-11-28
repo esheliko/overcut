@@ -393,7 +393,7 @@ h2, p { margin: 0; }
 .menu-status .dot[data-state="ready"] { background: var(--ok); }
 .menu-status .dot[data-state="error"] { background: var(--danger); }
 .menu-status span:last-child { min-width: 0; overflow-wrap: anywhere; }
-.menu-switch { min-height: 56px; padding-block: 8px; }
+.menu-switch { min-height: 56px; padding-block: 8px; align-items: flex-start; } .menu-switch .menu-ic { margin-block-start: 5px; } /* r15: the icon sits on the first line, in the same column as the other rows */
 .menu-text { display: flex; flex-direction: column; flex: 1; min-width: 0; padding-block: 4px; }
 .menu-hint { color: var(--muted); font-size: var(--text-xs); font-weight: 400; line-height: 1.35; overflow-wrap: anywhere; } /* a description line under a switch: regular weight, muted (V-11: it was bold) */
 .menu-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -748,7 +748,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 }
 
 @media (pointer: fine) { .bin-card[data-on] .bin-act.icon-btn { min-width: 36px; min-height: 36px; padding: 0; } } /* the always-visible add button must not squeeze the card text onto a third line */
-@media (pointer: fine) { .bin-card[data-on] .bin-text strong { -webkit-line-clamp: 1; } } /* one-line names on a desktop card (the full name is the tooltip) */
+/* r15: names keep two lines on desktop cards too (customer: could not tell clips apart); the full name is still the tooltip */
 
 /* Export dialog while the browser is asked what it can encode: the final layout in grey (no jump when the answer arrives), see export/ExportDialogView.tsx */
 .export-skel { display: flex; flex-direction: column; gap: var(--space-4); }
@@ -777,6 +777,10 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .insp-info > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
 .insp-info dt { color: var(--muted); }
 .insp-info dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: end; }
+.insp-nothing { display: grid; gap: 4px; } .insp-nothing strong { font-size: var(--text-md); } .insp-nothing { padding-block-end: 12px; } .insp-nothing .insp-empty { margin: 0; padding: 0; }
+.insp-info-edit { display: inline-flex; align-items: center; gap: 4px; min-block-size: 32px; padding: 0 6px; margin: -6px -6px -6px 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--accent-text, var(--accent)); font: inherit; font-weight: 600; cursor: pointer; }
+.insp-info-edit:hover { background: var(--surface-3); } .insp-info-edit:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; }
+@media (pointer: coarse) { .insp-info-edit { min-block-size: 44px; } }
 /* Why the diamonds are off, and the way out (the playhead is not on the selected clip) */
 .insp-hint { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-block-size: 32px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--fg); font-size: var(--text-xs); line-height: 1.25; }
 .insp-hint span { flex: 1; min-inline-size: 0; }
@@ -857,6 +861,11 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .tool-strip[data-mode="clip"] .tool:first-child { color: var(--fg); border-inline-end: 1px solid var(--line); border-radius: 0; margin-inline-end: 4px; }
 .tool-strip .tool:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: -2px; }
 
+/* UX r15 lane A: toolbar and menus */
+.tb-text { margin-inline-start: 6px; font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
+.tb-btn:has(> .tb-text) { width: auto; padding-inline: 10px; }
+@media (max-width: 1100px) { .tl-bar .tb-text { display: none; } .tl-bar .tb-btn:has(> .tb-text) { width: var(--target, 44px); padding-inline: 0; } }
+@media (hover: hover) { .menu-reason { display: none; } } /* a mouse gets the reason as the row's tooltip; a touch screen has no hover, so the line stays */
 /* r15 lane C: a visible way back to Projects in the editor's top bar (a chevron + word on a wide screen, the chevron alone on a phone) */
 .topbar-projects { display: inline-flex; align-items: center; gap: 2px; min-block-size: 36px; padding: 0 10px 0 6px; margin-inline-start: 4px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--muted); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
 .topbar-projects:hover { background: var(--surface-2); color: var(--fg); }

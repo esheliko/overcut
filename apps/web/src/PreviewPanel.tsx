@@ -303,7 +303,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
     return () => { window.clearTimeout(timer); ro.disconnect(); };
   }, [size.width, size.height, view.has, hostVersion]);
 
-  // Transport keys. Space and the shuttle keys also work with the timeline focused; arrows/Home/End leave a focused slider alone (it handles them itself).
+  // Transport keys. Space and the shuttle keys also work with the timeline focused; the arrows, Home and End are the timeline's (it listens on the whole editor, UX r15).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -311,7 +311,6 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       if (e.key === "Escape" && fsRef.current === "overlay") { setFs("off"); e.preventDefault(); return; }
       const typing = !!el.closest("input:not([type=range]), select, textarea, [contenteditable=true]");
       const onButton = !!el.closest("button");
-      const onSlider = !!el.closest("[role=slider], input[type=range]");
       const p = playerRef.current;
       if (!p || typing) return;
       const k = e.key;
@@ -320,10 +319,8 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       let handled = true;
       if (e.code === "Space") { if (onButton || e.repeat) return; p.toggle(); }
       else if (/^[jkl]$/i.test(k)) { if (e.repeat) return; p.key(k.toUpperCase() as "J" | "K" | "L"); }
-      else if ((k === "," && !e.defaultPrevented) || (k === "ArrowLeft" && !onSlider && !onButton)) p.step(-1); // `,` `.` with a clip selected nudge the clip (the timeline took the key): the playhead stays
-      else if ((k === "." && !e.defaultPrevented) || (k === "ArrowRight" && !onSlider && !onButton)) p.step(1);
-      else if (k === "Home" && !onSlider) p.seek(0);
-      else if (k === "End" && !onSlider) p.seek(p.endFrame);
+      else if (k === "," && !e.defaultPrevented) p.step(-1); // `,` `.` with a clip selected nudge the clip (the timeline took the key): the playhead stays
+      else if (k === "." && !e.defaultPrevented) p.step(1);
       else handled = false;
       if (handled) e.preventDefault();
     };

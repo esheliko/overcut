@@ -291,6 +291,18 @@ export function mirrorTrims(scene: Scene, ops: Op[]): Op[] {
 /** Ops that let the selected clips edit alone (`set_link` null), one per linked clip; empty when none is linked. */
 export const unlinkOps = (scene: Scene, sel: readonly number[]): Op[] => sel.filter((i) => scene.link[i]).map((i) => ({ op: "set_link" as const, clip: scene.id[i]!, link: null }));
 
+/** Why `linkOps` has nothing to do: "kinds" when the selection lacks a picture or a sound, "linked" when it is already one linked group. */
+export type LinkWhy = "kinds" | "linked";
+/** Ops that link the selected picture and sound clips into ONE group (UX r15: unlink had no way back): every selected clip gets the same new link id, so they select,
+ *  move, trim and delete together from now on. Times stay as they are (the user lines them up first). Empty with the reason when it cannot apply. */
+export function linkOps(scene: Scene, sel: readonly number[], id: string): { ops: Op[]; why: LinkWhy | null } {
+  const kinds = new Set(sel.map((i) => scene.trackKind[scene.clipTrack[i]!]));
+  if (kinds.size < 2) return { ops: [], why: "kinds" };
+  const links = new Set(sel.map((i) => scene.link[i]!));
+  if (links.size === 1 && !links.has("")) return { ops: [], why: "linked" };
+  return { ops: sel.map((i) => ({ op: "set_link" as const, clip: scene.id[i]!, link: id })), why: null };
+}
+
 /** Deleting the first thing in the project would leave an empty stretch before everything else, and the export would start with
  *  black and silence. For an edit made only of delete / trim-end ops that moved the project's first start later, append moves that
  *  slide every remaining clip left by that amount (same undo step). A start trim (`trim_in`) is never closed: the user moved that

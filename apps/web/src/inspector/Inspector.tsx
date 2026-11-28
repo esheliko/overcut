@@ -115,6 +115,10 @@ function EmptyCard({ icon, title, text, testId }: { icon: "duplicate" | "audio";
   );
 }
 
+/** Opens the canvas dialog (size, frame rate, background) that the preview's ratio chip opens; App listens. */
+export const CANVAS_EVENT = "overcut:open-canvas";
+const openCanvas = (): void => { window.dispatchEvent(new Event(CANVAS_EVENT)); };
+
 /** Nothing selected: what the project is, so the Details panel is never an empty column. */
 function ProjectInfo({ project }: { project: Project }) {
   const { t } = useI18n();
@@ -123,10 +127,14 @@ function ProjectInfo({ project }: { project: Project }) {
   const frames = Math.round((timelineEnd(project) * seq.frame_rate.num) / (TICKS_PER_SECOND * seq.frame_rate.den));
   return (
     <>
-    <p className="insp-empty insp-pick">{t(clipCount(project) === 0 ? "inspector.noneEmpty" : "inspector.none")}</p>
+    {/* r15 (customer: "why is it there if I can't change anything"): say what selecting does, and let the project rows that CAN change open their editor. */}
+    <div className="insp-pick insp-nothing" data-testid="insp-nothing">
+      <strong>{t(clipCount(project) === 0 ? "inspector.noneEmpty.title" : "inspector.none.title")}</strong>
+      <p className="insp-empty">{t(clipCount(project) === 0 ? "inspector.noneEmpty" : "inspector.none")}</p>
+    </div>
     <dl className="insp-info" data-testid="insp-project-info">
-      <div><dt>{t("inspector.info.canvas")}</dt><dd>{canvasSummary(seq.resolution, seq.frame_rate)}</dd></div>
-      <div><dt>{t("inspector.info.background")}</dt><dd data-testid="insp-background">{t(`canvas.bg.${seq.background?.mode ?? "black"}`)}</dd></div>
+      <div><dt>{t("inspector.info.canvas")}</dt><dd><button type="button" className="insp-info-edit" onClick={openCanvas} data-testid="insp-canvas-edit">{canvasSummary(seq.resolution, seq.frame_rate)}<Icon name="chevronRight" size={14} /></button></dd></div>
+      <div><dt>{t("inspector.info.background")}</dt><dd data-testid="insp-background"><button type="button" className="insp-info-edit" onClick={openCanvas}>{t(`canvas.bg.${seq.background?.mode ?? "black"}`)}<Icon name="chevronRight" size={14} /></button></dd></div>
       <div><dt>{t("inspector.info.length")}</dt><dd>{timecodeHMS(frames, seq.frame_rate)}</dd></div>
       <div><dt>{t("inspector.info.clips")}</dt><dd>{clipCount(project)}</dd></div>
     </dl>

@@ -172,6 +172,8 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     // One rule everywhere: a file always lands in the bin; it also goes onto the timeline when the timeline is empty or the person dropped it there.
     const emptyTimeline = clipCount(store.getState().project ?? (await ed.project())) === 0;
     const place = !!opts?.place || emptyTimeline;
+    // Pictures of a batch go one after another; sound-only files (music) start with the batch, under its pictures, as in CapCut (UX r15).
+    const batchStart = place ? timelineEnd(store.getState().project ?? (await ed.project())) : 0;
     const ids: string[] = [];
     const names: string[] = [];
     let placed = false;
@@ -195,7 +197,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           const ops = importOps(cur, ref, res.probed);
           if (place) {
             const withRef: Project = { ...cur, media: [...cur.media, ref] };
-            const put = insertOps(withRef, ref, res.probed, timelineEnd(cur));
+            const put = insertOps(withRef, ref, res.probed, ref.kind === "audio" ? batchStart : timelineEnd(cur));
             if (put) { ops.push(...put); placed = true; }
           }
           patch(id, { status: "ready", kind: res.probed.kind, durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });

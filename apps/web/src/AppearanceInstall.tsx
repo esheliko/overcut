@@ -80,7 +80,7 @@ export function ScrubPrepItem() {
   const hintId = useId();
   return (
     <button className="menu-row menu-switch" role="menuitemcheckbox" aria-checked={on} aria-describedby={hintId} data-testid="menu-scrub-prep" onClick={() => { const v = !on; setOn(v); saveScrubPrep(v); announce(t(v ? "scrub.on" : "scrub.off")); }}>
-      <Icon name="film" size={20} />
+      <Icon name="film" size={16} className="menu-ic" />
       <span className="menu-text">
         <span className="menu-line"><span>{t("scrub.menu.label")}</span><span className="menu-state">{t(on ? "scrub.menu.on" : "scrub.menu.off")}</span></span>
         <span className="menu-hint" id={hintId}>{t("scrub.menu.hint")}</span>

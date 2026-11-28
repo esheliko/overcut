@@ -72,6 +72,8 @@ const PATHS = {
   speed: "M4 18a8 8 0 1 1 16 0M12 18l4-6M7 18h.01M12 10v.01M17 18h.01",
   crop: "M7 3v14h14M3 7h14v14",
   magnet: "M5 4v8a7 7 0 0 0 14 0V4h-4v8a3 3 0 0 1-6 0V4zM5 8h4M15 8h4",
+  magnetTrack: "M2 7h6v10H2zM16 7h6v10h-6zM9.5 9.5 12 12l-2.5 2.5M14.5 9.5 12 12l2.5 2.5", // two clips drawn together: the main track closes its gaps (distinct from the snap magnet)
+  link: "M9.5 14.5l-2 2a3.5 3.5 0 0 1-5-5l2-2M14.5 9.5l2-2a3.5 3.5 0 0 1 5 5l-2 2M9 15l6-6",
   keyframe: "M12 3l9 9-9 9-9-9z",
   toolSelect: "M5 3l14 8-6.2 1.6L9.6 19z",
   toolRipple: "M3 6h8v12H3zM15 8l6 4-6 4",

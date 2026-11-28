@@ -87,14 +87,14 @@ test("tablet width: with a linked clip selected the toolbar tools, the selection
   expect(sel!.x + sel!.width).toBeLessThanOrEqual(zoomIn!.x + 1);
 });
 
-test("Add as overlay on a new track selects the new clip, so it can be sized at once", async ({ page }) => {
+test("Add as overlay on a new track selects the new clip, so it can be sized at once", async ({ page }, info) => {
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   await page.getByTestId("media-input").setInputFiles(resolve("crates/media/tests/fixtures/flash_click.mp4"));
   await expect(page.locator("#tl-summary")).toContainText("1 clip", { timeout: 20_000 });
   await expect(page.getByTestId("tl-selected")).toHaveCount(0);
-  await page.getByTestId("tl-more").click();
-  await page.getByTestId("tl-add-overlay").click();
+  if (info.project.name === "phone") { await page.getByTestId("tl-more").click(); await page.getByTestId("tl-add-overlay").click(); }
+  else await page.getByTestId("tl-overlay-btn").click(); // r15: a wide bar has the Overlay button, so More does not repeat it
   await page.getByTestId("overlay-choice").first().click(); // UX r15: "Add as overlay" asks which media (a picker) instead of picking one itself
   await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 });
   await expect(page.getByTestId("tl-selected")).toHaveText(/1 clip \+ linked audio/);

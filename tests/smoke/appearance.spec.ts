@@ -1,11 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 /** UX-05 accent colours and PM-12 install affordance (menu). No network: the install how-to is local text. */
-test("accent: pick a colour in the menu, it applies at once, is remembered after a reload, and stays within the screen", async ({ page }) => {
+test("accent: pick a colour beside the theme, it applies at once, is remembered after a reload, and stays within the screen", async ({ page }) => {
   await page.goto("/");
   const html = page.locator("html");
   await expect(html).toHaveAttribute("data-accent", "teal");
-  await page.getByRole("button", { name: "Menu" }).click();
+  // r15: the swatches sit with the theme (the theme popover; on small phones the theme rows of the menu), not in the menu's Preview section.
+  const themeButton = page.getByTestId("theme-toggle");
+  if (await themeButton.isVisible()) await themeButton.click(); else await page.getByRole("button", { name: "Menu" }).click();
   const picker = page.getByTestId("accent-picker");
   await expect(picker).toBeVisible();
   const swatches = picker.getByRole("menuitemradio");

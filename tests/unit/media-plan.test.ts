@@ -64,6 +64,13 @@ test("a video with sound becomes two clips in ONE op list (one undo step); audio
   const audioOps = insertOps(p, song, { kind: "audio", durationTicks: 3 * TICKS, hasAudio: true, hasVideo: false }, 0)!;
   assert.deepEqual(audioOps.map((o) => (o.op === "insert_clip" ? o.track : "")), [a!.id]);
 
+  // Music that would overlap a clip already on the first audio track goes to a new audio track at the same start (it lies under the pictures).
+  const busy = { ...p, sequences: [{ ...p.sequences[0]!, tracks: p.sequences[0]!.tracks.map((t) => (t.id === a!.id ? { ...t, clips: [{ id: "c0", media: "m1", start: 0, source_in: 0, duration: 2 * TICKS }] } : t)) }] };
+  const under = insertOps(busy, song, { kind: "audio", durationTicks: 3 * TICKS, hasAudio: true, hasVideo: false }, 0, counter())!;
+  const put = under.find((o) => o.op === "insert_clip")!;
+  assert.ok(put.op === "insert_clip" && put.track !== a!.id && put.clip.start === 0);
+  assert.ok(under.some((o) => o.op === "add_track"));
+
   const still = mediaRef("m3", "p.jpg", "u", { kind: "image", durationTicks: null, hasAudio: false, hasVideo: true }, null);
   const stillOps = insertOps(p, still, { kind: "image", durationTicks: null, hasAudio: false, hasVideo: true }, 0)!;
   assert.equal(stillOps.length, 1);

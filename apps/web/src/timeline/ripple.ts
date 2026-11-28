@@ -64,6 +64,24 @@ export function rippleRange(scene: Scene, i: number, edge: "start" | "end"): Ran
 export const rippleTrimOps = (scene: Scene, i: number, edge: "start" | "end", delta: number): Op[] =>
   group(scene, i).map((j) => ({ op: "ripple_trim" as const, clip: scene.id[j]!, edge: edge === "start" ? ("in" as const) : ("out" as const), delta }));
 
+// ---- magnetic main track (UX r15) ----
+
+/** The main track: the lowest video track (CapCut's magnetic track). -1 when there is no video track. */
+export function mainTrack(scene: Scene): number {
+  let best = -1;
+  for (let t = 0; t < scene.trackCount; t++) if (scene.trackKind[t] === 0 && (best < 0 || scene.trackModel[t]! < scene.trackModel[best]!)) best = t;
+  return best;
+}
+/** True when clip `i` sits on the main track, or is the linked sound of a clip that does (its track ripples with the picture to stay in sync). */
+/** Whether ripple editing applies to clip `i`. Owner direction (2026-11-28, as in CapCut): a trim or delete closes the gap by default on EVERY track,
+ *  not only the main one; leaving a gap is the toggle (Alt+G) away. Kept as a function so a per-track rule can return. */
+export function onMagnetic(scene: Scene, i: number): boolean {
+  return i >= 0 && i < scene.clipCount;
+}
+/** A trim of `edge` to `value` (ticks) as a ripple trim: the clip and everything after it on its track(s) follow, so no gap opens or stays. */
+export const magneticTrimOps = (scene: Scene, i: number, edge: "start" | "end", value: number): Op[] =>
+  rippleTrimOps(scene, i, edge, value - (edge === "start" ? scene.tStart[i]! : scene.tStart[i]! + scene.tDur[i]!));
+
 // ---- roll ----
 
 /** The two clips whose shared cut the edge of clip `i` is: [left, right] on the same track, touching; null when the edge has no touching neighbour. */

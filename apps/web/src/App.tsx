@@ -27,6 +27,7 @@ import { ticksPerFrame, ticksToFrame } from "./inspector/keyframeModel";
 import { SpeedSection } from "./inspector/Speed";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
+import { CANVAS_EVENT } from "./inspector/Inspector";
 import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { ThemeMenu } from "./ThemeMenu";
 import { ExportControl } from "./export/ExportDialog";
@@ -225,6 +226,7 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
               {THEME_PREFS.map((p) => (
                 <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref && <Icon name="check" size={16} />}</span><span>{t(`theme.${p}`)}</span></button>
               ))}
+              <AccentPicker />
               <div className="menu-row menu-status" role="presentation">{status}</div>
               {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
               <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
@@ -237,8 +239,9 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
           <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}><Icon name="download" size={16} className="menu-ic" /><span>{t("menu.saveProject")}</span></button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projectsFolder")}</span></button>}
           <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}><Icon name="history" size={16} className="menu-ic" /><span>{t("menu.versions")}</span></button>
+          {/* r15 (customer: "the menu is too long and cluttered, especially View"): the accent swatches live beside the theme (the theme popover, or the
+              phone theme rows above), so View keeps one switch with a one-line hint. */}
           <div className="menu-group" role="presentation">{t("menu.group.view")}</div>
-          <AccentPicker />
           <ScrubPrepItem />
           <div className="menu-group" role="presentation">{t("menu.group.help")}</div>
           <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={opening(project.onShortcuts)}><Icon name="keyboard" size={16} className="menu-ic" /><span>{t("menu.shortcuts")}</span></button>
@@ -278,6 +281,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const workspaceRef = useRef<HTMLElement>(null);
   const [name, setName] = useState<string | null>(null); // null = the localized default name
   const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | "shortcuts" | { title: string; body: string; confirm: string; danger: boolean; run(): Promise<void> }>(null);
+  useEffect(() => { const open = (): void => setDialog("canvas"); window.addEventListener(CANVAS_EVENT, open); return () => window.removeEventListener(CANVAS_EVENT, open); }, []); // the Details panel's Canvas / Background rows (r15)
   const [offlineHidden, setOfflineHidden] = useState(false); // the "files are missing" note was dismissed for this project (it is shown whenever media is not on this device)
   const [playing, setPlaying] = useState(false);
   const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
@@ -876,7 +880,7 @@ function Editor({ store }: { store: ProjectStore }) {
           e.preventDefault();
           void media.addToTimeline(id, Math.round((store.getState().playhead * TICKS * seq.rate.den) / seq.rate.num)).then((ok) => ok && announce(t("media.added")));
         }}>
-          <Timeline playing={playing} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onNotice={soon} onAddMedia={addMediaAt} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onDropMedia={(id, tick, track) => void media.addToTimeline(id, tick, track).then((ok) => ok && announce(t("media.added")))} />
+          <Timeline playing={playing} fps={seq.rate.num / seq.rate.den} endFrame={seq.endFrame} onNotice={soon} onAddMedia={addMediaAt} onImport={(s) => void importFiles(s)} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} onDropMedia={(id, tick, track) => void media.addToTimeline(id, tick, track).then((ok) => ok && announce(t("media.added")))} />
         </div>
       </main>
 
