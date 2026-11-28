@@ -172,3 +172,26 @@
 .insp-ease-pop button[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
 .insp-ease-pop svg { color: var(--accent); flex: none; }
 @media (pointer: coarse) { .insp-ease-btn { min-block-size: 44px; } .insp-ease-pop button { min-block-size: 44px; } }
+
+/* ---- r16 lane B ---- */
+/* The playhead note: an overlay on the panel's bottom edge (sticky), one line, never between two controls. */
+.insp .insp-hint { position: sticky; inset-block-end: 0; z-index: 3; margin-block-start: var(--space-2); box-shadow: var(--elev-2); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); min-block-size: 36px; padding: 2px 4px 2px 12px; font-size: var(--text-sm); }
+.insp .insp-hint button { min-block-size: 32px; padding-inline: 12px; font-size: var(--text-sm); }
+@media (pointer: coarse) { .insp .insp-hint { min-block-size: 48px; } .insp .insp-hint button { min-block-size: 40px; } }
+
+/* An active keyframe diamond is the accent colour, like every other active control (hover must not turn it white). */
+.insp-diamond[aria-pressed="true"], .insp-diamond[aria-pressed="true"]:hover:not(:disabled), .insp-sec-key[aria-pressed="true"], .insp-sec-key[aria-pressed="true"]:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
+
+/* Scroll cue: while there is more below the fold (`useScrollCue` sets data-more on the body), a fade sits over its bottom edge (no space of its own: negative margin). */
+.insp-fade { flex: none; block-size: 40px; margin-block-start: -40px; pointer-events: none; opacity: 0; background: linear-gradient(to bottom, transparent, var(--surface)); transition: opacity var(--dur-fast); }
+.insp-body[data-more] + .insp-fade { opacity: 1; }
+
+/* Duration (photo): the number and its two nudge buttons on one row. */
+[data-testid="duration-section"] .insp-field { flex-wrap: nowrap; align-items: center; }
+[data-testid="duration-section"] .insp-fl input { inline-size: 72px; }
+[data-testid="duration-section"] .insp-kbtn { background: var(--surface-3); color: var(--fg); font-size: 20px; }
+
+/* The save chip is clickable (save now) but stays a status. */
+.save-state { cursor: pointer; }
+.save-state:hover { background: var(--surface-3); color: var(--fg); }
+.save-state[data-just] .dot { background: var(--ok); }

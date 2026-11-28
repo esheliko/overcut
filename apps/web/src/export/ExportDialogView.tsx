@@ -10,7 +10,7 @@ import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
-import { QUALITIES, PRESET_IDS, mergePresets, buildSettings, canOfferH264Download, desktopFormats, describeFailure, errorKey, formatLabelKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
+import { QUALITIES, PRESET_IDS, mergePresets, buildSettings, canOfferH264Download, desktopFormats, describeFailure, errorKey, formatLabelKey, formatNote, estimateBytes, formatBytes, formatGapSeconds, newEta, stepEta, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
 import "./export.css";
 
@@ -74,8 +74,15 @@ function PreviewFrame({ shot, width, height, badge, children }: { shot: string |
   );
 }
 
+/** What stands between the person and a good file: black gaps in the picture (a warning), clips whose file is not readable (a blocker). */
+export interface DialogGaps { count: number; seconds: number }
+export interface DialogOffline { clips: number; reconnect(): void }
+
 export interface DialogProps {
   src: Source;
+  gaps: DialogGaps;
+  offline: DialogOffline;
+  onShowGap(): void;
   state: ExportState;
   locale: string;
   onStart(settings: ReturnType<typeof buildSettings>): void;
@@ -85,7 +92,7 @@ export interface DialogProps {
   onTuck(): void;
 }
 
-export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose, onTuck }: DialogProps) {
+export function Dialog({ src, gaps, offline, onShowGap, state, locale, onStart, onCancel, onBack, onClose, onTuck }: DialogProps) {
   const { t } = useI18n();
   const ref = useRef<HTMLDialogElement>(null);
   const head = useRef<HTMLHeadingElement>(null);
@@ -113,7 +120,7 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
   if (state.phase === "running") { title = t("export.running.title"); body = <Progress state={state} src={src} shot={shot} onCancel={onCancel} onTuck={onTuck} />; }
   else if (state.phase === "done") { title = t("export.done.title"); body = <Done state={state} src={src} shot={shot} locale={locale} onClose={onClose} onAgain={onBack} />; }
   else if (state.phase === "failed") { title = t("export.failed.title"); body = <Failed error={state.error} onRetry={() => lastSettings.current && start(lastSettings.current)} onBack={onBack} />; }
-  else body = <Setup src={src} shot={shot} locale={locale} onStart={start} />;
+  else body = <Setup src={src} shot={shot} locale={locale} gaps={gaps} offline={offline} onShowGap={onShowGap} onStart={start} />;
 
   return (
     <dialog ref={ref} className="export-dialog" aria-labelledby="export-title" data-testid="export-dialog" data-phase={state.phase} onCancel={(e) => { e.preventDefault(); dismiss(); }}>
@@ -127,7 +134,7 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
 }
 
 // ---- 1. settings ----
-function Setup({ src, shot, locale, onStart }: { src: Source; shot: string | null; locale: string; onStart(s: ReturnType<typeof buildSettings>): void }) {
+function Setup({ src, shot, locale, gaps, offline, onShowGap, onStart }: { src: Source; shot: string | null; locale: string; gaps: DialogGaps; offline: DialogOffline; onShowGap(): void; onStart(s: ReturnType<typeof buildSettings>): void }) {
   const { t } = useI18n();
   const remembered = useMemo(() => loadRemembered(), []);
   const [preset, setPreset] = useState<PresetId | "custom">(() => (remembered.preset === "custom" && !usableCustom(remembered.custom, src) ? "original" : remembered.preset));
@@ -200,6 +207,18 @@ function Setup({ src, shot, locale, onStart }: { src: Source; shot: string | nul
   return (
     <>
       {notice}
+      {offline.clips > 0 && (
+        <div className="ex-alert ex-alert-block" role="alert" data-testid="export-offline">
+          <p><strong>{t("export.offline.title", { count: offline.clips })}</strong><span>{t("export.offline.text")}</span></p>
+          <button type="button" className="export-secondary ex-alert-btn" onClick={offline.reconnect} data-testid="export-reconnect">{t("export.offline.action")}</button>
+        </div>
+      )}
+      {gaps.count > 0 && (
+        <div className="ex-alert" role="status" data-testid="export-warning">
+          <p><strong>{t("export.gap.title", { count: gaps.count, seconds: formatGapSeconds(gaps.seconds) })}</strong></p>
+          <button type="button" className="export-secondary ex-alert-btn" onClick={onShowGap} data-testid="export-show-gap">{t("export.gap.show")}</button>
+        </div>
+      )}
       <div className="ex-hero">
         <PreviewFrame shot={shot} width={choice.width} height={choice.height} />
         <div className="ex-hero-tx">
@@ -262,10 +281,11 @@ function Setup({ src, shot, locale, onStart }: { src: Source; shot: string | nul
 
       {format && choice.capBytes !== undefined && <p className="export-note" data-testid="export-cap-note">{t("export.cap.aims", { cap: formatBytes(choice.capBytes, locale) })}</p>}
       {format && presetWarnings(preset, choice, src, format, locale).map((w) => <p key={w.key} className="export-note" role="status" data-testid={w.key === "export.warn.cap" ? "export-cap-warning" : "export-duration-warning"}>{t(w.key, w.values)}</p>)}
-      {format?.warnings.map((w) => <p key={w} className="export-note" data-testid="export-warning">{t("export.warn.limited")}</p>)}
+      {format?.warnings.map((w) => <p key={w} className="export-note" data-testid="export-format-warning">{t("export.warn.limited")}</p>)}
       {format && formatNote(format, fmts?.options ?? []) && <p className="export-note" data-testid="export-format-note">{t(formatNote(format, fmts?.options ?? [])!)}</p>}
       <div className="export-footer">
-        <button className="primary export-go" onClick={go} disabled={!format} data-testid="export-go"><Icon name="export" size={20} /><span>{t("export.go")}</span></button>
+        {offline.clips > 0 && <p className="ex-why" id="export-why" data-testid="export-why">{t("export.offline.why", { count: offline.clips })}</p>}
+        <button className="primary export-go" onClick={go} disabled={!format || offline.clips > 0} aria-describedby={offline.clips > 0 ? "export-why" : undefined} data-testid="export-go"><Icon name="export" size={20} /><span>{gaps.count > 0 ? t("export.go.anyway") : t("export.go")}</span></button>
       </div>
     </>
   );
@@ -297,16 +317,10 @@ function Progress({ state, src, shot, onCancel, onTuck }: { state: Extract<Expor
   const fraction = p?.fraction ?? 0;
   const percent = Math.floor(fraction * 100);
   const finishing = p?.phase === "finalizing";
-  // Time left from the rate over the last 10 s (a moving average): the engine's own estimate jumps with every batch of frames.
-  const samples = useRef<{ at: number; f: number }[]>([]);
-  const now = performance.now();
-  const last = samples.current[samples.current.length - 1];
-  if (p && !finishing && (!last || now - last.at >= 500)) samples.current.push({ at: now, f: fraction });
-  while (samples.current.length > 2 && now - samples.current[0]!.at > 10_000) samples.current.shift();
-  const first = samples.current[0];
-  const rate = first && now - first.at >= 3_000 && fraction > first.f ? (fraction - first.f) / (now - first.at) : 0;
-  const eta = !finishing && rate > 0 ? etaSeconds((1 - fraction) / rate) : null;
-  const left = eta === null ? t("export.eta.estimating") : eta >= 60 ? t("export.eta.minutes", { minutes: Math.ceil(eta / 60) }) : t("export.eta.seconds", { seconds: eta });
+  // Time left: the rate over the last 10 s folded into a moving average, and the figure can only count down (model.ts `stepEta`).
+  const eta = useRef(newEta());
+  const secs = p && !finishing ? stepEta(eta.current, performance.now(), fraction) : null;
+  const left = secs === null ? t("export.eta.estimating") : secs >= 60 ? t("export.eta.minutes", { minutes: Math.ceil(secs / 60) }) : t("export.eta.seconds", { seconds: secs });
   const away = useKeepAwake();
   return (
     <>
@@ -319,7 +333,6 @@ function Progress({ state, src, shot, onCancel, onTuck }: { state: Extract<Expor
         <span>{p ? t("export.frames", { done: p.framesDone, total: p.totalFrames }) : t("export.starting")}</span>
         <span>{finishing ? "" : left}</span>
       </p>
-      <p className="export-note">{t("export.readonly")}</p>
       <p className="export-note ex-awake" data-testid="export-awake" role={away ? "alert" : undefined}>{t(away ? "export.awake.paused" : "export.awake")}</p>
       <div className="export-actions">
         <button className="export-secondary" onClick={onTuck} data-testid="export-minimize">{t("export.keepEditing")}</button>
@@ -377,7 +390,17 @@ function H264Notice({ codecs, onEnabled }: { codecs: DesktopCodecs; onEnabled():
   );
 }
 
-/** A frame of the finished file itself (a third of the way in), so the done card shows what was made, not a black placeholder. Falls back to `fallback`. */
+/** How bright a canvas looks (0 to 255), from a small sample: a black frame has nothing to show on the done card. */
+function brightness(c: HTMLCanvasElement): number {
+  const g = c.getContext("2d");
+  if (!g) return 255;
+  const px = g.getImageData(0, 0, c.width, c.height).data;
+  let sum = 0;
+  for (let i = 0; i < px.length; i += 4) sum += (px[i]! + px[i + 1]! + px[i + 2]!) / 3;
+  return sum / (px.length / 4);
+}
+
+/** A frame of the finished file itself, from the middle of the project (not the playhead, which is often on black), so the done card shows what was made. Tries a few moments and takes the first one that is not black; falls back to `fallback`. */
 function useOutputFrame(file: Blob, fallback: string | null): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -388,7 +411,11 @@ function useOutputFrame(file: Blob, fallback: string | null): string | null {
     v.preload = "auto";
     v.playsInline = true;
     const cleanup = () => { v.removeAttribute("src"); v.load(); URL.revokeObjectURL(src); };
-    v.onloadedmetadata = () => { v.currentTime = Number.isFinite(v.duration) ? v.duration / 3 : 0; };
+    const spots = [0.5, 0.33, 0.66, 0.2, 0.8]; // fractions of the length, most representative first
+    let at = 0;
+    let best: { shot: string; bright: number } | null = null;
+    const seek = () => { v.currentTime = Number.isFinite(v.duration) ? v.duration * spots[at]! : 0; };
+    v.onloadedmetadata = seek;
     v.onseeked = () => {
       try {
         const c = document.createElement("canvas");
@@ -396,8 +423,11 @@ function useOutputFrame(file: Blob, fallback: string | null): string | null {
         c.width = w;
         c.height = Math.max(1, Math.round((w * v.videoHeight) / v.videoWidth));
         c.getContext("2d")?.drawImage(v, 0, 0, c.width, c.height);
-        if (!dead) setUrl(c.toDataURL("image/jpeg", 0.72));
+        const bright = brightness(c);
+        if (!best || bright > best.bright) best = { shot: c.toDataURL("image/jpeg", 0.72), bright };
+        if (bright < 12 && ++at < spots.length) return seek(); // black here: look at another moment
       } catch { /* keep the fallback */ }
+      if (!dead && best) setUrl(best.shot);
       cleanup();
     };
     v.onerror = cleanup;
@@ -447,6 +477,7 @@ function Done({ state, src, shot, locale, onClose, onAgain }: { state: Extract<E
       {result.warnings.length > 0 && <p className="export-note">{t("export.warn.limited")}</p>}
       {failed && <p className="export-error" role="alert" data-testid="export-save-error">{t("export.err.save")}</p>}
       {note && <p className="export-note" role="status" data-testid="export-note">{note}</p>}
+      <div className="export-footer export-done-footer">
       <div className="export-actions">
         <button className="primary export-go" onClick={() => void run("save")} data-testid="export-save"><Icon name="download" size={20} /><span>{t("export.save")}</span></button>
         {desktop && savedAt && <button className="export-secondary" onClick={() => void desktop.reveal(savedAt).catch(() => setFailed(true))} data-testid="export-reveal"><Icon name="media" size={20} /><span>{t("export.showFolder")}</span></button>}
@@ -455,6 +486,7 @@ function Done({ state, src, shot, locale, onClose, onAgain }: { state: Extract<E
       <div className="export-actions">
         <button className="export-secondary" onClick={onAgain} data-testid="export-again">{t("export.again")}</button>
         <button className="export-secondary" onClick={onClose} data-testid="export-done-close">{t("export.close")}</button>
+      </div>
       </div>
     </>
   );
