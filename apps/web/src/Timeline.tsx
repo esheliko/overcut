@@ -538,6 +538,8 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
             { id: "mark", label: t("timeline.marker.add"), disabled: off, hint: keyHint("marker.add"), testid: "tl-marker-add", onSelect: () => run({ c: "marker" }) },
             { id: "medit", label: t("timeline.marker.edit"), disabled: off || !scene.markers.some((m) => m.ticks === Math.round((store.getState().playhead * TICKS_PER_SECOND) / FPS)), reason: t("timeline.why.marker"), testid: "tl-marker-edit", onSelect: () => run({ c: "markerEdit" }) },
             { id: "zsel", section: t("timeline.more.view"), label: t("timeline.zoomSelection"), hint: keyHint("view.zoomSelection"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-zoom-selection", onSelect: () => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { c: "zoom", how: "selection" } })) },
+            { id: "zin", label: t("timeline.zoomIn"), hint: "+", onSelect: () => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user") },
+            { id: "zout", label: t("timeline.zoomOut"), hint: "-", onSelect: () => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user") },
             { id: "fit", label: t("timeline.fit"), hint: "0", testid: "tl-fit-menu", onSelect: fit },
             { id: "history", disabled: off, label: t("timeline.history"), testid: "tl-history", onSelect: () => setDialog("history") },
           ]} />}

@@ -648,6 +648,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       const el = e.target instanceof Element ? e.target : null;
       if (el && el.closest("input:not([type=range]), select, textarea, [contenteditable=true], [role=slider], input[type=range], [role=menu], [role=menuitem], [role=listbox], [role=option], [role=tab], [role=dialog], [role=spinbutton], dialog, a, summary")) return;
       if (el && (e.key === "Enter" || e.key === " ") && el.closest("button, [role=button]")) return;
+      if (e.key === "Escape" && document.querySelector(".sheet-handle, dialog[open]")) return; // an open sheet or dialog closes itself on Escape (SheetHandle listens on the window)
       const cmd = canvasCommand(e, live.current.selected.size > 0);
       if (cmd) { e.preventDefault(); execRef.current(cmd); }
     };
