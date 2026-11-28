@@ -153,7 +153,7 @@
   .insp-sec .insp-fl { min-block-size: 28px; }
   .insp-sec .insp-kbtn { min-inline-size: 28px; inline-size: 28px; block-size: 28px; }
   .insp-sec .insp-fieldreset { inline-size: 28px; min-inline-size: 28px; block-size: 28px; }
-  .insp-field input.insp-slider { block-size: 16px; min-block-size: 16px; }
+  .insp-field input.insp-slider { block-size: 24px; min-block-size: 24px; } /* WCAG 2.5.8: 24 px minimum target */
   .insp-sec-b { gap: 2px; padding-block: 0 8px; }
   .insp-sec-t { min-block-size: 36px; }
   .insp-sec .insp-sub { min-block-size: 28px; }

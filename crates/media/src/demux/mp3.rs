@@ -12,7 +12,8 @@ const WINDOW: usize = 256 * 1024;
 const RESYNC: usize = 64 * 1024;
 
 pub(crate) fn is_mp3(head: &[u8]) -> bool {
-    (head.len() >= 3 && &head[..3] == b"ID3") || (head.len() >= 2 && head[0] == 0xFF && head[1] & 0xE0 == 0xE0)
+    (head.len() >= 3 && &head[..3] == b"ID3")
+        || (head.len() >= 2 && head[0] == 0xFF && head[1] & 0xE0 == 0xE0)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -45,11 +46,17 @@ fn header(h: &[u8]) -> Result<Option<Frame>, MediaError> {
             "This is MP1 or MP2 audio. Convert it to MP3 or M4A.".into(),
         ));
     }
-    const BR_V1: [u32; 15] = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+    const BR_V1: [u32; 15] = [
+        0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320,
+    ];
     const BR_V2: [u32; 15] = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
     const RATE: [u32; 3] = [44_100, 48_000, 32_000];
     let mpeg1 = version == 3;
-    let kbps = if mpeg1 { BR_V1[bitrate_idx] } else { BR_V2[bitrate_idx] };
+    let kbps = if mpeg1 {
+        BR_V1[bitrate_idx]
+    } else {
+        BR_V2[bitrate_idx]
+    };
     let rate = match version {
         3 => RATE[rate_idx],
         2 => RATE[rate_idx] / 2,
@@ -102,7 +109,9 @@ pub(crate) async fn probe<S: Source>(r: &mut Reader<'_, S>) -> Result<Probe, Med
                     // The first frame must be followed by another valid header, so random bytes that look like a sync are not an MP3.
                     if first.is_none() {
                         let next = r.bytes_upto(at + f.size as u64, 4).await?;
-                        if !matches!(header(&next), Ok(Some(n)) if n.rate == f.rate) && at + (f.size as u64) < len {
+                        if !matches!(header(&next), Ok(Some(n)) if n.rate == f.rate)
+                            && at + (f.size as u64) < len
+                        {
                             i += 1;
                             continue;
                         }
@@ -128,7 +137,8 @@ pub(crate) async fn probe<S: Source>(r: &mut Reader<'_, S>) -> Result<Probe, Med
                     let tail = r.bytes_upto(from, RESYNC).await?;
                     let mut found = None;
                     for k in 1..tail.len().saturating_sub(3) {
-                        if matches!(header(&tail[k..k + 4]), Ok(Some(f)) if first.is_some_and(|g| g.rate == f.rate && g.channels == f.channels)) {
+                        if matches!(header(&tail[k..k + 4]), Ok(Some(f)) if first.is_some_and(|g| g.rate == f.rate && g.channels == f.channels))
+                        {
                             found = Some(from + k as u64);
                             break;
                         }
@@ -151,7 +161,9 @@ pub(crate) async fn probe<S: Source>(r: &mut Reader<'_, S>) -> Result<Probe, Med
             pos += 1; // always make progress
         }
     }
-    let f0 = first.ok_or_else(|| MediaError::Unsupported("This is not a video or audio format OverCut can read.".into()))?;
+    let f0 = first.ok_or_else(|| {
+        MediaError::Unsupported("This is not a video or audio format OverCut can read.".into())
+    })?;
     // A Xing / Info / VBRI first frame holds the player's index, not sound.
     if let Some(&(at, f)) = frames.first() {
         let m = r.bytes_upto(at + f.xing_at as u64, 4).await?;
@@ -168,11 +180,14 @@ pub(crate) async fn probe<S: Source>(r: &mut Reader<'_, S>) -> Result<Probe, Med
     let mut samples: u64 = 0;
     for &(offset, f) in &frames {
         let pts = to_time(samples as i64, rate).ok_or_else(|| invalid("MP3 time overflow"))?;
-        let end = to_time((samples + f.samples) as i64, rate).ok_or_else(|| invalid("MP3 time overflow"))?;
+        let end = to_time((samples + f.samples) as i64, rate)
+            .ok_or_else(|| invalid("MP3 time overflow"))?;
         packets.push(Packet {
             pts,
             dts: pts,
-            duration: end.checked_sub(pts).ok_or_else(|| invalid("MP3 time overflow"))?,
+            duration: end
+                .checked_sub(pts)
+                .ok_or_else(|| invalid("MP3 time overflow"))?,
             offset,
             size: f.size as u32,
             keyframe: true,

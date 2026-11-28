@@ -3,9 +3,7 @@
 //! a codec (the codec strings are WebCodecs' `pcm-*` names, `docs/features/media-io.md`). Pure `std`, bounds-checked.
 
 use super::reader::{invalid, Reader};
-use super::{
-    to_time, ContainerFormat, Packet, Probe, Track, TrackKind, MAX_PACKETS_PER_TRACK,
-};
+use super::{to_time, ContainerFormat, Packet, Probe, Track, TrackKind, MAX_PACKETS_PER_TRACK};
 use crate::{MediaError, Source};
 
 /// Frames (one sample per channel) per packet: about 93 ms at 44.1 kHz.
@@ -90,7 +88,11 @@ pub(crate) async fn probe<S: Source>(r: &mut Reader<'_, S>) -> Result<Probe, Med
             b"data" => {
                 // A streamed WAV may say 0 or 0xFFFFFFFF: the data then runs to the end of the file.
                 let avail = len - body;
-                let size = if size == 0 || size > avail { avail } else { size };
+                let size = if size == 0 || size > avail {
+                    avail
+                } else {
+                    size
+                };
                 data = Some((body, size));
                 break;
             }

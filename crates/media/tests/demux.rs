@@ -515,7 +515,10 @@ fn wav_pcm16_is_one_audio_track_cut_into_packets() {
     assert_eq!(p.format, ContainerFormat::Wav);
     assert!(p.video().is_none());
     let a = p.audio().unwrap();
-    assert_eq!((a.codec.as_str(), a.sample_rate, a.channels), ("pcm-s16", 44_100, 2));
+    assert_eq!(
+        (a.codec.as_str(), a.sample_rate, a.channels),
+        ("pcm-s16", 44_100, 2)
+    );
     assert_eq!(a.packets.len(), 11); // 44200 frames / 4096 rounded up
     assert_eq!(a.packets[0].pts, Time::from_ticks(0));
     assert_eq!(a.packets[0].size, 4096 * 4);
@@ -532,9 +535,26 @@ fn wav_pcm16_is_one_audio_track_cut_into_packets() {
 
 #[test]
 fn wav_float_and_24_bit_are_named_and_compressed_is_refused() {
-    assert_eq!(probe_bytes(&wav_bytes(1, 48_000, 32, 3, 100)).unwrap().audio().unwrap().codec, "pcm-f32");
-    assert_eq!(probe_bytes(&wav_bytes(1, 48_000, 24, 1, 100)).unwrap().audio().unwrap().codec, "pcm-s24");
-    assert!(matches!(probe_bytes(&wav_bytes(1, 48_000, 4, 0x11, 100)), Err(MediaError::Unsupported(_))));
+    assert_eq!(
+        probe_bytes(&wav_bytes(1, 48_000, 32, 3, 100))
+            .unwrap()
+            .audio()
+            .unwrap()
+            .codec,
+        "pcm-f32"
+    );
+    assert_eq!(
+        probe_bytes(&wav_bytes(1, 48_000, 24, 1, 100))
+            .unwrap()
+            .audio()
+            .unwrap()
+            .codec,
+        "pcm-s24"
+    );
+    assert!(matches!(
+        probe_bytes(&wav_bytes(1, 48_000, 4, 0x11, 100)),
+        Err(MediaError::Unsupported(_))
+    ));
 }
 
 #[test]
@@ -553,7 +573,15 @@ fn wav_hostile_input_never_panics() {
     let mut streamed = good;
     let at = streamed.windows(4).position(|w| w == b"data").unwrap() + 4;
     streamed[at..at + 4].copy_from_slice(&0u32.to_le_bytes());
-    assert_eq!(probe_bytes(&streamed).unwrap().audio().unwrap().packets.len(), 2);
+    assert_eq!(
+        probe_bytes(&streamed)
+            .unwrap()
+            .audio()
+            .unwrap()
+            .packets
+            .len(),
+        2
+    );
 }
 
 /// `n` MPEG-1 Layer III frames, 128 kbps, 44.1 kHz, joint stereo: 417 bytes (or 418 with padding) of 1152 samples each.
@@ -581,12 +609,18 @@ fn mp3_frames_become_packets_and_an_id3_tag_and_xing_frame_are_skipped() {
     let plain = probe_bytes(&mp3_frames(40, false, false)).unwrap();
     assert_eq!(plain.format, ContainerFormat::Mp3);
     let a = plain.audio().unwrap();
-    assert_eq!((a.codec.as_str(), a.sample_rate, a.channels), ("mp3", 44_100, 2));
+    assert_eq!(
+        (a.codec.as_str(), a.sample_rate, a.channels),
+        ("mp3", 44_100, 2)
+    );
     assert_eq!(a.packets.len(), 40);
     assert_eq!(a.packets[0].offset, 0);
     assert_eq!(a.packets[1].offset, 417);
     assert_eq!(a.packets[2].offset, 417 + 418);
-    assert_eq!(a.duration, Time::from_sample_index(40 * 1152, 44_100).unwrap());
+    assert_eq!(
+        a.duration,
+        Time::from_sample_index(40 * 1152, 44_100).unwrap()
+    );
 
     let tagged = probe_bytes(&mp3_frames(40, true, true)).unwrap();
     let t = tagged.audio().unwrap();
@@ -621,13 +655,19 @@ fn real_mp3_and_wav_files_from_ffmpeg() {
     let m = probe_bytes(&fixture("tone.mp3")).unwrap();
     assert_eq!(m.format, ContainerFormat::Mp3);
     let a = m.audio().unwrap();
-    assert_eq!((a.codec.as_str(), a.sample_rate, a.channels), ("mp3", 44_100, 1));
+    assert_eq!(
+        (a.codec.as_str(), a.sample_rate, a.channels),
+        ("mp3", 44_100, 1)
+    );
     // About one second at 1152 samples per frame (the encoder adds padding frames; the Info frame is not counted).
     let secs = a.duration.ticks() as f64 / 705_600_000.0;
     assert!((0.98..1.1).contains(&secs), "{secs}");
     let w = probe_bytes(&fixture("tone.wav")).unwrap();
     assert_eq!(w.format, ContainerFormat::Wav);
     let a = w.audio().unwrap();
-    assert_eq!((a.codec.as_str(), a.sample_rate, a.channels), ("pcm-s16", 8_000, 1));
+    assert_eq!(
+        (a.codec.as_str(), a.sample_rate, a.channels),
+        ("pcm-s16", 8_000, 1)
+    );
     assert_eq!(w.media_info().audio.unwrap().sample_count, 4_000);
 }
