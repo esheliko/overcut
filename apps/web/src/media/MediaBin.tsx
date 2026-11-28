@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { Modal } from "../ProjectDialogs";
@@ -174,6 +175,36 @@ function TagsDialog({ item, tags, onTags, onClose }: { item: BinItem; tags: read
   );
 }
 
+
+/**
+ * Filter and sort as a compact popover anchored to its button (UX r15 D2, customer: "ten times worse"): a menu surface that floats over the cards instead of an inline
+ * panel that pushes them down. Rows are 32 px with a mouse, 44 px on touch. It stays open while the controls are used; Escape, a tap outside or the button closes it.
+ * Portaled to the page, so no scroll container of the library clips it; it is placed under the button (above it when there is no room) and kept inside the viewport.
+ */
+function FilterPop({ anchor, label, onClose, children }: { anchor: RefObject<HTMLElement | null>; label: string; onClose(): void; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = box.current, a = anchor.current?.getBoundingClientRect();
+    if (!el || !a) return;
+    const w = el.offsetWidth, h = el.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+    const below = a.bottom + 4;
+    setPos({ left: Math.max(8, Math.min(a.right - w, vw - w - 8)), top: below + h <= vh - 8 ? below : Math.max(8, a.top - h - 4) });
+  }, [anchor]);
+  useEffect(() => { box.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true }); }, []);
+  useEffect(() => {
+    const away = (e: Event) => { const n = e.target as Node; if (!box.current?.contains(n) && !anchor.current?.contains(n)) onClose(); };
+    const key = (e: KeyboardEvent) => { const n = e.target as Node; if (e.key === "Escape" && (box.current?.contains(n) || anchor.current?.contains(n))) { e.stopPropagation(); onClose(); anchor.current?.focus({ preventScroll: true }); } };
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", key, true);
+    return () => { document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", key, true); };
+  }, [anchor, onClose]);
+  return createPortal(
+    <div ref={box} id="bin-filter-panel" className="bin-filters" role="group" aria-label={label} data-testid="bin-filter-panel" style={{ left: pos?.left ?? -9999, top: pos?.top ?? 0 }}>{children}</div>,
+    document.body,
+  );
+}
+
 /** Media tool panel body: the big empty-state target, then the list of imported media with "+" to add each to the timeline. */
 export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOverlay, onRemove, onRelink, onAllow, onRelinkAll }: Props) {
   const { t } = useI18n();
@@ -195,6 +226,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
   const [editing, setEditing] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null); // the card last tapped: the one the "+" next to it will add
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterBtn = useRef<HTMLButtonElement>(null);
   const tagList = allTags(meta);
   const activeTag = tagList.some((x) => x.toLowerCase() === filter.tag.toLowerCase()) ? filter.tag : ""; // a tag nobody uses any more stops filtering
   const shown = viewBin(items, meta, { ...filter, tag: activeTag, query });
@@ -231,6 +263,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
         <button className="bin-filter-toggle bin-relink-all" onClick={onRelinkAll} data-testid="relink-all"><Icon name="upload" size={18} /><span>{t("media.relinkAll", { count: items.filter((i) => i.status === "offline" && !i.needsPermission).length })}</span></button>
       )}
       <button
+        ref={filterBtn}
         className="bin-filter-toggle"
         title={t("media.filterSort")}
         aria-expanded={filterOpen}
@@ -245,7 +278,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
       {!long && <button className="bin-view-btn" aria-pressed={view === "list"} aria-label={t("media.view.list")} title={t("media.view.list")} onClick={() => setView(view === "list" ? "grid" : "list")} data-testid="bin-view-toggle"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></svg></button>}
       </div>
       {filterOpen && (
-        <div id="bin-filter-panel" className="bin-filters" role="group" aria-label={t("media.filterSort")} data-testid="bin-filter-panel">
+        <FilterPop anchor={filterBtn} label={t("media.filterSort")} onClose={() => setFilterOpen(false)}>
           <div className="bin-kinds">
             {KINDS.map((k) => <button key={k} className="bin-chip" aria-pressed={filter.kind === k} onClick={() => setFilter({ ...filter, kind: k })} data-testid={`bin-kind-${k}`}>{t(`media.kind.${k}`)}</button>)}
           </div>
@@ -264,7 +297,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
               </label>
             )}
           </div>
-        </div>
+        </FilterPop>
       )}
       <p className="bin-count" role="status" data-testid="bin-count" data-quiet={!query && !filtersOn}>{t("media.count", { shown: settled.length, total: meta.size })}</p>
       {shown.length === 0 ? <p className="bin-none">{query ? t("media.noMatch", { query }) : t("media.noFilterMatch")}</p> : (

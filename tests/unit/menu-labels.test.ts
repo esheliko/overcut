@@ -8,8 +8,9 @@ const menu = en as Record<string, string>;
 test("overflow menu labels are plain: no 'Engine', no 'Diagnostics', no colon-status or slash", () => {
   assert.equal(menu["menu.diagnostics"], "About OverCut");
   assert.equal(menu["menu.privacy"], "Privacy");
-  assert.equal(menu["engine.menu.ready"], "Ready");
-  for (const key of ["menu.diagnostics", "menu.privacy", "scrub.menu.label", "engine.menu.ready"]) {
+  assert.equal(menu["engine.menu.ready"], undefined); // UX r15 D8: the menu has no engine status at all (only "Saved on this device")
+  assert.equal(menu["save.state.saved"], "Saved on this device");
+  for (const key of ["menu.diagnostics", "menu.privacy", "scrub.menu.label", "save.state.saved"]) {
     assert.doesNotMatch(menu[key] ?? "", /[:/]|v\d|wasm|Diagnostics/, `${key} still has developer wording`);
   }
 });

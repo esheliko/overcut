@@ -29,7 +29,7 @@ import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
 import { CANVAS_EVENT } from "./inspector/Inspector";
 import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
-import { ThemeMenu } from "./ThemeMenu";
+import { ThemeMenu, themeIcon } from "./ThemeMenu";
 import { ExportControl } from "./export/ExportDialog";
 const ShortcutsDialog = lazy(() => import("./commands/ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 import { Palette } from "./commands/Palette";
@@ -226,7 +226,7 @@ function AppMenu({ compact, theme, save, project }: { compact: boolean; theme: {
             <>
               {/* Phone (UX r15 D8): a short menu. "Saved on this device" is the only status (no engine words); the theme is ONE row that opens its choices; the rest is a two-column grid of 44 px rows. */}
               <div className="menu-row menu-status menu-full save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
-              <button className="menu-row menu-full" role="menuitem" aria-expanded={themeOpen} data-testid="menu-theme" onClick={() => setThemeOpen((o) => !o)}><Icon name="theme" size={16} className="menu-ic" /><span className="menu-grow">{t("theme.row", { theme: t(`theme.${theme.pref}`) })}</span><Icon name="chevronRight" size={16} className="menu-chev" /></button>
+              <button className="menu-row menu-full" role="menuitem" aria-expanded={themeOpen} data-testid="menu-theme" onClick={() => setThemeOpen((o) => !o)}><Icon name={themeIcon(theme.pref)} size={16} className="menu-ic" /><span className="menu-grow">{t("theme.row", { theme: t(`theme.${theme.pref}`) })}</span><Icon name="chevronRight" size={16} className="menu-chev" /></button>
               {themeOpen && (
                 <>
                   {THEME_PREFS.map((p) => (

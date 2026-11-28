@@ -52,7 +52,6 @@ export function PhoneSplitter({ workspace }: { workspace: RefObject<HTMLElement 
     const ro = new ResizeObserver(apply);
     ro.observe(ws);
     return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace]);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 

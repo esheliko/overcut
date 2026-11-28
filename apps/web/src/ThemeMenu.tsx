@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useI18n } from "./i18n";
 import { AccentPicker } from "./AppearanceInstall";
 import { Icon } from "./icons";
-import { THEME_PREFS, type ThemePref } from "./theme/theme";
+import { THEME_PREFS, resolveTheme, type ThemePref } from "./theme/theme";
+
+/** The theme button shows what the theme IS (UX r15 D1, customer: "I did not recognise it"): a sun on a light screen, a moon on a dark one; never an abstract half circle. */
+export const themeIcon = (pref: ThemePref): "sun" | "moon" => (resolveTheme(pref) === "light" ? "sun" : "moon");
 
 /**
  * F3 (theme menu): the top-bar theme button opens a small menu of System, Dark, Light and High contrast, instead of cycling
@@ -26,7 +29,7 @@ export function ThemeMenu({ pref, onPick }: { pref: ThemePref; onPick(p: ThemePr
 
   return (
     <div className="theme-menu" ref={ref}>
-      <button ref={button} className="icon-btn" aria-label={t("theme.change", { theme: name })} aria-haspopup="menu" aria-expanded={open} title={name} onClick={() => setOpen((o) => !o)} data-testid="theme-toggle"><Icon name="theme" size={20} /></button>
+      <button ref={button} className="icon-btn" aria-label={t("theme.change", { theme: name })} aria-haspopup="menu" aria-expanded={open} title={t("theme.label")} onClick={() => setOpen((o) => !o)} data-testid="theme-toggle"><Icon name={themeIcon(pref)} size={20} /></button>
       {open && (
         <div className="menu-pop theme-pop" role="menu" aria-label={t("theme.label")} data-testid="theme-menu">
           {THEME_PREFS.map((p) => (

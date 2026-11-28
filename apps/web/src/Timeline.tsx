@@ -519,6 +519,10 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           ]
           : menuOpen === "tool" ? TOOLS.map((k) => ({ id: k, label: t(`timeline.tool.${k}`), sub: t(`timeline.tool.${k}.sub`), hint: keyHint(`tool.${k}`), checked: tool === k, testid: `tl-tool-${k}`, onSelect: () => run({ c: "tool", tool: k }) }))
           : [
+            ...(switchesInMenu() ? [
+              { id: "snap", section: t("timeline.more.edit"), label: t("timeline.snap.row"), toggle: true, checked: snapOn, testid: "tl-snap-row", onSelect: () => snapStore.set(!snapOn) },
+              { id: "ripple", label: t("timeline.magnetic.row"), toggle: true, checked: rippleOn, testid: "tl-magnetic-row", onSelect: () => magneticStore.set(!rippleOn) },
+            ] : []),
             { id: "duplicate", section: t("timeline.more.clip"), label: t("timeline.duplicate"), hint: KEYS.dup, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-duplicate", onSelect: () => run({ c: "duplicate" }) },
             { id: "copy", section: t("timeline.more.clip"), label: t("timeline.copy"), hint: KEYS.copy, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-copy", onSelect: () => run({ c: "copy" }) },
             { id: "cut", label: t("timeline.cut"), hint: KEYS.cut, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-cut", onSelect: () => run({ c: "cut" }) },
@@ -548,10 +552,6 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
             ...(narrowBar() ? [
               { id: "zin", label: t("timeline.zoomIn"), hint: "+", onSelect: () => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user") },
               { id: "zout", label: t("timeline.zoomOut"), hint: "-", onSelect: () => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user") },
-            ] : []),
-            ...(switchesInMenu() ? [
-              { id: "snap", label: t("timeline.snap.row"), toggle: true, checked: snapOn, testid: "tl-snap-row", onSelect: () => snapStore.set(!snapOn) },
-              { id: "ripple", label: t("timeline.magnetic.row"), toggle: true, checked: rippleOn, testid: "tl-magnetic-row", onSelect: () => magneticStore.set(!rippleOn) },
             ] : []),
             { id: "history", disabled: off, label: t("timeline.history"), testid: "tl-history", onSelect: () => setDialog("history") },
           ]} />}
