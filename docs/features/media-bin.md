@@ -51,3 +51,11 @@ The chips on the empty drop zone come from one list, `media/formats.ts` (`IMPORT
 
 ## Card states (UX r15 DESK-15)
 The accent outline on a bin card now means **the card you tapped** (selected; the one whose "+" is next), not "on the timeline"; the timeline state is the "On the timeline" pill (words in the grid, check and count in the list so names are not cut). Tapping a card selects it (a phone tap no longer does nothing).
+
+## Where media lands: one rule (UX r16 lane A)
+`plan.ts` `landingStart` is the only rule, for the card "+", "Add to timeline", Enter or double-click on a card, drag to the timeline and import (batch or single):
+- **Pictures (video, photo)** go right after the last picture on the main video track (V1, `pictureEnd`), whatever else the project holds. Music longer than the pictures never pushes that point, so three clicks on "+" butt together and a batch never leaves a hole (DESK-1, FIRST-2, FIRST-3, PHONE-4). A picture dropped on another video lane keeps the dropped time when it is free there, else goes after that lane's last clip.
+- **Sound-only media** goes at the playhead (a drop: the drop time) on the first audio track that is free there, else a new audio track (`insertOps` + `planSound`). In a batch with pictures it starts where the batch's first picture starts.
+- **Import into a non-empty project:** a sound-only file goes straight onto the timeline (FIRST-1: "add music" is the headline task); videos and photos keep the toast "Added to Media / Add to timeline" (it now counts only the files that stayed in the bin). Empty timeline and drops on the timeline are unchanged.
+- **Double-click** a card adds it (not on its buttons). **Keyboard (DESK-9):** the cards are ONE tab stop (roving tabindex: the card last focused, else the first); arrows, Home and End move between cards (a grid keeps the column), Enter adds, Shift+Enter adds as an overlay, T, the context-menu key or Shift+F10 edit tags. The buttons on a card are out of the tab order (still clickable). Alt+T focuses the timeline from anywhere, including the page body (Option+T on a Mac too).
+Tests: `tests/unit/r16-lane-a.test.ts`, `tests/smoke/ux-r16-a.spec.ts`.

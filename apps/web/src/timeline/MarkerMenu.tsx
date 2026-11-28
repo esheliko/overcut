@@ -20,7 +20,7 @@ export function MarkerMenu({ marker, anchor, onAct, onClose }: Props) {
   const { t } = useI18n();
   const box = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState(marker.name);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; maxH: number } | null>(null);
   const [back] = useState(rememberFocus);
   const close = () => { onClose(); back(); };
   const closeRef = useRef(close);
@@ -32,7 +32,10 @@ export function MarkerMenu({ marker, anchor, onAct, onClose }: Props) {
     const el = box.current;
     if (!el) return;
     const w = el.offsetWidth, h = el.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
-    setPos({ left: Math.max(8, Math.min(anchor.left, vw - w - 8)), top: Math.max(8, Math.min(anchor.bottom + 4, vh - h - 8)) });
+    // Under the ruler when it fits; else as high as the ruler (never above it: the transport and toolbar sit there, UX r16 DESK-11) and scrolling inside if still too tall.
+    const below = anchor.bottom + 4;
+    const top = below + h <= vh - 8 ? below : Math.max(8, Math.max(anchor.top, vh - h - 8));
+    setPos({ left: Math.max(8, Math.min(anchor.left, vw - w - 8)), top, maxH: Math.max(120, vh - top - 8) });
   }, [anchor]);
   useEffect(() => { box.current?.querySelector<HTMLElement>("input")?.focus({ preventScroll: true }); }, []);
   useEffect(() => {
@@ -53,7 +56,7 @@ export function MarkerMenu({ marker, anchor, onAct, onClose }: Props) {
 
   return (
     <div ref={box} className="menu-pop tl-menu marker-menu" role="menu" aria-label={t("marker.menu", { name: marker.name || t("marker.unnamed") })}
-      style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }} onKeyDown={onKey} data-testid="marker-menu">
+      style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, maxBlockSize: pos?.maxH, overflowY: "auto", visibility: pos ? "visible" : "hidden" }} onKeyDown={onKey} data-testid="marker-menu">
       <form className="tl-rename" onSubmit={(e) => { e.preventDefault(); if (valid) act({ a: "rename", id: marker.id, name: draft }); }}>
         <label>{t("marker.name")}<input value={draft} maxLength={120} onChange={(e) => setDraft(e.target.value)} onFocus={(e) => e.currentTarget.select()} data-testid="marker-name-input" /></label>
         <button type="submit" className="menu-row" disabled={!valid}>{t("marker.rename.apply")}</button>

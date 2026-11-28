@@ -2,7 +2,7 @@
  *  All values are integer ticks. The engine refuses an edit that does not fit whole, so every range here is conservative (rounded inwards).
  *  Linked partners (picture + sound) get the same edit in the same op list, because the engine does not read links; the range is what ALL of them allow. */
 import type { Op } from "@app/engine-client";
-import { partnersOf, snapDelta } from "./edit";
+import { flagsOf, laneChanger, laneOps, lanePlan, laneStepOps, partnersOf, snapDelta } from "./edit";
 import type { Scene } from "./scene";
 
 export type Tool = "select" | "ripple" | "roll" | "slip" | "slide";
@@ -81,6 +81,73 @@ export function onMagnetic(scene: Scene, i: number): boolean {
 /** A trim of `edge` to `value` (ticks) as a ripple trim: the clip and everything after it on its track(s) follow, so no gap opens or stays. */
 export const magneticTrimOps = (scene: Scene, i: number, edge: "start" | "end", value: number): Op[] =>
   rippleTrimOps(scene, i, edge, value - (edge === "start" ? scene.tStart[i]! : scene.tStart[i]! + scene.tDur[i]!));
+
+/** True when lifting `movers` off the magnetic main track leaves a hole: one of them has a clip after it on that track that stays. (Lifting the last clips leaves nothing to close, so their sound can stay where it is.) */
+export function leavesHole(scene: Scene, movers: readonly number[]): boolean {
+  const main = mainTrack(scene);
+  if (main < 0) return false;
+  const lifted = new Set(movers.filter((i) => scene.clipTrack[i] === main));
+  if (lifted.size === 0) return false;
+  for (let j = scene.trackFirst[main]!; j < scene.trackFirst[main + 1]!; j++) if (!lifted.has(j) && [...lifted].some((i) => i < j)) return true;
+  return false;
+}
+
+/**
+ * The holes a lift leaves on the magnetic main track (UX r16, DESK-5): when clips of the main track move to another lane, the later clips follow, so no black
+ * stretch stays. `rows` is where each clip of `sel` lands (parallel; a row that differs from its own lane means it left it). The linked sounds that left their
+ * lane with a lifted picture close their hole too, so sound and picture stay together. Ops to append after the lane change; empty when nothing left the main track.
+ */
+export function liftCloseOps(scene: Scene, sel: readonly number[], rows: readonly number[]): Op[] {
+  const main = mainTrack(scene);
+  if (main < 0) return [];
+  const left = new Set(sel.filter((i, k) => rows[k] !== scene.clipTrack[i]));
+  if (![...left].some((i) => scene.clipTrack[i] === main)) return [];
+  const close = new Set<number>([main]);
+  for (const i of left) {
+    const r = scene.clipTrack[i]!;
+    if (scene.trackKind[r] === 1 && partnersOf(scene, i).some((j) => left.has(j) && scene.clipTrack[j] === main)) close.add(r);
+  }
+  const ops: Op[] = [];
+  for (const row of close) {
+    const lo = scene.trackFirst[row]!, hi = scene.trackFirst[row + 1]!;
+    const runs: [number, number][] = []; // maximal runs of clips that left this lane
+    for (let j = lo; j < hi; j++) {
+      if (!left.has(j)) continue;
+      let k = j;
+      while (k + 1 < hi && left.has(k + 1)) k++;
+      runs.push([j, k]);
+      j = k;
+    }
+    for (const [a, b] of runs.reverse()) { // right to left: closing one hole never moves the ones before it
+      if (b + 1 >= hi) continue; // nothing after the run: no hole to close
+      const prevEnd = a > lo ? endOf(scene, a - 1) : 0, nextStart = scene.tStart[b + 1]!;
+      if (nextStart > prevEnd) ops.push({ op: "close_gap", track: scene.trackId[row]!, at: Math.floor((prevEnd + nextStart) / 2) });
+    }
+  }
+  return ops;
+}
+
+/** One lane up or down for the keyboard (Alt+Up / Alt+Down). With the magnetic main track on and the picture leaving it, the linked sound moves to another lane and the hole closes (`liftCloseOps`). */
+export function laneStep(scene: Scene, sel: readonly number[], dir: "up" | "down", magnetic: boolean): { ops: Op[]; track: number } | null {
+  const step = laneStepOps(scene, sel, dir);
+  if (!step || !magnetic) return step;
+  if (!leavesHole(scene, sel)) return step;
+  const mv = laneChanger(scene, sel, step.track);
+  const plan = mv ? lanePlan(scene, sel, flagsOf(scene, sel), mv, 0, true) : null;
+  if (!mv || !plan) return step;
+  return { ops: [...laneOps(scene, sel, mv, plan.delta, plan), ...liftCloseOps(scene, sel, plan.to)], track: step.track };
+}
+
+/** Alt+Up on the top video lane (or Alt+Down on the last audio lane) has no lane to go to: which kind of NEW lane it should make, or null when the lane exists (or the selection cannot move together). */
+export function newLaneKind(scene: Scene, sel: readonly number[], dir: "up" | "down"): "video" | "audio" | null {
+  const video = sel.filter((i) => scene.trackKind[scene.clipTrack[i]!] === 0);
+  const movers = video.length ? video : sel;
+  if (movers.length === 0 || new Set(movers.map((i) => scene.clipTrack[i]!)).size !== 1) return null;
+  const from = scene.clipTrack[movers[0]!]!, kind = scene.trackKind[from]!;
+  if (dir === "up" ? kind !== 0 : kind !== 1) return null;
+  for (let t = from + (dir === "up" ? -1 : 1); t >= 0 && t < scene.trackCount; t += dir === "up" ? -1 : 1) if (scene.trackKind[t] === kind) return null;
+  return kind === 0 ? "video" : "audio";
+}
 
 // ---- roll ----
 

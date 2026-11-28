@@ -32,6 +32,8 @@ export type Command =
   | { c: "step"; frames?: number; seconds?: number; to?: "start" | "end" }
   /** Markers (M2-046): add one at the playhead, open the menu of the one at the playhead. */
   | { c: "marker" } | { c: "markerEdit" }
+  /** Jump the playhead to the previous or next edit point (a clip start or end on any track) or marker (UX r16). */
+  | { c: "jump"; to: "prevCut" | "nextCut" | "prevMarker" | "nextMarker" }
   /** The in/out range (M2-046): set in / out at the playhead, clear it, loop it, play it. */
   | { c: "range"; what: "in" | "out" | "clear" | "loop" | "play" }
   | { c: "zoom"; how: "in" | "out" | "fit" | "selection" }
@@ -172,8 +174,13 @@ export const COMMANDS: readonly CommandDef[] = [
   D("view.zoomSelection", "canvas", ["Shift+Z"], { c: "zoom", how: "selection" }),
   D("view.pageRight", "canvas", ["PageDown"], { c: "scroll", how: "pageRight" }),
   D("view.pageLeft", "canvas", ["PageUp"], { c: "scroll", how: "pageLeft" }),
-  D("view.tracksDown", "canvas", ["ArrowDown"], { c: "scroll", how: "down" }, { when: "noSelection" }),
-  D("view.tracksUp", "canvas", ["ArrowUp"], { c: "scroll", how: "up" }, { when: "noSelection" }),
+  /** Up / Down with nothing selected jump between edit points (Premiere, Resolve); Shift+Up / Down between markers. Scrolling the tracks is the wheel or the scroll bar (UX r16). */
+  D("view.prevCut", "canvas", ["ArrowUp"], { c: "jump", to: "prevCut" }, { when: "noSelection" }),
+  D("view.nextCut", "canvas", ["ArrowDown"], { c: "jump", to: "nextCut" }, { when: "noSelection" }),
+  D("marker.prev", "canvas", ["Shift+ArrowUp"], { c: "jump", to: "prevMarker" }, { when: "noSelection" }),
+  D("marker.next", "canvas", ["Shift+ArrowDown"], { c: "jump", to: "nextMarker" }, { when: "noSelection" }),
+  D("view.tracksDown", "canvas", [], { c: "scroll", how: "down" }, { when: "noSelection" }),
+  D("view.tracksUp", "canvas", [], { c: "scroll", how: "up" }, { when: "noSelection" }),
 
   D("picture.nudgeLeft", "preview", ["ArrowLeft"], { c: "pictureNudge", dx: -1, dy: 0, px: 1 }),
   D("picture.nudgeRight", "preview", ["ArrowRight"], { c: "pictureNudge", dx: 1, dy: 0, px: 1 }),
@@ -223,7 +230,7 @@ function matches(c: Chord, e: KeyLike): boolean {
   if (c.alt !== e.altKey) return false;
   const symbol = c.main.length === 1 && !isLetter(c.main); // Shift is how "+" is typed on many layouts: not part of the binding
   if (!symbol && c.shift !== e.shiftKey) return false;
-  if (c.main.length === 1) return e.key.toLowerCase() === c.main.toLowerCase();
+  if (c.main.length === 1) return e.key.toLowerCase() === c.main.toLowerCase() || (c.alt && /^[a-z]$/i.test(c.main) && e.code === `Key${c.main.toUpperCase()}`); // Option+letter types another character on a Mac
   return e.key === c.main || e.code === c.main;
 }
 
