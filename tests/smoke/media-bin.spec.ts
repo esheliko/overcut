@@ -46,8 +46,9 @@ test("add from the bin with the + button (44 px), keyboard reachable; a second f
   await page.getByTestId("import-more").click({ trial: true });
   await page.getByTestId("media-input").setInputFiles(file("vp9_opus.webm"));
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
-  if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // closed again after this import (same wait)
-  await expect(summary(page)).toContainText("1 clip"); // only the first import auto-adds
+  if ((page.viewportSize()?.width ?? 0) < 720) await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "true"); // UX r15: an import that only reached the bin keeps the sheet open (it never closes into nothing) and says so
+  await expect(page.getByTestId("toast")).toContainText("Added to Media");
+  await expect(summary(page)).toContainText("1 clip"); // only an import onto an empty timeline auto-adds
   const add = page.getByRole("button", { name: "Add vp9_opus.webm to the timeline" });
   // The phone sheet rises with an animation (translate): measured mid-way a 44 px button reads 43.99997. Measure once it has settled.
   await page.getByTestId("panel-tool").evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
@@ -67,8 +68,9 @@ test("a file that cannot be imported says why, in plain words, and nothing is si
   const items = page.getByTestId("bin-item");
   await expect(items).toHaveCount(2);
   await expect(page.getByTestId("panel-tool").getByText("notes.txt is not a video, audio or image file")).toBeVisible();
-  await expect(page.locator(".bin-error").getByText(/broken\.mp4 could not be imported \(MP4\)/)).toBeVisible();
-  await expect(page.locator("[data-announcer=polite]")).toContainText("could not be imported"); // the refusal is what a screen reader hears, not a count of files imported
+  await expect(page.locator(".bin-error").getByText(/Can't read broken\.mp4\. It may be damaged/)).toBeVisible(); // two short lines (UX r15); the engine's sentence and the formats that always work sit behind Details
+  await expect(page.locator("[data-announcer=polite]")).toContainText("Can't read broken.mp4"); // the refusal is what a screen reader hears, not a count of files imported
+  await page.locator(".bin-error summary").click(); // Details: the formats that always work
   await expect(page.getByText(/MP4 or MOV with H\.264/).first()).toBeVisible();
   await expect(summary(page)).toContainText("0 clips"); // nothing was added
   await page.getByRole("button", { name: "Dismiss notes.txt" }).click();
@@ -83,7 +85,7 @@ test("an audio-only .webm (a voice recording) imports as audio; a format nobody 
   ]);
   await expect(summary(page)).toContainText("1 clip", { timeout: 20_000 });
   await expect(page.getByTestId("bin-item").filter({ hasText: "voice.webm" })).toContainText("OPUS");
-  await expect(page.locator("[data-announcer=polite]")).toContainText(/clip\.wav could not be imported \(WAV\)\. This is not a video or audio format OverCut can read\. /); // announced, as a sentence, not buried under "1 file imported"
+  await expect(page.locator("[data-announcer=polite]")).toContainText(/Can't read clip\.wav\. It may be damaged/); // announced, as a sentence, not buried under "1 file imported"
   await expect(page.locator("[data-announcer=polite]")).not.toContainText("file imported");
 });
 
@@ -196,7 +198,7 @@ test("a clip already on the timeline keeps its \"+\" (add it again, T-01); the t
   await expect(page.getByTestId("preview-import")).toHaveCount(0); // the Media panel has the one Import
   await page.getByTestId("media-input").setInputFiles(file("vp9_opus.webm"));
   await expect(page.getByTestId("bin-item")).toHaveCount(2);
-  if ((page.viewportSize()?.width ?? 0) < 720) { await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "false"); await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click(); } // the sheet closes itself after an import: wait for that, clicking earlier would toggle it shut
+  if ((page.viewportSize()?.width ?? 0) < 720) await expect(page.getByTestId("panel-tool")).toHaveAttribute("data-open", "true"); // UX r15: a bin-only import keeps the sheet open
   const second = page.getByTestId("bin-item").filter({ hasText: "vp9_opus.webm" });
   await expect(second.getByRole("button", { name: "Add vp9_opus.webm to the timeline" })).toBeVisible();
   await expect(second.getByTestId("bin-on-timeline")).toHaveCount(0);

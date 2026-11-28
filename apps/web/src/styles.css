@@ -112,7 +112,6 @@ h2, p { margin: 0; }
 .stage-view { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 12px; container-type: size; background: var(--stage); } /* r14: the picture sits on the darkest surface, darker than the chrome */
 .canvas { position: relative; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); max-height: 100cqh; display: grid; place-items: center; background: var(--stage); border-radius: 0; box-shadow: 0 0 0 1px var(--line); transition: width var(--dur-slow) ease, aspect-ratio var(--dur-slow) ease; }
 .preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: var(--stage); }
-.scrub-prep { position: absolute; bottom: 8px; inset-inline-start: 8px; max-width: calc(100% - 16px); padding: 2px 10px; border-radius: 999px; background: var(--surface-3); color: var(--muted); font: 500 12px/1.6 var(--font-ui, inherit); pointer-events: none; }
 .rate-badge { position: absolute; top: 8px; inset-inline-end: 8px; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--fg); font: 700 12px/1.6 var(--font-mono); direction: ltr; }
 .chip-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--fg); font-weight: 600; font-size: var(--text-sm); }
 .chip-btn:hover:not(:disabled) { background: var(--surface-3); border-color: var(--line-strong); }
@@ -324,7 +323,6 @@ h2, p { margin: 0; }
   .loop-btn { position: absolute; z-index: 3; inset-inline-end: 12px; inset-block-end: 60px; background: color-mix(in srgb, var(--stage) 55%, transparent); color: var(--stage-fg); border-radius: 50%; }
   .loop-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
   .rate-badge { inset-block-start: auto; inset-block-end: 8px; }
-  .scrub-prep { inset-block-end: auto; inset-block-start: 8px; } /* r14: the timecode chip owns the bottom-left corner on compact layouts */
 }
 /* Phone landscape: the picture runs to the bar's top edge, so the corner chips sit on it (not across its edge) */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { .loop-btn { inset-block-end: 80px; } .tc { inset-block-end: 82px; } }
@@ -871,8 +869,8 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 
 /* UX r15 FIRST-4 / FIRST-21: portrait tablet (720-1099 px wide, portrait). The tool panel above the preview is short, so the empty Media drop zone becomes one compact row (icon, words, formats) that is fully visible;
    the timeline toolbar drops its zoom slider (the - / + / Fit buttons stay) and, if it is still too wide, scrolls inside itself instead of clipping; the status chip leaves below 1100 px. */
+@container editor (min-width: 900px) and (max-width: 1099px) { .tl-sel { display: none; } } /* landscape tablet: the selection pill was cut off (FIRST-21); the 820 px layout keeps it (it fits, tl-tools.spec) */
 @container editor (min-width: 720px) and (max-width: 1099px) {
-  .tl-sel { display: none; }
   .zoom input { display: none; }
   .tl-bar { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
   .tl-bar::-webkit-scrollbar { display: none; }

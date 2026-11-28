@@ -335,7 +335,7 @@
   "media.noMatch": "No media matches “{query}”.",
   "media.imported": "{count, plural, one {# file imported} other {# files imported}}",
   "media.err.notMedia": "{name} is not a video, audio or image file, so it was skipped.",
-  "media.err.unsupported": "Can't import {name} ({ext}). This format isn't supported here yet.",
+  "media.err.unsupported": "Can't read {name}. It may be damaged, or {ext} isn't supported yet.",
   "media.err.failed": "Can't read {name}. It may be damaged or not really a {ext} file.",
   "timeline.empty": "Drop or import media to start. Export turns on once the timeline has a clip.",
   "timeline.empty.touch": "Import media to start. Export turns on once there is a clip.",

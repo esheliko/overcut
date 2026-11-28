@@ -95,10 +95,12 @@ function Card({ item, tags, onTimeline, uses, selected, onSelect, onAdd, onAddOv
         {item.status === "unsupported" && (
           <span role="alert" className="bin-error" data-testid="bin-error">
             <span className="bin-error-text">{item.message}</span>
-            <details className="bin-error-details">
-              <summary>{t("media.err.details")}</summary>
-              <span>{[item.details, t("media.err.works")].filter(Boolean).join(" ")}</span>
-            </details>
+            {item.details && (
+              <details className="bin-error-details">
+                <summary>{t("media.err.details")}</summary>
+                <span>{[item.details, t("media.err.works")].join(" ")}</span>
+              </details>
+            )}
           </span>
         )}
         {needsPermission && onAllow && <button className="bin-link" onClick={onAllow} data-testid="bin-allow">{t("media.permission.allow")}</button>}

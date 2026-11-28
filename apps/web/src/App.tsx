@@ -327,7 +327,7 @@ function Editor({ store }: { store: ProjectStore }) {
   // The toast sits just above the timeline (never on the picture, never over a lane): measured when it shows, because the timeline's height is the user's to change.
   useEffect(() => {
     if (!toast) return;
-    const top = document.querySelector<HTMLElement>(".tl-drop")?.getBoundingClientRect().top;
+    const top = document.querySelector<HTMLElement>(".timeline")?.getBoundingClientRect().top;
     if (top && top > 0) document.documentElement.style.setProperty("--toast-bottom", `${Math.round(window.innerHeight - top + 8)}px`);
     else document.documentElement.style.removeProperty("--toast-bottom");
   }, [toast]);
