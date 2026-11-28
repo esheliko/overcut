@@ -52,3 +52,17 @@ Preview: https://overcut-m2.vercel.app/
 - Separate dev and customer replies completely.
 - Keep customer replies short and plain.
 - Times to the owner: Israel time (IST), via `TZ=Asia/Jerusalem date`.
+
+## Handover from the customer support session (hand-off to successor 2)
+Successor: session_01VHHsof6wDAPEHPiYXCrCQB (connected, idle, set up from this branch).
+
+- Batches sent to the polish session: 1 to 17 (no change since the list above; batch 7 is still split into two items).
+- Customer items not yet sent: none.
+- Open customer items: none waiting on the customer. Linked video/audio moving between tracks, refresh permission prompt, Android re-choosing files after reload, and PWA file behaviour stay as listed above.
+- Owner decisions:
+  - Trim ripple by default: direction given (yes, like CapCut, with an easy, visible gap option). Implementation is open and needs a docs PR first. This is not a question for the owner. Do not ask it again.
+  - Linked video/audio move between tracks: NOT decided. It is an open scope question in the polish session (batch 3, item 1). Do not record it as settled and do not raise it with the owner unless the polish session asks or the customer gives new information.
+- Customer's last answers: Windows Chrome (permission prompt on refresh, files relinked after granting); Android Chrome (files chosen again after reload). The undo toast action was "move". The last reply sent was about the fullscreen notice (plain text).
+- Nothing was left unhanded: no unsent customer item and no unpushed work from the previous session.
+
+Rules for the successor: owner decisions and tags go only inside the "To dev" block; the customer block is plain language; do not re-send items already sent; read the customer's words before asking a question.
