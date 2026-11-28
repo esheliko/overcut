@@ -85,3 +85,15 @@ Unit (`tests/unit/timeline-edit.test.ts`): snapping, move room, op order, track 
 - **Overview** is hidden while the project has no clips and while the clips fit; its visible bar is 32 px (44 px hit area on touch).
 - Cursors: pointer on the ruler, grab on a clip body, grabbing while carrying, resize on edges. A context click sets `data-pointer` so no keyboard focus ring shows after a mouse right-click.
 - The playhead is read from the store on demand; `Timeline` does not re-render per tick and the canvas refreshes its ARIA value at most twice a second while playing.
+
+## M2 UX r16 lane E: the feel of the canvas
+- **Clip kinds and colour** (`scene.clipKind`, `scene.trackMusic`, `draw.ts` `bodyOf`): a video on the main track (the lowest picture track) uses `--clip-video`; a still on it `--clip-photo`; any picture on a higher track `--clip-overlay`; the sound that came with a picture (linked) `--clip-audio`; a sound file of its own (unlinked, media kind audio) `--clip-music` (amber, so a music lane is not taken for camera sound; its header chip wears a note instead of "A"). Labels use `--clip-ink` on a chip (dark chip under light ink, light chip under dark ink) and waveforms are drawn in the same ink, so they read on every body in every theme.
+- **Selection** no longer washes the clip (it veiled the thumbnails in the light theme): a 3 px accent border inside a 5 px keyline of the page colour, plus the white trim handles.
+- **Groups**: the audio lanes carry a quiet tint and a 2 px line sits where the pictures end. Header switches draw 16 px glyphs (a 22 px box); on touch the whole header is the 44 px+ target and the "on" indicators are 16 px in their own colour.
+- **Thumbnails**: a slot without its picture shows a neutral frame (a hairline gap between slots), then the picture fades in over 180 ms (`ThumbService.age`; none under reduced motion). While an edge is trimmed the ghost keeps the clip's thumbnails or waveform.
+- **Trim edge frame** (`trimPreview.ts`, `PreviewPanel.tsx`): while an edge is dragged the preview shows the frame under it (first frame for a start edge, last frame for an end edge, clamped to the clip as it is until the trim is committed), at most one seek per animation frame; the playhead does not move, and on release the preview returns to it.
+- **Back to the playhead**: when the playhead is out of view a chip (`.tl-ph-chip`, left or right by side, arrow) appears; a tap centres the playhead (no zoom change).
+- **Press feedback**: the clip under a pointer is lit (wash and accent keyline) in the frame of the press; on touch a ring above the fingertip fills over the 380 ms pick-up time (`PICKUP_MS`), then the lifted ghost and a haptic tick take over.
+- **Zoom after a reload**: a project opens at the default zoom (the existing auto-fit still widens it when clips outgrow the view), or at the zoom set by hand in it (`localStorage` `overcut.zoom.<project id>`, written 400 ms after a change, removed by Fit). Blocked storage means the default zoom.
+- **Short timeline** (phone Edit sheet): when the canvas gets shorter the first selected clip's lane is scrolled into view.
+

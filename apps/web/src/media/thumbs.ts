@@ -30,6 +30,10 @@ export class ThumbService {
   private active = 0;
   onChange: () => void = () => undefined;
   readonly stats = { generated: 0, fromCache: 0 };
+  /** When each bitmap arrived (`performance.now()`), so the timeline can fade it in over the placeholder instead of popping it (r16 DESK-12). A WeakMap: no bookkeeping when a bitmap is evicted. */
+  private born = new WeakMap<ImageBitmap, number>();
+  /** Milliseconds since `bmp` arrived (large for one that has been there a while). */
+  age(bmp: ImageBitmap, now: number): number { const t = this.born.get(bmp); return t === undefined ? 1e9 : now - t; }
 
   constructor(private host: MediaHost, private cache: MediaCache) {}
 
@@ -74,6 +78,7 @@ export class ThumbService {
       let m = this.bitmaps.get(fp);
       if (!m) this.bitmaps.set(fp, (m = new Map()));
       m.set(key, bmp);
+      this.born.set(bmp, performance.now());
       if (++this.count > MAX_BITMAPS) this.evict(fp);
       emitThumb(media.id, k * INTERVALS[iv]!, bmp);
       this.onChange();

@@ -20,6 +20,8 @@ import { TransformHandles } from "./preview/TransformHandles";
 import { selectedVideoClip, useTransformEdit } from "./inspector/Inspector";
 import { relativeTicks } from "./inspector/keyframeModel";
 import { useWorkerMedia } from "./preview/useWorkerMedia";
+import { useHoldRepeat } from "./preview/holdRepeat";
+import { trimPreview } from "./timeline/trimPreview";
 import { useProjectStore, useStore } from "./store/projectStore";
 import type { Clip } from "@app/engine-client";
 
@@ -178,7 +180,10 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   const rangeRun = useRef<(PlayRange & { seen: boolean }) | null>(null);
   // A seek the timeline asked for that the player has not answered yet: frames it published before that (it was still on the old position, or just re-configured) are stale and must not move the playhead back.
   const pendingSeek = useRef<{ frame: number; until: number } | null>(null);
+  // While an edge is dragged on the timeline the picture shows the frame under that edge (r16 DESK-15): the frames the player publishes then are not the playhead and must not move it.
+  const trimHold = useRef(false);
   const emit = useCallback((f: number) => {
+    if (trimHold.current) return;
     const ps = pendingSeek.current;
     if (ps) {
       if (f === ps.frame || performance.now() > ps.until) pendingSeek.current = null;
@@ -274,6 +279,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
       const frame = store.getState().playhead;
       if (frame === seen) return;
       seen = frame;
+      if (trimHold.current) return;
       const echo = echoes.current;
       const p = playerRef.current;
       if (echo.has(frame)) {
@@ -287,6 +293,27 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
     };
     follow();
     return store.subscribe(follow);
+  }, [store]);
+
+  // The frame under a dragged trim edge: at most one seek per animation frame (the player keeps only the latest request, so a fast drag is not a decode storm); on release the picture goes back to the playhead.
+  useEffect(() => {
+    let raf = 0;
+    const flush = () => {
+      raf = 0;
+      const f = trimPreview.get(), p = playerRef.current;
+      if (f !== null && p) p.seek(f);
+    };
+    const on = () => {
+      const f = trimPreview.get(), p = playerRef.current;
+      if (f !== null) { trimHold.current = true; if (!raf) raf = window.requestAnimationFrame(flush); return; }
+      window.cancelAnimationFrame(raf); raf = 0;
+      if (!trimHold.current) return;
+      trimHold.current = false;
+      const back = store.getState().playhead;
+      if (p) { pendingSeek.current = { frame: back, until: performance.now() + 400 }; p.seek(back); }
+    };
+    const off = trimPreview.subscribe(on);
+    return () => { off(); window.cancelAnimationFrame(raf); trimHold.current = false; };
   }, [store]);
 
   // Canvas backing store follows the panel at real device pixels.
@@ -365,6 +392,8 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   }, []);
 
   const p = () => playerRef.current;
+  const stepBack = useHoldRepeat((n) => playerRef.current?.step(-n)); // press and hold repeats, then speeds up (r16 PHONE-9)
+  const stepForward = useHoldRepeat((n) => playerRef.current?.step(n));
   const ar = size.width / size.height;
   // Handles only while the playhead is on the selected video clip (otherwise there is no picture to grab).
   const sel = view.has ? selectedVideoClip(project, selection) : null;
@@ -407,9 +436,9 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
         <Timecode rate={rate} endFrame={endFrame} label={t("player.time")} />
         <div className="transport" role="toolbar" aria-label={t("player.toolbar")}>
           <button className="icon-btn" aria-label={t("player.start")} title={tip(t("player.start"), "Home")} onClick={() => p()?.seek(0)}><Icon name="back" size={20} /></button>
-          <button className="icon-btn" aria-label={t("player.stepBack")} title={tip(t("player.stepBack"), ",")} onClick={() => p()?.step(-1)}><Icon name="stepBack" size={20} /></button>
+          <button className="icon-btn step-hold" aria-label={t("player.stepBack")} title={tip(t("player.stepBack"), ",")} data-testid="step-back" {...stepBack}><Icon name="stepBack" size={20} /></button>
           <button className="play" aria-label={playing ? t("player.pause") : t("player.play")} title={tip(playing ? t("player.pause") : t("player.play"), "Space · J K L")} onClick={() => p()?.toggle()}><Icon name={playing ? "pause" : "play"} size={22} /></button>
-          <button className="icon-btn" aria-label={t("player.stepForward")} title={tip(t("player.stepForward"), ".")} onClick={() => p()?.step(1)}><Icon name="stepForward" size={20} /></button>
+          <button className="icon-btn step-hold" aria-label={t("player.stepForward")} title={tip(t("player.stepForward"), ".")} data-testid="step-forward" {...stepForward}><Icon name="stepForward" size={20} /></button>
           <button className="icon-btn" aria-label={t("player.end")} title={tip(t("player.end"), "End")} onClick={() => p()?.seek(p()!.endFrame)}><Icon name="forward" size={20} /></button>
         </div>
         <div className="player-extras">

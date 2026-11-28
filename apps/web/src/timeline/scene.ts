@@ -6,6 +6,9 @@ import { clipKeyTimes } from "../inspector/keyframeModel";
 export const TICKS_PER_SECOND = 705_600_000;
 
 export type TrackKind = "video" | "audio";
+/** What a clip is, for its colour (r16 lane look): a video clip on the main track, a still picture, anything on a track above the main one (an overlay), the sound that came with a
+ *  picture (linked), or a sound file of its own (music, voice-over). */
+export const CK_VIDEO = 0, CK_PHOTO = 1, CK_OVERLAY = 2, CK_SOUND = 3, CK_MUSIC = 4;
 
 export interface Scene {
   trackCount: number;
@@ -45,6 +48,9 @@ export interface Scene {
   sequenceId: string;
   /** Track index of each clip. */
   clipTrack: Uint16Array;
+  /** Per clip: its kind (`CK_*`); per track: 1 when the lane holds sound files of their own and no camera sound (it is drawn as a music lane). */
+  clipKind: Uint8Array;
+  trackMusic: Uint8Array;
   /** Ticks per frame of the sequence (integer for every common rate). */
   frameTicks: number;
   /** Media id per clip, where in the media the clip starts (seconds), and the project's media by id (waveforms, thumbnails). */
@@ -113,6 +119,8 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     trackModel: Uint16Array.from(order),
     sequenceId: project?.sequences[sequence]?.id ?? "",
     clipTrack: new Uint16Array(total),
+    clipKind: new Uint8Array(total),
+    trackMusic: new Uint8Array(tracks.length),
     frameTicks: rate && rate.num > 0 ? Math.round((TICKS_PER_SECOND * rate.den) / rate.num) : TICKS_PER_SECOND / 30,
     media: new Array<string>(total),
     srcIn: new Float64Array(total),
@@ -161,6 +169,17 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     }
   });
   scene.trackFirst[tracks.length] = i;
+  // Clip kinds: the main track is the lowest video track (CapCut's magnetic track); a picture on any other video track is an overlay.
+  let main = -1;
+  for (let t = 0; t < tracks.length; t++) if (scene.trackKind[t] === 0 && (main < 0 || scene.trackModel[t]! < scene.trackModel[main]!)) main = t;
+  for (let t = 0; t < tracks.length; t++) {
+    let music = 0, sound = 0;
+    for (let k = scene.trackFirst[t]!; k < scene.trackFirst[t + 1]!; k++) {
+      if (scene.trackKind[t] === 1) { const own = scene.link[k] === "" && scene.mediaById.get(scene.media[k]!)?.kind === "audio"; scene.clipKind[k] = own ? CK_MUSIC : CK_SOUND; if (own) music++; else sound++; }
+      else scene.clipKind[k] = t !== main ? CK_OVERLAY : scene.mediaById.get(scene.media[k]!)?.kind === "image" ? CK_PHOTO : CK_VIDEO;
+    }
+    scene.trackMusic[t] = music > 0 && sound === 0 ? 1 : 0;
+  }
   // Live = not muted, not hidden, and (when some track of the same kind is soloed) soloed itself; the engine's own rule (`Track::is_live`).
   const soloed = [false, false];
   for (let t = 0; t < tracks.length; t++) if (scene.trackSolo[t]) soloed[scene.trackKind[t]!] = true;

@@ -1,7 +1,7 @@
 /** Canvas painter for the timeline. `drawTimeline` allocates nothing per frame: typed arrays and constants only,
  *  one fillStyle per track pass (no paths: software rasterizers are slow on thousands of sub-rects), ruler labels cached by second. Only clips intersecting the viewport are touched (binary search per visible track). */
 import { readColors, readToken } from "../theme/tokens";
-import { firstEndingAfter, TICKS_PER_SECOND, type Scene } from "./scene";
+import { CK_MUSIC, CK_OVERLAY, CK_PHOTO, CK_SOUND, CK_VIDEO, firstEndingAfter, TICKS_PER_SECOND, type Scene } from "./scene";
 import { clipDetail, formatDur, formatTick, gut, LANE, MARKER_NAME_PPS, minorDivisions, RULER, tickStep, timeToX, type View } from "./view";
 import { addTrackRect } from "./hit";
 import { IND, SW, switchX, TOGGLES, togglesFor, type Toggle } from "./header";
@@ -18,11 +18,15 @@ export interface Palette {
   danger: string; accentInk: string;
   /** Clip name colour on a flat body of each kind (dark on a light body, white on a dark one: theme-aware). */
   videoInk: string; audioInk: string;
+  /** r16 lane look: bodies of the other clip kinds, the music lane's own hue, the label colour (`--clip-ink`, 4.5:1 on every body in every theme), the chip behind a label (a light
+   *  chip under dark ink, a dark one under light ink), the neutral placeholder of a thumbnail that has not arrived, and the quiet fill of the audio group's lanes. */
+  photoBody: string; overlayBody: string; musicBody: string; musicStrip: string; clipInk: string; chipBg: string; tilePh: string; lane2: string;
 }
 export const DARK: Palette = {
   bg: "#08080a", surface: "#131316", line: "rgba(255,255,255,0.08)", lineStrong: "rgba(255,255,255,0.18)", fg: "#f4f4f6", muted: "#9a9aa6", accent: "#2de2d6",
   videoBody: "#17403f", videoTile: "#1d5654", videoStrip: "#2de2d6", audioBody: "#1c3a33", audioWave: "#5fd1a8", audioStrip: "#3ddc97",
   danger: "#ff6b6b", accentInk: "#04211f", videoInk: "#fff", audioInk: "#fff",
+  photoBody: "#1f3c63", overlayBody: "#3d2f6e", musicBody: "#4a3716", musicStrip: "#f0b84a", clipInk: "#f4f4f6", chipBg: "rgba(0,0,0,0.62)", tilePh: "rgba(255,255,255,0.10)", lane2: "#1b1b20",
 };
 /** Black or white, whichever reads better on `bg` (a #rgb / #rrggbb / rgb() colour); white when it cannot be parsed. */
 function inkOn(bg: string): string {
@@ -46,8 +50,11 @@ export function paletteFromCss(el: Element): Palette {
   const c = readColors(root);
   const get = (v: string, fb: string) => v || fb;
   const tok = (n: string, fb: string) => readToken(n, root) || fb; // clip hues are timeline-only tokens (tokens.css), not in COLOR_TOKENS
-  const videoBody = get(c.clip, DARK.videoBody), audioBody = tok("clip-audio", DARK.audioBody);
+  const videoBody = tok("clip-video", "") || get(c.clip, DARK.videoBody), audioBody = tok("clip-audio", DARK.audioBody);
+  const clipInk = tok("clip-ink", DARK.clipInk), darkInk = inkOn(clipInk) === "#fff"; // the ink is dark on the light theme's pale bodies
   return {
+    photoBody: tok("clip-photo", DARK.photoBody), overlayBody: tok("clip-overlay", DARK.overlayBody), musicBody: tok("clip-music", DARK.musicBody), musicStrip: tok("clip-music-strip", DARK.musicStrip),
+    clipInk, chipBg: darkInk ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.62)", tilePh: darkInk ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.10)", lane2: get(c["surface-2"], DARK.lane2),
     videoInk: inkOn(videoBody), audioInk: inkOn(audioBody),
     bg: get(c.bg, DARK.bg), surface: get(c.surface, DARK.surface), line: get(c.line, DARK.line), lineStrong: get(c["line-strong"], DARK.lineStrong),
     fg: get(c.fg, DARK.fg), muted: get(c.muted, DARK.muted), accent: get(c.accent, DARK.accent),
@@ -56,6 +63,10 @@ export function paletteFromCss(el: Element): Palette {
     danger: get(c.danger, DARK.danger), accentInk: get(c["accent-ink"], DARK.accentInk),
   };
 }
+
+/** Body colour of a clip by its kind (`CK_*`), and the colour of its placeholder pattern or waveform. */
+export const bodyOf = (p: Palette, k: number): string => (k === CK_PHOTO ? p.photoBody : k === CK_OVERLAY ? p.overlayBody : k === CK_SOUND ? p.audioBody : k === CK_MUSIC ? p.musicBody : p.videoBody);
+const tileOf = (p: Palette, k: number): string => (k === CK_MUSIC ? p.musicStrip : k === CK_SOUND ? p.audioWave : p.videoTile);
 
 const labels = new Map<number, string>();
 /** Ruler text for `sec`, cached (a few hundred distinct values at most): nothing is allocated per frame once seen. */
@@ -67,7 +78,7 @@ function label(sec: number, step: number): string {
 }
 
 const FONT = '500 11px Inter, system-ui, sans-serif';
-const LABEL_FG = "#fff", HEAD_KEYLINE = "rgba(0,0,0,0.5)";
+const HEAD_KEYLINE = "rgba(0,0,0,0.5)";
 /** Corner radius of a clip (V-18) and the pixels left between neighbours on each side. */
 const R = 6;
 const speedLabels = new Map<number, string>();
@@ -111,7 +122,7 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
   ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
 }
-const CHIP_BG = "rgba(0,0,0,0.62)", HANDLE = "#fff", GRIP = "rgba(0,0,0,0.5)";
+const HANDLE = "#fff", GRIP = "rgba(0,0,0,0.5)";
 /** Trim handle drawn width, and the clip width from which the duration chip shows (and the room it takes). */
 const HANDLE_W = 10, DUR_MIN_W = 150, DUR_W = 52;
 const durLabels = new Map<number, string>();
@@ -152,8 +163,13 @@ export interface Overlay {
   audio: AudioPreview;
   /** The commit cue (commitCue.ts): where an edit landed and when it started (`performance.now()`); `t0 < 0` = none. One record, mutated, never reallocated. */
   cue: { sec: number; t0: number; kind: string };
+  /** A clip under a finger or the mouse button that has not become a drag yet (r16 PHONE-10): `clip` (-1 none), when it went down (`performance.now()`), where (canvas px), and whether a
+   *  touch long press can pick it up (the ring fills over `PICKUP_MS`). One record, mutated. */
+  press: { clip: number; t0: number; x: number; y: number; ring: boolean };
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, ghostLabel: null, lane: -1, newTrack: 0, marquee: null, guideSec: null, trackDrag: null, markerDrag: null, cue: { sec: 0, t0: -1, kind: "" }, audio: newAudioPreview() });
+/** How long a touch must rest on a clip to pick it up (the canvas's long-press timer uses the same number) and the beat before the ring appears, so a tap or a pan does not flash it. */
+export const PICKUP_MS = 380, RING_AFTER = 70;
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, ghostLabel: null, lane: -1, newTrack: 0, marquee: null, guideSec: null, trackDrag: null, markerDrag: null, press: { clip: -1, t0: 0, x: 0, y: 0, ring: false }, cue: { sec: 0, t0: -1, kind: "" }, audio: newAudioPreview() });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -175,7 +191,18 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
   const lastTrack = Math.min(scene.trackCount - 1, Math.floor((v.scrollY + H - RULER) / LANE));
   let drawn = 0;
   const sel = ui.selected;
+  const mainT = mainTrack(scene);
 
+  // The audio group (r16): a quiet tint on its lanes and a firm line where the pictures end, so the two groups read apart at a glance.
+  for (let t = firstTrack; t <= lastTrack; t++) {
+    if (scene.trackKind[t] !== 1) continue;
+    const y = RULER + t * LANE - v.scrollY;
+    ctx.fillStyle = p.lane2; ctx.fillRect(gut(v), y, W - gut(v), LANE - 1);
+  }
+  for (let t = Math.max(1, firstTrack); t <= lastTrack; t++) {
+    if (scene.trackKind[t] !== 1 || scene.trackKind[t - 1] === 1) continue;
+    ctx.fillStyle = p.lineStrong; ctx.fillRect(0, RULER + t * LANE - v.scrollY - 2, W, 2);
+  }
   // Lane separators; a lane without clips gets a faint dashed outline (it takes drops and pastes).
   ctx.fillStyle = p.line;
   for (let t = firstTrack; t <= lastTrack; t++) {
@@ -198,24 +225,29 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     const lo = scene.trackFirst[t]!, hi = scene.trackFirst[t + 1]!;
     let i = firstEndingAfter(scene, lo, hi, t0);
     if (!scene.trackLive[t]) ctx.globalAlpha = 0.38; // muted, hidden, or silenced by another track's solo: faded, still editable
-    // Pass 1: bodies (rounded, one path).
+    // Pass 1: bodies (rounded), one path per kind in the lane: a picture lane holds video and stills (the main track) or overlays, an audio lane camera sound and music.
     const first = i;
-    ctx.beginPath();
-    for (; i < hi && scene.start[i]! < t1; i++) {
-      const x = timeToX(v, scene.start[i]!) + 1;
-      const w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
-      const x0 = x < gut(v) ? gut(v) : x;
-      const x1 = Math.min(W, x + w);
-      if (x1 <= x0) continue;
-      drawn++;
-      if (sel !== null && sel[i] === 2) continue; // being dragged or trimmed: its ghost is drawn instead
-      rr(ctx, x0, y + 3, x1 - x0, LANE - 7, R);
+    let last = first;
+    while (last < hi && scene.start[last]! < t1) last++;
+    const k0 = audio ? CK_SOUND : t === mainT ? CK_VIDEO : CK_OVERLAY, k1 = audio ? CK_MUSIC : t === mainT ? CK_PHOTO : CK_OVERLAY;
+    for (let pass = 0; pass < (k0 === k1 ? 1 : 2); pass++) {
+      const kind = pass === 0 ? k0 : k1;
+      ctx.beginPath();
+      for (i = first; i < last; i++) {
+        if (k0 !== k1 && scene.clipKind[i] !== kind) continue;
+        const x = timeToX(v, scene.start[i]!) + 1;
+        const w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
+        const x0 = x < gut(v) ? gut(v) : x;
+        const x1 = Math.min(W, x + w);
+        if (x1 <= x0) continue;
+        drawn++;
+        if (sel !== null && sel[i] === 2) continue; // being dragged or trimmed: its ghost is drawn instead
+        rr(ctx, x0, y + 3, x1 - x0, LANE - 7, R);
+      }
+      ctx.fillStyle = bodyOf(p, kind);
+      ctx.fill();
     }
-    ctx.fillStyle = audio ? p.audioBody : p.videoBody;
-    ctx.fill();
-    const last = i;
     // Pass 2: filmstrip tiles (video) or waveform bars (audio) as one path, only when readable.
-    ctx.fillStyle = audio ? p.audioWave : p.videoTile;
     for (i = first; i < last; i++) {
       const x = timeToX(v, scene.start[i]!) + 1;
       const w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
@@ -231,6 +263,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
         ctx.restore();
         continue;
       }
+      ctx.fillStyle = tileOf(p, scene.clipKind[i]!);
       if (audio) {
         const mid = y + 3 + (LANE - 7) / 2;
         // Deterministic pseudo waveform (placeholder) anchored to the clip so it does not shimmer while scrolling.
@@ -259,8 +292,8 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       rr(ctx, tx - 5, y + 8, nameWidth(ctx, fitName(ctx, scene.name[i]!, room)) + 10, 17, 5);
       if (w >= DUR_MIN_W) { const dw = nameWidth(ctx, durLabel(scene.end[i]! - scene.start[i]!)) + 10, rx = Math.min(W, x + w) - 14; if (rx - dw > tx + 40) rr(ctx, rx - dw + 5, y + 8, dw, 17, 5); }
     }
-    ctx.fillStyle = CHIP_BG; ctx.fill();
-    ctx.fillStyle = LABEL_FG;
+    ctx.fillStyle = p.chipBg; ctx.fill();
+    ctx.fillStyle = p.clipInk;
     for (i = first; i < last; i++) {
       const x = timeToX(v, scene.start[i]!) + 1, w = (scene.end[i]! - scene.start[i]!) * v.pps - 2;
       if (clipDetail(w) !== "name" || (sel !== null && sel[i] === 2)) continue;
@@ -281,9 +314,9 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       if (room < 30 || (sel !== null && sel[i] === 2)) continue;
       const text = speedLabel(sn, sd);
       const tw = Math.min(room, nameWidth(ctx, text));
-      ctx.fillStyle = CHIP_BG;
+      ctx.fillStyle = p.chipBg;
       ctx.beginPath(); rr(ctx, tx - 5, y + LANE - 25, tw + 10, 17, 5); ctx.fill();
-      ctx.fillStyle = LABEL_FG;
+      ctx.fillStyle = p.clipInk;
       ctx.fillText(text, tx, y + LANE - 22, room);
     }
     if (audio) drawAudioLines(ctx, scene, v, W, y, LANE, first, last, sel, ui.audio); // the volume line and the fade ramps (r16)
@@ -301,7 +334,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       }
       if (n > 0) {
         const handles = n <= 24; // "select all" on a busy lane: the wash and the border only
-        ctx.fillStyle = p.accent; ctx.globalAlpha = 0.12; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.strokeStyle = p.bg; ctx.lineWidth = 5; ctx.stroke(); // a keyline round the accent border: it stands off a pale or a busy thumbnail in every theme (no wash over the picture)
         ctx.beginPath();
         for (i = first; i < last; i++) {
           if (sel[i] !== 1) continue;
@@ -403,23 +436,46 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       const tr = ui.ghostTracks !== null ? ui.ghostTracks[n]! : scene.clipTrack[i]!;
       const dur = scene.end[i]! - scene.start[i]!;
       const many = ui.ghosts.length > 16; // dragging a big selection: plain boxes (no names, no rounding), the cost stays flat
-      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, tr >= scene.trackCount || scene.trackKind[tr] === 1, many ? "" : ui.ghostLabel ?? `${scene.name[i]} · ${formatDur(dur)}`, many);
+      ghost(ctx, v, p, tr, scene.start[i]! + ui.ghostDSec, scene.end[i]! + ui.ghostDSec, tr >= scene.trackCount || scene.trackKind[tr] === 1, many ? "" : ui.ghostLabel ?? `${scene.name[i]} · ${formatDur(dur)}`, many, scene.clipKind[i]!);
     }
   }
   if (ui.trimClip >= 0) {
     const i = ui.trimClip;
     const a = ui.trimEnd ? scene.start[i]! : ui.trimSec, b = ui.trimEnd ? ui.trimSec : scene.end[i]!;
-    ghost(ctx, v, p, scene.clipTrack[i]!, a, b, scene.trackKind[scene.clipTrack[i]!] === 1, `${scene.name[i]} · ${formatDur(b - a)}`);
+    ghost(ctx, v, p, scene.clipTrack[i]!, a, b, scene.trackKind[scene.clipTrack[i]!] === 1, `${scene.name[i]} · ${formatDur(b - a)}`, false, scene.clipKind[i]!, media, scene, i);
     const L = scene.link[i]; // linked partners follow the edge by the same amount (their bodies are hidden by the selection flag 2)
     if (L) {
       const d = ui.trimSec - (ui.trimEnd ? scene.end[i]! : scene.start[i]!);
       for (let k = 0; k < scene.link.length; k++) {
         if (k === i || scene.link[k] !== L) continue;
         const ka = ui.trimEnd ? scene.start[k]! : scene.start[k]! + d, kb = ui.trimEnd ? scene.end[k]! + d : scene.end[k]!;
-        if (kb > ka) ghost(ctx, v, p, scene.clipTrack[k]!, ka, kb, scene.trackKind[scene.clipTrack[k]!] === 1, `${scene.name[k]} · ${formatDur(kb - ka)}`);
+        if (kb > ka) ghost(ctx, v, p, scene.clipTrack[k]!, ka, kb, scene.trackKind[scene.clipTrack[k]!] === 1, `${scene.name[k]} · ${formatDur(kb - ka)}`, false, scene.clipKind[k]!, media, scene, k);
       }
     }
-    if (ui.trimRight >= 0) ghost(ctx, v, p, scene.clipTrack[ui.trimRight]!, ui.trimSec, scene.end[ui.trimRight]!, scene.trackKind[scene.clipTrack[ui.trimRight]!] === 1); // a seam: the right clip follows the boundary
+    if (ui.trimRight >= 0) ghost(ctx, v, p, scene.clipTrack[ui.trimRight]!, ui.trimSec, scene.end[ui.trimRight]!, scene.trackKind[scene.clipTrack[ui.trimRight]!] === 1, "", false, scene.clipKind[ui.trimRight]!, media, scene, ui.trimRight); // a seam: the right clip follows the boundary
+  }
+
+  if (ui.press.clip >= 0 && ui.press.clip < scene.clipCount) { // r16 PHONE-10: the clip under a finger answers at once (a light wash and a keyline); a touch that can pick it up fills a ring
+    const i = ui.press.clip, tr = scene.clipTrack[i]!, y = RULER + tr * LANE - v.scrollY;
+    const x = timeToX(v, scene.start[i]!) + 1, w = Math.max(1, (scene.end[i]! - scene.start[i]!) * v.pps - 2);
+    const a = Math.max(x, gut(v)), b = Math.min(x + w, W);
+    if (b > a) {
+      ctx.save(); ctx.beginPath(); rr(ctx, a, y + 3, b - a, LANE - 7, R);
+      ctx.globalAlpha = 0.22; ctx.fillStyle = "#fff"; ctx.fill();
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = p.accent; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+    }
+    if (ui.press.ring) {
+      const k = Math.min(1, (performance.now() - ui.press.t0 - RING_AFTER) / (PICKUP_MS - RING_AFTER));
+      if (k > 0) {
+        const cx = ui.press.x, cy = Math.min(Math.max(ui.press.y - 34, RULER + 22), H - 22); // above the fingertip, so the finger does not hide it
+        ctx.save(); ctx.lineCap = "round";
+        ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.beginPath(); ctx.arc(cx, cy, 17, 0, Math.PI * 2); ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = p.accent; ctx.beginPath(); ctx.arc(cx, cy, 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.stroke();
+        ctx.restore();
+      }
+    }
   }
 
   if (ui.guideSec !== null) {
@@ -642,19 +698,27 @@ export function drawBubble(ctx: CanvasRenderingContext2D, v: View, dpr: number, 
 }
 
 /** A translucent copy of a clip at its previewed position. */
-function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number, startSec: number, endSec: number, audio: boolean, name = "", plain = false) {
+function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number, startSec: number, endSec: number, audio: boolean, name = "", plain = false, kind = -1, media?: MediaLayer, scene?: Scene, ci = -1) {
   const x = timeToX(v, startSec) + 1, w = Math.max(2, (endSec - startSec) * v.pps - 2);
   if (x + w < gut(v) || x > v.width) return;
   const y = RULER + track * LANE - v.scrollY;
   if (plain) {
-    ctx.globalAlpha = 0.85; ctx.fillStyle = audio ? p.audioBody : p.videoBody; ctx.fillRect(x, y + 3, w, LANE - 7);
+    ctx.globalAlpha = 0.85; ctx.fillStyle = kind >= 0 ? bodyOf(p, kind) : audio ? p.audioBody : p.videoBody; ctx.fillRect(x, y + 3, w, LANE - 7);
     ctx.globalAlpha = 1; ctx.strokeStyle = p.accent; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 4, w - 2, LANE - 9);
     return;
   }
   ctx.globalAlpha = 0.85;
-  ctx.fillStyle = audio ? p.audioBody : p.videoBody;
+  ctx.fillStyle = kind >= 0 ? bodyOf(p, kind) : audio ? p.audioBody : p.videoBody;
   ctx.beginPath(); rr(ctx, x, y + 3, w, LANE - 7, R); ctx.fill();
   ctx.globalAlpha = 1;
+  if (media && scene && ci >= 0 && w > 28) { // a trim keeps the clip's thumbnails or waveform under the moving edge (they stay where they are; the body grows or shrinks around them)
+    const a = Math.max(x, gut(v)), b = Math.min(x + w, v.width), ox = timeToX(v, scene.start[ci]!) + 1;
+    if (b > a) {
+      ctx.save(); ctx.beginPath(); rr(ctx, a, y + 3, b - a, LANE - 7, R); ctx.clip();
+      if (audio) drawWaveform(ctx, media, scene, ci, ox, a, b, y, v, p); else drawFilmstrip(ctx, media, scene, ci, ox, a, b, y, v, p);
+      ctx.restore();
+    }
+  }
   ctx.strokeStyle = p.accent;
   ctx.lineWidth = 2;
   ctx.beginPath(); rr(ctx, x + 1, y + 4, w - 2, LANE - 9, R - 1); ctx.stroke();
@@ -663,7 +727,8 @@ function ghost(ctx: CanvasRenderingContext2D, v: View, p: Palette, track: number
   if (name && room > 24) {
     ctx.font = FONT_CLIP; ctx.textAlign = "left"; ctx.textBaseline = "top";
     const text = fitName(ctx, name, room);
-    ctx.fillStyle = audio ? p.audioInk : p.videoInk; ctx.fillText(text, tx, y + 9.5);
+    ctx.fillStyle = p.chipBg; ctx.beginPath(); rr(ctx, tx - 5, y + 7, nameWidth(ctx, text) + 10, 17, 5); ctx.fill();
+    ctx.fillStyle = p.clipInk; ctx.fillText(text, tx, y + 9.5);
   }
 }
 
@@ -677,13 +742,20 @@ function header(ctx: CanvasRenderingContext2D, scene: Scene, v: View, p: Palette
   const cy = y + (LANE - 1) / 2; // one-row headers sit on the lane's middle line
   const rowY = v.compact ? y + 19.5 : cy;
   // Kind chip: video takes the accent, audio its own green.
-  ctx.fillStyle = audio ? p.audioStrip : p.videoStrip;
+  const music = scene.trackMusic[t] === 1;
+  ctx.fillStyle = music ? p.musicStrip : audio ? p.audioStrip : p.videoStrip;
   ctx.globalAlpha = live ? 1 : 0.5;
   ctx.beginPath(); rr(ctx, 8, rowY - 8, 16, 16, 4); ctx.fill();
   ctx.fillStyle = p.bg;
-  ctx.font = '700 10px Inter, system-ui, sans-serif';
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(BADGE[scene.trackKind[t]!]!, 16, rowY + 0.5);
+  if (music) { // a music lane wears a note, so it is not taken for the camera's own sound ("A")
+    ctx.beginPath(); ctx.ellipse(14.2, rowY + 3.2, 2.7, 2.1, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(16.4, rowY - 5.2, 1.4, 8.4);
+    ctx.beginPath(); ctx.moveTo(17.8, rowY - 5.2); ctx.quadraticCurveTo(21, rowY - 3.6, 20.4, rowY - 0.4); ctx.lineTo(19.2, rowY - 1.6); ctx.quadraticCurveTo(19.6, rowY - 3, 17.8, rowY - 3.4); ctx.closePath(); ctx.fill();
+  } else {
+    ctx.font = '700 10px Inter, system-ui, sans-serif';
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(BADGE[scene.trackKind[t]!]!, 16, rowY + 0.5);
+  }
   ctx.globalAlpha = 1;
   // Name.
   ctx.fillStyle = live ? p.fg : p.muted;
@@ -699,7 +771,8 @@ function header(ctx: CanvasRenderingContext2D, scene: Scene, v: View, p: Palette
     let x = IND.x0;
     for (const part of TOGGLES) {
       if (!state(scene, t, part)) continue; // (a video track that still carries an old mute shows it, so it is not invisible)
-      glyph(ctx, p, part, x, y + IND.y, IND.size, true);
+      if (x + IND.size > gut(v) - 2) break;
+      glyph(ctx, p, part, x, y + IND.y, IND.size, true, part === "mute" ? p.danger : part === "solo" ? p.accent : p.fg); // the switch is ON: shown in its own colour, 16 px
       x += IND.size + IND.gap;
     }
     return;
@@ -709,15 +782,15 @@ function header(ctx: CanvasRenderingContext2D, scene: Scene, v: View, p: Palette
   for (const part of togglesFor(scene.trackKind[t]!)) {
     const on = state(scene, t, part), x = switchX(TOGGLES.indexOf(part), gut(v)), by = y + SW.y;
     if (on) { ctx.fillStyle = part === "mute" ? p.danger : part === "solo" ? p.accent : p.fg; ctx.beginPath(); rr(ctx, x, by, SW.w, SW.h, 6); ctx.fill(); }
-    glyph(ctx, p, part, x + (SW.w - 14) / 2, by + (SW.h - 14) / 2, 14, on);
+    glyph(ctx, p, part, x + (SW.w - 16) / 2, by + (SW.h - 16) / 2, 16, on);
   }
 }
 
 const state = (s: Scene, t: number, part: Toggle): boolean => (part === "mute" ? s.trackMuted[t] : part === "solo" ? s.trackSolo[t] : part === "lock" ? s.trackLocked[t] : s.trackHidden[t]) === 1;
 
 /** The glyph of a switch in a size x size box at (x, y): M and S letters, a padlock, an eye. `on` draws it dark on the filled button. */
-function glyph(ctx: CanvasRenderingContext2D, p: Palette, part: Toggle, x: number, y: number, size: number, on: boolean) {
-  const ink = on ? p.bg : p.muted;
+function glyph(ctx: CanvasRenderingContext2D, p: Palette, part: Toggle, x: number, y: number, size: number, on: boolean, tint?: string) {
+  const ink = tint ?? (on ? p.bg : p.muted);
   ctx.fillStyle = ink; ctx.strokeStyle = ink; ctx.lineWidth = size > 12 ? 1.5 : 1.2;
   if (part === "mute" || part === "solo") {
     ctx.font = `700 ${Math.round(size * 0.85)}px Inter, system-ui, sans-serif`;

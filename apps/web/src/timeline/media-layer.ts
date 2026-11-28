@@ -43,8 +43,13 @@ export class MediaLayer {
     this.lean = false;
     this.waveforms.onChange();
   };
+  /** Set while a frame drew a thumbnail that is still fading in: the canvas schedules one more frame (and stops when nothing fades). */
+  fading = false;
+  /** Fade-in of a thumbnail (ms); 0 when the person asked for reduced motion. */
+  readonly fadeMs = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 180;
   /** Call once per frame before drawing. Slow = more than 28 ms since the previous frame while moving. */
   beginFrame(v: View, now: number) {
+    this.fading = false;
     const moved = v.scrollX !== this.px || v.pps !== this.pp;
     this.px = v.scrollX; this.pp = v.pps;
     if (moved) {
@@ -57,7 +62,7 @@ export class MediaLayer {
   /** Set by the canvas: request a redraw when data or tiles arrive. */
   set onChange(cb: () => void) { this.waveforms.onChange = cb; this.thumbs.onChange = cb; }
   /** Call once per frame before drawing: tiles follow the theme colour and pixel ratio. */
-  setStyle(p: Palette, dpr: number) { this.waveforms.setStyle({ color: p.audioWave, height: WAVE_H, dpr: Math.min(dpr, 2) }); } // tiles never exceed 2x: cheaper to raster, still crisp
+  setStyle(p: Palette, dpr: number) { this.waveforms.setStyle({ color: p.clipInk, height: WAVE_H, dpr: Math.min(dpr, 2) }); } // tiles never exceed 2x: cheaper to raster, still crisp
 }
 
 /** Waveform for clip `i`, visible part [a, b] (screen x), clip origin `x`, lane top `y`. */
@@ -65,7 +70,7 @@ export function drawWaveform(ctx: CanvasRenderingContext2D, layer: MediaLayer, s
   const m = scene.mediaById.get(scene.media[i]!);
   const mid = y + BODY_Y + BODY_H / 2;
   const a0 = ctx.globalAlpha; // a muted or hidden track is drawn faded: keep that
-  ctx.fillStyle = p.audioWave;
+  ctx.fillStyle = p.clipInk; // the wave is drawn in the label ink: readable on the green of sound, the amber of music and every theme's body
   ctx.globalAlpha = a0 * 0.5;
   ctx.fillRect(a, mid, b - a, 1); // baseline: visible while data is on its way, under the waveform otherwise
   ctx.globalAlpha = a0;
@@ -107,18 +112,32 @@ export function drawFilmstrip(ctx: CanvasRenderingContext2D, layer: MediaLayer, 
   const k1 = Math.floor((src + (b - x) / v.pps) / step);
   const ty = y + FILM_Y;
   ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = p.videoTile;
+  // Slots whose picture has not arrived: a neutral row of frames (one path, a hairline gap between slots), not a flat block of colour. The pictures then fade in over it.
+  ctx.fillStyle = p.tilePh;
+  ctx.beginPath();
+  for (let k = k0; k <= k1; k++) {
+    const sx = x + (k * step - src) * v.pps;
+    const x0 = Math.max(a, sx), x1 = Math.min(b, sx + slotW, clipEnd);
+    if (x1 - x0 < 2) continue;
+    const pic = m ? layer.thumbs.get(m, fp, iv, k) : null;
+    if (pic === null || (layer.fadeMs > 0 && layer.thumbs.age(pic, performance.now()) < layer.fadeMs)) ctx.rect(x0 + 1, ty + 4, Math.max(1, x1 - x0 - 2), FILM_H - 8);
+  }
+  ctx.fill();
+  const now = performance.now(), a0 = ctx.globalAlpha;
   for (let k = k0; k <= k1; k++) {
     const sx = x + (k * step - src) * v.pps;
     const x0 = Math.max(a, sx), x1 = Math.min(b, sx + slotW, clipEnd);
     if (x1 - x0 < 2) continue;
     const bmp = m ? layer.thumbs.get(m, fp, iv, k) : null;
-    if (!bmp) { ctx.fillRect(x0, ty, x1 - x0, FILM_H); continue; }
+    if (!bmp) continue;
     // "Cover": fit the slot, crop what overflows, so thumbnails of any aspect tile without distortion.
     const slotAspect = slotW / FILM_H, imgAspect = bmp.width / bmp.height;
     let cw = bmp.width, ch = bmp.height, cx = 0, cy = 0;
     if (slotAspect > imgAspect) { ch = bmp.width / slotAspect; cy = (bmp.height - ch) / 2; } else { cw = bmp.height * slotAspect; cx = (bmp.width - cw) / 2; }
     const f0 = (x0 - sx) / slotW, f1 = (x1 - sx) / slotW; // visible fraction of the slot
+    const age = layer.fadeMs > 0 ? layer.thumbs.age(bmp, now) : 1e9;
+    if (age < layer.fadeMs) { layer.fading = true; ctx.globalAlpha = a0 * (age / layer.fadeMs); }
     ctx.drawImage(bmp, cx + cw * f0, cy, cw * (f1 - f0), ch, x0, ty, x1 - x0, FILM_H);
+    if (age < layer.fadeMs) ctx.globalAlpha = a0;
   }
 }
