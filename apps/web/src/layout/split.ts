@@ -10,6 +10,14 @@ export function clampTimelineRow(px: number, room: number): number {
   return Math.round(Math.min(max, Math.max(MIN_TIMELINE, px)));
 }
 
+/** Rows the timeline needs, in px: toolbar, ruler, `tracks` lanes and the add-track buttons. */
+const TL_CHROME = 56 + 30 + 64, TL_LANE = 60;
+/** The default timeline height for a workspace `room` px tall: 40% of it, growing with the track count up to 50% (r16 DESK-4). Kept inside the allowed range. */
+export function autoTimelineRow(room: number, tracks: number): number {
+  const need = TL_CHROME + Math.max(2, tracks) * TL_LANE;
+  return clampTimelineRow(Math.min(0.5 * room, Math.max(0.4 * room, need)), room);
+}
+
 export function readTimelineRow(): number | null {
   try {
     const v = Number(localStorage.getItem(KEY));

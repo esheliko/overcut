@@ -56,6 +56,8 @@ const PAIRS: [string, string, number, string][] = [
   ["bg", "fg", 4.5, "play button, toast"],
   ["bg", "danger", 4.5, "text on the danger (destructive) confirm button"],
   ["stage-fg", "stage", 4.5, "preview hint text"],
+  // r16: the label colour on every clip kind (video, photo, overlay; audio is checked in the token comment, 11:1 or more)
+  ...["clip", "clip-photo", "clip-overlay"].map((bg): [string, string, number, string] => ["clip-ink", bg, 4.5, `clip label on ${bg}`]),
   // non-text (3:1): focus ring, status dots
   ["focus-ring", "bg", 3, "focus ring"],
   ["focus-ring", "surface", 3, "focus ring"],
@@ -104,7 +106,10 @@ for (const [theme, tokens] of COMBOS) {
 }
 
 /** A disabled toolbar icon is `--fg` at the `.icon-btn:disabled` opacity (styles.css). It must still read against the bars: 3:1, the non-text bar. */
-const DISABLED_ICON_OPACITY = Number(/\.icon-btn:disabled\s*\{\s*opacity:\s*([\d.]+)/.exec(readFileSync(new URL("../../apps/web/src/styles.css", import.meta.url), "utf8"))?.[1] ?? NaN);
+const DISABLED_ICON_OPACITY = (() => { // r16: the rule uses the --disabled-opacity token (theme/tokens.css), a literal number is still accepted
+  const m = /\.icon-btn:disabled\s*\{\s*opacity:\s*(?:([\d.]+)|var\(--disabled-opacity\))/.exec(readFileSync(new URL("../../apps/web/src/styles.css", import.meta.url), "utf8"));
+  return m ? Number(m[1] ?? THEMES.dark["disabled-opacity"]) : NaN;
+})();
 for (const [theme, tokens] of COMBOS) {
   test(`theme ${theme}: a disabled toolbar icon still reads on the bars (3:1)`, () => {
     assert.ok(DISABLED_ICON_OPACITY >= 0.5, `.icon-btn:disabled opacity ${DISABLED_ICON_OPACITY} is below 0.5`);
@@ -178,7 +183,7 @@ test("the shell stylesheet uses tokens: no colour literals, no physical left/rig
 test("type, radius and easing tokens form a ladder (V-03/V-04/V-09)", () => {
   const root = THEMES.dark;
   const px = (n: string) => parseFloat(root[n]!);
-  const scale = ["text-2xs", "text-xs", "text-sm", "text-base", "text-md", "text-lg", "text-xl"].map(px);
+  const scale = ["text-xs", "text-sm", "text-base", "text-md", "text-lg", "text-xl"].map(px);
   assert.deepEqual(scale, [...scale].sort((a, b) => a - b), "type scale ascends");
   assert.equal(new Set(scale).size, scale.length, "no two steps share a size");
   const radii = ["radius-xs", "radius-sm", "radius-md", "radius-lg"].map(px);

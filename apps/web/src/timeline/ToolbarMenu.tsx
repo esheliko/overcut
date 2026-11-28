@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { rememberFocus } from "../a11y/restoreFocus";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
+import { useBackClose } from "../layout/backStack";
 
 export interface MenuItem {
   id: string;
@@ -15,6 +16,8 @@ export interface MenuItem {
   /** Why the item is unavailable (shown under it; the row stays focusable so a keyboard user can hear it). */
   reason?: string;
   disabled?: boolean;
+  /** The row cannot apply right now (no clip selected): it is left out instead of shown greyed (r16 FIRST-11). */
+  hidden?: boolean;
   /** Radio / check state; omitted for a plain action. */
   checked?: boolean;
   /** An on/off switch (menuitemcheckbox): its state is written at the end of the row ("On" / "Off") and picking it leaves the menu open so the change is seen. */
@@ -31,17 +34,21 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
   const { t } = useI18n();
   const box = useRef<HTMLDivElement>(null);
   const sheet = typeof window !== "undefined" && window.innerWidth <= 480;
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; maxHeight?: number } | null>(null);
   const [back] = useState(rememberFocus);
   const close = () => { onClose(); back(); };
+  useBackClose(true, onClose); // r16 PHONE-2: Back closes the menu instead of leaving the app
 
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || sheet) return;
     const w = el.offsetWidth, h = el.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
-    // Under the button when it fits, else above it (the toolbar sits low on the screen), always inside the viewport.
-    const below = anchor.bottom + 4, top = below + h <= vh - 8 ? below : anchor.top - h - 4;
-    setPos({ left: Math.max(8, Math.min(anchor.left, vw - w - 8)), top: Math.max(8, Math.min(top, vh - h - 8)) });
+    // Downward when it fits; else the side with more room, with an internal scroll when neither side holds it (r16 FIRST-11, PHONE-14).
+    const roomBelow = vh - anchor.bottom - 12, roomAbove = anchor.top - 12;
+    const down = h <= roomBelow || (h > roomAbove && roomBelow >= roomAbove);
+    const room = Math.max(160, down ? roomBelow : roomAbove), hh = Math.min(h, room);
+    const top = down ? anchor.bottom + 4 : anchor.top - hh - 4;
+    setPos({ left: Math.max(8, Math.min(anchor.left, vw - w - 8)), top: Math.max(8, top), maxHeight: h > room ? room : undefined });
   }, [anchor, sheet]);
   const placed = sheet || pos !== null; // a hidden (not yet placed) menu cannot take focus
   useEffect(() => {
@@ -63,13 +70,14 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
     if (e.key === "Tab") { e.preventDefault(); close(); }
   };
 
+  const shown = items.filter((i) => !i.hidden);
   const radio = items.some((i) => i.checked !== undefined && !i.toggle);
   let section: string | undefined;
   return (
     <div ref={box} className={sheet ? "menu-pop tl-menu tl-sheet" : "menu-pop tl-menu"} role="menu" aria-label={name} data-testid={testid ?? "toolbar-menu"} onKeyDown={onKey}
-      style={sheet ? undefined : { left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}>
+      style={sheet ? undefined : { left: pos?.left ?? 0, top: pos?.top ?? 0, maxHeight: pos?.maxHeight, visibility: pos ? "visible" : "hidden" }}>
       {sheet && <div className="tl-sheet-title">{name}<button className="icon-btn" role="menuitem" aria-label={t("timeline.close")} onClick={close}><Icon name="close" size={18} /></button></div>}
-      {items.map((it) => {
+      {shown.map((it) => {
         const head = it.section && it.section !== section ? <div key={`s-${it.id}`} className="menu-group" role="presentation">{it.section}</div> : null;
         section = it.section ?? section;
         const why = it.disabled ? it.reason : undefined;

@@ -16,11 +16,11 @@ export function SheetHandle({ detent, onDetent, onClose }: { detent: Detent; onD
 
   // The detent sets the height (a pixel value, so the drag can start from it and CSS can transition between detents).
   useEffect(() => {
-    const el = sheet();
-    if (el) el.style.setProperty("--sheet-h", `${heights()[detent]}px`);
-    const on = () => sheet()?.style.setProperty("--sheet-h", `${heights()[detent]}px`);
-    window.addEventListener("resize", on);
-    return () => { window.removeEventListener("resize", on); sheet()?.style.removeProperty("--sheet-h"); };
+    // The workspace (the sheet's parent) gets the same height, so the picture and the timeline reflow into what is left above the sheet (it follows the detent, not every drag frame).
+    const set = () => { const px = `${heights()[detent]}px`; const el = sheet(); if (el) { el.style.setProperty("--sheet-h", px); el.parentElement?.style.setProperty("--sheet-h", px); } };
+    set();
+    window.addEventListener("resize", set);
+    return () => { const el = sheet(); window.removeEventListener("resize", set); el?.style.removeProperty("--sheet-h"); el?.parentElement?.style.removeProperty("--sheet-h"); };
   }, [detent]);
   // Escape closes the sheet from anywhere (a dialog or menu that is open handles its own Escape first: it stops the event).
   useEffect(() => {
@@ -56,7 +56,7 @@ export function SheetHandle({ detent, onDetent, onClose }: { detent: Detent; onD
     const h = el.getBoundingClientRect().height;
     const to = settle(h, v, heights());
     if (to === "close") onClose();
-    else { el.style.setProperty("--sheet-h", `${heights()[to]}px`); onDetent(to); }
+    else { el.style.setProperty("--sheet-h", `${heights()[to]}px`); el.parentElement?.style.setProperty("--sheet-h", `${heights()[to]}px`); onDetent(to); }
   };
   const key = (e: RKeyboardEvent<HTMLDivElement>) => {
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {

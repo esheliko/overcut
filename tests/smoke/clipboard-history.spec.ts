@@ -13,14 +13,10 @@ test("duplicate, copy and paste, numeric timing and the history panel go through
   // The clip tools live in the More menu; a disabled row says why instead of being a silent dead button.
   const pick = async (id: string) => { await page.getByTestId("tl-more").click(); await page.getByTestId(id).click(); };
   await page.getByTestId("tl-more").click();
-  for (const id of ["tl-duplicate", "tl-copy", "tl-cut", "tl-timing", "tl-paste"]) await expect(page.getByTestId(id)).toHaveAttribute("aria-disabled", "true"); // nothing selected / nothing copied
-  await expect(page.getByTestId("tl-more-menu")).toContainText("Select a clip first");
+  for (const id of ["tl-duplicate", "tl-copy", "tl-cut", "tl-timing"]) await expect(page.getByTestId(id)).toHaveCount(0); // nothing selected: r16 FIRST-11 hides the clip rows instead of greying them
+  await expect(page.getByTestId("tl-paste")).toHaveAttribute("aria-disabled", "true"); // nothing copied yet / nothing copied
+  await expect(page.getByTestId("tl-more-menu")).toContainText("Copy or cut a clip first");
   await expect(page.getByTestId("tl-history")).not.toHaveAttribute("aria-disabled", "true");
-  for (const id of ["tl-duplicate", "tl-copy", "tl-cut", "tl-paste", "tl-timing", "tl-history"]) { // 44 px on touch, inside the viewport
-    const b = (await page.getByTestId(id).boundingBox())!;
-    expect(b.x + b.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-    if (phone) { expect(b.width).toBeGreaterThanOrEqual(44); expect(b.height).toBeGreaterThanOrEqual(44); }
-  }
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("tl-more-menu")).toHaveCount(0);
 
@@ -28,6 +24,13 @@ test("duplicate, copy and paste, numeric timing and the history panel go through
   const dg = await gutterShift(page);
   const at = async (x: number, y: number) => (phone ? page.touchscreen.tap(box.x + dg + x, box.y + y) : page.mouse.click(box.x + dg + x, box.y + y));
   await at(108, 30 + 26); // select the first clip
+  await page.getByTestId("tl-more").click();
+  for (const id of ["tl-duplicate", "tl-copy", "tl-cut", "tl-paste", "tl-timing", "tl-history"]) { // 44 px on touch, inside the viewport
+    const b = (await page.getByTestId(id).boundingBox())!;
+    expect(b.x + b.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    if (phone) { expect(b.width).toBeGreaterThanOrEqual(44); expect(b.height).toBeGreaterThanOrEqual(44); }
+  }
+  await page.keyboard.press("Escape");
 
   await pick("tl-duplicate");
   await expect(summary).toContainText("15 clips");

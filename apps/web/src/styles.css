@@ -17,8 +17,8 @@ h2, p { margin: 0; }
 .icon-btn { display: inline-grid; place-items: center; width: var(--target); height: var(--target); min-width: var(--target); padding: 0; background: none; border: 0; border-radius: var(--radius-sm); color: var(--fg); transition: background var(--dur-fast); }
 .icon-btn:hover { background: var(--surface-3); }
 .icon-btn:active { transform: scale(0.94); }
-.icon-btn:disabled { opacity: 0.5; cursor: default; }
-.primary:disabled, .chip-btn:disabled { opacity: 0.5; cursor: default; filter: none; transform: none; } /* I-01: one disabled look for every button (the icon buttons' 0.5 is pinned at 3:1 by tests/unit/theme-contrast) */
+.icon-btn:disabled { opacity: var(--disabled-opacity); cursor: default; }
+.primary:disabled, .chip-btn:disabled { opacity: var(--disabled-opacity); cursor: default; filter: none; transform: none; } /* I-01: one disabled look for every button (the icon buttons' 0.5 is pinned at 3:1 by tests/unit/theme-contrast) */
 .icon-btn:disabled:hover { background: none; }
 .tl-sel { display: inline-block; min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 24px; flex: 0 1 auto; min-height: 24px; padding: 0 10px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--fg); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; } /* selection pill (V-17): only while something is selected, in the right group */
 
@@ -92,7 +92,7 @@ h2, p { margin: 0; }
 .search input { flex: 1; min-width: 0; height: 100%; background: none; border: 0; outline: none; color: var(--fg); }
 .search input::placeholder { color: var(--muted); }
 .search:focus-within { box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring); }
-.search input:disabled { opacity: 0.5; }
+.search input:disabled { opacity: var(--disabled-opacity); }
 .panel-body { flex: 1; min-height: 0; overflow: auto; padding: 8px var(--panel-pad) 16px; display: grid; }
 .dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 160px; padding: 20px; text-align: center; background: var(--surface-2); border: 1.5px dashed var(--line-strong); border-radius: var(--radius); color: var(--muted); transition: border-color var(--dur-fast), background var(--dur-fast); }
 .dropzone:hover { border-color: var(--accent); background: var(--accent-soft); }
@@ -152,9 +152,9 @@ h2, p { margin: 0; }
 .tl-playhead-layer { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; } /* the time bubble: a transparent layer over the timeline canvas (display none unless a bubble is shown) */
 .tl-playhead-clip { position: absolute; top: 0; bottom: 0; right: 0; overflow: hidden; pointer-events: none; contain: strict; } /* the playhead's window: right of the track headers */
 .tl-playhead-head { position: absolute; top: 0; left: 0; width: 20px; display: block; will-change: transform; } /* the playhead strip: painted once, moved by transform */
-.tl-menu { transform-origin: top left; width: min(240px, calc(100vw - 16px)); position: fixed; inset-inline-end: auto; inset-block-start: auto; z-index: 60; min-width: min(240px, calc(100vw - 16px)); }
+.tl-menu { transform-origin: top left; width: min(280px, calc(100vw - 16px)); position: fixed; inset-inline-end: auto; inset-block-start: auto; z-index: var(--z-dialog, 60); min-width: min(280px, calc(100vw - 16px)); } /* r16: 280 px so labels do not wrap */
 .tl-menu .menu-row[data-danger] { color: var(--danger); }
-.tl-menu .menu-row:disabled { opacity: 0.5; }
+.tl-menu .menu-row:disabled { opacity: var(--disabled-opacity); }
 .menu-check { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--accent); }
 .tl-rename { display: grid; gap: 6px; padding: 6px 8px; }
 .tl-rename label { display: grid; gap: 4px; color: var(--muted); font-size: var(--text-xs); }
@@ -162,7 +162,7 @@ h2, p { margin: 0; }
 .tl-menu-note { padding: 4px 12px 8px; margin: 0; }
 .tl-stage:has(.tl-canvas:focus-visible:not([data-pointer]))::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring); } /* keyboard focus only: the shared 2 px ring in the focus token as an inset frame (an inset shadow is not drawn on a canvas itself; a11y r12: was 1 px at 50%, below the 3:1 / 2 px bar) */
 
-.toast { position: fixed; z-index: 40; left: 50%; bottom: var(--toast-bottom, calc(env(safe-area-inset-bottom) + 84px)); transform: translate(-50%, 8px); width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface-3); color: var(--fg); box-shadow: var(--elev-2); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity var(--dur-toast) var(--ease-out), transform var(--dur-toast) var(--ease-out); }
+.toast { position: fixed; z-index: var(--z-toast, 50); left: 50%; bottom: var(--toast-bottom, calc(env(safe-area-inset-bottom) + 84px)); transform: translate(-50%, 8px); width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface-3); color: var(--fg); box-shadow: var(--elev-2); font-weight: 500; opacity: 0; pointer-events: none; isolation: isolate; transition: opacity var(--dur-toast) var(--ease-out), transform var(--dur-toast) var(--ease-out); }
 /* On the Projects home there is no timeline: the notice goes back to the bottom so it never covers the header buttons. */
 .editor.home-mode .toast { bottom: calc(env(safe-area-inset-bottom) + 84px); }
 .toast:not(:empty), .editor.home-mode .toast:not(:empty) { display: flex; align-items: center; gap: 10px; opacity: 1; transform: translate(-50%, 0); }
@@ -242,7 +242,7 @@ h2, p { margin: 0; }
 
 /* Tablet and up: rail | tool panel | preview over a full-width timeline */
 @container editor (min-width: 720px) {
-  .workspace { --lib-w: minmax(240px, 300px); --insp-w: 300px; grid-template-columns: 84px var(--lib-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--tl-row, clamp(200px, 38%, 380px)); grid-template-areas: "tools library stage" "timeline timeline timeline"; gap: 1px; padding: 0; background: var(--line); } /* r14: flush panels, the 1 px gaps show the divider colour */
+  .workspace { --lib-w: minmax(240px, 300px); --insp-w: 300px; grid-template-columns: 84px var(--lib-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) var(--tl-row, var(--tl-auto, clamp(200px, 38%, 380px))); grid-template-areas: "tools library stage" "timeline timeline timeline"; gap: 1px; padding: 0; background: var(--line); } /* r14: flush panels, the 1 px gaps show the divider colour */
   .workspace[data-lib="collapsed"] { --lib-w: 52px; }
   .workspace[data-insp="collapsed"] { --insp-w: 52px; }
   .tools, .library, .stage, .timeline { border: 0; border-radius: 0; overflow: hidden; }
@@ -254,8 +254,9 @@ h2, p { margin: 0; }
   /* One tool (Media) and its panel always open: no rail, its column goes to the panels */
   .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); grid-template-areas: "library stage" "timeline timeline"; }
   .splitter { display: block; grid-area: timeline; align-self: start; justify-self: stretch; position: relative; z-index: 6; block-size: 24px; margin-block-start: -15px; cursor: row-resize; touch-action: none; border-radius: 6px; }
-  .splitter > span { position: absolute; inset-block-start: 10px; inset-inline-start: 50%; inline-size: 48px; block-size: 4px; margin-inline-start: -24px; border-radius: 2px; background: var(--line-strong); opacity: 0; transition: opacity var(--dur-fast), background var(--dur-fast); }
-  .splitter:hover > span, .splitter:focus-visible > span, .splitter:active > span { opacity: 1; }
+  .splitter > span { position: absolute; inset-block-start: 10px; inset-inline-start: 50%; inline-size: 48px; block-size: 4px; margin-inline-start: -24px; border-radius: 2px; background: var(--line-strong); opacity: 0.7; transition: opacity var(--dur-fast), background var(--dur-fast), inline-size var(--dur-fast), margin var(--dur-fast); }
+  .splitter:hover > span, .splitter:focus-visible > span, .splitter:active > span { opacity: 1; inline-size: 64px; margin-inline-start: -32px; } /* r16 DESK-4: a pill that is always there; wider on hover, accent while dragging */
+  .splitter:hover > span { background: var(--fg); }
   .splitter:active > span, .splitter:focus-visible > span { background: var(--accent); }
   .splitter:focus-visible { outline: none; }
   .panel-collapse { display: inline-grid; margin-inline-start: auto; }
@@ -271,7 +272,7 @@ h2, p { margin: 0; }
 /* Tablet in portrait (820 px wide): the Media panel stacks above the preview, full width, so each card has room for its name, meta on one line and its buttons. The tool rail stays on the left; the timeline keeps the bottom. */
 @container editor (min-width: 720px) and (max-width: 1099px) and (orientation: portrait) {
   /* The tool panel is capped (it scrolls, with a fade at the cut) so the preview keeps its height and the timeline at least about a third */
-  .workspace { grid-template-rows: auto minmax(260px, 1fr) var(--tl-row, clamp(260px, 38%, 460px)); grid-template-columns: 84px minmax(0, 1fr); grid-template-areas: "tools library" "tools stage" "timeline timeline"; }
+  .workspace { grid-template-rows: auto minmax(260px, 1fr) var(--tl-row, var(--tl-auto, clamp(260px, 38%, 460px))); grid-template-columns: 84px minmax(0, 1fr); grid-template-areas: "tools library" "tools stage" "timeline timeline"; }
   .workspace[data-rail="none"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "library" "stage" "timeline"; }
   .library { max-block-size: clamp(170px, 26dvh, 300px); }
   .library[data-collapsed="true"] { max-block-size: 56px; flex-direction: row; justify-content: flex-start; padding-inline: 8px; }
@@ -287,7 +288,7 @@ h2, p { margin: 0; }
 }
 /* Ultrawide (>= 1900 px and at least 2:1): wider side panels, the timeline gets the extra width and more height */
 @container editor (min-width: 1900px) and (min-aspect-ratio: 2/1) {
-  .workspace { --lib-w: 360px; --insp-w: 380px; grid-template-columns: 96px var(--lib-w) minmax(0, 1fr) var(--insp-w); grid-template-rows: minmax(0, 1fr) var(--tl-row, clamp(240px, 42%, 460px)); gap: 1px; padding: 0; }
+  .workspace { --lib-w: 360px; --insp-w: 380px; grid-template-columns: 96px var(--lib-w) minmax(0, 1fr) var(--insp-w); grid-template-rows: minmax(0, 1fr) var(--tl-row, var(--tl-auto, clamp(240px, 42%, 460px))); gap: 1px; padding: 0; }
   .workspace[data-inspector="false"] { grid-template-columns: 96px var(--lib-w) minmax(0, 1fr); }
   .workspace[data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr) var(--insp-w); }
   .workspace[data-inspector="false"][data-rail="none"] { grid-template-columns: var(--lib-w) minmax(0, 1fr); }
@@ -315,6 +316,19 @@ h2, p { margin: 0; }
   .panel-collapse { display: none; }
   .timeline { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 }
+/* r16 PHONE-3: phone landscape, the sheet docks in a column of its own on the right, so the picture and the timeline are never covered. */
+@container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) {
+  .workspace[data-sheet] { --sheet-w: min(300px, 36cqw); grid-template-columns: 72px minmax(0, 44fr) minmax(0, 56fr) var(--sheet-w); grid-template-areas: "tools stage timeline ."; }
+  .workspace[data-sheet] .library[data-open="true"] { inset-inline-start: auto; inset-inline-end: env(safe-area-inset-right); width: var(--sheet-w); }
+}
+/* r16 PHONE-11: landscape phone, the rail already has Split, Delete, Speed and Crop, so the narrow timeline bar keeps undo, redo, the tool picker, More and Fit (the clip ops are rows of More). */
+@container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) {
+  .tl-bar .tl-op, .tl-bar .tb:has(> .tl-op), .tl-bar .sep.tl-op, .tl-bar .tl-toggle, .tl-bar .tb:has(> .tl-toggle) { display: none; }
+  .library .panel-head, .topbar-projects { min-block-size: 44px; }
+}
+/* r16 FIRST-12: tablet widths, the toolbar collapses instead of overflowing: no selection chip, no zoom slider (the - and + buttons stay). */
+@container editor (min-width: 720px) and (max-width: 819px) { .tl-sel { display: none; } }
+@container editor (min-width: 720px) and (max-width: 799px) { .tl-bar .zoom input { display: none; } }
 /* Both phone shapes: the stage is narrow, so the bar under the picture is ONE row (shape chip | transport | full screen), the playhead time rides on the
    picture's corner and the loop button on the other; nothing else competes for the 44 px targets. */
 @container editor ((max-width: 719px) and (min-height: 501px)) or ((orientation: landscape) and (max-height: 500px) and (max-width: 1000px)) {
@@ -346,7 +360,7 @@ h2, p { margin: 0; }
   .stage-view { flex: none; container-type: inline-size; }
   /* --pv-h is the picture's height: 38dvh by default, smaller when the project has 3+ tracks (they all fit), and whatever the grab bar (PhoneSplitter) sets. */
   .workspace { --pv-h: 38dvh; }
-  .workspace[data-tracks="many"] { --pv-h: 26dvh; }
+  .workspace[data-tracks="many"] { --pv-h: 32dvh; } /* r16 PHONE-13: the picture is as large as the layout allows (was 26dvh), the timeline still shows 3 lanes */
   .canvas { width: min(100cqw, calc(var(--pv-h) * var(--ar, 1.78))); max-height: var(--pv-h); }
   .splitter, .panel-collapse { display: none; }
   .pv-split { display: block; grid-area: timeline; align-self: start; justify-self: stretch; position: relative; z-index: 6; block-size: 44px; margin-block-start: -22px; touch-action: none; cursor: row-resize; border-radius: 6px; }
@@ -357,8 +371,14 @@ h2, p { margin: 0; }
 /* Short phones (320 x 640): a smaller picture and a smaller timeline minimum so the transport row is never pushed under the timeline */
 @container editor (max-width: 719px) and (min-height: 501px) and (max-height: 700px) {
   .workspace { grid-template-rows: auto minmax(190px, 1fr) auto; }
-  .workspace { --pv-h: 30dvh; }
-  .workspace[data-tracks="many"] { --pv-h: 22dvh; }
+  .workspace { --pv-h: 32dvh; }
+  .workspace[data-tracks="many"] { --pv-h: 30dvh; }
+}
+/* r16 PHONE-3 / PHONE-13: with a sheet open the picture and the timeline shrink into the room above it (CapCut mobile), they are never covered. --sheet-h is set on the workspace by SheetHandle. */
+@container editor (max-width: 719px) and (min-height: 501px) {
+  .workspace[data-sheet] { --above: calc(var(--vvh, 100dvh) - var(--top, 52px) - env(safe-area-inset-top) - 68px - env(safe-area-inset-bottom) - var(--sheet-h, 0px)); --pv-h: max(72px, calc(var(--above) - 138px - 56px)); grid-template-rows: auto minmax(0, 1fr) auto; }
+  .workspace[data-sheet] .timeline { margin-block-end: var(--sheet-h, 0px); min-block-size: 0; }
+  .workspace[data-sheet] .library[data-open="true"] { z-index: 20; }
 }
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { .splitter { display: none; } .ratio span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); } .ratio { padding: 0; justify-content: center; } }
 @keyframes slide-in { from { transform: translateX(-24px); opacity: 0; } }
@@ -375,7 +395,7 @@ h2, p { margin: 0; }
 .diag-back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--accent); text-decoration: none; font-weight: 600; }
 .diag-card { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .diag-run { display: block; width: 100%; min-height: 56px; margin: 12px 0; border: 0; border-radius: var(--radius-md); background: var(--accent); color: var(--accent-ink); font-size: 17px; font-weight: 700; }
-.diag-run:disabled { opacity: 0.6; }
+.diag-run:disabled { opacity: var(--disabled-opacity); }
 .diag-progress { display: grid; gap: 6px; margin: 4px 0 12px; }
 .diag-progress progress { width: 100%; height: 10px; accent-color: var(--accent); }
 .diag-results { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
@@ -395,7 +415,7 @@ h2, p { margin: 0; }
 .diag textarea { width: 100%; padding: 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; resize: vertical; }
 @media (max-width: 420px) { .diag-row { grid-template-columns: minmax(0, 1fr); } }
 .menu { position: relative; }
-.menu-pop { position: absolute; z-index: 30; top: calc(100% + 6px); inset-inline-end: 0; min-width: 260px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); box-shadow: var(--elev-2); transform-origin: top right; animation: pop-in var(--dur-menu) var(--ease-out); max-block-size: calc(100dvh - var(--top) - 16px); overflow-y: auto; }
+.menu-pop { position: absolute; z-index: var(--z-menu, 30); top: calc(100% + 6px); inset-inline-end: 0; min-width: 260px; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); box-shadow: var(--elev-2); transform-origin: top right; animation: pop-in var(--dur-menu) var(--ease-out); max-block-size: calc(100dvh - var(--top) - 16px); overflow-y: auto; }
 /* Scroll hint: the menu fades at an edge that has more to scroll to. */
 .menu-pop { background: linear-gradient(var(--surface-2) 30%, transparent) top / 100% 24px no-repeat local, linear-gradient(transparent, var(--surface-2) 70%) bottom / 100% 24px no-repeat local, radial-gradient(farthest-side at 50% 0, color-mix(in srgb, var(--fg) 20%, transparent), transparent) top / 100% 10px no-repeat scroll, radial-gradient(farthest-side at 50% 100%, color-mix(in srgb, var(--fg) 20%, transparent), transparent) bottom / 100% 10px no-repeat scroll, var(--surface-2); }
 .menu-pop a { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: var(--radius-sm); color: var(--fg); text-decoration: none; }
@@ -434,7 +454,7 @@ h2, p { margin: 0; }
 .bin-dur { position: absolute; inset-block-end: 2px; inset-inline-end: 2px; padding: 1px 4px; border-radius: 3px; background: var(--media-badge-bg); color: var(--media-badge-fg); font: 500 var(--text-2xs)/1.3 var(--font-mono); font-variant-numeric: tabular-nums; }
 .bin-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; animation: scrim-in var(--dur-base) var(--ease-out); } /* the poster fades in over the placeholder: the slot never changes size, so nothing jumps */
 .bin-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--text-xs); color: var(--muted); }
-.bin-text strong { color: var(--fg); font-size: var(--text-sm); font-weight: 600; line-height: var(--lh-ui); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } /* the name wraps (at most a few lines); the full name is also the tooltip */
+.bin-text strong { color: var(--fg); font-size: var(--text-sm); font-weight: 600; line-height: var(--lh-ui); overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } /* the name wraps (at most a few lines); the full name is also the tooltip */
 .bin-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-inline-size: 0; } /* the meta is one line; the whole line is the tooltip */
 .bin-error { color: var(--fg); white-space: normal; overflow-wrap: anywhere; }
 .bin-act { flex: none; min-width: 44px; min-height: 44px; }
@@ -443,7 +463,7 @@ h2, p { margin: 0; }
 .bin-tag-btn:hover { background: var(--surface-3); color: var(--fg); }
 @media (hover: hover) and (pointer: fine) { .bin-tag-btn { position: absolute; inset-block-start: 50%; inset-inline-end: 52px; translate: 0 -50%; background: var(--surface-3); box-shadow: var(--elev-1); opacity: 0; transition: opacity var(--dur-fast); } .bin-card:hover .bin-tag-btn, .bin-card:focus-within .bin-tag-btn, .bin-tag-btn:focus-visible { opacity: 1; } }
 @media (hover: hover) and (pointer: fine) { .bin-overlay-btn { inset-inline-end: 88px; } } /* #246: "Add as overlay" sits next to Tags, same reveal; media already on the timeline keeps just its "+" (the overlay stays in More and the palette) */
-@media (pointer: coarse) { .bin-tag-btn { min-width: 44px; min-height: 44px; } }
+@media (pointer: coarse), (max-width: 1100px) { .bin-tag-btn { min-width: 44px; min-height: 44px; } }
 /* Compact bin: Import and Filter and sort on one row; the "N of M shown" line only while a search or filter is on; "On the timeline" is a check mark in the meta line */
 .bin-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); min-inline-size: 0; }
 .bin-bar > .bin-relink-all { order: 3; flex: 1 1 100%; } /* its own row: it no longer squeezes Import and Filter on a phone */
@@ -493,9 +513,10 @@ h2, p { margin: 0; }
 .export-adv[open] > summary::after { transform: rotate(-135deg); }
 .export-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); padding-block-end: var(--space-2); }
 .export-fields label { display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--text-sm); min-inline-size: 0; }
-.export-fields select { min-block-size: var(--target); padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); font-size: var(--text-base); min-inline-size: 0; }
+.export-fields select { appearance: none; -webkit-appearance: none; min-block-size: var(--target); padding: 0 36px 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-2) var(--icon-chevron-down, none) no-repeat right 12px center / 14px; color: var(--fg); font-size: var(--text-base); min-inline-size: 0; cursor: pointer; } /* r16 FIRST-10: the app's menu look, not the browser's */
+.export-fields select:hover { background-color: var(--surface-hover); }
 .export-go, .export-secondary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-block-size: 52px; padding: 0 var(--space-5); border-radius: var(--radius); font-weight: 700; font-size: var(--text-md); }
-.export-go:disabled { opacity: 0.45; cursor: default; }
+.export-go:disabled { opacity: var(--disabled-opacity); cursor: default; }
 /* The setup's Export button stays on screen while the settings scroll (phone 320x640 included); opaque, so the scrolled fields pass under it. */
 .export-footer { position: sticky; inset-block-end: 0; z-index: 1; margin-inline: calc(var(--space-5) * -1); margin-block-start: auto; padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)); border-block-start: 1px solid var(--line); background: var(--surface); }
 .export-footer .export-go { inline-size: 100%; }
@@ -558,7 +579,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .menu-label { min-width: 0; display: grid; }
 .menu-why { color: var(--muted); font-size: var(--text-2xs); line-height: 1.2; }
 .tl-menu { max-height: calc(100dvh - 16px); overflow-y: auto; }
-.tl-menu .menu-row[aria-disabled="true"] { opacity: 0.5; }
+.tl-menu .menu-row[aria-disabled="true"] { opacity: var(--disabled-opacity); }
 /* Phones: the menu is a bottom sheet and the zoom +/- buttons leave the bar (pinch, the Fit button and the More menu cover them). */
 .tl-sheet { position: fixed; inset: auto 0 0 0 !important; width: auto; min-width: 0; max-height: 70dvh; overflow: auto; border-radius: var(--radius-lg) var(--radius-lg) 0 0; animation: rise var(--dur-dialog) var(--ease-out); padding-bottom: max(8px, env(safe-area-inset-bottom)); }
 .tl-sheet-title { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; font-weight: 600; }
@@ -847,7 +868,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .tb-caret { position: absolute; inset-inline-end: 3px; inset-block-end: 5px; opacity: 0.7; pointer-events: none; }
 .tb-btn[aria-haspopup="menu"] { width: calc(var(--target) + 6px); }
 .tb-btn[disabled] { opacity: 0.38; } /* in place, never hidden: the tooltip says why */
-.tb-tip { position: absolute; z-index: 40; inset-block-start: calc(100% + 6px); inset-inline-start: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 8px; max-inline-size: 240px; padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-3); color: var(--fg); font-size: var(--text-xs); font-weight: 500; line-height: 1.3; white-space: nowrap; pointer-events: none; box-shadow: var(--elev-2); }
+.tb-tip { position: absolute; z-index: var(--z-tip, 40); inset-block-start: calc(100% + 6px); inset-inline-start: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 8px; inline-size: max-content; max-inline-size: var(--tip-max, 320px); padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--tip-bg, var(--surface-3)); color: var(--tip-fg, var(--fg)); font-size: var(--text-xs); font-weight: 500; line-height: 1.3; white-space: normal; overflow-wrap: break-word; pointer-events: none; box-shadow: var(--elev-2); }
 .tb-tip small { display: block; margin-inline-start: 0; color: var(--muted); font-size: inherit; white-space: normal; }
 .tb-tip:has(small) { flex-direction: column; align-items: flex-start; gap: 1px; }
 .tb-tip kbd { padding: 1px 5px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); color: var(--muted); font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -870,7 +891,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .tool-strip { scroll-snap-type: x proximity; scroll-padding-inline: 8px; mask-image: linear-gradient(to right, transparent 0, currentColor 10px, currentColor calc(100% - 14px), transparent 100%); }
 .tool-strip .tool { scroll-snap-align: start; min-width: 64px; }
 @container editor (max-width: 719px) and (min-height: 501px) { .tool-strip { gap: 2px; padding-inline: 8px; } .tool-strip .tool { flex: 0 0 auto; max-inline-size: none; margin-inline: 0; min-width: 68px; } }
-.tool-strip .tool:disabled { opacity: 0.4; }
+.tool-strip .tool:disabled { opacity: var(--disabled-opacity); }
 .tool-strip .tool.tool-back { min-width: 44px; flex: 0 0 44px; padding-inline: 0; }
 .tool-strip[data-mode="clip"] .tool:first-child { color: var(--fg); border-inline-end: 1px solid var(--line); border-radius: 0; margin-inline-end: 4px; }
 .tool-strip .tool:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: -2px; }
@@ -947,3 +968,4 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
   .marker-menu .tl-rename .menu-row { grid-column: 2; min-height: 32px; }
   .marker-menu .menu-row { min-height: 32px; }
 }
+.bin-card[data-status="offline"] .bin-text > [role="alert"] { justify-self: start; align-self: flex-start; padding: 1px 8px; border-radius: var(--radius-full); background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); font-size: var(--text-xs); font-weight: 600; } /* r16 FIRST-9: "Missing" badge */

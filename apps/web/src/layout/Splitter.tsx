@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type RefObject } from "react";
 import { announce } from "../a11y/announcer";
 import { useI18n } from "../i18n";
-import { clampTimelineRow, readTimelineRow, writeTimelineRow } from "./split";
+import { autoTimelineRow, clampTimelineRow, readTimelineRow, writeTimelineRow } from "./split";
 
 /**
  * The draggable edge between the preview and the timeline (tablet and up). A window splitter (role="separator", focusable): drag it, use the
@@ -9,7 +9,7 @@ import { clampTimelineRow, readTimelineRow, writeTimelineRow } from "./split";
  * The height is a CSS variable on the workspace (`--tl-row`, read by the grid rows in styles.css), so dragging re-renders nothing in React;
  * it is remembered on this device only. The hit area is 24 px with a mouse (WCAG 2.5.8) and 44 px on touch (styles.css).
  */
-export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | null> }) {
+export function Splitter({ workspace, tracks = 2 }: { workspace: RefObject<HTMLElement | null>; tracks?: number }) {
   const { t } = useI18n();
   const [now, setNow] = useState<number | null>(null); // the timeline row in px while a user size is set (aria-valuenow); null = default
   const drag = useRef<{ id: number; edge: number } | null>(null);
@@ -47,6 +47,17 @@ export function Splitter({ workspace }: { workspace: RefObject<HTMLElement | nul
     ro.observe(el);
     return () => ro.disconnect();
   }, [workspace, room, rowH]);
+  // r16 DESK-4: until the user drags the splitter the timeline is about 40% of the workspace, growing with the track count up to about 50%, so 4 tracks and the add-track buttons fit at 1440 x 900.
+  useEffect(() => {
+    const el = workspace.current;
+    if (!el) return;
+    const fit = () => el.style.setProperty("--tl-auto", `${autoTimelineRow(room(), tracks)}px`);
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [workspace, room, tracks]);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
   const onDown = (e: RPointerEvent<HTMLDivElement>) => {
