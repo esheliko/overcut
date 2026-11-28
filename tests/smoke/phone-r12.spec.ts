@@ -52,6 +52,8 @@ test("phone: Back closes the Media sheet and a dialog before leaving; the backdr
 });
 
 test("a project whose media is missing says so, with the one action that fixes it (also after a plain reload)", async ({ page }) => {
+  // r16 F: imports keep a copy in OPFS where there is one. This test is about a browser that cannot (no OPFS on the page), so it hides it.
+  await page.addInitScript(() => { (navigator.storage as unknown as { getDirectory?: unknown }).getDirectory = undefined; });
   test.setTimeout(90_000);
   await ready(page);
   const phone = page.viewportSize()!.width < 720;

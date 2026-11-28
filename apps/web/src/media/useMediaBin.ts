@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { probeFile } from "./probe";
 import { TICKS, classify, landingStart, pictureEnd, sentence, clipCount, extOf, importOps, insertOps, mediaRef, newId, type Probed } from "./plan";
 import { allowAll, handleState, loadHandle, pathOf, saveHandle, type Source } from "./sources";
+import { askPersistent, canKeep, keepCopy, keptSupported } from "./kept";
+import { loadPoster, savePoster } from "./posterCache";
 import { useProjectStore, useStore } from "../store/projectStore";
 
 export type BinStatus = "probing" | "ready" | "unsupported" | "offline";
@@ -25,6 +27,8 @@ export interface BinItem {
   uri?: string;
   /** Offline, but the browser still holds the file's handle: it only needs the person's permission ("Allow access"), the file is not missing. */
   needsPermission?: boolean;
+  /** While a copy of the file is being saved on this device (0..1, only shown for big files); undefined otherwise. */
+  keeping?: number;
   /** For an `unsupported` card: the engine's own sentence, behind "Details" (the card itself keeps two short lines). */
   details?: string;
 }
@@ -92,6 +96,16 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
       }));
       return [...fresh, ...kept];
     });
+    // Posters come back from the device's poster cache at once, before any file is read or any permission asked.
+    for (const m of p.media) {
+      void loadPoster(m).then((url) => {
+        if (!url) return;
+        posters.current.add(url);
+        let used = false;
+        setItems((all) => all.map((i) => { if (i.id !== m.id || i.poster) return i; used = true; return { ...i, poster: url }; }));
+        if (!used) { URL.revokeObjectURL(url); posters.current.delete(url); }
+      });
+    }
     // A reopened project: files whose stored handle still has permission come back by themselves; the rest show "Relink".
     for (const m of p.media) {
       if (live.current.has(m.id)) continue;
@@ -104,7 +118,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
       }
       const state = await handleState(m.uri);
       if (state === "prompt") { permission.current.add(m.id); setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, needsPermission: true } : i))); continue; }
-      const file = state === "granted" ? await loadHandle(m.uri) : null;
+      const file = state === "granted" ? await loadHandle(m.uri, false, m.name) : null;
       // A file found by its stored path must still be the same file (size from the fingerprint); otherwise it shows "Relink".
       const sameSize = !m.uri.startsWith("path:") || !m.hash || fingerprintSize(m.hash) === file?.size;
       if (file && sameSize) setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, status: "ready", size: file.size } : i)));
@@ -133,10 +147,10 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
 
 
   /** The file behind a media entry: the live one, else (reopened project) the stored handle, probed on first use. */
-  const fileFor = useCallback(async (id: string, uri: string, kind: MediaKind): Promise<Live | null> => {
+  const fileFor = useCallback(async (id: string, uri: string, kind: MediaKind, name?: string): Promise<Live | null> => {
     const have = live.current.get(id);
     if (have) return have;
-    const file = await loadHandle(uri);
+    const file = await loadHandle(uri, false, name);
     if (!file || !engine) return null;
     const l = { file, probed: (await probeFile(engine, file, kind)).probed };
     live.current.set(id, l);
@@ -152,7 +166,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
   /** Ops for putting a media item on the timeline by the one landing rule (`landingStart`): a picture after the last picture on V1, sound at `start` or the playhead. */
   const timelineOps = useCallback(async (cur: Project, id: string, start?: number, track?: string): Promise<Op[] | null> => {
     const ref = cur.media.find((m) => m.id === id);
-    const l = ref && (await fileFor(id, ref.uri, ref.kind));
+    const l = ref && (await fileFor(id, ref.uri, ref.kind, ref.name));
     if (!ref || !l) return null;
     return insertOps(cur, ref, l.probed, landingStart(cur, ref, { start, playhead: playheadTicks(cur), track }), undefined, track);
   }, [fileFor, playheadTicks]);
@@ -193,11 +207,14 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           if (res.poster) posters.current.add(res.poster);
           const cur = store.getState().project ?? (await ed.project());
           const path = pathOf(s.file); // desktop: the file stays where it is, the project remembers its path
-          const uri = s.handle ? `fs:${id}` : path ? `path:${path}` : `file:${s.file.name}:${s.file.size}`;
+          // No handle to keep (Safari, Firefox, phones): keep a copy on the device when there is room, so a reload finds the file without a relink.
+          const keep = !s.handle && !path && keptSupported() && (await canKeep(s.file.size));
+          const uri = s.handle ? `fs:${id}` : path ? `path:${path}` : keep ? `kept:${id}` : `file:${s.file.name}:${s.file.size}`;
           if (s.handle) await saveHandle(uri, s.handle);
           const hash = await fingerprintFile(engine, s.file).catch(() => null); // 128 KiB read at most, however big the file
           const ref = mediaRef(id, s.file.name, uri, res.probed, hash);
           live.current.set(id, { file: s.file, probed: res.probed });
+          if (res.posterBlob) void savePoster(ref, res.posterBlob);
           // Every file of a drop onto an empty timeline (or onto the timeline) goes there in order; one undo step per file.
           const ops = importOps(cur, ref, res.probed);
           const here = place || ref.kind === "audio";
@@ -209,6 +226,15 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           } else binOnly.push(id);
           patch(id, { status: "ready", kind: res.probed.kind, durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
           await store.apply(ops, undefined, t.importLabel(s.file.name));
+          if (keep) {
+            void askPersistent();
+            // Saved in a Worker while editing goes on; a copy that cannot be finished (disk full) puts the old "choose the file again" locator back.
+            patch(id, { keeping: 0 });
+            void keepCopy(s.file, id, (p) => patch(id, { keeping: p })).then((ok) => {
+              patch(id, { keeping: undefined });
+              if (!ok) void enqueue(() => store.apply({ op: "set_media", media: id, uri: `file:${s.file.name}:${s.file.size}`, hash })).catch(() => undefined);
+            });
+          }
           imported++;
           ids.push(id);
           names.push(s.file.name);
@@ -310,7 +336,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
   /** The file behind a media item (for the preview's decoders), or null while it is offline. */
   const fileOf = useCallback(async (id: string): Promise<File | null> => {
     const ref = store.getState().project?.media.find((m) => m.id === id);
-    return ref ? (await fileFor(id, ref.uri, ref.kind))?.file ?? null : null;
+    return ref ? (await fileFor(id, ref.uri, ref.kind, ref.name))?.file ?? null : null;
   }, [store, fileFor]);
 
   /** Ids of the media whose file is readable now (ready cards), as a stable string: consumers re-request derived data when it changes. */

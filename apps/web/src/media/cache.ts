@@ -54,9 +54,9 @@ export class OpfsStore implements BlobStore {
 }
 
 /** OPFS when the browser has it, otherwise memory. */
-export function defaultStore(): BlobStore {
+export function defaultStore(name?: string): BlobStore {
   try {
-    if (typeof navigator !== "undefined" && navigator.storage && typeof navigator.storage.getDirectory === "function") return new OpfsStore();
+    if (typeof navigator !== "undefined" && navigator.storage && typeof navigator.storage.getDirectory === "function") return new OpfsStore(name);
   } catch { /* fall through */ }
   return new MemoryStore();
 }

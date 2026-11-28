@@ -4,6 +4,7 @@
  */
 
 import type { DesktopApi, MediaApi } from "@app/engine-client";
+import { loadKept } from "./kept";
 
 export interface Source {
   file: File;
@@ -162,6 +163,7 @@ async function readHandle(uri: string): Promise<FileSystemFileHandle | undefined
 export type HandleState = "granted" | "prompt" | "missing";
 export async function handleState(uri: string): Promise<HandleState> {
   if (uri.startsWith("path:")) return "granted"; // desktop: read where it lies; `loadHandle` says whether it still is there
+  if (uri.startsWith("kept:")) return (await loadKept(uri)) ? "granted" : "missing"; // our own copy in the origin-private file system: no permission to ask for
   try {
     const handle = await readHandle(uri);
     if (!handle) return "missing";
@@ -186,7 +188,8 @@ export function allowAll(uris: readonly string[]): Promise<string[]> {
  * The file behind a stored `uri`, or `null` (never stored, or permission was not granted: the caller shows "relink").
  * `request` asks the user for permission, which must happen from a click; without it only an existing grant counts.
  */
-export async function loadHandle(uri: string, request = false): Promise<File | null> {
+export async function loadHandle(uri: string, request = false, name?: string): Promise<File | null> {
+  if (uri.startsWith("kept:")) return loadKept(uri, name);
   if (uri.startsWith("path:")) return desktop ? desktop.fileAt(uri.slice(5)) : null; // desktop: the file is read where it lies
   try {
     const handle = await readHandle(uri);
