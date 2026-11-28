@@ -978,8 +978,6 @@
   "sheet.detent.full": "Full",
   "inspector.offClip": "Playhead is off this clip, so no keyframes.",
   "inspector.goToClip": "Go to clip",
-  "inspector.keyNext": "Next keyframe",
-  "inspector.keyPrev": "Previous keyframe",
   "tl.height.reset": "Preview and timeline sizes reset",
   "inspector.info.canvas": "Canvas",
   "inspector.info.background": "Background",
