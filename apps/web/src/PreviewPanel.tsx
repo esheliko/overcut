@@ -59,6 +59,8 @@ interface Props {
   handlesOn?: boolean;
   /** Media whose file is not on this device (id -> file name). The frame says so, with the way out, instead of staying plain black. */
   missing?: ReadonlyMap<string, string>;
+  /** Of the missing media, the ones that only need choosing again after a reload (a plain file input keeps no handle): worded as that, never as "missing". */
+  reopen?: ReadonlySet<string>;
   /** Choose the file again for one missing media item. */
   onRelink?(id: string): void;
 }
@@ -86,7 +88,7 @@ function Timecode({ rate, endFrame, label }: { rate: Rate; endFrame: number; lab
 }
 
 /** Words on the picture when the clip under the playhead has no file on this device: its name and the one action that fixes it. Renders nothing otherwise. */
-function MissingFrame({ missing, rate, onRelink }: { missing: ReadonlyMap<string, string>; rate: Rate; onRelink(id: string): void }) {
+function MissingFrame({ missing, reopen, rate, onRelink }: { missing: ReadonlyMap<string, string>; reopen?: ReadonlySet<string>; rate: Rate; onRelink(id: string): void }) {
   const { t } = useI18n();
   // A string selector: the panel re-renders when the answer changes, not on every playhead tick.
   const id = useProjectStore((s) => {
@@ -100,7 +102,7 @@ function MissingFrame({ missing, rate, onRelink }: { missing: ReadonlyMap<string
   return (
     <div className="media-missing" data-testid="media-missing">
       <Icon name="film" size={28} />
-      <strong>{t("preview.missing")}</strong>
+      <strong>{t(reopen?.has(id) ? "preview.reopen" : "preview.missing")}</strong>
       <span className="media-missing-name">{name}</span>
       <button className="chip-btn" onClick={() => onRelink(id)} data-testid="media-missing-choose">{t("media.relink")}</button>
     </div>
@@ -136,7 +138,7 @@ const onClipAt = (clip: Clip | null, frame: number, rate: Rate): boolean => {
  * The player, the GPU compositor and the decoders live in the preview Worker (`preview/worker.ts`); this component sends it the project, the files and
  * the transport commands, and shows the playhead it reports.
  */
-export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying, pictureOf, handlesOn = true, missing, onRelink }: Props) {
+export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, playing, onCanvas, onPlaying, pictureOf, handlesOn = true, missing, reopen, onRelink }: Props) {
   const { t } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
@@ -385,7 +387,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
               )}
             </div>
           )}
-          {missing && missing.size > 0 && onRelink && !playing && <MissingFrame missing={missing} rate={rate} onRelink={onRelink} />}
+          {missing && missing.size > 0 && onRelink && !playing && <MissingFrame missing={missing} reopen={reopen} rate={rate} onRelink={onRelink} />}
           {showHandles && !playing && handled && <HandlesLayer clip={handled} rate={rate} size={size} boxRef={boxRef} picture={pictureOf?.(handled.media)} hidden={playing} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
         </div>

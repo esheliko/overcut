@@ -63,12 +63,13 @@ test("a project whose media is missing says so, with the one action that fixes i
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });
   const note = page.getByTestId("offline-note");
   await expect(note).toBeVisible({ timeout: 20_000 });
-  await expect(note).toContainText("1 file is missing");
+  await expect(note).toContainText("not kept after a reload"); // UX r15 D4: a plain file input keeps no handle: not "missing"
+  await expect(note).not.toContainText("missing");
   await expect(page.getByTestId("locate-files")).toBeVisible();
-  // r13 #247: the picture itself says which file is missing and offers the way out (not plain black).
+  // r13 #247: the picture itself says which file to choose again and offers the way out (not plain black).
   const frame = page.getByTestId("media-missing");
   await expect(frame).toBeVisible();
-  await expect(frame).toContainText("Media missing");
+  await expect(frame).toContainText("Choose this file again");
   await expect(frame).toContainText("flash_click");
   expect((await page.getByTestId("media-missing-choose").boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await note.getByRole("button", { name: "Dismiss" }).click();

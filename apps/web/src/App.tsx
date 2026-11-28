@@ -42,7 +42,7 @@ import { VersionsDialog, useAutoSnapshots } from "./Versions";
 import { binMeta, type BinMeta } from "./media/binView";
 import { MediaBin } from "./media/MediaBin";
 import { OverlayPicker } from "./media/OverlayPicker";
-import { newId, TICKS } from "./media/plan";
+import { newId, offlineReason, TICKS } from "./media/plan";
 import { TICKS_PER_SECOND } from "./preview/timing";
 import { mediaToAdd } from "./timeline/addMedia";
 import { buildScene } from "./timeline/scene";
@@ -722,7 +722,10 @@ function Editor({ store }: { store: ProjectStore }) {
     void store.apply(ops, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
   };
   const offline = media.items.filter((i) => i.status === "offline" && !i.needsPermission && !i.uri?.startsWith("fixture:")).length; // a file that is not on this device ("fixture:" is the built-in sample, not a file)
+  // Files from a plain file input cannot be kept across a reload (no browser allows it): they are not "missing", they only need choosing again (UX r15 D4).
+  const reopen = media.items.filter((i) => i.status === "offline" && !i.needsPermission && offlineReason(i.uri) === "reopen").length;
   const waiting = media.items.filter((i) => i.status === "offline" && i.needsPermission).length; // the browser kept these: they only need "Allow access"
+  const reopenIds = useMemo(() => new Set(media.items.filter((i) => i.status === "offline" && !i.needsPermission && offlineReason(i.uri) === "reopen").map((i) => i.id)), [media.items]);
   const missingMedia = useMemo(() => new Map(media.items.filter((i) => i.status === "offline" && !i.uri?.startsWith("fixture:")).map((i) => [i.id, i.name] as const)), [media.items]);
   // One click, every file: the permission prompts all start inside this click handler (before any await).
   const allow = () => {
@@ -863,7 +866,7 @@ function Editor({ store }: { store: ProjectStore }) {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} onCollapse={() => setLibCollapsed(true)} />}
         </section>
 
-        {openId !== null ? <PreviewPanel missing={missingMedia} onRelink={binProps.onRelink} handlesOn={roomy || (sheet && active.id === "edit")} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
+        {openId !== null ? <PreviewPanel missing={missingMedia} reopen={reopenIds} onRelink={binProps.onRelink} handlesOn={roomy || (sheet && active.id === "edit")} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
 
         {wide && DETAILS_READY && (
           <section className="inspector" data-collapsed={inspCollapsed ? "true" : undefined} aria-label={t("details.title")} data-testid="panel-inspector">
@@ -906,8 +909,8 @@ function Editor({ store }: { store: ProjectStore }) {
         )}
         {offline > 0 && !offlineHidden && (
         <div className="persist-note" role="status" data-testid="offline-note">
-          <span>{t("project.offline", { count: offline })}</span>
-          <button onClick={() => void locate()} data-testid="locate-files">{t("project.locate")}</button>
+          <span>{reopen === offline ? t("media.reopen.note", { count: offline }) : reopen === 0 ? t("project.offline", { count: offline }) : t("media.reopen.mixed", { count: offline })}</span>
+          <button onClick={() => void locate()} data-testid="locate-files">{t(reopen === offline ? "media.reopen.action" : "project.locate")}</button>
           <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setOfflineHidden(true)}><Icon name="close" size={18} /></button>
         </div>
       )}</>) : null} />
