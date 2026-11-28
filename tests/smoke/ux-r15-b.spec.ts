@@ -28,8 +28,8 @@ test("one import rule: the first import lands on the timeline, later ones in the
   expect(await clips(page)).toBe(before);
   if (phone) await expect(page.getByTestId("panel-tool")).toBeVisible(); // the sheet stays: an import into the bin never closes into nothing
   // The toast sits above the timeline (never on the picture or over a lane) and offers the one tap that places it.
-  const [tb, tl] = await Promise.all([toast.boundingBox(), page.locator(".timeline").first().boundingBox()]);
-  expect(tb && tl && tb.y + tb.height <= tl.y + 1).toBe(true);
+  // Polled: the toast slides in (toast-in) and is placed from the timeline's measured top, so read it once it has settled.
+  await expect.poll(async () => { const [tb, tl] = await Promise.all([toast.boundingBox(), page.locator(".timeline").first().boundingBox()]); return !!(tb && tl && tb.y + tb.height <= tl.y + 1); }, { timeout: 5_000 }).toBe(true);
   await page.getByTestId("toast-action").click();
   await expect.poll(() => clips(page)).toBeGreaterThan(before);
 });

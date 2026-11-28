@@ -868,10 +868,10 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .ratio-glyph { display: block; border: 2px solid currentColor; border-radius: 3px; }
 
 /* UX r15 FIRST-4 / FIRST-21: portrait tablet (720-1099 px wide, portrait). The tool panel above the preview is short, so the empty Media drop zone becomes one compact row (icon, words, formats) that is fully visible;
-   the timeline toolbar drops its zoom slider (the - / + / Fit buttons stay) and, if it is still too wide, scrolls inside itself instead of clipping; the status chip leaves below 1100 px. */
+   the timeline toolbar keeps a usable 72 px zoom slider (it no longer shrinks to a 20 px sliver) and, if it is still too wide, scrolls inside itself instead of clipping; the status chip leaves below 1100 px. */
 @container editor (min-width: 900px) and (max-width: 1099px) { .tl-sel { display: none; } } /* landscape tablet: the selection pill was cut off (FIRST-21); the 820 px layout keeps it (it fits, tl-tools.spec) */
 @container editor (min-width: 720px) and (max-width: 1099px) {
-  .zoom input { display: none; }
+  .zoom input { flex: none; inline-size: 72px; }
   .tl-bar { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
   .tl-bar::-webkit-scrollbar { display: none; }
 }
