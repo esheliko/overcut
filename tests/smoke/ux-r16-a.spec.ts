@@ -58,6 +58,8 @@ test("the media bin is ONE tab stop (roving tabindex): arrows move, Enter adds",
   await withClip(page);
   await page.getByTestId("media-input").setInputFiles(music);
   await expect(page.getByTestId("bin-item")).toHaveCount(2, { timeout: 30_000 });
+  // Both cards must be read first: a card still being read is not part of the roving set (no tabindex), so focusing it does nothing.
+  await expect(page.locator('[data-testid="bin-item"][data-status="ready"]')).toHaveCount(2, { timeout: 30_000 });
   await expect(page.locator('[data-testid="bin-item"][tabindex="0"]')).toHaveCount(1);
   await expect(page.locator('[data-testid="bin-item"] button:not([tabindex="-1"])')).toHaveCount(0);
   const first = page.getByTestId("bin-item").first();
