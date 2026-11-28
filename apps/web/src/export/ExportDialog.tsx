@@ -9,6 +9,8 @@ import { Icon } from "../icons";
 import { TICKS } from "../media/plan";
 import { sequenceView } from "../PreviewPanel";
 import { useProjectStore, useStore } from "../store/projectStore";
+import { pictureGaps } from "../timeline/gaps";
+import { buildScene } from "../timeline/scene";
 import type { Source } from "./model";
 import { useExport, type ExportState } from "./useExport";
 
@@ -19,7 +21,10 @@ let loadedView: View | null = null;
 const loadView = (): Promise<View> => importView().then((m) => (loadedView = m));
 const warmed = new Set<string>();
 
-export function ExportControl({ engine, fileOf, projectName }: { engine: Engine | null; fileOf(id: string): Promise<File | null>; projectName?: string | null }) {
+/** Media the project uses whose file this device cannot read right now (missing, or the browser is waiting for permission), by id, and the app's one-click way to get them back ("Allow access" / "Locate files"). */
+export interface OfflineMedia { ids: ReadonlyMap<string, string>; reconnect(): void }
+
+export function ExportControl({ engine, fileOf, projectName, offline }: { engine: Engine | null; fileOf(id: string): Promise<File | null>; projectName?: string | null; offline?: OfflineMedia }) {
   const { t, locale } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
@@ -30,6 +35,21 @@ export function ExportControl({ engine, fileOf, projectName }: { engine: Engine 
   );
   const [open, setOpen] = useState(false);
   const [, loaded] = useState(0);
+  // What the dialog warns about (worked out only while it is open): black gaps in the picture, and clips whose file cannot be read (an encode would fail at the end).
+  const gaps = useMemo(() => (open ? pictureGaps(buildScene(project)) : []), [open, project]);
+  const needFile = useMemo(() => {
+    if (!open || !offline || offline.ids.size === 0) return 0;
+    let n = 0;
+    for (const tr of project?.sequences[0]?.tracks ?? []) for (const c of tr.clips) if (offline.ids.has(c.media)) n += 1;
+    return n;
+  }, [open, offline, project]);
+  const showGap = useCallback(() => {
+    const first = gaps[0];
+    setOpen(false);
+    if (!first || !src) return;
+    store.setPlayhead(Math.max(0, Math.round(first.start * src.fps)));
+    announce(t("export.gap.shown"));
+  }, [gaps, store, src, t]);
   // Opened before the chunk was here (a cold first click): fetch it, then draw the dialog.
   useEffect(() => { if (open && !loadedView) void loadView().then(() => loaded((n) => n + 1)); }, [open]);
   /** Loads the dialog chunk and asks the browser which formats it can encode (once per size and rate), so the dialog opens ready. */
@@ -114,6 +134,9 @@ export function ExportControl({ engine, fileOf, projectName }: { engine: Engine 
       {open && src && project && loadedView && (
         <loadedView.Dialog
           src={src}
+          gaps={{ count: gaps.length, seconds: gaps.reduce((a, g) => a + (g.end - g.start), 0) }}
+          offline={{ clips: needFile, reconnect: offline?.reconnect ?? (() => undefined) }}
+          onShowGap={showGap}
           state={ex.state}
           locale={locale}
           onStart={(s) => void ex.start(project.sequences[0]!.id, s)}

@@ -25,6 +25,9 @@ import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/pro
 import { Inspector, selectedVideoClip } from "./inspector/Inspector";
 import { ticksPerFrame, ticksToFrame } from "./inspector/keyframeModel";
 import { SpeedSection } from "./inspector/Speed";
+import { DurationSection } from "./inspector/Duration";
+import { detailsKind, pickedClips, tabFor, tabLabelKey, tabsOf, type DetailTab } from "./inspector/detailsModel";
+import { useScrollCue } from "./inspector/scrollCue";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
 import { CANVAS_EVENT } from "./inspector/Inspector";
@@ -136,16 +139,21 @@ function Library({ tool, bin, onCollapse }: { tool: Tool; bin: BinProps; onColla
   );
 }
 
-/** Only tabs with real content. Animation lives inline in Video (keyframes); Audio and Adjust come back when they are built. Speed shows only while a clip is selected. */
-type DetailTab = "video" | "speed";
+/** Details tabs follow what is selected (UX r16, `inspector/detailsModel.ts`): a picture gets Video | Speed, a photo Photo | Duration, a sound Audio | Speed. */
 /** The first crop field, once the panel has drawn (best effort: a collapsed group simply keeps focus where it was). */
 const focusCrop = () => { setTimeout(() => document.querySelector<HTMLElement>('[data-testid="insp-crop_left"]')?.focus(), 120); };
 function Details({ onCollapse }: { onCollapse?: () => void }) {
   const { t, dir } = useI18n();
-  const hasSelection = useProjectStore((s) => s.selection.size > 0);
-  const tabs: readonly DetailTab[] = hasSelection ? ["video", "speed"] : ["video"];
+  const project = useProjectStore((s) => s.project);
+  const selection = useProjectStore((s) => s.selection);
+  const picked = useMemo(() => pickedClips(project, selection), [project, selection]);
+  const kind = detailsKind(picked);
+  const tabs = tabsOf(kind);
   const first = useRef(takeDetailsRequest()); // a Speed or Crop request that opened this panel
-  const [picked, setTab] = useState<DetailTab>(first.current?.tab ?? "video");
+  const [picks, setPicks] = useState<{ kind: string; tab: DetailTab | null }>({ kind, tab: first.current?.tab ?? null });
+  // The default tab is picked per kind: a new kind of selection opens on its own first tab, never on the one the last selection left behind.
+  if (picks.kind !== kind) setPicks({ kind, tab: null });
+  const setTab = (tab: DetailTab) => setPicks({ kind, tab });
   // The toolbar's Speed and Crop (and the phone strip's) ask for a tab; the shell has already opened this panel.
   useEffect(() => {
     const on = (e: Event) => {
@@ -156,10 +164,11 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
     };
     window.addEventListener(DETAILS_EVENT, on);
     return () => window.removeEventListener(DETAILS_EVENT, on);
-  }, []);
+  });
   useEffect(() => { if (first.current?.focus === "crop") focusCrop(); first.current = null; }, []);
-  const tab: DetailTab = tabs.includes(picked) ? picked : "video";
+  const tab = tabFor(kind, picks.kind === kind ? picks.tab : null);
   const roving = useRovingTabindex(tabs.length, { rtl: dir === "rtl", onMove: (i) => setTab(tabs[i]!) });
+  const body = useScrollCue<HTMLDivElement>();
   return (
     <>
       <header className="panel-head"><h2>{t("details.title")}</h2>{onCollapse && <CollapseButton panel={t("details.title")} onClick={onCollapse} />}</header>
@@ -167,20 +176,21 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
       {tabs.length > 1 && (
         <div className="segmented" role="tablist" aria-label={t("details.tabs")}>
           {tabs.map((id, i) => (
-            <button key={id} role="tab" aria-selected={tab === id} {...roving.itemProps(i)} onClick={() => setTab(id)}>{t(`details.tab.${id}`)}</button>
+            <button key={id} role="tab" aria-selected={tab === id} {...roving.itemProps(i)} onClick={() => setTab(id)}>{t(tabLabelKey(kind, id))}</button>
           ))}
         </div>
       )}
-      <div className="panel-body insp-body">
-        {tab === "speed" ? <SpeedSection /> : <Inspector />}
+      <div className="panel-body insp-body" ref={body}>
+        {tab === "speed" ? <SpeedSection /> : tab === "duration" ? <DurationSection /> : <Inspector />}
       </div>
+      <div className="insp-fade" aria-hidden="true" />
     </>
   );
 }
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, save, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void; onPalette(): void } }) {
+function AppMenu({ compact, theme, save, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; save: { state: string; text: string }; project: { onSaveNow(): void; onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void; onPalette(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false); // phone: the theme choices (and the accent swatches) show only while the one "Theme: Dark" row is open
@@ -243,6 +253,7 @@ function AppMenu({ compact, theme, save, project }: { compact: boolean; theme: {
           <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projects")}</span></button>
           <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}><Icon name="plus" size={16} className="menu-ic" /><span>{t("menu.new")}</span></button>
           <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={opening(project.onOpen)}><Icon name="upload" size={16} className="menu-ic" /><span>{t("menu.openProject")}</span></button>
+          <button className="menu-row" role="menuitem" data-testid="menu-save-now" onClick={opening(project.onSaveNow)}><Icon name="check" size={16} className="menu-ic" /><span>{t("menu.save")}</span>{!compact && <kbd className="menu-hint">{/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘S" : "Ctrl+S"}</kbd>}</button>
           <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}><Icon name="download" size={16} className="menu-ic" /><span>{t("menu.saveProject")}</span></button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projectsFolder")}</span></button>}
           <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}><Icon name="history" size={16} className="menu-ic" /><span>{t("menu.versions")}</span></button>
@@ -584,6 +595,44 @@ function Editor({ store }: { store: ProjectStore }) {
     onMedia: (sources) => void importFiles(sources),
     onProject: (s) => void s.file.arrayBuffer().then((b) => openFromFile({ name: s.file.name, bytes: new Uint8Array(b) })).catch((e) => fail("project.open.failed", e)),
   });
+  // The project name is written to the library as it is typed (after a short pause), on Enter / Go and on blur: a reload right after renaming never loses it (UX r16, PHONE-6).
+  const nameTimer = useRef(0);
+  const commitName = (raw: string): void => {
+    window.clearTimeout(nameTimer.current);
+    const n = raw.trim();
+    if (openId) void getRegistry().then((r) => r.update(openId, { name: n })).catch(() => undefined);
+  };
+  const typeName = (raw: string): void => {
+    setName(raw);
+    window.clearTimeout(nameTimer.current);
+    nameTimer.current = window.setTimeout(() => commitName(raw), 400);
+  };
+  // Save now (UX r16, DESK-14): autosave keeps every edit, this makes it explicit: flush to storage, then the chip says so for a moment. Ctrl/Cmd+S, the menu row and a click on the chip.
+  const [savedAt, setSavedAt] = useState(0);
+  const saveNow = async (): Promise<void> => {
+    const s = persistence.session;
+    if (!s || !openId) return;
+    try {
+      await s.whenDurable();
+      await s.checkpoint();
+      setSavedAt(Date.now());
+      announce(t("save.state.justNow"));
+    } catch (e) { fail("project.save.failed", e); }
+  };
+  useEffect(() => {
+    if (!savedAt) return;
+    const h = window.setTimeout(() => setSavedAt(0), 2500);
+    return () => window.clearTimeout(h);
+  }, [savedAt]);
+  const saveNowRef = useRef(saveNow);
+  saveNowRef.current = saveNow;
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); void saveNowRef.current(); }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, []);
   const onSave = async () => {
     if (!core || !project) return;
     try {
@@ -827,7 +876,7 @@ function Editor({ store }: { store: ProjectStore }) {
         <div className="brand"><span className="logo" aria-hidden="true"><Icon name="split" size={16} /></span><strong>{t("app.name")}</strong>
           <button type="button" className="topbar-projects" data-testid="topbar-projects" onClick={() => void goHome()} aria-label={t("menu.projects")} title={t("menu.projects")}><Icon name="chevronLeft" size={16} /><span>{t("menu.projects")}</span></button>
         </div>
-        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} readOnly={openId === null} onChange={(e) => setName(e.target.value)} onBlur={() => { const n = name?.trim() || null; setName(n); if (openId) void getRegistry().then((r) => r.update(openId, { name: n ?? "" })).catch(() => undefined); }} aria-label={t("project.name")} spellCheck={false} />
+        <input className="project-name" value={name ?? t("app.untitled")} maxLength={60} readOnly={openId === null} enterKeyHint="done" onChange={(e) => typeName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { commitName(e.currentTarget.value); e.currentTarget.blur(); } }} onBlur={(e) => { const n = e.currentTarget.value.trim() || null; setName(n); commitName(n ?? ""); }} aria-label={t("project.name")} spellCheck={false} />
         <div className="top-actions">
           {engine.status === "error"
             ? <span className="chip" data-testid="engine" data-state="error">
@@ -836,14 +885,15 @@ function Editor({ store }: { store: ProjectStore }) {
               </span>
             // Developer detail ("Engine overcut v0.1.0 (wasm)") is not for the top bar: it lives in the app menu and on the Diagnostics page. This hidden probe is what tests wait on.
             : <span hidden data-testid="engine" data-state={engine.status} data-backend={engine.status === "ready" ? engine.backend : undefined} />}
-          <span className="chip save-state" role="status" data-testid="save-state" data-state={saveState}>
+          {/* A click saves now too (mouse convenience; the keyboard has Ctrl/Cmd+S and the menu's Save row, so this stays a status, not a second "Save" button). */}
+          <span className="chip save-state" role="status" data-testid="save-state" data-state={saveState} data-just={savedAt > 0 && saveState === "saved" ? "" : undefined} title={t("save.now")} onClick={() => void saveNow()}>
             <span className="dot" aria-hidden="true" />
-            <span className="chip-text">{t(`save.state.${saveState}`)}</span>
+            <span className="chip-text">{savedAt > 0 && saveState === "saved" ? t("save.state.justNow") : t(`save.state.${saveState}`)}</span>
           </span>
           <button className="icon-btn palette-btn" aria-label={t("palette.open")} title={`${t("palette.open")} (${paletteKey()})`} data-testid="palette-open" onClick={() => setPalette(true)}><Icon name="search" size={20} /></button>
-          <ExportControl engine={core} fileOf={media.fileOf} projectName={name} />
+          <ExportControl engine={core} fileOf={media.fileOf} projectName={name} offline={{ ids: missingMedia, reconnect: waiting > 0 ? allow : () => void locate() }} />
           {!compact && <ThemeMenu pref={themePref} onPick={pickTheme} />}
-          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts"), onPalette: () => setPalette(true) }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} />
+          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onSaveNow: () => void saveNow(), onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts"), onPalette: () => setPalette(true) }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} />
         </div>
       </header>
 

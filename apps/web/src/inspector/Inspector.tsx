@@ -5,6 +5,8 @@ import { Icon } from "../icons";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { isIdentity, newGestureKey, setField, setFit, toggleFlip, valuesOf, RESET, rangeOf, type NumKey } from "./transformModel";
 import { SpeedSection } from "./Speed";
+import { AudioControls } from "./AudioControls";
+import { pickedClips, selectionCount, selectionText } from "./detailsModel";
 import { speedTarget } from "./speedModel";
 import { EASING_CHOICES, PROPS_OF, TRANSFORM_GROUP, easingId, easingOps, groupKeyOps, keyNear, keyState, neighbourKey, relativeTicks, setKeyOps, ticksPerFrame, ticksToFrame, toggleKeyOps, type EasingId } from "./keyframeModel";
 import { withKey } from "../commands/keymap";
@@ -95,13 +97,14 @@ export function Inspector(): ReactNode {
   const selection = useProjectStore((s) => s.selection);
   const clip = selectedVideoClip(project, selection);
   if (clip && project) return <InspectorFields clip={clip} rate={project.sequences[0]!.frame_rate} />;
-  const picked = selection.size === 0 || !project ? [] : project.sequences[0]?.tracks.flatMap((tr) => tr.clips.filter((c) => selection.has(c.id)).map((c) => ({ c, kind: tr.kind }))) ?? [];
-  if (picked.length > 1) {
-    const all = new Set(picked.map((p) => p.kind));
-    const state = all.size === 1 && all.has("audio") ? "audio" : "multi";
-    return <EmptyCard testId="insp-multi" icon="duplicate" title={t("inspector.multi", { count: picked.length })} text={t(state === "audio" ? "inspector.multiAudio" : "inspector.multiHint")} />;
+  const picked = pickedClips(project, selection);
+  if (picked.length > 0) {
+    // Not one picture: several clips (or one sound). The words and the number are the toolbar chip's (`selectionText`), so the two always agree.
+    const sounds = project?.sequences[0]?.tracks.flatMap((tr) => tr.clips.filter((c) => selection.has(c.id) && tr.kind === "audio")) ?? [];
+    const allSound = sounds.length === picked.length;
+    if (picked.length > 1) return <><EmptyCard testId="insp-multi" icon="duplicate" title={selectionText(t, selectionCount(picked))} text={t(allSound ? "inspector.multiAudio" : "inspector.multiHint")} />{allSound && <AudioControls clips={sounds} />}</>;
+    return <><EmptyCard testId="insp-audio" icon="audio" title={t("inspector.audio")} text={t("inspector.audioHint")} /><AudioControls clips={sounds} /></>;
   }
-  if (picked.length === 1) return <EmptyCard testId="insp-audio" icon="audio" title={t("inspector.audio")} text={t("inspector.audioHint")} />;
   return <>{project ? <ProjectInfo project={project} /> : <p className="insp-empty">{t("inspector.none")}</p>}</>;
 }
 
@@ -348,12 +351,6 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
   const speed = speedTarget(project, selection);
   return (
     <div className="insp insp-sections" data-testid="inspector-fields" data-anim={animatedAny || undefined}>
-      {!onClip && (
-        <div className="insp-hint" data-testid="insp-offclip">
-          <span>{t("inspector.offClip")}</span>
-          <button type="button" onClick={goToClip} data-testid="insp-goto-clip">{t("inspector.goToClip")}</button>
-        </div>
-      )}
       <Section
         id="transform"
         title={t("inspector.sec.transform")}
@@ -396,6 +393,13 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
       <div className="insp-row">
         <button disabled={readOnly || isIdentity(tr)} onClick={() => edit(clip.id, RESET)} data-testid="insp-reset">{t("inspector.reset")}</button>
       </div>
+      {/* r16 (DESK-13): the playhead note rides at the bottom edge of the panel (sticky), so it appearing or leaving never pushes a control up or down. */}
+      {!onClip && (
+        <div className="insp-hint" data-testid="insp-offclip" role="status">
+          <span>{t("inspector.offClip")}</span>
+          <button type="button" onClick={goToClip} data-testid="insp-goto-clip">{t("inspector.goToClip")}</button>
+        </div>
+      )}
     </div>
   );
 }

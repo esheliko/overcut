@@ -14,6 +14,7 @@ import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, 
 import { closeGapOps, magneticTrimOps, onMagnetic, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { clipboardState } from "./commands/availability";
 import { COMMAND_EVENT, EXPORT_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
+import { selectionText } from "./inspector/detailsModel"; // the same words and number as the Details header
 import { addMarkerPlan, clearRangePlan, frameTick, loopPlan, markerAtTick, moveMarkerPlan, rangePlan } from "./timeline/markers";
 import { MarkerMenu, type MarkerAction } from "./timeline/MarkerMenu";
 import { deleteMarkerOp, newProject, setMarkerPropsOp } from "@app/engine-client";
@@ -506,7 +507,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           </button>
         </div>
         <div className="tl-right">
-          {!none && <span className="tl-sel" data-testid="tl-selected" title={withLinked ? t("timeline.selected.linked", { count: clipCount }) : undefined}>{withLinked ? t("timeline.selected.linked", { count: clipCount }) : t("timeline.selected", { count: clipCount })}</span>}
+          {!none && <span className="tl-sel" data-testid="tl-selected" title={withLinked ? selectionText(t, { clips: clipCount, withLinked }) : undefined}>{selectionText(t, { clips: clipCount, withLinked })}</span>}
           <SnapToggle />
           <MagneticToggle />
           <ZoomBar onFit={fit} />
