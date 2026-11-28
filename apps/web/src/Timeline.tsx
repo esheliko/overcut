@@ -492,6 +492,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           {showUnlink
             ? <ToolButton icon="unlink" label={t("timeline.unlink")} keys={keyHint("edit.link")} disabled={off} className="tl-op" testid="tl-unlink-btn" onClick={() => run({ c: "unlink" })} />
             : <ToolButton icon="link" label={t("timeline.link")} keys={keyHint("edit.link")} reason={none ? t("timeline.why.select") : t("timeline.why.link")} disabled={off || !canLink} className="tl-op" testid="tl-link-btn" onClick={() => run({ c: "link" })} />}
+          {onAddMedia && <ToolButton icon="overlay" label={t("timeline.addMedia.overlay")} disabled={off} className="tl-op" testid="tl-overlay-btn" onClick={() => run({ c: "addMedia", overlay: true })} />}
           <span className="sep tl-op" aria-hidden="true" />
           <ToolButton icon={TOOL_ICON[tool]} label={t("timeline.tool.current", { tool: t(`timeline.tool.${tool}`) })} keys={keyHint(`tool.${tool}`)} pressed={tool !== "select" ? true : undefined} dataTool={tool} testid="tl-tool" menu={{ open: menuOpen === "tool" }} onClick={(e) => openBar("tool", e.currentTarget)} />
           <button className="tl-pick" aria-haspopup="menu" aria-expanded={menuOpen === "more"} data-testid="tl-more" title={t("timeline.more")} onClick={(e) => openBar("more", e.currentTarget)}>
@@ -512,6 +513,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           ]
           : menuOpen === "tool" ? TOOLS.map((k) => ({ id: k, label: t(`timeline.tool.${k}`), sub: t(`timeline.tool.${k}.sub`), hint: keyHint(`tool.${k}`), checked: tool === k, testid: `tl-tool-${k}`, onSelect: () => run({ c: "tool", tool: k }) }))
           : [
+            { id: "duplicate", section: t("timeline.more.clip"), label: t("timeline.duplicate"), hint: KEYS.dup, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-duplicate", onSelect: () => run({ c: "duplicate" }) },
             { id: "copy", section: t("timeline.more.clip"), label: t("timeline.copy"), hint: KEYS.copy, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-copy", onSelect: () => run({ c: "copy" }) },
             { id: "cut", label: t("timeline.cut"), hint: KEYS.cut, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-cut", onSelect: () => run({ c: "cut" }) },
             { id: "paste", label: t("timeline.paste"), hint: KEYS.paste, disabled: off || held.length === 0, reason: t("timeline.why.copied"), testid: "tl-paste", onSelect: () => run({ c: "paste" }) },

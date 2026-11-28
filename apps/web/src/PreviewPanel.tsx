@@ -151,6 +151,14 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   const [speed, setSpeed] = useState(1);
   const [problem, setProblem] = useState<string | null>(null);
   const [prep, setPrep] = useState<number | null>(null);
+  // "Preparing smooth scrubbing" is a quiet ring in the player bar: it appears only after a moment and once there is progress, never on the picture (UX r15 FIRST-8, PHONE-11, DESK-21).
+  const [prepShown, setPrepShown] = useState(false);
+  const prepOn = prep !== null && prep > 0;
+  useEffect(() => {
+    if (!prepOn) { setPrepShown(false); return; }
+    const id = window.setTimeout(() => setPrepShown(true), 900);
+    return () => window.clearTimeout(id);
+  }, [prepOn]);
   const stageRef = useRef<HTMLElement>(null);
   const [fs, setFs] = useState<"off" | "native" | "overlay">("off");
   const [loop, setLoop] = useState(false);
@@ -357,7 +365,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   const sel = view.has ? selectedVideoClip(project, selection) : null;
   const onSel = useProjectStore((s) => onClipAt(sel, s.playhead, rate));
   const handled = sel && onSel ? sel : null;
-  const showHandles = !!handled && !readOnly && handlesOn;
+  const showHandles = !!handled && !readOnly && handlesOn && fs === "off"; // a full-screen preview is for looking: no editing frame on the picture (DESK-8)
   const canvasText = canvasSummary(size, rate);
   const badge = rateLabel(playing ? speed : 1);
 
@@ -380,7 +388,6 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
           {missing && missing.size > 0 && onRelink && !playing && <MissingFrame missing={missing} rate={rate} onRelink={onRelink} />}
           {showHandles && !playing && handled && <HandlesLayer clip={handled} rate={rate} size={size} boxRef={boxRef} picture={pictureOf?.(handled.media)} hidden={playing} onEdit={(next, key) => editTransform(handled.id, next, key)} />}
           {badge && <span className="rate-badge" aria-live="polite">{badge}</span>}
-          {prep !== null && <span className="scrub-prep" role="status" data-testid="scrub-prep">{t("scrub.preparing", { percent: prep })}</span>}
         </div>
         {field}
       </div>
@@ -395,6 +402,12 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
           <button className="icon-btn" aria-label={t("player.end")} title={tip(t("player.end"), "End")} onClick={() => p()?.seek(p()!.endFrame)}><Icon name="forward" size={20} /></button>
         </div>
         <div className="player-extras">
+          {prepShown && prep !== null && (
+            <span className="prep-ring" role="status" data-testid="scrub-prep" title={t("scrub.preparing", { percent: prep })}>
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" pathLength="100" className="prep-track" /><circle cx="12" cy="12" r="9" pathLength="100" className="prep-arc" strokeDasharray={`${prep} 100`} /></svg>
+              <span className="sr-only">{t("scrub.preparing", { percent: prep })}</span>
+            </span>
+          )}
           <button className="icon-btn loop-btn" aria-pressed={loop} aria-label={t("preview.loop")} title={`${t("preview.loop")} (R)`} onClick={toggleLoop} data-testid="loop-toggle"><Icon name="loop" size={20} /></button>
           <button className="icon-btn fs-btn" aria-pressed={fs !== "off"} aria-label={t(fs === "off" ? "preview.fullscreen" : "preview.fullscreen.exit")} title={`${t("preview.fullscreen")} (F)`} onClick={toggleFullscreen} data-testid="fullscreen-toggle"><Icon name={fs === "off" ? "fullscreen" : "fullscreenExit"} size={20} /></button>
           <button className="ratio chip-btn" onClick={onCanvas} aria-label={t("canvas.open", { summary: canvasText })} title={t("canvas.hint")} data-testid="canvas-open">
