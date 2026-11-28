@@ -73,11 +73,10 @@ export function mainTrack(scene: Scene): number {
   return best;
 }
 /** True when clip `i` sits on the main track, or is the linked sound of a clip that does (its track ripples with the picture to stay in sync). */
+/** Whether ripple editing applies to clip `i`. Owner direction (2026-11-28, as in CapCut): a trim or delete closes the gap by default on EVERY track,
+ *  not only the main one; leaving a gap is the toggle (Alt+G) away. Kept as a function so a per-track rule can return. */
 export function onMagnetic(scene: Scene, i: number): boolean {
-  const main = mainTrack(scene);
-  if (main < 0) return false;
-  if (scene.clipTrack[i] === main) return true;
-  return partnersOf(scene, i).some((j) => scene.clipTrack[j] === main);
+  return i >= 0 && i < scene.clipCount;
 }
 /** A trim of `edge` to `value` (ticks) as a ripple trim: the clip and everything after it on its track(s) follow, so no gap opens or stays. */
 export const magneticTrimOps = (scene: Scene, i: number, edge: "start" | "end", value: number): Op[] =>

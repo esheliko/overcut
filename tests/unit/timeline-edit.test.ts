@@ -367,7 +367,7 @@ test("pressing a seam in the Select tool trims the clip on the pointer's side; A
   assert.deepEqual(up.fx.ops, [{ op: "roll", left: s.id[0], right: s.id[1], to: s.tStart[1]! + 2 * s.frameTicks }]);
 });
 
-test("magnetic main track: shortening the end of a main-track clip is a ripple trim that closes the gap; other tracks trim freely (UX r15)", () => {
+test("ripple edits (on by default): shortening a clip's end is a ripple trim that closes the gap, on every track; off, it is a plain trim (UX r15, owner direction)", () => {
   const p = fixtureProject({ tracks: 2, clipsPerTrack: 2, clipSec: 4 });
   for (const tr of p.sequences[0]!.tracks) { const cl = tr.clips; cl[1]!.start = cl[0]!.start + cl[0]!.duration; }
   p.media[0]!.duration = 30 * TICKS_PER_SECOND;
@@ -385,4 +385,11 @@ test("magnetic main track: shortening the end of a main-track clip is a ripple t
   assert.equal(up.fx.ops?.[0]?.op, "ripple_trim");
   const off = pointerUp({ ...k, magnetic: false }, pointerMove(k, down.g, mouse(to, y)).g, mouse(to, y));
   assert.equal(off.fx.ops?.[0]?.op, "trim_out");
+  // Another track ripples too.
+  const other = main === 0 ? 1 : 0, o = s.trackFirst[other]!;
+  const ox = timeToX(v, s.end[o]!), oy = cy(other);
+  const od = pointerDown(k, mouse(ox - 3, oy));
+  assert.equal(od.g.k, "trim");
+  const oto = ox - 1.1 * s.frameTicks / TICKS_PER_SECOND * v.pps;
+  assert.equal(pointerUp(k, pointerMove(k, od.g, mouse(oto, oy)).g, mouse(oto, oy)).fx.ops?.[0]?.op, "ripple_trim");
 });
