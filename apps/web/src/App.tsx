@@ -1,7 +1,7 @@
 import { LEGACY_PROJECT_ID, createEngine, newProject, summarize, summarizeExtra, type ProjectEntry, type SnapshotKind, type Engine, type EngineBackend, type EngineInfo, type Op, type Project } from "@app/engine-client";
 import { installKeepFocus } from "./a11y/keepFocus";
 import { errorText, openFailureKind } from "./openError";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { announce } from "./a11y/announcer";
 import { useRovingTabindex } from "./a11y/roving";
 import { reportAppInfo } from "./errorScreen/crash";
@@ -29,7 +29,7 @@ import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
 import { CANVAS_EVENT } from "./inspector/Inspector";
 import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
-import { ThemeMenu } from "./ThemeMenu";
+import { ThemeMenu, themeIcon } from "./ThemeMenu";
 import { ExportControl } from "./export/ExportDialog";
 const ShortcutsDialog = lazy(() => import("./commands/ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 import { Palette } from "./commands/Palette";
@@ -42,7 +42,7 @@ import { VersionsDialog, useAutoSnapshots } from "./Versions";
 import { binMeta, type BinMeta } from "./media/binView";
 import { MediaBin } from "./media/MediaBin";
 import { OverlayPicker } from "./media/OverlayPicker";
-import { newId, TICKS } from "./media/plan";
+import { newId, offlineReason, TICKS } from "./media/plan";
 import { TICKS_PER_SECOND } from "./preview/timing";
 import { mediaToAdd } from "./timeline/addMedia";
 import { buildScene } from "./timeline/scene";
@@ -50,6 +50,8 @@ import { addTrack } from "./timeline/tracks";
 import { BIN_DRAG_TYPE, dragHasFiles, fromDataTransfer, fromFileList, getDesktop, pickMany, pickOne, setDesktop, setNativeMedia, type Source } from "./media/sources";
 import { useShellProfile } from "./layout/useShellProfile";
 import { Splitter } from "./layout/Splitter";
+import { PhoneSplitter } from "./layout/PhoneSplitter";
+import { MANY_TRACKS } from "./layout/split";
 import { SheetHandle } from "./layout/SheetHandle";
 import { ToolStrip } from "./layout/ToolStrip";
 import { DETAILS_EVENT, takeDetailsRequest, type DetailsRequest } from "./layout/toolStrip";
@@ -178,9 +180,11 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
 
 /** The "..." menu: small, out of the way. Holds About / Diagnostics, and on small phones (`compact`) the theme toggle and engine status that
  *  no longer fit the top bar next to the project name and Export. */
-function AppMenu({ compact, theme, status, save, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; status: ReactNode; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void; onPalette(): void } }) {
+function AppMenu({ compact, theme, save, project }: { compact: boolean; theme: { name: string; pref: ThemePref; onPick(p: ThemePref): void }; save: { state: string; text: string }; project: { onProjects(): void; onNew(): void; onOpen(): void; onSave(): void; onPrivacy(): void; onVersions(): void; onShortcuts(): void; onPalette(): void } }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false); // phone: the theme choices (and the accent swatches) show only while the one "Theme: Dark" row is open
+  useEffect(() => { if (!open) setThemeOpen(false); }, [open]);
   const ref = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   // A row that opens a dialog: focus goes to the menu button first, so the dialog returns focus there when it closes (the row itself is gone by then).
@@ -217,22 +221,25 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
     <div className="menu" ref={ref}>
       <button ref={trigger} className="icon-btn" aria-label={t("menu.open")} title={t("menu.open")} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name="more" size={20} /></button>
       {open && (
-        <div className="menu-pop" role="menu">
-          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><Icon name="search" size={16} className="menu-ic" /><span>{t("palette.open")}</span>{!compact && <kbd className="menu-hint">{paletteKey()}</kbd>}</button>
+        <div className="menu-pop" role="menu" data-compact={compact || undefined}>
           {compact && (
             <>
-              {/* Small phones: the theme choices are listed here (F3), not cycled; a heading says what the three rows are. */}
-              <div className="menu-group" role="presentation">{t("theme.label")}</div>
-              {THEME_PREFS.map((p) => (
-                <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref && <Icon name="check" size={16} />}</span><span>{t(`theme.${p}`)}</span></button>
-              ))}
-              <AccentPicker />
-              <div className="menu-row menu-status" role="presentation">{status}</div>
-              {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
-              <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
+              {/* Phone (UX r15 D8): a short menu. "Saved on this device" is the only status (no engine words); the theme is ONE row that opens its choices; the rest is a two-column grid of 44 px rows. */}
+              <div className="menu-row menu-status menu-full save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
+              <button className="menu-row menu-full" role="menuitem" aria-expanded={themeOpen} data-testid="menu-theme" onClick={() => setThemeOpen((o) => !o)}><Icon name={themeIcon(theme.pref)} size={16} className="menu-ic" /><span className="menu-grow">{t("theme.row", { theme: t(`theme.${theme.pref}`) })}</span><Icon name="chevronRight" size={16} className="menu-chev" /></button>
+              {themeOpen && (
+                <>
+                  {THEME_PREFS.map((p) => (
+                    <button key={p} className="menu-row menu-sub" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref && <Icon name="check" size={16} />}</span><span>{t(`theme.${p}`)}</span></button>
+                  ))}
+                  <div className="menu-full"><AccentPicker /></div>
+                </>
+              )}
+              <ScrubPrepItem />
             </>
           )}
-          <div className="menu-group" role="presentation">{t("menu.group.project")}</div>
+          <button className="menu-row" role="menuitem" data-testid="menu-palette" onClick={opening(project.onPalette)}><Icon name="search" size={16} className="menu-ic" /><span>{t("palette.open")}</span>{!compact && <kbd className="menu-hint">{paletteKey()}</kbd>}</button>
+          {!compact && <div className="menu-group" role="presentation">{t("menu.group.project")}</div>}
           <button className="menu-row" role="menuitem" data-testid="menu-projects" onClick={opening(project.onProjects)}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projects")}</span></button>
           <button className="menu-row" role="menuitem" data-testid="menu-new" onClick={opening(project.onNew)}><Icon name="plus" size={16} className="menu-ic" /><span>{t("menu.new")}</span></button>
           <button className="menu-row" role="menuitem" data-testid="menu-open" onClick={opening(project.onOpen)}><Icon name="upload" size={16} className="menu-ic" /><span>{t("menu.openProject")}</span></button>
@@ -241,9 +248,8 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
           <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}><Icon name="history" size={16} className="menu-ic" /><span>{t("menu.versions")}</span></button>
           {/* r15 (customer: "the menu is too long and cluttered, especially View"): the accent swatches live beside the theme (the theme popover, or the
               phone theme rows above), so View keeps one switch with a one-line hint. */}
-          <div className="menu-group" role="presentation">{t("menu.group.view")}</div>
-          <ScrubPrepItem />
-          <div className="menu-group" role="presentation">{t("menu.group.help")}</div>
+          {!compact && <><div className="menu-group" role="presentation">{t("menu.group.view")}</div><ScrubPrepItem /></>}
+          {!compact && <div className="menu-group" role="presentation">{t("menu.group.help")}</div>}
           <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={opening(project.onShortcuts)}><Icon name="keyboard" size={16} className="menu-ic" /><span>{t("menu.shortcuts")}</span></button>
           <button className="menu-row" role="menuitem" data-testid="menu-privacy" onClick={opening(project.onPrivacy)}><Icon name="shield" size={16} className="menu-ic" /><span>{t("menu.privacy")}</span></button>
           <InstallItem desktopApp={!!getDesktop()} onDone={() => setOpen(false)} />
@@ -722,7 +728,10 @@ function Editor({ store }: { store: ProjectStore }) {
     void store.apply(ops, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
   };
   const offline = media.items.filter((i) => i.status === "offline" && !i.needsPermission && !i.uri?.startsWith("fixture:")).length; // a file that is not on this device ("fixture:" is the built-in sample, not a file)
+  // Files from a plain file input cannot be kept across a reload (no browser allows it): they are not "missing", they only need choosing again (UX r15 D4).
+  const reopen = media.items.filter((i) => i.status === "offline" && !i.needsPermission && offlineReason(i.uri) === "reopen").length;
   const waiting = media.items.filter((i) => i.status === "offline" && i.needsPermission).length; // the browser kept these: they only need "Allow access"
+  const reopenIds = useMemo(() => new Set(media.items.filter((i) => i.status === "offline" && !i.needsPermission && offlineReason(i.uri) === "reopen").map((i) => i.id)), [media.items]);
   const missingMedia = useMemo(() => new Map(media.items.filter((i) => i.status === "offline" && !i.uri?.startsWith("fixture:")).map((i) => [i.id, i.name] as const)), [media.items]);
   // One click, every file: the permission prompts all start inside this click handler (before any await).
   const allow = () => {
@@ -808,13 +817,8 @@ function Editor({ store }: { store: ProjectStore }) {
   /** Tablet and up dock the tool panel open, so a rail with a single tool (Media, in M1) switches nothing: it is left out and its column goes to the panels. */
   const railHidden = roomy && rail.length === 1;
   const themeName = t(`theme.${themePref}`);
-  const engineText = engine.status === "loading" ? t("engine.starting")
-    : engine.status === "ready" ? t("engine.ready", { name: engine.info.name, version: engine.info.version, backend: engine.backend })
-    : t("engine.failed", { message: engine.message });
-  // The menu says plain "Ready"; the engine's name, version and backend are on the About OverCut page.
   // "Saved on this device" follows autosave (persistence.status); it does not claim a save before the project is open.
   const saveState = persistence.status === "error" ? "error" : !persistence.ready ? "opening" : persistence.status;
-  const engineMenuText = engine.status === "ready" ? t("engine.menu.ready") : engineText;
 
   return (
     <div className={showHome ? "editor home-mode" : "editor"} ref={editorRef} data-profile={profile} data-testid="editor">
@@ -839,11 +843,11 @@ function Editor({ store }: { store: ProjectStore }) {
           <button className="icon-btn palette-btn" aria-label={t("palette.open")} title={`${t("palette.open")} (${paletteKey()})`} data-testid="palette-open" onClick={() => setPalette(true)}><Icon name="search" size={20} /></button>
           <ExportControl engine={core} fileOf={media.fileOf} projectName={name} />
           {!compact && <ThemeMenu pref={themePref} onPick={pickTheme} />}
-          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts"), onPalette: () => setPalette(true) }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} status={<><span className="dot" aria-hidden="true" data-state={engine.status} /><span>{engineMenuText}</span></>} />
+          <AppMenu compact={compact} save={{ state: saveState, text: t(`save.state.${saveState}`) }} project={{ onProjects: () => void goHome(), onNew, onOpen: () => void onOpen(), onSave: () => void onSave(), onPrivacy: () => setDialog("privacy"), onVersions: () => setDialog("versions"), onShortcuts: () => setDialog("shortcuts"), onPalette: () => setPalette(true) }} theme={{ name: themeName, pref: themePref, onPick: pickTheme }} />
         </div>
       </header>
 
-      <main className="workspace" ref={workspaceRef} data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined} data-lib={roomy && libCollapsed ? "collapsed" : undefined} data-insp={inspCollapsed ? "collapsed" : undefined}>
+      <main className="workspace" ref={workspaceRef} data-tracks={(project?.sequences[0]?.tracks.length ?? 0) >= MANY_TRACKS ? "many" : undefined} data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined} data-lib={roomy && libCollapsed ? "collapsed" : undefined} data-insp={inspCollapsed ? "collapsed" : undefined}>
         {!roomy && !showHome && <ToolStrip mediaOpen={sheet && active.id === "media"} editOpen={sheet && active.id === "edit"} editTab={editTab} canOverlay={openId !== null} onMedia={() => pick("media")} onEdit={() => pick("edit")} onCanvas={() => setDialog("canvas")} />}
         {roomy && !railHidden && <nav className="tools" aria-label={t("tools.nav")}>
           {rail.map((x) => (
@@ -863,7 +867,7 @@ function Editor({ store }: { store: ProjectStore }) {
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} onCollapse={() => setLibCollapsed(true)} />}
         </section>
 
-        {openId !== null ? <PreviewPanel missing={missingMedia} onRelink={binProps.onRelink} handlesOn={roomy || (sheet && active.id === "edit")} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
+        {openId !== null ? <PreviewPanel missing={missingMedia} reopen={reopenIds} onRelink={binProps.onRelink} handlesOn={roomy || (sheet && active.id === "edit")} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
 
         {wide && DETAILS_READY && (
           <section className="inspector" data-collapsed={inspCollapsed ? "true" : undefined} aria-label={t("details.title")} data-testid="panel-inspector">
@@ -872,6 +876,7 @@ function Editor({ store }: { store: ProjectStore }) {
           </section>
         )}
         {roomy && <Splitter workspace={workspaceRef} />}
+        {profile === "phone-portrait" && !showHome && openId !== null && <PhoneSplitter workspace={workspaceRef} />}
 
         <div className="tl-drop" data-over={tlOver} onDropCapture={() => setTlOver(false)} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {
           const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
@@ -906,8 +911,8 @@ function Editor({ store }: { store: ProjectStore }) {
         )}
         {offline > 0 && !offlineHidden && (
         <div className="persist-note" role="status" data-testid="offline-note">
-          <span>{t("project.offline", { count: offline })}</span>
-          <button onClick={() => void locate()} data-testid="locate-files">{t("project.locate")}</button>
+          <span>{reopen === offline ? t("media.reopen.note", { count: offline }) : reopen === 0 ? t("project.offline", { count: offline }) : t("media.reopen.mixed", { count: offline })}</span>
+          <button onClick={() => void locate()} data-testid="locate-files">{t(reopen === offline ? "media.reopen.action" : "project.locate")}</button>
           <button className="icon-btn" aria-label={t("persist.dismiss")} onClick={() => setOfflineHidden(true)}><Icon name="close" size={18} /></button>
         </div>
       )}</>) : null} />

@@ -181,7 +181,9 @@ test("the kind, sort and tag controls sit behind one 44 px \"Filter and sort\" b
   await expect(page.getByTestId("bin-filter-on")).toHaveText("On");
   await page.getByTestId("bin-kind-all").click();
   await expect(page.getByTestId("bin-filter-on")).toHaveCount(0);
-  for (const id of ["bin-kind-video", "bin-kind-all", "bin-sort"]) expect((await page.getByTestId(id).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // UX r15 D2: the panel is a compact popover: rows are 44 px for touch and 32 px with a mouse.
+  const rowMin = (page.viewportSize()?.width ?? 0) < 720 ? 44 : 32;
+  for (const id of ["bin-kind-video", "bin-kind-all", "bin-sort"]) expect((await page.getByTestId(id).boundingBox())!.height).toBeGreaterThanOrEqual(rowMin - 0.5);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });

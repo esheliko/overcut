@@ -135,7 +135,7 @@ test("theme: follows the system, the toggle overrides it, the choice is remember
   await expect(html).toHaveAttribute("data-theme", "light");
   const toggle = page.getByTestId("theme-toggle");
   // Below 480 px the toggle lives in the "..." menu (it stays open while the toggle is used).
-  if (!(await toggle.isVisible())) await page.getByRole("button", { name: "Menu" }).click();
+  if (!(await toggle.isVisible())) { await page.getByRole("button", { name: "Menu" }).click(); await page.getByTestId("menu-theme").click(); } // UX r15 D8: one "Theme: ..." row opens the choices
   // F3: the toggle opens a small menu (System, Dark, Light, High contrast). Esc closes it and gives focus back to the toggle.
   if (await toggle.isVisible()) {
     await toggle.click();
@@ -291,6 +291,7 @@ test("top bar on a small phone: project name truncates but stays editable, Expor
     await name.fill("A very long project name that cannot possibly fit in the bar");
     await expect(name).toHaveValue("A very long project name that cannot possibly fit in the bar");
     await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByTestId("menu-theme").click(); // UX r15 D8: the phone menu has ONE theme row; its choices show when it is open
     await expect(page.getByRole("menuitemradio", { name: "High contrast" })).toBeVisible(); // F3: the phone menu lists the theme choices
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   }

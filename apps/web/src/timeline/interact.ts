@@ -170,7 +170,8 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     const mod = e.shift || e.additive;
     const press = (then: "move" | "pan" | "none", collapse: boolean): Gesture => ({ k: "press", sx: e.x, sy: e.y, then, tapClip: h.clip, collapse, clearOnTap: false });
     if (mod) return { g: press(was ? "none" : "move", false), fx: { select: { mode: "toggle", ids: [id] } } };
-    if (was) return { g: press("move", c.selected.size > 1), fx: NONE };
+    // Touch (CapCut model, UX r15 D6): a drag on a clip body ALWAYS scrolls the timeline, selected or not; moving a clip needs a long press (longPress).
+    if (was) return { g: press(touch ? "pan" : "move", c.selected.size > 1), fx: NONE };
     if (touch) return { g: press("pan", false), fx: NONE }; // a tap selects on release; a drag pans
     return { g: press("move", false), fx: { select: { mode: "set", ids: [id] }, say: describeClip(scene, h.clip) } };
   }
@@ -254,7 +255,8 @@ export function longPress(c: Ctx, g: Gesture): R | null {
   if (g.k !== "press" || g.tapClip < 0 || g.then !== "pan") return null;
   const i = g.tapClip;
   if (c.scene.trackLocked[c.scene.clipTrack[i]!]) return null;
-  return { g: { ...g, then: "move", lifted: true }, fx: { select: { mode: "set", ids: [c.scene.id[i]!] }, say: describeClip(c.scene, i) } };
+  const keep = c.selFlags[i] === 1; // already part of the selection: lifting it must not collapse a multi-selection
+  return { g: { ...g, then: "move", lifted: true }, fx: { ...(keep ? NONE : { select: { mode: "set" as const, ids: [c.scene.id[i]!] } }), say: describeClip(c.scene, i) } };
 }
 
 export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {

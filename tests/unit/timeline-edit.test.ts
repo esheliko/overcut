@@ -4,7 +4,7 @@ import { mainTrack, rollCuts, rollOps, rollRangeAll, snapTo } from "../../apps/w
 import { closeStartGap, trimOp, deleteOps, fitsOnTrack, flagsOf, moveOps, moveRoom, neighbour, snapDelta, splitOps, splittable, trimRange, trimTarget } from "../../apps/web/src/timeline/edit";
 import { fixtureProject } from "../../apps/web/src/timeline/fixture";
 import { handleAt, HANDLE_MOUSE, HANDLE_TOUCH } from "../../apps/web/src/timeline/hit";
-import { applySelect, IDLE, markPreview, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
+import { applySelect, IDLE, longPress, markPreview, pointerDown, pointerMove, pointerUp, type Ctx, type Gesture, type PEvent } from "../../apps/web/src/timeline/interact";
 import { buildScene, TICKS_PER_SECOND } from "../../apps/web/src/timeline/scene";
 import { canvasCommand, globalCommand, isModifierKey, type KeyLike } from "../../apps/web/src/timeline/shortcuts";
 import { LANE, RULER, timeToX, type View } from "../../apps/web/src/timeline/view";
@@ -180,7 +180,7 @@ test("dragging a single clip onto another track of the same kind moves it there;
   assert.equal((audio.g as Extract<Gesture, { k: "move" }>).track, 0, "video clips do not go onto audio tracks");
 });
 
-test("touch: tapping an unselected clip selects it, dragging it pans, dragging a selected clip moves it", () => {
+test("touch: tapping an unselected clip selects it, dragging it pans, a selected clip pans too, a long press picks it up to move", () => {
   const i = 1, x = cx(i), y = cy(0);
   let r = pointerDown(ctx(), touch(x, y));
   assert.equal(r.fx.select, undefined, "selection happens on release so a pan never selects");
@@ -188,7 +188,13 @@ test("touch: tapping an unselected clip selects it, dragging it pans, dragging a
   r = pointerMove(ctx(), r.g, touch(x + 30, y));
   assert.equal(r.g.k, "pan");
   r = pointerDown(ctx([i]), touch(x, y));
-  assert.equal(pointerMove(ctx([i]), r.g, touch(x + 30, y)).g.k, "move");
+  // UX r15 D6 (the old rule, "a drag on a selected clip moves it", was stale): a drag on a clip body always scrolls on touch
+  assert.equal(pointerMove(ctx([i]), r.g, touch(x + 30, y)).g.k, "pan");
+  // ...moving needs a long press, which keeps the selection (no collapse) and arms the move
+  const lp = longPress(ctx([i]), r.g);
+  assert.ok(lp, "long press picks the selected clip up");
+  assert.equal(lp.fx.select, undefined);
+  assert.equal(pointerMove(ctx([i]), lp.g, touch(x + 30, y)).g.k, "move");
   // empty space: tap seeks, drag pans
   const e = pointerDown(ctx(), touch(timeToX(view(), scene.end[0]! + 0.3), y));
   assert.equal(pointerMove(ctx(), e.g, touch(300, y)).g.k, "pan");

@@ -8,7 +8,7 @@ test("offline media: one Choose-all button; the recovery note does not wrap its 
   if (phone) await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Media" }).click();
   const all = page.getByTestId("relink-all");
   await expect(all).toBeVisible();
-  await expect(all).toContainText("Choose all 2 missing files");
+  await expect(all).toContainText("Choose all 2 files again");
   expect((await all.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await page.screenshot({ path: "/tmp/claude-0/-home-user-overcut/d1542f7e-6dcf-52b8-b7c1-efef7b6b1a0e/scratchpad/relink-" + info.project.name + ".png" });
   // The recovery note's layout, with the same markup the app renders.

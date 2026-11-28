@@ -23,3 +23,33 @@ export function writeTimelineRow(px: number | null): void {
     else localStorage.setItem(KEY, String(Math.round(px)));
   } catch { /* storage unavailable: the size just is not remembered */ }
 }
+
+/* Phone portrait (UX r15 D7): the grab bar moves the PICTURE's height (the timeline takes what is left). The size is kept as a share of the workspace height. */
+const PV_KEY = "overcut.layout.phonePreview";
+/** The picture keeps at least this share of the workspace height, and the timeline at least `MIN_PHONE_TIMELINE` px (toolbar, ruler and a lane or two). */
+export const MIN_PREVIEW_SHARE = 0.3;
+export const MIN_PHONE_TIMELINE = 260;
+/**
+ * A picture (canvas) height in px kept inside what the workspace allows. `room` = workspace height; `other` = everything that is neither the preview panel nor
+ * the timeline (top rows, tool strip); `chrome` = the preview panel's height minus the picture (player bar, padding). The whole preview panel keeps
+ * at least `MIN_PREVIEW_SHARE` of the room, the timeline at least `MIN_PHONE_TIMELINE` px.
+ */
+export function clampPicture(px: number, room: number, other: number, chrome: number): number {
+  const max = Math.max(72, room - other - chrome - MIN_PHONE_TIMELINE);
+  const min = Math.min(max, Math.max(72, Math.round(room * MIN_PREVIEW_SHARE) - chrome));
+  return Math.round(Math.min(max, Math.max(min, px)));
+}
+/** Three or more tracks get a smaller default picture, so the timeline shows them all. */
+export const MANY_TRACKS = 3;
+export function readPictureShare(): number | null {
+  try {
+    const v = Number(localStorage.getItem(PV_KEY));
+    return Number.isFinite(v) && v > 0 && v < 1 ? v : null;
+  } catch { return null; }
+}
+export function writePictureShare(share: number | null): void {
+  try {
+    if (share === null) localStorage.removeItem(PV_KEY);
+    else localStorage.setItem(PV_KEY, share.toFixed(4));
+  } catch { /* storage unavailable: the size just is not remembered */ }
+}
