@@ -5,6 +5,8 @@ type Props = {
   icon: IconName;
   /** The accessible name and the tooltip's title. */
   label: string;
+  /** A plain sentence about what it does, shown small under the short label in the tooltip (r16 FIRST-7). */
+  tip?: string;
   /** The shortcut, shown as a keycap in the tooltip. */
   keys?: string;
   /** Why it cannot run now: the button stays in place, really disabled, and the tooltip says why. */
@@ -25,7 +27,7 @@ type Props = {
 
 /** One toolbar button with a tooltip (name, shortcut keycap, or the reason it is unavailable). The tooltip sits on the wrapper, so a disabled button still shows why.
  *  Hover and keyboard focus show it (desktop only; a touch screen has no hover and the strip shows labels instead). */
-export function ToolButton({ icon, label, keys, reason, disabled, pressed, text, size = 20, className, testid, onClick, menu, dataTool }: Props) {
+export function ToolButton({ icon, label, tip, keys, reason, disabled, pressed, text, size = 20, className, testid, onClick, menu, dataTool }: Props) {
   const why = useId();
   return (
     <span className="tb">
@@ -35,7 +37,7 @@ export function ToolButton({ icon, label, keys, reason, disabled, pressed, text,
         {menu && <Icon name="chevronDown" size={12} className="tb-caret" />}
         {text && <span className="tb-text">{text}</span>}
       </button>
-      <span className="tb-tip" aria-hidden="true">{disabled && reason ? <>{label}<small>{reason}</small></> : <>{label}{keys && <kbd>{keys}</kbd>}</>}</span>
+      <span className="tb-tip" aria-hidden="true">{disabled && reason ? <>{label}<small>{reason}</small></> : tip ? <>{label}{keys && <kbd>{keys}</kbd>}<small>{tip}</small></> : <>{label}{keys && <kbd>{keys}</kbd>}</>}</span>
       {disabled && reason && <span id={why} className="sr-only">{reason}</span>}
     </span>
   );

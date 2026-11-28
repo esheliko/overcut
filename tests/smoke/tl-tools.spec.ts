@@ -110,13 +110,12 @@ test("phone: the loop button and the time chip fade away while the on-canvas han
   await page.getByTestId("tl-more").click();
   await page.getByTestId("tl-add-overlay").click(); // the new overlay is selected; on a phone its handles show while the Edit sheet is open
   await page.getByTestId("overlay-choice").first().click(); // UX r15: chosen in the overlay picker
-  await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
-  await expect(page.locator(".canvas.framed")).toBeVisible();
+  await expect(page.locator(".canvas.framed")).toBeVisible(); // r16 PHONE-1: the handles show for a selected clip with no sheet open
   await expect(loop).toBeHidden();
   await expect(tc).toBeHidden();
   expect(await page.evaluate(() => getComputedStyle(document.querySelector('[data-testid="loop-toggle"]')!).pointerEvents)).toBe("none");
-  // Close the Edit sheet: the handles go, the chips return.
-  await page.getByRole("button", { name: "Close panel" }).click();
+  // Deselect (the tool strip's Back): the handles go, the chips return.
+  await page.getByTestId("strip-back").click();
   await expect(page.locator(".canvas.framed")).toHaveCount(0);
   await expect(loop).toBeVisible();
   await expect(tc).toBeVisible();

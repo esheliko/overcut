@@ -8,7 +8,7 @@
 .insp-row { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
 .insp-row button { flex: 1 1 0; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: var(--surface-2); color: var(--fg); font-weight: 500; }
 .insp-row button[aria-pressed="true"] { background: var(--surface-3); box-shadow: inset 0 0 0 2px var(--accent); }
-.insp-row button:disabled { opacity: 0.5; }
+.insp-row button:disabled { opacity: var(--disabled-opacity); }
 
 /* On-canvas transform handles (preview/TransformHandles.tsx): the box is the clip's visible rectangle, rotated with it. */
 .th { position: absolute; z-index: 3; pointer-events: none; box-shadow: 0 0 0 1.5px var(--accent); }
@@ -114,7 +114,7 @@
 .insp-slider::-moz-range-thumb { inline-size: 16px; block-size: 16px; border-radius: 50%; border: 0; background: var(--fg); box-shadow: 0 0 0 2px var(--surface); }
 .insp-slider:active::-webkit-slider-thumb { transform: scale(1.15); }
 .insp-slider:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
-.insp-slider:disabled { opacity: 0.4; cursor: default; }
+.insp-slider:disabled { opacity: var(--disabled-opacity); cursor: default; }
 @media (pointer: coarse) { .insp-field input.insp-slider { block-size: 44px; min-block-size: 44px; } .insp-sec .insp-fl input { min-block-size: 44px; block-size: 44px; } .insp-sec .insp-fl input { inline-size: 72px; } }
 .insp-field .insp-sub { order: 6; }
 .insp[data-anim] .insp-field:not(:has(.insp-sub)) { padding-block-end: 0; }

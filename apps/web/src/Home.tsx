@@ -57,6 +57,20 @@ function RenameDialog({ shown, onApply, onClose }: { shown: string; onApply(name
  * Archive hides a project from the main list without deleting it ("Archived" filter, Restore); Delete asks first.
  */
 export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRename, onDuplicate, onArchive, onExport, onDelete }: HomeProps) {
+  // r16 PHONE-15: the copy made by "Duplicate" is highlighted for a moment and scrolled into view (it sorts first, but a long list may be scrolled).
+  const dupBefore = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<string | null>(null);
+  useEffect(() => {
+    const before = dupBefore.current;
+    if (!before || !entries) return;
+    const added = entries.find((x) => !before.has(x.id));
+    if (!added) return;
+    dupBefore.current = null;
+    setFresh(added.id);
+    const id = setTimeout(() => setFresh(null), 3000);
+    return () => clearTimeout(id);
+  }, [entries]);
+  useEffect(() => { if (fresh) document.querySelector<HTMLElement>(`[data-id="${CSS.escape(fresh)}"]`)?.scrollIntoView({ block: "nearest" }); }, [fresh]);
   const { t, locale } = useI18n();
   const [renaming, setRenaming] = useState<ProjectEntry | null>(null);
   const [deleting, setDeleting] = useState<ProjectEntry | null>(null);
@@ -85,7 +99,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
   };
   const itemsFor = (e: ProjectEntry): MenuItem[] => [
     { id: "rename", label: t("projects.rename.short"), icon: "pencil", onPick: () => setRenaming(e) },
-    { id: "duplicate", label: t("projects.duplicate.short"), icon: "duplicate", onPick: () => onDuplicate(e) },
+    { id: "duplicate", label: t("projects.duplicate.short"), icon: "duplicate", onPick: () => { dupBefore.current = new Set((entries ?? []).map((x) => x.id)); onDuplicate(e); } },
     { id: "export", label: t("projects.export.short"), icon: "export", onPick: () => onExport(e) },
     isArchived(e)
       ? { id: "restore", label: t("projects.restore.short"), icon: "undo", onPick: () => archive(e, false) }
@@ -136,6 +150,11 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
         )}
         {view.shown.length > 0 && (
           <ul className="project-list" aria-label={t(filter === "archived" ? "projects.list.archived" : "projects.list")}>
+            {filter === "active" && (
+              <li className="project-new-tile" data-testid="project-new-tile">
+                <button type="button" onClick={onNew} disabled={busy} data-testid="projects-new-first"><Icon name="plus" size={28} /><strong>{t("projects.new")}</strong></button>
+              </li>
+            )}
             {[...view.shown].sort((x, y) => y.modified - x.modified).map((e) => {
               const archived = isArchived(e);
               const isCurrent = e.id === current && !archived;
@@ -145,7 +164,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
                 e.clips !== undefined ? t("projects.clips", { count: e.clips }) : null,
               ].filter(Boolean).join(" · ");
               return (
-                <li key={e.id} className="project-card lib-card" data-testid="project-card" data-id={e.id} data-current={e.id === current} data-archived={archived}>
+                <li key={e.id} className="project-card lib-card" data-testid="project-card" data-id={e.id} data-current={e.id === current} data-archived={archived} data-fresh={e.id === fresh || undefined}>
                   <button className="project-open" onClick={() => onOpen(e)} disabled={busy} data-testid="project-open">
                     <VisuallyHidden>{t("projects.openVerb")}</VisuallyHidden>
                     <span className="poster" aria-hidden="true" data-poster={validPoster(e.poster)} style={e.colour ? ({ ["--tint" as string]: e.colour }) : undefined}>

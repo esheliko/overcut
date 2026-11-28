@@ -72,7 +72,7 @@ export function CanvasDialog({ sequence, hasPicture, onApply, onClose }: { seque
       {/* The shape in one tap (UX r15 PHONE-10): a tile per ratio; tapping one applies it at once (Undo takes it back). The fields below are for the rest. */}
       <div className="ratio-row" role="group" aria-label={t("canvas.shape")} data-testid="canvas-ratios">
         {SHAPES.map((sh) => (
-          <button key={sh.id} type="button" className="ratio-tile" aria-pressed={c.shape === sh.id} aria-label={t(`canvas.shape.${sh.id}`)} data-testid={`canvas-ratio-${sh.id.replace(":", "x")}`}
+          <button key={sh.id} type="button" className="ratio-tile" aria-pressed={c.shape === sh.id || (c.shape === "match" && sh.w * size.height === sh.h * size.width)} aria-label={t(`canvas.shape.${sh.id}`)} data-testid={`canvas-ratio-${sh.id.replace(":", "x")}`}
             onClick={() => { const next = canvasDialogOps(sequence, { ...c, shape: sh.id }, bg); if (next.length > 0) onApply(next); else onClose(); }}>
             <span className="ratio-glyph" aria-hidden="true" style={{ aspectRatio: `${sh.w} / ${sh.h}`, inlineSize: sh.w >= sh.h ? 28 : undefined, blockSize: sh.w < sh.h ? 28 : undefined }} />
             <span>{sh.id}</span>
@@ -138,7 +138,7 @@ export function CanvasDialog({ sequence, hasPicture, onApply, onClose }: { seque
       )}
       <p className="export-note" data-testid="canvas-bg-note">{t("canvas.bg.note")}</p>
       <p className="export-estimate" data-testid="canvas-result" aria-live="polite">
-        {c.shape === "match" ? t("canvas.result.match", { size: sizeText, fps: fpsLabel(rate) }) : t("canvas.result", { size: sizeText, fps: fpsLabel(rate) })}
+        {c.shape === "match" ? t(hasPicture ? "canvas.result.matched" : "canvas.result.match", { size: sizeText, fps: fpsLabel(rate) }) : t("canvas.result", { size: sizeText, fps: fpsLabel(rate) })}
       </p>
       <div className="export-actions export-footer">
         <button className="export-secondary" onClick={onClose} data-testid="canvas-cancel">{t("canvas.cancel")}</button>

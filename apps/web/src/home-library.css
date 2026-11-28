@@ -14,9 +14,9 @@
 .project-card:hover, .project-card:focus-within { box-shadow: var(--elev-2, 0 8px 22px rgba(0, 0, 0, 0.28)); }
 .project-open { display: flex; flex-direction: column; align-items: stretch; gap: 0; inline-size: 100%; padding: 0; text-align: start; font: inherit; background: none; border: 0; color: var(--fg); border-radius: inherit; }
 .project-open:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.project-open:disabled { opacity: 0.5; }
+.project-open:disabled { opacity: var(--disabled-opacity); }
 .poster { position: relative; display: block; inline-size: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: var(--surface-3); border-block-end: 1px solid var(--line); }
-.poster img { display: block; inline-size: 100%; block-size: 100%; object-fit: cover; animation: scrim-in var(--dur-base) var(--ease-out); }
+.poster img { display: block; inline-size: 100%; block-size: 100%; object-fit: contain; /* r16 PHONE-15: a vertical project's poster is not cropped */ animation: scrim-in var(--dur-base) var(--ease-out); }
 .poster-empty { position: absolute; inset: 0; display: grid; place-items: center; color: color-mix(in srgb, var(--tint, var(--accent)) 70%, var(--fg)); background: linear-gradient(135deg, color-mix(in srgb, var(--tint, var(--accent)) 38%, var(--surface-3)), var(--surface-3) 80%); }
 .project-text { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; padding: var(--space-3) var(--space-4) var(--space-4); }
 .project-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base, 14px); font-weight: 600; }
@@ -25,7 +25,7 @@
 .lib-card[data-archived="true"] .poster { opacity: 0.55; }
 .lib-more { position: absolute; inset-block-start: 4px; inset-inline-end: 4px; inline-size: var(--target, 44px); block-size: var(--target, 44px); display: grid; place-items: center; background: color-mix(in srgb, var(--surface) 78%, transparent); backdrop-filter: blur(6px); border: 0; border-radius: 50%; color: var(--fg); }
 .lib-more:hover:not(:disabled) { background: var(--surface-3); }
-.lib-more:disabled { opacity: 0.5; }
+.lib-more:disabled { opacity: var(--disabled-opacity); }
 .lib-menu { position: fixed; z-index: 60; inline-size: min(240px, calc(100vw - 16px)); padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); box-shadow: var(--elev-2); transform-origin: top right; animation: pop-in var(--dur-menu) var(--ease-out); }
 .lib-menu-row { display: flex; align-items: center; gap: 10px; font-size: var(--text-base); inline-size: 100%; min-block-size: 44px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--fg); font: inherit; text-align: start; }
 .lib-menu-row:hover { background: var(--surface-3); }
@@ -54,8 +54,16 @@
 /* r15 lane C: "Empty" on the poster of a project with no clips; New project within thumb reach on a phone */
 .poster-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
 .poster-empty-label { font-style: normal; font-size: var(--text-xs); color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
-.home-fab { display: none; }
+.export-go.home-fab { display: none; } /* r16 FIRST-5: wins over .export-go; the phone-only button */
+.project-new-tile { display: grid; }
+.project-new-tile > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-block-size: 120px; inline-size: 100%; padding: 16px; border: 2px dashed var(--line-strong); border-radius: var(--radius-lg, 14px); background: none; color: var(--accent-text, var(--accent)); font: inherit; cursor: pointer; }
+.project-new-tile > button:hover { background: var(--accent-soft); border-color: var(--accent); }
+.project-new-tile > button:disabled { opacity: var(--disabled-opacity, 0.5); cursor: default; }
+.project-card[data-fresh] { animation: fresh-glow 3s var(--ease-out) 1; box-shadow: 0 0 0 2px var(--accent); }
+@keyframes fresh-glow { from { background: var(--accent-soft); } }
+@media (prefers-reduced-motion: reduce) { .project-card[data-fresh] { animation: none; } }
 @media (max-width: 700px) {
-  .home-fab { display: inline-flex; align-items: center; justify-content: center; gap: 8px; position: fixed; inset-inline: 16px; inset-block-end: calc(12px + env(safe-area-inset-bottom)); z-index: 5; min-block-size: 52px; box-shadow: var(--elev-3); }
+  .export-go.home-fab { display: inline-flex; align-items: center; justify-content: center; gap: 8px; position: fixed; inset-inline: 16px; inset-block-end: calc(12px + env(safe-area-inset-bottom)); z-index: 5; min-block-size: 52px; box-shadow: var(--elev-3); }
   .home-body { padding-block-end: calc(84px + env(safe-area-inset-bottom)); }
 }
+@media (max-width: 700px) { .project-new-tile { display: none; } } /* phones keep the thumb-reach button */

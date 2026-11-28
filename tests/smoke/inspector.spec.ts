@@ -117,7 +117,7 @@ test("inspector: fields edit the selected clip's transform, undo reverts, reset 
   }
 });
 
-test("phone Edit sheet at 320 px: the mini transport keeps 44 px buttons", async ({ page }, info) => {
+test("phone Edit sheet at 320 px: no duplicate Play row, and the picture and the timeline stay visible above the sheet (r16 PHONE-3)", async ({ page }, info) => {
   test.skip(info.project.name !== "phone", "phone sheet only");
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto("/");
@@ -131,11 +131,11 @@ test("phone Edit sheet at 320 px: the mini transport keeps 44 px buttons", async
   const dg = await gutterShift(page);
   await page.touchscreen.tap(box.x + dg + 68, box.y + 56);
   await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
-  const strip = page.getByTestId("mini-transport");
-  await expect(strip).toBeVisible();
-  for (const b of await strip.getByRole("button").all()) {
-    const r = (await b.boundingBox())!;
-    expect(r.width).toBeGreaterThanOrEqual(44);
-    expect(r.height).toBeGreaterThanOrEqual(44);
-  }
+  await expect(page.getByTestId("mini-transport")).toHaveCount(0); // r16: the player bar is the only Play
+  await page.waitForTimeout(600); // the sheet slides in
+  const sheetTop = (await page.locator('.library[data-open="true"]').boundingBox())!.y;
+  const pic = (await page.locator(".canvas").boundingBox())!, tl = (await page.locator(".timeline").boundingBox())!;
+  expect(pic.y + pic.height).toBeLessThanOrEqual(sheetTop + 1);
+  expect(tl.y + tl.height).toBeLessThanOrEqual(sheetTop + 1);
+  expect(pic.height).toBeGreaterThanOrEqual(60);
 });

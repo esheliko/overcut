@@ -83,7 +83,7 @@ function Card({ item, tags, onTimeline, uses, selected, onSelect, onAdd, onAddOv
         {duration && <span className="bin-dur">{duration}</span>}
       </span>
       <span className="bin-text">
-        <strong title={item.name}>{item.name}</strong>
+        <strong title={item.name}>{breakable(item.name)}</strong>
         {item.status === "probing" && <span role="status">{t("media.reading")}</span>}
         {ready && (
           <span className="bin-line">
@@ -92,7 +92,7 @@ function Card({ item, tags, onTimeline, uses, selected, onSelect, onAdd, onAddOv
           </span>
         )}
         {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
-        {offline && <span role="alert" data-testid={needsPermission ? "bin-needs-permission" : undefined}>{t(needsPermission ? "media.permission.card" : offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
+        {offline && <span role="alert" data-testid={needsPermission ? "bin-needs-permission" : undefined}>{t(needsPermission ? "media.permission.card" : offlineReason(item.uri) === "reopen" ? "media.offline.missing" : "media.offline")}</span>}
         {item.status === "unsupported" && (
           <span role="alert" className="bin-error" data-testid="bin-error">
             <span className="bin-error-text">{item.message}</span>
@@ -105,7 +105,7 @@ function Card({ item, tags, onTimeline, uses, selected, onSelect, onAdd, onAddOv
           </span>
         )}
         {needsPermission && onAllow && <button className="bin-link" onClick={onAllow} data-testid="bin-allow">{t("media.permission.allow")}</button>}
-        {offline && !needsPermission && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
+        {offline && !needsPermission && offlineReason(item.uri) !== "reopen" && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       </span>
       {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span className="sr-only">{t("media.tags.editShort")}</span></button>}
       {ready && onAddOverlay && item.kind !== "audio" && !onTimeline && <button className="bin-act bin-tag-btn bin-overlay-btn" aria-label={t("media.addOverlay", { name: item.name })} title={t("media.addOverlayShort")} onClick={() => onAddOverlay(item.id)} data-testid="bin-add-overlay"><Icon name="overlay" size={20} /></button>}
@@ -259,8 +259,8 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
       {onAllow && items.some((i) => i.needsPermission) && (
         <button className="bin-filter-toggle bin-relink-all" onClick={onAllow} data-testid="allow-all"><Icon name="check" size={18} /><span>{t("media.permission.allow")}</span></button>
       )}
-      {onRelinkAll && items.filter((i) => i.status === "offline" && !i.needsPermission).length >= 2 && (
-        <button className="bin-filter-toggle bin-relink-all" onClick={onRelinkAll} data-testid="relink-all"><Icon name="upload" size={18} /><span>{t("media.relinkAll", { count: items.filter((i) => i.status === "offline" && !i.needsPermission).length })}</span></button>
+      {onRelinkAll && items.filter((i) => i.status === "offline" && !i.needsPermission && offlineReason(i.uri) !== "reopen").length >= 2 && (
+        <button className="bin-filter-toggle bin-relink-all" onClick={onRelinkAll} data-testid="relink-all"><Icon name="upload" size={18} /><span>{t("media.relinkAll", { count: items.filter((i) => i.status === "offline" && !i.needsPermission && offlineReason(i.uri) !== "reopen").length })}</span></button>
       )}
       <button
         ref={filterBtn}
@@ -311,4 +311,10 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
       {editItem && meta.has(editItem.id) && <TagsDialog item={editItem} tags={meta.get(editItem.id)!.tags} onTags={onTags} onClose={() => setEditing(null)} />}
     </div>
   );
+}
+
+/** A file name that may break after "_", "-" and "." (a long name like beach_1080p.mp4 wraps at a separator, not in the middle of a word; r16 FIRST-12). The text stays the same: <wbr> adds no characters. */
+function breakable(name: string) {
+  const parts = name.split(/(?<=[_.-])/);
+  return parts.map((p, i) => (i === 0 ? p : <span key={i}><wbr />{p}</span>));
 }

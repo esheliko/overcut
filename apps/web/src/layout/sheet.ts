@@ -2,13 +2,17 @@
 export type Detent = "peek" | "half" | "full";
 export const DETENTS: readonly Detent[] = ["peek", "half", "full"];
 
-/** Sheet heights in px for a viewport of `vh` px: peek (about 30 %: the Edit and Speed sheets open here, so the preview and the timeline's ruler with the playhead stay in view; UX r15 PHONE-5), half (about 62 %) and full (everything between the top bar and the tool bar). */
+/**
+ * Sheet heights in px for a viewport of `vh` px. The sheet never takes the whole screen: the picture and the timeline stay visible above it (the shell reflows to what is left; UX r16 PHONE-3).
+ * peek (about 34 %: Edit and Speed open here, the first controls show under the handle and the picture, the ruler and the selected lane stay in view), half (about 55 %)
+ * and full (everything except the top bar, the tool bar and a 130 px strip for the picture).
+ */
 export function detentHeights(vh: number, chrome = 56 + 68 + 12): Record<Detent, number> {
-  const full = Math.max(240, vh - chrome);
-  const peek = Math.max(200, Math.min(0.3 * vh, 300));
-  const half = Math.min(full, Math.max(peek + 70, Math.min(0.62 * vh, 520)));
+  const full = Math.max(260, vh - chrome - 130);
+  const peek = Math.min(full - 120, Math.max(200, Math.min(0.34 * vh, 300)));
+  const half = Math.min(full, Math.max(peek + 50, 0.55 * vh));
   const r = Math.round; // whole pixels: a fractional sheet height made the controls inside it 43.99 px tall
-  return { peek: r(peek), half: r(Math.max(half, peek + 60)), full: r(Math.max(full, half + 60)) };
+  return { peek: r(peek), half: r(Math.max(half, peek + 40)), full: r(Math.max(full, half + 40)) };
 }
 
 /**

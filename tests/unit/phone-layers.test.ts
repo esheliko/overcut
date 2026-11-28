@@ -37,3 +37,16 @@ test("Back closes the top layer first, then the next; closing by other means tak
   assert.equal(at, 0);
   assert.deepEqual(closed, ["dialog", "sheet"]);
 });
+
+test("a layer opened while another one's history.back() is travelling waits for it (a menu closing as its dialog opens; r16 PHONE-2)", async () => {
+  const g = globalThis as unknown as { history: { state: unknown; pushState(s: unknown): void; back(): void } };
+  const closed: string[] = [];
+  const { pushLayer } = await import("../../apps/web/src/layout/backStack");
+  const base = (g.history.state as { overcutLayer?: number } | null)?.overcutLayer ?? 0;
+  const menu = pushLayer(() => closed.push("menu"));
+  menu(); // the menu closes: history.back() is queued, not yet delivered
+  pushLayer(() => closed.push("dialog")); // the dialog opens in the same tick
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal((g.history.state as { overcutLayer: number }).overcutLayer, base + 1, "the dialog's entry sits where the menu's was");
+  assert.deepEqual(closed, []);
+});
