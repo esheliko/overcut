@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "./i18n";
+import { AccentPicker } from "./AppearanceInstall";
 import { Icon } from "./icons";
 import { THEME_PREFS, type ThemePref } from "./theme/theme";
 
@@ -34,6 +35,8 @@ export function ThemeMenu({ pref, onPick }: { pref: ThemePref; onPick(p: ThemePr
               <span>{t(`theme.${p}`)}</span>
             </button>
           ))}
+          <div className="menu-sep" role="separator" />
+          <AccentPicker />
         </div>
       )}
     </div>

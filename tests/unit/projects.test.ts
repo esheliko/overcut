@@ -4,7 +4,7 @@ import { memoryStorage } from "../../packages/engine-client/src/persist/memory";
 import { CHECKPOINT_FILE, JOURNAL_FILE, PROJECT_FILE } from "../../packages/engine-client/src/persist/session";
 import { SnapshotStore } from "../../packages/engine-client/src/persist/snapshots";
 import { LEGACY_PROJECT_ID, ProjectRegistry, REGISTRY_FILE, copyName, deleteProjectData, migrateSingleProject, newProjectId, summarize, summarizeExtra } from "../../packages/engine-client/src/persist/registry";
-import { isArchived, libraryView, shapeBox, startScreen, whenLabel } from "../../apps/web/src/projectsView";
+import { autoProjectName, isArchived, libraryView, shapeBox, startScreen, whenLabel } from "../../apps/web/src/projectsView";
 import type { Project } from "../../packages/engine-client/src/model.generated";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
@@ -149,4 +149,13 @@ test("archive: a row is tucked away and restored without touching anything else;
   await storage.writeAtomic(REGISTRY_FILE, bytes(JSON.stringify({ v: 1, current: null, items: [{ id: "x", modified: 1, name: "", archived: "yes" }, { id: "y", modified: 1, name: "", archived: 7 }] })));
   const damaged = (await reg.read())!.items;
   assert.deepEqual(damaged.map((e) => [e.id, isArchived(e)]), [["x", false], ["y", true]]);
+});
+
+test("autoProjectName: dated, then numbered when the day's name is taken", () => {
+  const d = new Date(2026, 10, 28);
+  const first = autoProjectName([], d, "en-GB");
+  assert.equal(first, "Project 28 Nov");
+  assert.equal(autoProjectName([first], d, "en-GB"), "Project 28 Nov 2");
+  assert.equal(autoProjectName([first, "Project 28 Nov 2"], d, "en-GB"), "Project 28 Nov 3");
+  assert.equal(autoProjectName([], d, "en-GB", "Projet {date}"), "Projet 28 Nov");
 });

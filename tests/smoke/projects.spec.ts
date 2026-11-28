@@ -45,7 +45,8 @@ test("projects list: two projects, switch, rename, duplicate, delete, and it is 
   // Project 2: new, default 16:9.
   await page.getByTestId("projects-new").click();
   await expect(page.getByTestId("canvas-open")).toHaveAccessibleName(/^Canvas: 16:9/, { timeout: 20_000 });
-  await expect(page.getByLabel("Project name")).toHaveValue("Untitled project");
+  await expect(page.getByLabel("Project name")).toHaveValue(/^Project \S+/); // r15: a new project is auto-named by date, so two never look the same
+  const autoName = await page.getByLabel("Project name").inputValue();
 
   // Switch back: project 1 is exactly as left (name and canvas), not project 2.
   await menu(page, "Projects");
@@ -56,7 +57,7 @@ test("projects list: two projects, switch, rename, duplicate, delete, and it is 
 
   // Rename project 2 from the list.
   await menu(page, "Projects");
-  await act(page, "Untitled project", "rename");
+  await act(page, autoName, "rename");
   if (phone) expect((await page.getByTestId("rename-ok").boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await page.getByTestId("rename-input").fill("Beta");
   await page.getByTestId("rename-ok").click();

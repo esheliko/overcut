@@ -86,7 +86,7 @@
 /* ---- r14 lane C: grouped sections, slider + number, clear states ---- */
 .insp-sections { gap: 0; padding: 0 0 var(--space-4, 16px); }
 .insp-sec { border-block-end: 1px solid var(--line); }
-.insp-sec-h { position: sticky; inset-block-start: 0; z-index: 3; display: flex; align-items: center; background: var(--surface); } /* sticks to the top of the scrolling panel body */
+.insp-sec-h { display: flex; align-items: center; } /* r15: not sticky (the sliver above a sticky header showed the rows scrolling under it; sections are short enough now) */
 .insp-sec-t { flex: 1; min-inline-size: 0; display: flex; align-items: center; gap: 8px; min-block-size: 44px; padding: 0 4px; border: 0; background: none; color: var(--fg); font: inherit; font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.02em; text-align: start; cursor: pointer; }
 .insp-sec-t svg { color: var(--muted); transition: transform var(--dur-fast) var(--ease-out); flex: none; }
 .insp-sec-t[aria-expanded="false"] svg { transform: rotate(-90deg); }
@@ -144,4 +144,31 @@
 }
 
 /* Scrolling a control into view (Tab, find) must not leave it under the sticky section header or the sticky Reset bar. */
-.insp-body { scroll-padding-block: 52px 76px; }
+.insp-body { scroll-padding-block: 8px; }
+
+/* ---- r15 lane C: compact rows, group diamond, curve menu ---- */
+/* A value is label | number | reset | diamond over its slider: about 46 px, so Position, Scale, Rotation and Opacity fit a 1280x800 panel. */
+@media (pointer: fine) {
+  .insp-sec .insp-field { min-block-size: 0; padding-block-end: 0; }
+  .insp-sec .insp-fl { min-block-size: 28px; }
+  .insp-sec .insp-kbtn { min-inline-size: 28px; inline-size: 28px; block-size: 28px; }
+  .insp-sec .insp-fieldreset { inline-size: 28px; min-inline-size: 28px; block-size: 28px; }
+  .insp-field input.insp-slider { block-size: 24px; min-block-size: 24px; } /* WCAG 2.5.8: 24 px minimum target */
+  .insp-sec-b { gap: 2px; padding-block: 0 8px; }
+  .insp-sec-t { min-block-size: 36px; }
+  .insp-sec .insp-sub { min-block-size: 28px; }
+}
+.insp-sec-key { color: var(--muted); }
+.insp-sec-key[aria-pressed="true"] { color: var(--accent); background: var(--surface-3); }
+.insp-sec-reset { }
+.insp-ease { position: relative; flex: 1; min-inline-size: 0; }
+.insp-ease-btn { inline-size: 100%; min-block-size: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 0; border-radius: var(--radius-xs); background: var(--surface-3); color: var(--fg); font: inherit; font-size: var(--text-sm); text-align: start; cursor: pointer; }
+.insp-ease-btn span { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-ease-btn svg:first-child { color: var(--accent); flex: none; }
+.insp-ease-btn:focus-visible, .insp-ease-pop button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.insp-ease-pop { position: absolute; z-index: 5; inset-inline: 0; inset-block-start: calc(100% + 4px); display: grid; padding: 4px; border-radius: var(--radius-sm); background: var(--surface-3); box-shadow: var(--elev-2); }
+.insp-ease-pop button { display: flex; align-items: center; gap: 8px; min-block-size: 36px; padding: 0 8px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--fg); font: inherit; font-size: var(--text-sm); text-align: start; cursor: pointer; }
+.insp-ease-pop button:hover { background: var(--surface-2); }
+.insp-ease-pop button[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+.insp-ease-pop svg { color: var(--accent); flex: none; }
+@media (pointer: coarse) { .insp-ease-btn { min-block-size: 44px; } .insp-ease-pop button { min-block-size: 44px; } }

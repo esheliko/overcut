@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import type { Clip, ClipTransform, Fit, Op, Project } from "@app/engine-client";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
@@ -6,7 +6,7 @@ import { useProjectStore, useStore } from "../store/projectStore";
 import { isIdentity, newGestureKey, setField, setFit, toggleFlip, valuesOf, RESET, rangeOf, type NumKey } from "./transformModel";
 import { SpeedSection } from "./Speed";
 import { speedTarget } from "./speedModel";
-import { EASING_CHOICES, PROPS_OF, easingId, easingOps, keyNear, keyState, neighbourKey, relativeTicks, setKeyOps, ticksPerFrame, ticksToFrame, toggleKeyOps, type EasingId } from "./keyframeModel";
+import { EASING_CHOICES, PROPS_OF, TRANSFORM_GROUP, easingId, easingOps, groupKeyOps, keyNear, keyState, neighbourKey, relativeTicks, setKeyOps, ticksPerFrame, ticksToFrame, toggleKeyOps, type EasingId } from "./keyframeModel";
 import { withKey } from "../commands/keymap";
 import { canvasSummary } from "../canvas";
 import { clipCount, timelineEnd } from "../media/plan";
@@ -123,7 +123,7 @@ function ProjectInfo({ project }: { project: Project }) {
   const frames = Math.round((timelineEnd(project) * seq.frame_rate.num) / (TICKS_PER_SECOND * seq.frame_rate.den));
   return (
     <>
-    <p className="insp-empty insp-pick">{t("inspector.none")}</p>
+    <p className="insp-empty insp-pick">{t(clipCount(project) === 0 ? "inspector.noneEmpty" : "inspector.none")}</p>
     <dl className="insp-info" data-testid="insp-project-info">
       <div><dt>{t("inspector.info.canvas")}</dt><dd>{canvasSummary(seq.resolution, seq.frame_rate)}</dd></div>
       <div><dt>{t("inspector.info.background")}</dt><dd data-testid="insp-background">{t(`canvas.bg.${seq.background?.mode ?? "black"}`)}</dd></div>
@@ -309,20 +309,12 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
           <div className="insp-sub">
             <button type="button" className="insp-kbtn" data-testid={`insp-prevkey-${f.key}`} aria-label={t("inspector.prevKey", { name })} title={t("inspector.prevKey", { name })} disabled={neighbourKey(anim, rel, tol, -1) === undefined} onClick={() => step(f, -1)}><Icon name="chevronLeft" size={18} /></button>
             {near ? (
-              <select
-                className="insp-ease"
-                aria-label={t("inspector.easing")}
-                data-testid={`insp-ease-${f.key}`}
-                disabled={readOnly}
+              <EasingMenu
+                testId={`insp-ease-${f.key}`}
                 value={easingId(near.easing)}
-                onChange={(e) => {
-                  const pick = EASING_CHOICES.find((c) => c.id === e.currentTarget.value);
-                  if (pick) void store.apply(easingOps(clip.id, tr, props, rel, tol, pick.easing), undefined, t("inspector.easingLabel"));
-                }}
-              >
-                {easingId(near.easing) === "custom" && <option value="custom">{t("inspector.ease.custom")}</option>}
-                {EASING_CHOICES.map((c) => <option key={c.id} value={c.id}>{t(`inspector.ease.${c.id}` as `inspector.ease.${EasingId}`)}</option>)}
-              </select>
+                disabled={readOnly}
+                onPick={(pick) => void store.apply(easingOps(clip.id, tr, props, rel, tol, pick), undefined, t("inspector.easingLabel"))}
+              />
             ) : (
               <span className="insp-between">{t("inspector.betweenKeys")}</span>
             )}
@@ -343,20 +335,38 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
   };
   const animatedAny = [...FIELDS, ...CROPS].some((f) => tr?.[PROPS_OF[f.key]![0]!]?.keys?.length);
   const cropKeys = CROPS.map((f) => f.key);
+  const TRANSFORM_KEYS: NumKey[] = ["position_x", "position_y", "scale_x", "rotation", "opacity"];
+  const groupOn = TRANSFORM_GROUP.every((p) => keyNear(tr?.[p], rel, tol));
   const speed = speedTarget(project, selection);
   return (
     <div className="insp insp-sections" data-testid="inspector-fields" data-anim={animatedAny || undefined}>
       {!onClip && (
         <div className="insp-hint" data-testid="insp-offclip">
-          <p>{t("inspector.offClip")}</p>
+          <span>{t("inspector.offClip")}</span>
           <button type="button" onClick={goToClip} data-testid="insp-goto-clip">{t("inspector.goToClip")}</button>
         </div>
       )}
-      <Section id="transform" title={t("inspector.sec.transform")} onReset={() => resetKeys(["position_x", "position_y", "scale_x", "rotation"])} resetOff={readOnly || atDef(["position_x", "position_y", "scale_x", "rotation"])}>
-        {(["position_x", "position_y", "scale_x", "rotation"] as NumKey[]).map((k) => field(byKey(k)))}
-      </Section>
-      <Section id="opacity" title={t("inspector.opacity")} onReset={() => resetKeys(["opacity"])} resetOff={readOnly || atDef(["opacity"])}>
-        {field(byKey("opacity"))}
+      <Section
+        id="transform"
+        title={t("inspector.sec.transform")}
+        onReset={() => resetKeys(TRANSFORM_KEYS)}
+        resetOff={readOnly || atDef(TRANSFORM_KEYS)}
+        extra={
+          <button
+            type="button"
+            className="insp-kbtn insp-sec-key"
+            data-testid="insp-key-transform"
+            aria-pressed={groupOn}
+            aria-label={t(groupOn ? "inspector.removeGroupKey" : "inspector.addGroupKey")}
+            title={t(groupOn ? "inspector.removeGroupKey" : "inspector.addGroupKey")}
+            disabled={readOnly || !onClip}
+            onClick={() => void store.apply(groupKeyOps(clip.id, tr, TRANSFORM_GROUP, relativeTicks(clip, store.getState().playhead, rate), tol), undefined, label)}
+          >
+            <Diamond filled={groupOn} />
+          </button>
+        }
+      >
+        {TRANSFORM_KEYS.map((k) => field(byKey(k)))}
       </Section>
       <Section id="crop" title={t("inspector.more")} testId="insp-more" startClosed onReset={() => resetKeys(cropKeys, { fit: "contain", flip_h: false, flip_v: false })} resetOff={readOnly || (atDef(cropKeys) && !tr?.flip_h && !tr?.flip_v && (tr?.fit ?? "contain") === "contain")}>
         {CROPS.map(field)}
@@ -386,7 +396,7 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
 const openState = new Map<string, boolean>();
 
 /** A collapsible group of values: a sticky header (title, optional reset, chevron) over its fields. Closed sections are not rendered, so they cost nothing. */
-function Section({ id, title, testId, startClosed, onReset, resetOff, children }: { id: string; title: string; testId?: string; startClosed?: boolean; onReset?: () => void; resetOff?: boolean; children: ReactNode }): ReactNode {
+function Section({ id, title, testId, startClosed, onReset, resetOff, extra, children }: { id: string; title: string; testId?: string; startClosed?: boolean; onReset?: () => void; resetOff?: boolean; extra?: ReactNode; children: ReactNode }): ReactNode {
   const { t } = useI18n();
   const [open, setOpenState] = useState(() => openState.get(id) ?? !startClosed);
   const body = useId();
@@ -398,6 +408,7 @@ function Section({ id, title, testId, startClosed, onReset, resetOff, children }
           <Icon name="chevronDown" size={16} />
           <span>{title}</span>
         </button>
+        {extra}
         {onReset && (
           <button type="button" className="insp-kbtn insp-sec-reset" data-testid={`insp-secreset-${id}`} aria-label={t("inspector.sec.reset", { name: title })} title={t("inspector.sec.reset", { name: title })} disabled={resetOff} onClick={onReset}>
             <Icon name="reset" size={16} />
@@ -410,3 +421,55 @@ function Section({ id, title, testId, startClosed, onReset, resetOff, children }
 }
 
 const DEFAULT_OF: Record<NumKey, number> = { position_x: 0, position_y: 0, scale_x: 1, scale_y: 1, rotation: 0, opacity: 1, crop_left: 0, crop_top: 0, crop_right: 0, crop_bottom: 0 };
+
+/** Curve glyphs (20x20) for the easing choices: what the motion between two keys looks like. */
+const CURVES: Record<EasingId, string> = {
+  linear: "M3 17 17 3",
+  "ease-in": "M3 17C8.9 17 17 17 17 3",
+  "ease-out": "M3 17C3 3 11.1 3 17 3",
+  "ease-in-out": "M3 17C8.9 17 11.1 3 17 3",
+  hold: "M3 17H10V3H17",
+  custom: "M3 17C6 5 10 19 17 3",
+};
+function Curve({ id }: { id: EasingId }): ReactNode {
+  return (
+    <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
+      <path d={CURVES[id]} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** The easing of the key at the playhead: one button showing the curve and its name; it opens a row of curve choices (not a native select). */
+function EasingMenu({ value, disabled, onPick, testId }: { value: EasingId; disabled: boolean; onPick: (e: (typeof EASING_CHOICES)[number]["easing"]) => void; testId: string }): ReactNode {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (!root.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", esc, true);
+    return () => { document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc, true); };
+  }, [open]);
+  const name = (id: EasingId) => t(`inspector.ease.${id}` as `inspector.ease.${EasingId}`);
+  return (
+    <div className="insp-ease" ref={root}>
+      <button type="button" className="insp-ease-btn" data-testid={testId} data-value={value} aria-haspopup="menu" aria-expanded={open} aria-label={`${t("inspector.easing")}: ${name(value)}`} disabled={disabled} onClick={() => setOpen((o) => !o)}>
+        <Curve id={value} />
+        <span>{name(value)}</span>
+        <Icon name="chevronDown" size={14} />
+      </button>
+      {open && (
+        <div className="insp-ease-pop" role="menu" aria-label={t("inspector.easing")}>
+          {EASING_CHOICES.map((c) => (
+            <button key={c.id} type="button" role="menuitemradio" aria-checked={value === c.id} data-testid={`${testId}-${c.id}`} title={name(c.id)} aria-label={name(c.id)} onClick={() => { setOpen(false); onPick(c.easing); }}>
+              <Curve id={c.id} />
+              <span>{name(c.id)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

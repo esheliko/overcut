@@ -19,14 +19,14 @@ let loadedView: View | null = null;
 const loadView = (): Promise<View> => importView().then((m) => (loadedView = m));
 const warmed = new Set<string>();
 
-export function ExportControl({ engine, fileOf }: { engine: Engine | null; fileOf(id: string): Promise<File | null> }) {
+export function ExportControl({ engine, fileOf, projectName }: { engine: Engine | null; fileOf(id: string): Promise<File | null>; projectName?: string | null }) {
   const { t, locale } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
   const view = sequenceView(project);
   const src: Source | null = useMemo(
-    () => (view.has ? { width: view.size.width, height: view.size.height, fps: view.rate.num / view.rate.den, seconds: view.endTicks / TICKS } : null),
-    [view.has, view.size.width, view.size.height, view.rate.num, view.rate.den, view.endTicks],
+    () => (view.has ? { width: view.size.width, height: view.size.height, fps: view.rate.num / view.rate.den, seconds: view.endTicks / TICKS, ...(projectName ? { name: projectName } : null) } : null),
+    [projectName, view.has, view.size.width, view.size.height, view.rate.num, view.rate.den, view.endTicks],
   );
   const [open, setOpen] = useState(false);
   const [, loaded] = useState(0);

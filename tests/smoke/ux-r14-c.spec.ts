@@ -31,7 +31,7 @@ test("details sections: slider + number, a drag is one undo step, per-section re
   await expect(opacity).toHaveValue("100");
   await expect(slider).toBeVisible();
   // The section's reset appears only once something differs.
-  await expect(page.getByTestId("insp-secreset-opacity")).toBeDisabled();
+  await expect(page.getByTestId("insp-secreset-transform")).toBeDisabled();
 
   if (phone) {
     await slider.fill("60");
@@ -46,7 +46,7 @@ test("details sections: slider + number, a drag is one undo step, per-section re
     await page.mouse.up();
   }
   await expect(opacity).not.toHaveValue("100");
-  await expect(page.getByTestId("insp-secreset-opacity")).toBeEnabled();
+  await expect(page.getByTestId("insp-secreset-transform")).toBeEnabled();
 
   // One undo returns the whole drag.
   if (phone) await page.getByRole("button", { name: "Close panel" }).click();
@@ -57,7 +57,7 @@ test("details sections: slider + number, a drag is one undo step, per-section re
   // Typing in the number moves the slider; the section reset puts both back.
   await opacity.fill("40");
   await expect(slider).toHaveValue("40");
-  await page.getByTestId("insp-secreset-opacity").click();
+  await page.getByTestId("insp-secreset-transform").click();
   await expect(opacity).toHaveValue("100");
 
   // Sections collapse and the choice is kept.
@@ -107,7 +107,7 @@ test("export dialog: preview frame, prominent size, merged presets, Export alway
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true");
   await page.getByTestId("export-open").click();
   await expect(page.getByTestId("export-frame")).toBeVisible();
-  await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
+  await expect(page.getByTestId("export-estimate")).toContainText(/Up to about .* (MB|KB)/);
   // Presets that give the same file are one tile; the tile names the others, and every preset is still reachable.
   const tiles = await page.locator(".export-chip-choice").count();
   expect(tiles).toBeGreaterThan(1);

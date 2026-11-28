@@ -33,3 +33,6 @@ ffmpeg $Q $V -c:v libvpx-vp9 -b:v 60k -g 15 -pix_fmt yuv420p -color_range pc -co
 ffmpeg $Q $V -c:v libx264 -g 15 -bf 0 -pix_fmt yuv420p -color_range pc -colorspace bt709 -color_primaries bt709 -color_trc bt709 colour_full.mp4
 # Phone-like: the audio track is shorter than the picture (1.5 s video, 1 s audio). Reading audio to the end of the picture used to fail with "out of range" in export.
 ffmpeg $Q -f lavfi -i testsrc=size=160x120:rate=30:duration=1.5 -f lavfi -i sine=frequency=440:sample_rate=48000:duration=1 -c:v libvpx-vp9 -b:v 100k -g 15 -c:a libopus -b:a 24k vp9_opus_short_audio.webm
+# Audio-only: an MP3 (libmp3lame, ID3v2 + Xing frame, mono 44.1 kHz) and a PCM WAV (mono 8 kHz, 16-bit).
+ffmpeg $Q -f lavfi -i sine=frequency=440:duration=1:sample_rate=44100 -ac 1 -c:a libmp3lame -b:a 64k tone.mp3
+ffmpeg $Q -f lavfi -i sine=frequency=440:duration=0.5:sample_rate=8000 -ac 1 -c:a pcm_s16le tone.wav

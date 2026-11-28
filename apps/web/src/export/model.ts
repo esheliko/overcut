@@ -15,6 +15,8 @@ export interface Source {
   /** Frames per second of the project. */
   fps: number;
   seconds: number;
+  /** The project's name, for the saved file's name (empty: the dated default). */
+  name?: string;
 }
 
 /** What the person chose, whether from a preset chip or the Advanced section. `null` size/fps/format = "same as the project" / "best this device can do". */
@@ -282,9 +284,11 @@ export function errorKey(e: unknown): string {
 export const isCancel = (e: unknown): boolean => e instanceof ExportError && e.code === "cancelled";
 
 /** A name worth saving under: "OverCut export 2026-11-23.mp4" (the engine's own file name is an internal id). */
-export function saveName(internal: string, date: Date = new Date()): string {
+export function saveName(internal: string, projectName?: string | null, date: Date = new Date()): string {
   const ext = internal.includes(".") ? internal.slice(internal.lastIndexOf(".")) : "";
-  return `OverCut export ${date.toISOString().slice(0, 10)}${ext}`;
+  // r15: the file is named after the project ("Summer trip.mp4"); a project with no name keeps the dated default.
+  const base = Array.from(projectName ?? "", (ch) => (ch.charCodeAt(0) < 32 || '\\/:*?"<>|'.includes(ch) ? "" : ch)).join("").trim().replace(/\s+/g, " ").slice(0, 80).trim();
+  return `${base || `OverCut export ${date.toISOString().slice(0, 10)}`}${ext}`;
 }
 
 /** The chip's second line, as a message key plus values, so it never promises more than the output delivers. */

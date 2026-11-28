@@ -144,6 +144,31 @@ export function toggleKeyOps(clip: string, tr: ClipTransform | undefined, props:
   return [{ op: "set_clip_transform", clip, transform: next }];
 }
 
+/** The props the Transform section's one diamond keys together: position, uniform scale, rotation. */
+export const TRANSFORM_GROUP: readonly TransformProp[] = ["position_x", "position_y", "scale_x", "scale_y", "rotation"];
+
+/**
+ * One diamond for a whole group (CapCut's "Position & scale"): adds a key holding the current value on every prop that has none at `rel`,
+ * or, when every prop already has one, removes them all (a prop's last key becomes its static value, like `toggleKeyOps`).
+ */
+export function groupKeyOps(clip: string, tr: ClipTransform | undefined, props: readonly TransformProp[], rel: number, tol: number): Op[] {
+  const missing = props.filter((p) => !keyNear(tr?.[p], rel, tol));
+  if (missing.length) {
+    return missing.map((prop) => ({ op: "set_keyframe", clip, prop, key: { t: rel, v: evalAnimated(tr?.[prop], prop.startsWith("scale") ? 1 : 0, rel), easing: LINEAR } }));
+  }
+  const statics: ClipTransform = { ...(tr ?? {}) };
+  let anyStatic = false;
+  const deletes: Op[] = [];
+  for (const prop of props) {
+    const keys = keysOf(tr?.[prop]);
+    if (keys.length === 1) {
+      statics[prop] = { value: keys[0]!.v };
+      anyStatic = true;
+    } else deletes.push({ op: "delete_keyframe", clip, prop, t: keyNear(tr?.[prop], rel, tol)!.t });
+  }
+  return anyStatic ? [{ op: "set_clip_transform", clip, transform: statics }, ...deletes] : deletes;
+}
+
 export function easingOps(clip: string, tr: ClipTransform | undefined, props: readonly TransformProp[], rel: number, tol: number, easing: Easing): Op[] {
   return props.flatMap((prop) => {
     const k = keyNear(tr?.[prop], rel, tol);

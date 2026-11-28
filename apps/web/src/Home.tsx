@@ -151,7 +151,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
                     <span className="poster" aria-hidden="true" data-poster={validPoster(e.poster)} style={e.colour ? ({ ["--tint" as string]: e.colour }) : undefined}>
                       {validPoster(e.poster)
                         ? <img src={e.poster} alt="" width={320} height={180} decoding="async" loading="lazy" draggable={false} />
-                        : <span className="poster-empty"><Icon name="film" size={28} /></span>}
+                        : <span className="poster-empty"><Icon name="film" size={28} />{e.clips === 0 && <em className="poster-empty-label">{t("projects.emptyProject")}</em>}</span>}
                     </span>
                     <span className="project-text">
                       <strong data-testid="project-name">{nameOf(e)}</strong>
@@ -176,6 +176,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
           </ul>
         )}
       </main>
+      {entries && entries.length > 0 && <button className="export-go home-fab" onClick={onNew} disabled={busy} data-testid="projects-new-fab"><Icon name="plus" size={20} />{t("projects.new")}</button>}
       {menu && <ProjectMenu label={t("projects.menu", { name: nameOf(menu.entry) })} items={itemsFor(menu.entry)} anchor={menu.anchor} onClose={closeMenu} />}
       {note && (
         <div className="lib-note" role="status" data-testid="library-note" onPointerEnter={() => setNoteHeld(true)} onPointerLeave={() => setNoteHeld(false)} onFocus={() => setNoteHeld(true)} onBlur={() => setNoteHeld(false)}>
@@ -190,6 +191,7 @@ export function Home({ entries, current, busy, onOpen, onNew, onOpenFile, onRena
           title={t("projects.delete.title", { name: nameOf(deleting) })}
           body={t("projects.delete.body")}
           confirm={t("projects.delete.confirm")}
+          danger
           onClose={() => { setDeleting(null); focusMore(); }}
           onConfirm={() => { const e = deleting; setDeleting(null); onDelete(e); focusMore(); }}
         />

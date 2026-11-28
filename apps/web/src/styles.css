@@ -28,9 +28,9 @@ h2, p { margin: 0; }
 .topbar { display: grid; grid-template-columns: 1fr minmax(0, auto) 1fr; align-items: center; gap: 8px; padding: 0 10px; min-width: 0; }
 .brand { display: flex; align-items: center; gap: 8px; letter-spacing: 0.01em; min-width: 0; }
 .logo { display: grid; place-items: center; width: 26px; height: 26px; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-ink); }
-.project-name { width: min(46vw, 260px); height: var(--target); padding: 0 12px; text-align: center; font-weight: 600; background: transparent; border: 1px solid transparent; border-bottom-color: var(--line-strong); border-radius: var(--radius-sm); text-overflow: ellipsis; } /* r13 #242: a quiet underline at rest (--line-strong is >= 3:1, WCAG 1.4.11) says this is a field you can edit */
-.project-name:hover { background: var(--surface-2); }
-.project-name:focus { background: var(--surface-2); border-color: var(--line-strong); }
+.project-name { width: min(46vw, 260px); height: var(--target); padding: 0 12px; text-align: center; font-weight: 600; background: linear-gradient(var(--line-strong), var(--line-strong)) 12px calc(100% - 6px) / calc(100% - 24px) 1px no-repeat; border: 0; border-radius: 0; text-overflow: ellipsis; } /* r13 #242: a quiet underline at rest (--line-strong is >= 3:1, WCAG 1.4.11) says this is a field you can edit. r15: a gradient line, not border-bottom + radius (that drew a curved smile) */
+.project-name:hover { background-color: var(--surface-2); border-radius: var(--radius-sm); }
+.project-name:focus { background-color: var(--surface-2); background-image: none; border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .project-name:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; } /* a11y r12: the shared 2 px ring (the border change alone was a 1 px cue) */
 .top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
 .chip { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 10px; color: var(--muted); font-size: var(--text-xs); border-radius: 999px; background: var(--surface-2); }
@@ -758,7 +758,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .export-skel-go { min-block-size: 52px; border-radius: var(--radius); background: var(--surface-2); margin-block-start: var(--space-3); }
 .export-skel-line, .export-skel-tile, .export-skel-go { animation: skel-pulse 1.4s ease-in-out infinite; }
 @keyframes skel-pulse { 50% { opacity: 0.55; } }
-.export-dialog[data-phase="idle"] { min-block-size: min(60dvh, 520px); }
+.export-dialog { min-block-size: min(86dvh, 640px); } /* r15: one height for settings, progress, done and error: no jumps between states */
 /* Exporting with the dialog open: a light veil, the editor behind stays readable (Keep editing is one tap away) */
 .export-dialog[data-phase="running"]::backdrop { background: color-mix(in srgb, var(--bg) 35%, transparent); }
 
@@ -778,11 +778,11 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .insp-info dt { color: var(--muted); }
 .insp-info dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: end; }
 /* Why the diamonds are off, and the way out (the playhead is not on the selected clip) */
-.insp-hint { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--fg); }
-.insp-hint p { flex: 1 1 180px; font-size: 13px; }
-.insp-hint button { min-block-size: 44px; padding: 0 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--surface); color: var(--accent); font-weight: 600; }
-/* Reset stays in reach at the bottom of a long panel (the phone sheet showed it half cut by the tool bar) */
-.insp > .insp-row:last-child { position: sticky; inset-block-end: 0; z-index: 1; margin-block-end: -16px; padding-block: 8px 16px; background: var(--surface); }
+.insp-hint { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-block-size: 32px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--fg); font-size: var(--text-xs); line-height: 1.25; }
+.insp-hint span { flex: 1; min-inline-size: 0; }
+.insp-hint button { flex: none; min-block-size: 28px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--surface); color: var(--accent-text, var(--accent)); font: inherit; font-weight: 600; }
+@media (pointer: coarse) { .insp-hint { min-block-size: 44px; } .insp-hint button { min-block-size: 36px; } }
+/* The Reset row is the last row of the content, not a floating bar: nothing is covered by it, so no body padding has to guess its height. */
 
 /* Scrolling panels: a soft fade shows there is more above or below (it appears only while the content really scrolls) */
 .panel-body { background: linear-gradient(var(--surface) 30%, transparent) center top / 100% 22px no-repeat local, linear-gradient(transparent, var(--surface) 70%) center bottom / 100% 22px no-repeat local, radial-gradient(farthest-side at 50% 0, color-mix(in srgb, var(--stage) 22%, transparent), transparent) center top / 100% 8px no-repeat scroll, radial-gradient(farthest-side at 50% 100%, color-mix(in srgb, var(--stage) 22%, transparent), transparent) center bottom / 100% 8px no-repeat scroll; }
@@ -797,7 +797,6 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 
 /* Small sheet: no heading (the tool bar says where you are), the Reset row scrolls with the fields instead of covering them */
 .library[data-detent="peek"] .panel-head { display: none; }
-.library[data-detent="peek"] .insp > .insp-row:last-child { position: static; margin-block-end: 0; padding-block: 0; }
 .insp-info { align-self: start; align-content: start; }
 .insp-body { align-content: start; } /* hint, then project info, packed at the top (the grid used to stretch its rows: a big gap, tall Speed rows) */
 .insp-info > div { align-items: baseline; flex-wrap: wrap; }
@@ -858,6 +857,16 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .tool-strip[data-mode="clip"] .tool:first-child { color: var(--fg); border-inline-end: 1px solid var(--line); border-radius: 0; margin-inline-end: 4px; }
 .tool-strip .tool:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: -2px; }
 
+/* r15 lane C: a visible way back to Projects in the editor's top bar (a chevron + word on a wide screen, the chevron alone on a phone) */
+.topbar-projects { display: inline-flex; align-items: center; gap: 2px; min-block-size: 36px; padding: 0 10px 0 6px; margin-inline-start: 4px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--muted); font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+.topbar-projects:hover { background: var(--surface-2); color: var(--fg); }
+.topbar-projects:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; }
+@media (max-width: 700px) { .topbar .brand .logo { display: none; } .topbar-projects { inline-size: 44px; block-size: 44px; padding: 0; justify-content: center; margin-inline-start: 0; } .topbar-projects span { display: none; } }
+
+/* r15: Versions name field outlined like the other controls (it was a grey filled box); headings of Media and Details sit on the same line */
+.versions-save input { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--fg); }
+.versions-save input:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; }
+.theme-pop .menu-sep { block-size: 1px; margin: 4px 8px; background: var(--line); }
 /* r15 PHONE-10: the canvas shape in one tap. */
 .ratio-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 6px; margin-block-end: 12px; }
 .ratio-tile { display: grid; justify-items: center; align-content: center; gap: 4px; min-block-size: 64px; padding: 6px 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--fg); font-size: var(--text-sm); font-weight: 600; cursor: pointer; transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-instant); }
