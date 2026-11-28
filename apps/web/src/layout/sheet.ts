@@ -2,12 +2,13 @@
 export type Detent = "peek" | "half" | "full";
 export const DETENTS: readonly Detent[] = ["peek", "half", "full"];
 
-/** Sheet heights in px for a viewport of `vh` px: peek (about 30 %), half (about 52 %, as before) and full (everything between the top bar and the tool bar). */
+/** Sheet heights in px for a viewport of `vh` px: peek (about 45 %: the Edit and Speed sheets open here, so the preview, the timeline and the playhead stay in view), half (about 62 %) and full (everything between the top bar and the tool bar). */
 export function detentHeights(vh: number, chrome = 56 + 68 + 12): Record<Detent, number> {
   const full = Math.max(240, vh - chrome);
-  const half = Math.min(full, Math.min(0.52 * vh, 440));
-  const peek = Math.min(half - 60, Math.max(220, Math.min(0.34 * vh, 300)));
-  return { peek: Math.max(160, peek), half: Math.max(half, peek + 60), full: Math.max(full, half + 60) };
+  const peek = Math.max(200, Math.min(0.45 * vh, 420));
+  const half = Math.min(full, Math.max(peek + 70, Math.min(0.62 * vh, 520)));
+  const r = Math.round; // whole pixels: a fractional sheet height made the controls inside it 43.99 px tall
+  return { peek: r(peek), half: r(Math.max(half, peek + 60)), full: r(Math.max(full, half + 60)) };
 }
 
 /**

@@ -7,7 +7,8 @@ import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } fr
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { headerPart } from "./header";
 import { BIN_DRAG_TYPE } from "../media/sources";
-import { snapDrop, SNAP_PX } from "./arrange";
+import { snapDrop } from "./arrange";
+import { snapPx } from "./snapStore";
 import { applySelect, edgeSpeed, IDLE, longPress, markPreview, sameLayout, pointerDown, pointerMove, pointerUp, scrolled, scrollsAtEdge, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
@@ -303,7 +304,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     const raw = Math.max(0, xToTime(view.current, x)) * TICKS_PER_SECOND;
     const row = trackAtY(l.scene, view.current, e.clientY - canvas.current!.getBoundingClientRect().top);
     const ft = TICKS_PER_SECOND / l.fps;
-    return { ...snapDrop(l.scene, raw, Math.round((fr.current / l.fps) * TICKS_PER_SECOND), (SNAP_PX / view.current.pps) * TICKS_PER_SECOND, ft), row };
+    return { ...snapDrop(l.scene, raw, Math.round((fr.current / l.fps) * TICKS_PER_SECOND), (snapPx() / view.current.pps) * TICKS_PER_SECOND, ft), row };
   };
   const onDragOver = (e: React.DragEvent) => {
     if (!onDropMedia || !e.dataTransfer.types.includes(BIN_DRAG_TYPE)) return;
