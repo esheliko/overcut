@@ -39,6 +39,7 @@ const paletteKey = (): string => chordLabel(currentKeymap().get("app.palette")?.
 import { VersionsDialog, useAutoSnapshots } from "./Versions";
 import { binMeta, type BinMeta } from "./media/binView";
 import { MediaBin } from "./media/MediaBin";
+import { OverlayPicker } from "./media/OverlayPicker";
 import { newId, TICKS } from "./media/plan";
 import { TICKS_PER_SECOND } from "./preview/timing";
 import { mediaToAdd } from "./timeline/addMedia";
@@ -92,6 +93,7 @@ type BinProps = {
   onAddOverlay: (id: string) => void;
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
+  onAllow?: () => void;
   onRelinkAll?: () => void;
   meta: BinMeta;
   onTags: (id: string, tags: readonly string[]) => void;
@@ -279,7 +281,11 @@ function Editor({ store }: { store: ProjectStore }) {
   const [playing, setPlaying] = useState(false);
   const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
   useEffect(() => { const open = () => setPalette(true); window.addEventListener(PALETTE_EVENT, open); return () => window.removeEventListener(PALETTE_EVENT, open); }, []);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToastText] = useState<string | null>(null);
+  const [toastAct, setToastAct] = useState<{ label: string; run(): void } | null>(null); // an action on the toast ("Add to timeline"); plain toasts carry none
+  const setToast = useCallback((m: string | null) => { setToastText(m); setToastAct(null); }, []);
+  const showToast = useCallback((m: string, act: { label: string; run(): void }) => { setToastText(m); setToastAct(act); }, []);
+  const [overlayAt, setOverlayAt] = useState<number | null>(null); // the overlay picker is open: the tick where the chosen media goes
   const [refusals, setRefusals] = useState<string[]>([]); // phone: files refused in an import, kept on screen until dismissed (the Media sheet closes after a successful one)
   // F3: the theme is picked from a small menu (System, Dark, Light, High contrast), not cycled.
   const pickTheme = (next: ThemePref) => {
@@ -293,6 +299,8 @@ function Editor({ store }: { store: ProjectStore }) {
   const { profile, compact } = useShellProfile(editorRef); // compact: small phone, theme toggle and engine status live in the "..." menu
   const wide = profile === "desktop" || profile === "ultrawide"; // details panel gets its own column
   const roomy = profile === "tablet" || wide; // tablet and up: the tool panel is always docked open (phones: a sheet)
+  const roomyRef = useRef(roomy);
+  roomyRef.current = roomy;
 
   useEffect(() => {
     let alive = true;
@@ -310,11 +318,24 @@ function Editor({ store }: { store: ProjectStore }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toastDuration(toast)); // 3 s; longer text a little longer, never more than 5 s
+    const t = setTimeout(() => setToast(null), toastAct ? 7000 : toastDuration(toast)); // 3 s; longer text a little longer, never more than 5 s; 7 s when it offers an action
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toast, toastAct, setToast]);
 
   const soon = useCallback((m: string) => setToast(m), []);
+  // The toast sits just above the timeline (never on the picture, never over a lane): measured when it shows, because the timeline's height is the user's to change.
+  useEffect(() => {
+    if (!toast) return;
+    const top = document.querySelector<HTMLElement>(".tl-drop")?.getBoundingClientRect().top;
+    if (top && top > 0) document.documentElement.style.setProperty("--toast-bottom", `${Math.round(window.innerHeight - top + 8)}px`);
+    else document.documentElement.style.removeProperty("--toast-bottom");
+  }, [toast]);
+  // A refused file stays long enough to read (two short lines), then leaves by itself; it can be dismissed sooner.
+  useEffect(() => {
+    if (refusals.length === 0) return;
+    const id = window.setTimeout(() => setRefusals([]), 9000);
+    return () => window.clearTimeout(id);
+  }, [refusals]);
 
   // ---- the shared project: fed by the persistence session's editing surface (autosaving), or the bare engine when storage is unavailable ----
   const editing = persistence.session?.editing ?? (persistence.problem && core ? core.editing : null);
@@ -340,20 +361,22 @@ function Editor({ store }: { store: ProjectStore }) {
   const media = useMediaBin(core, editing, !!persistence.session, t("app.untitled"), {
     notMedia: (n) => t("media.err.notMedia", { name: n }),
     unsupported: (n, ext, detail) => t("media.err.unsupported", { name: n, ext: ext || "?", detail }),
-    failed: (n) => t("media.err.failed", { name: n }),
+    failed: (n, ext) => t("media.err.failed", { name: n, ext: ext || "?" }),
     imported: (count) => t("media.imported", { count }),
     importLabel: (name) => t("media.importLabel", { name }),
     announce,
     refused: (m) => setRefusals((all) => (all.includes(m) ? all : [...all, m])),
+    // One import rule: the file is in the bin; on an empty timeline (or a drop onto it) it is on the timeline too, else the person is told and can add it in one tap.
+    result: ({ ids, placed }) => {
+      if (placed) { if (!roomyRef.current) setSheet(false); return; }
+      showToast(t("media.addedToBin", { count: ids.length }), { label: t("media.addShort"), run: () => { for (const id of ids) void mediaRef.current?.addToTimeline(id); setToast(null); } });
+    },
   });
+  const mediaRef = useRef(media);
+  mediaRef.current = media;
   const importFiles = media.importSources;
-  // Phone: the Media sheet covers the Split / Undo toolbar, so it closes once an import has succeeded (the bin is one tap away on the tool bar).
+  // Phone: the Media sheet covers the timeline, so it closes when an import landed on the timeline (the person sees the result); an import that only reached the bin keeps the sheet and says so (toast).
   const readyCount = media.items.filter((i) => i.status === "ready").length;
-  const readyBefore = useRef(readyCount);
-  useEffect(() => {
-    if (readyCount > readyBefore.current && !roomy) setSheet(false);
-    readyBefore.current = readyCount;
-  }, [readyCount, roomy]);
   /** "Add media at playhead" / "Add as overlay on a new track": the selected clip's media, else the newest card in the bin (T-01). */
   /** The overlay just added is the thing to size next: select it (picture and its linked sound), so its on-canvas handles and Details show at once. */
   const selectOverlay = useCallback((trackId: string) => {
@@ -375,6 +398,7 @@ function Editor({ store }: { store: ProjectStore }) {
     } else void media.addToTimeline(id, tick).then(done);
   }, [store, media, soon, t, selectOverlay]);
   const addMediaAt = useCallback((overlay: boolean, tick: number) => {
+    if (overlay) { setOverlayAt(tick); return; } // "Add as overlay" always asks which media (a picker of the bin), it never picks one itself
     const st = store.getState();
     const id = mediaToAdd(st.project, st.selection, media.items);
     if (!id) { soon(t("timeline.addMedia.none")); return; }
@@ -414,7 +438,8 @@ function Editor({ store }: { store: ProjectStore }) {
       setDragging(false);
       if (!e.dataTransfer || !dragHasFiles(e.dataTransfer)) return;
       e.preventDefault();
-      void fromDataTransfer(e.dataTransfer).then(importFiles);
+      const onTimeline = e.target instanceof Element && !!e.target.closest(".tl-drop"); // dropped on the timeline: it goes there as well as into the bin
+      void fromDataTransfer(e.dataTransfer).then((s) => importFiles(s, { place: onTimeline }));
     };
     const paste = (e: ClipboardEvent) => {
       if (e.target instanceof Element && e.target.closest("input, textarea, [contenteditable]")) return;
@@ -456,6 +481,7 @@ function Editor({ store }: { store: ProjectStore }) {
     onAddOverlay: (id) => addOverlayOf(id),
     onRemove: media.remove,
     onRelinkAll: () => void locate(),
+    onAllow: () => void allow(),
     onRelink: (id) => void media.relink(id).then(async (ok) => {
       if (ok) return;
       const picked = await pickOne(); // no stored permission: choose the file again
@@ -687,8 +713,14 @@ function Editor({ store }: { store: ProjectStore }) {
     setDialog(null);
     void store.apply(ops, undefined, t("canvas.undoLabel")).then((out) => out?.changed && announce(t("canvas.changed", { summary: (() => { const v = sequenceView(store.getState().project); return canvasSummary(v.size, v.rate); })() })));
   };
-  const offline = media.items.filter((i) => i.status === "offline" && !i.uri?.startsWith("fixture:")).length; // a file that is not on this device ("fixture:" is the built-in sample, not a file)
+  const offline = media.items.filter((i) => i.status === "offline" && !i.needsPermission && !i.uri?.startsWith("fixture:")).length; // a file that is not on this device ("fixture:" is the built-in sample, not a file)
+  const waiting = media.items.filter((i) => i.status === "offline" && i.needsPermission).length; // the browser kept these: they only need "Allow access"
   const missingMedia = useMemo(() => new Map(media.items.filter((i) => i.status === "offline" && !i.uri?.startsWith("fixture:")).map((i) => [i.id, i.name] as const)), [media.items]);
+  // One click, every file: the permission prompts all start inside this click handler (before any await).
+  const allow = () => {
+    const total = waiting;
+    void media.allowAccess().then(({ done }) => { setToast(t("project.located", { done, total })); setOfflineHidden(false); }).catch(() => setToast(t("media.relinkFailed")));
+  };
   const locate = async () => {
     const total = offline;
     try {
@@ -822,7 +854,13 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
       </main>
 
-      <PersistenceNotes state={persistence} extra={(failure || (offline > 0 && !offlineHidden)) ? (<>
+      <PersistenceNotes state={persistence} extra={(failure || waiting > 0 || (offline > 0 && !offlineHidden)) ? (<>
+        {waiting > 0 && (
+          <div className="persist-note" role="status" data-testid="permission-note">
+            <span>{t("media.permission.note", { count: waiting })}</span>
+            <button onClick={allow} data-testid="allow-access">{t("media.permission.allow")}</button>
+          </div>
+        )}
         {failure && (
           <div className="persist-note danger" role="alert" data-testid="failure-note">
             <span>{failure}</span>
@@ -848,6 +886,7 @@ function Editor({ store }: { store: ProjectStore }) {
       {dialog === "canvas" && project?.sequences[0] && <CanvasDialog sequence={project.sequences[0]} hasPicture={hasPicture(project)} onApply={applyCanvas} onClose={() => setDialog(null)} />}
       {dialog === "shortcuts" && <Suspense fallback={null}><ShortcutsDialog onClose={() => setDialog(null)} /></Suspense>}
       {palette && <Palette onClose={() => setPalette(false)} />}
+      {overlayAt !== null && <OverlayPicker items={media.items} onClose={() => setOverlayAt(null)} onPick={(id) => { const at = overlayAt; setOverlayAt(null); addMediaItem(id, true, at); }} />}
       {dialog && typeof dialog === "object" && <ConfirmDialog title={dialog.title} body={dialog.body} confirm={dialog.confirm} danger={dialog.danger} onClose={() => setDialog(null)} onConfirm={() => { const run = dialog.run; setDialog(null); void run(); }} />}
       {dragging && <div className="drop-overlay" aria-hidden="true" data-testid="drop-overlay"><Icon name="upload" size={40} /><strong>{t("media.dropNow")}</strong></div>}
       </>}
@@ -857,7 +896,7 @@ function Editor({ store }: { store: ProjectStore }) {
           <button className="icon-btn" aria-label={t("media.refusalDismiss")} onClick={() => setRefusals([])}><Icon name="close" size={18} /></button>
         </div>
       )}
-      <div className="toast" role="status">{toast}</div>
+      <div className="toast" role="status" data-testid="toast">{toast}{toast && toastAct && <button className="toast-act" onClick={toastAct.run} data-testid="toast-action">{toastAct.label}</button>}</div>
     </div>
   );
 }

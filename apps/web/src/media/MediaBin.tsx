@@ -4,6 +4,7 @@ import { Icon } from "../icons";
 import { Modal } from "../ProjectDialogs";
 import { DEFAULT_FILTER, allTags, viewBin, windowRange, withTag, withoutTag, type BinFilter, type BinMeta, type BinSort } from "./binView";
 import { formatBytes, formatDuration, iconForKind, offlineReason } from "./plan";
+import { IMPORT_FORMATS } from "./formats";
 import { ACCEPT, BIN_DRAG_TYPE, fromFileList, hasHandlePicker, pickWithHandles, type Source } from "./sources";
 import type { BinItem } from "./useMediaBin";
 import { useProjectStore } from "../store/projectStore";
@@ -22,6 +23,8 @@ type Props = {
   onAddOverlay?: (id: string) => void;
   onRemove: (id: string) => void;
   onRelink: (id: string) => void;
+  /** One click that asks permission for every file the browser kept a handle for (after a reload). Absent: no such button. */
+  onAllow?: () => void;
   /** One file picker for every offline item (matched by name): offered when two or more are offline. */
   onRelinkAll?: () => void;
 };
@@ -50,7 +53,7 @@ export function useImportPicker(onImport: (s: Source[]) => void, testId = "media
   return { open, field };
 }
 
-function Card({ item, tags, onTimeline, uses, onAdd, onAddOverlay, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; uses: number; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onAddOverlay" | "onRemove" | "onRelink">) {
+function Card({ item, tags, onTimeline, uses, selected, onSelect, onAdd, onAddOverlay, onRemove, onRelink, onAllow, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; uses: number; selected: boolean; onSelect: (id: string) => void; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onAddOverlay" | "onRemove" | "onRelink" | "onAllow">) {
   const { t } = useI18n();
   const ready = item.status === "ready";
   // The duration is a badge on the poster; the meta line keeps what does not fit there (size first, so a narrow panel cuts the codec, never the size). The full line is the tooltip.
@@ -62,13 +65,16 @@ function Card({ item, tags, onTimeline, uses, onAdd, onAddOverlay, onRemove, onR
   ].filter(Boolean).join(" · ");
   const tooltip = [duration, item.width && item.height ? `${item.width}×${item.height}` : "", item.codec, formatBytes(item.size)].filter(Boolean).join(" · ");
   const offline = item.status === "offline";
+  const needsPermission = offline && !!item.needsPermission;
   return (
     <li
       className="bin-card"
       data-status={item.status}
       data-testid="bin-item"
       data-on={onTimeline || undefined}
+      data-selected={selected || undefined}
       draggable={ready}
+      onClick={ready ? () => onSelect(item.id) : undefined}
       onDragStart={(e) => { e.dataTransfer.setData(BIN_DRAG_TYPE, item.id); e.dataTransfer.effectAllowed = "copy"; }}
     >
       <span className="bin-thumb" aria-hidden="true">
@@ -85,9 +91,18 @@ function Card({ item, tags, onTimeline, uses, onAdd, onAddOverlay, onRemove, onR
           </span>
         )}
         {tags.length > 0 && <span className="bin-tags" data-testid="bin-tags">{tags.map((x) => `#${x}`).join(" ")}</span>}
-        {item.status === "offline" && <span role="alert">{t(offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
-        {item.status === "unsupported" && <span role="alert" className="bin-error">{item.message}</span>}
-        {item.status === "offline" && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
+        {offline && <span role="alert" data-testid={needsPermission ? "bin-needs-permission" : undefined}>{t(needsPermission ? "media.permission.card" : offlineReason(item.uri) === "reopen" ? "media.offline.reopen" : "media.offline")}</span>}
+        {item.status === "unsupported" && (
+          <span role="alert" className="bin-error" data-testid="bin-error">
+            <span className="bin-error-text">{item.message}</span>
+            <details className="bin-error-details">
+              <summary>{t("media.err.details")}</summary>
+              <span>{[item.details, t("media.err.works")].filter(Boolean).join(" ")}</span>
+            </details>
+          </span>
+        )}
+        {needsPermission && onAllow && <button className="bin-link" onClick={onAllow} data-testid="bin-allow">{t("media.permission.allow")}</button>}
+        {offline && !needsPermission && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       </span>
       {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span className="sr-only">{t("media.tags.editShort")}</span></button>}
       {ready && onAddOverlay && item.kind !== "audio" && !onTimeline && <button className="bin-act bin-tag-btn bin-overlay-btn" aria-label={t("media.addOverlay", { name: item.name })} title={t("media.addOverlayShort")} onClick={() => onAddOverlay(item.id)} data-testid="bin-add-overlay"><Icon name="overlay" size={20} /></button>}
@@ -158,7 +173,7 @@ function TagsDialog({ item, tags, onTags, onClose }: { item: BinItem; tags: read
 }
 
 /** Media tool panel body: the big empty-state target, then the list of imported media with "+" to add each to the timeline. */
-export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOverlay, onRemove, onRelink, onRelinkAll }: Props) {
+export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOverlay, onRemove, onRelink, onAllow, onRelinkAll }: Props) {
   const { t } = useI18n();
   const { open, field } = useImportPicker(onImport);
   const project = useProjectStore((s) => s.project);
@@ -176,13 +191,14 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
   const setView = (v: "list" | "grid") => { setViewState(v); try { localStorage.setItem("overcut.binView", v); } catch { /* private mode: the choice just is not remembered */ } };
   const [filter, setFilter] = useState<BinFilter>(DEFAULT_FILTER);
   const [editing, setEditing] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null); // the card last tapped: the one the "+" next to it will add
   const [filterOpen, setFilterOpen] = useState(false);
   const tagList = allTags(meta);
   const activeTag = tagList.some((x) => x.toLowerCase() === filter.tag.toLowerCase()) ? filter.tag : ""; // a tag nobody uses any more stops filtering
   const shown = viewBin(items, meta, { ...filter, tag: activeTag, query });
   const filtersOn = filter.kind !== DEFAULT_FILTER.kind || activeTag !== "" || filter.sort !== DEFAULT_FILTER.sort; // shown on the toggle, so a hidden filter is not forgotten
   const editItem = editing ? items.find((i) => i.id === editing) : undefined;
-  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onTimeline={uses.has(i.id)} uses={uses.get(i.id) ?? 0} onAdd={onAdd} onAddOverlay={onAddOverlay} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
+  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onTimeline={uses.has(i.id)} uses={uses.get(i.id) ?? 0} selected={selected === i.id} onSelect={setSelected} onAdd={onAdd} onAddOverlay={onAddOverlay} onRemove={onRemove} onRelink={onRelink} onAllow={onAllow} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
   const pending = shown.filter((i) => !meta.has(i.id));
   const settled = shown.filter((i) => meta.has(i.id));
   const long = settled.length > WINDOW_FROM; // a long bin is the windowed list (only the rows in view exist in the DOM); posters in a grid would all be rendered
@@ -195,7 +211,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
           <span className="drop-icon"><Icon name="upload" size={30} /></span>
           <strong>{t("media.import")}</strong>
           <span>{t(typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? "media.importHint.touch" : "media.importHint")}</span>
-          <span className="drop-formats" aria-label={t("media.formats")}>{["MP4", "MOV", "WebM", "MP3", "WAV", "JPG", "PNG"].map((f) => <span key={f}>{f}</span>)}</span>
+          <span className="drop-formats" aria-label={t("media.formats")}>{IMPORT_FORMATS.map((f) => <span key={f}>{f}</span>)}</span>
         </button>
       </>
     );
@@ -206,8 +222,11 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
       {/* Import and Filter and sort share one row, so the media starts higher in the panel */}
       <div className="bin-bar">
       <button className="primary bin-import" onClick={open} data-testid="import-more"><Icon name="plus" size={18} /><span>{t("media.import")}</span></button>
-      {onRelinkAll && items.filter((i) => i.status === "offline").length >= 2 && (
-        <button className="bin-filter-toggle bin-relink-all" onClick={onRelinkAll} data-testid="relink-all"><Icon name="upload" size={18} /><span>{t("media.relinkAll", { count: items.filter((i) => i.status === "offline").length })}</span></button>
+      {onAllow && items.some((i) => i.needsPermission) && (
+        <button className="bin-filter-toggle bin-relink-all" onClick={onAllow} data-testid="allow-all"><Icon name="check" size={18} /><span>{t("media.permission.allow")}</span></button>
+      )}
+      {onRelinkAll && items.filter((i) => i.status === "offline" && !i.needsPermission).length >= 2 && (
+        <button className="bin-filter-toggle bin-relink-all" onClick={onRelinkAll} data-testid="relink-all"><Icon name="upload" size={18} /><span>{t("media.relinkAll", { count: items.filter((i) => i.status === "offline" && !i.needsPermission).length })}</span></button>
       )}
       <button
         className="bin-filter-toggle"
