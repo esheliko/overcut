@@ -9,6 +9,9 @@ import { IMPORT_FORMATS } from "./formats";
 import { ACCEPT, BIN_DRAG_TYPE, fromFileList, hasHandlePicker, pickWithHandles, type Source } from "./sources";
 import type { BinItem } from "./useMediaBin";
 import { useProjectStore } from "../store/projectStore";
+import { freeUnused, getKeptOwner, keptSupported, keptUse, type KeptUse } from "./kept";
+import { keptKey } from "./keep-plan";
+import { getRegistry } from "../projects";
 import "./media.css";
 
 type Props = {
@@ -126,6 +129,7 @@ function Card({ item, tags, onTimeline, uses, selected, stop, onSelect, onAdd, o
       <span className="bin-text">
         <strong title={item.name}>{item.name}</strong>
         {item.status === "probing" && <span role="status">{t("media.reading")}</span>}
+        {!!item.keeping && <span className="bin-keeping" data-testid="bin-keeping">{t("media.keeping", { percent: Math.round(item.keeping * 100) })}</span>}
         {ready && (
           <span className="bin-line">
             {onTimeline && <span className="bin-on-timeline" data-testid="bin-on-timeline" title={t("media.onTimeline")}><Icon name="check" size={12} strokeWidth={3} aria-hidden="true" /><span className="bin-on-label">{t("media.onTimeline")}{uses > 1 ? ` ×${uses}` : ""}</span></span>}
@@ -246,6 +250,35 @@ function FilterPop({ anchor, label, onClose, children }: { anchor: RefObject<HTM
   );
 }
 
+/** "1.2 GB of 2 GB kept on this device" with "Remove unused media copies": shown only once a copy is kept. Fails soft: no storage, no line. */
+function StorageLine({ refresh }: { refresh: string }) {
+  const { t } = useI18n();
+  const project = useProjectStore((s) => s.project);
+  const [use, setUse] = useState<KeptUse | null>(null);
+  const [note, setNote] = useState("");
+  useEffect(() => {
+    if (!keptSupported()) return;
+    let alive = true;
+    void keptUse().then((u) => alive && setUse(u)).catch(() => undefined);
+    return () => { alive = false; };
+  }, [refresh]);
+  if (!use || use.count === 0) return null;
+  const free = async () => {
+    const inUse = new Set((project?.media ?? []).flatMap((m) => { const k = keptKey(m.uri); return k ? [k] : []; }));
+    const ids = new Set((await (await getRegistry()).list()).map((e) => e.id));
+    const freed = await freeUnused(inUse, ids, getKeptOwner()).catch(() => 0);
+    setNote(freed > 0 ? t("media.storage.freed", { size: formatBytes(freed) }) : t("media.storage.nothing"));
+    setUse(await keptUse());
+  };
+  return (
+    <div className="bin-storage" data-testid="bin-storage">
+      <span>{t("media.storage.used", { used: formatBytes(use.used), limit: formatBytes(use.limit) })}{use.persisted ? ` · ${t("media.storage.persisted")}` : ""}</span>
+      <button className="bin-link" onClick={() => void free()} data-testid="bin-free-copies">{t("media.storage.free")}</button>
+      {note && <span role="status">{note}</span>}
+    </div>
+  );
+}
+
 /** Media tool panel body: the big empty-state target, then the list of imported media with "+" to add each to the timeline. */
 export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOverlay, onRemove, onRelink, onAllow, onRelinkAll }: Props) {
   const { t } = useI18n();
@@ -352,6 +385,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
             : settled.length > 0 && <ul className="bin-list" data-view={view} aria-label={t("media.list")}>{settled.map(card)}</ul>}
         </>
       )}
+      <StorageLine refresh={items.map((i) => `${i.id}${i.keeping === undefined ? "" : "*"}`).join(",")} />
       {editItem && meta.has(editItem.id) && <TagsDialog item={editItem} tags={meta.get(editItem.id)!.tags} onTags={onTags} onClose={() => setEditing(null)} />}
     </div>
   );

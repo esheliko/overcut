@@ -20,6 +20,8 @@ const menu = async (page: Page, item: string) => {
 const isTall = async (page: Page) => { const b = (await page.locator(".canvas").boundingBox())!; return b.height > b.width; };
 
 test("canvas settings are a project edit (undo), survive an import, and new project / save / open round-trip them", async ({ page }, info) => {
+  // r16 F: imports keep a copy in OPFS where there is one; step 7 is about a window that has none of the files, so OPFS is hidden on the page.
+  await page.addInitScript(() => { (navigator.storage as unknown as { getDirectory?: unknown }).getDirectory = undefined; });
   test.setTimeout(120_000);
   const phone = info.project.name === "phone";
   const errors: string[] = [];
