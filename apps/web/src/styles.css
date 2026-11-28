@@ -777,6 +777,10 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .insp-info > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
 .insp-info dt { color: var(--muted); }
 .insp-info dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: end; }
+.insp-nothing { display: grid; gap: 4px; } .insp-nothing strong { font-size: var(--text-md); } .insp-nothing { padding-block-end: 12px; } .insp-nothing .insp-empty { margin: 0; padding: 0; }
+.insp-info-edit { display: inline-flex; align-items: center; gap: 4px; min-block-size: 32px; padding: 0 6px; margin: -6px -6px -6px 0; border: 0; border-radius: var(--radius-sm); background: none; color: var(--accent-text, var(--accent)); font: inherit; font-weight: 600; cursor: pointer; }
+.insp-info-edit:hover { background: var(--surface-3); } .insp-info-edit:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; }
+@media (pointer: coarse) { .insp-info-edit { min-block-size: 44px; } }
 /* Why the diamonds are off, and the way out (the playhead is not on the selected clip) */
 .insp-hint { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-block-size: 32px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--fg); font-size: var(--text-xs); line-height: 1.25; }
 .insp-hint span { flex: 1; min-inline-size: 0; }

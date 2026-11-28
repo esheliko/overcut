@@ -27,6 +27,7 @@ import { ticksPerFrame, ticksToFrame } from "./inspector/keyframeModel";
 import { SpeedSection } from "./inspector/Speed";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
+import { CANVAS_EVENT } from "./inspector/Inspector";
 import { THEME_PREFS, applyTheme, loadPref, savePref, watchSystem, type ThemePref } from "./theme/theme";
 import { ThemeMenu } from "./ThemeMenu";
 import { ExportControl } from "./export/ExportDialog";
@@ -280,6 +281,7 @@ function Editor({ store }: { store: ProjectStore }) {
   const workspaceRef = useRef<HTMLElement>(null);
   const [name, setName] = useState<string | null>(null); // null = the localized default name
   const [dialog, setDialog] = useState<null | "canvas" | "privacy" | "versions" | "shortcuts" | { title: string; body: string; confirm: string; danger: boolean; run(): Promise<void> }>(null);
+  useEffect(() => { const open = (): void => setDialog("canvas"); window.addEventListener(CANVAS_EVENT, open); return () => window.removeEventListener(CANVAS_EVENT, open); }, []); // the Details panel's Canvas / Background rows (r15)
   const [offlineHidden, setOfflineHidden] = useState(false); // the "files are missing" note was dismissed for this project (it is shown whenever media is not on this device)
   const [playing, setPlaying] = useState(false);
   const [palette, setPalette] = useState(false); // the command palette (Ctrl/Cmd+K, the top-bar button, the app menu)
