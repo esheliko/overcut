@@ -225,6 +225,7 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
               {THEME_PREFS.map((p) => (
                 <button key={p} className="menu-row" role="menuitemradio" aria-checked={p === theme.pref} data-testid={`theme-${p}`} onClick={() => theme.onPick(p)}><span className="menu-check" aria-hidden="true">{p === theme.pref && <Icon name="check" size={16} />}</span><span>{t(`theme.${p}`)}</span></button>
               ))}
+              <AccentPicker />
               <div className="menu-row menu-status" role="presentation">{status}</div>
               {/* On small phones the top-bar save chip is screen-reader only, so the plain save state is shown here as well. */}
               <div className="menu-row menu-status save-row" role="presentation" data-testid="save-state-menu" data-state={save.state}><span className="dot" aria-hidden="true" data-state={save.state} /><span>{save.text}</span></div>
@@ -237,8 +238,9 @@ function AppMenu({ compact, theme, status, save, project }: { compact: boolean; 
           <button className="menu-row" role="menuitem" data-testid="menu-save" onClick={opening(project.onSave)}><Icon name="download" size={16} className="menu-ic" /><span>{t("menu.saveProject")}</span></button>
           {getDesktop() && <button className="menu-row" role="menuitem" data-testid="menu-projects-folder" onClick={() => { setOpen(false); void chooseFolder(); }}><Icon name="archive" size={16} className="menu-ic" /><span>{t("menu.projectsFolder")}</span></button>}
           <button className="menu-row" role="menuitem" data-testid="menu-versions" onClick={opening(project.onVersions)}><Icon name="history" size={16} className="menu-ic" /><span>{t("menu.versions")}</span></button>
+          {/* r15 (customer: "the menu is too long and cluttered, especially View"): the accent swatches live beside the theme (the theme popover, or the
+              phone theme rows above), so View keeps one switch with a one-line hint. */}
           <div className="menu-group" role="presentation">{t("menu.group.view")}</div>
-          <AccentPicker />
           <ScrubPrepItem />
           <div className="menu-group" role="presentation">{t("menu.group.help")}</div>
           <button className="menu-row" role="menuitem" data-testid="menu-shortcuts" onClick={opening(project.onShortcuts)}><Icon name="keyboard" size={16} className="menu-ic" /><span>{t("menu.shortcuts")}</span></button>

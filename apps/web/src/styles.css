@@ -393,7 +393,7 @@ h2, p { margin: 0; }
 .menu-status .dot[data-state="ready"] { background: var(--ok); }
 .menu-status .dot[data-state="error"] { background: var(--danger); }
 .menu-status span:last-child { min-width: 0; overflow-wrap: anywhere; }
-.menu-switch { min-height: 56px; padding-block: 8px; }
+.menu-switch { min-height: 56px; padding-block: 8px; align-items: flex-start; } .menu-switch .menu-ic { margin-block-start: 5px; } /* r15: the icon sits on the first line, in the same column as the other rows */
 .menu-text { display: flex; flex-direction: column; flex: 1; min-width: 0; padding-block: 4px; }
 .menu-hint { color: var(--muted); font-size: var(--text-xs); font-weight: 400; line-height: 1.35; overflow-wrap: anywhere; } /* a description line under a switch: regular weight, muted (V-11: it was bold) */
 .menu-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
