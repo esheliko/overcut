@@ -38,6 +38,16 @@ fn codec_id(codec: &str) -> Option<Id> {
         Id::MP3
     } else if c == "flac" {
         Id::FLAC
+    } else if c == "pcm-u8" {
+        Id::PCM_U8
+    } else if c == "pcm-s16" {
+        Id::PCM_S16LE
+    } else if c == "pcm-s24" {
+        Id::PCM_S24LE
+    } else if c == "pcm-s32" {
+        Id::PCM_S32LE
+    } else if c == "pcm-f32" {
+        Id::PCM_F32LE
     } else {
         return None;
     })

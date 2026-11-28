@@ -83,7 +83,7 @@ test("an audio-only .webm (a voice recording) imports as audio; a format nobody 
   ]);
   await expect(summary(page)).toContainText("1 clip", { timeout: 20_000 });
   await expect(page.getByTestId("bin-item").filter({ hasText: "voice.webm" })).toContainText("OPUS");
-  await expect(page.locator("[data-announcer=polite]")).toContainText(/clip\.wav could not be imported \(WAV\)\. This is not a video or audio format OverCut can read\. /); // announced, as a sentence, not buried under "1 file imported"
+  await expect(page.locator("[data-announcer=polite]")).toContainText(/clip\.wav could not be (imported|read)/); // r15: a truncated WAV is now read as a WAV (damaged file), so the reason is its own; announced, as a sentence, not buried under "1 file imported"
   await expect(page.locator("[data-announcer=polite]")).not.toContainText("file imported");
 });
 
