@@ -12,7 +12,7 @@ export function takeDetailsRequest(): DetailsRequest | null { const d = pending;
 /** Names from `icons.tsx` (this file stays free of the React icon module so the unit tests can load it; the strip checks the names at compile time). */
 export type StripIcon = "media" | "overlay" | "split" | "canvas" | "edit" | "chevronLeft" | "speed" | "crop" | "duplicate" | "trash" | "unlink" | "keyframe";
 export type StripId = "media" | "overlay" | "split" | "canvas" | "edit" | "back" | "speed" | "crop" | "duplicate" | "delete" | "detach" | "keyframe";
-export interface StripTool { id: StripId; icon: StripIcon; /** i18n key of the visible label (and the accessible name). */ label: string; /** i18n key of a shorter visible text when the label is long (the accessible name stays the full label). */ short?: string; /** Registry id of the shortcut, when it has one (the tooltip shows it). */ key?: string }
+export interface StripTool { id: StripId; icon: StripIcon; /** i18n key of the visible label (and the accessible name). */ label: string; /** i18n key of a shorter visible text when the label is long (the accessible name stays the full label). */ short?: string; /** Icon only (a narrow slot): the label stays as the accessible name and the tooltip. */ iconOnly?: boolean; /** Registry id of the shortcut, when it has one (the tooltip shows it). */ key?: string }
 
 const T: Record<StripId, StripTool> = {
   media: { id: "media", icon: "media", label: "tool.media.label" },
@@ -20,7 +20,7 @@ const T: Record<StripId, StripTool> = {
   split: { id: "split", icon: "split", label: "timeline.split", short: "strip.split", key: "edit.split" },
   canvas: { id: "canvas", icon: "canvas", label: "strip.canvas" },
   edit: { id: "edit", icon: "edit", label: "tool.edit.label" },
-  back: { id: "back", icon: "chevronLeft", label: "strip.back" },
+  back: { id: "back", icon: "chevronLeft", label: "strip.back", iconOnly: true },
   speed: { id: "speed", icon: "speed", label: "timeline.speed" },
   crop: { id: "crop", icon: "crop", label: "timeline.crop" },
   duplicate: { id: "duplicate", icon: "duplicate", label: "timeline.duplicate", key: "edit.duplicate" },
@@ -29,8 +29,9 @@ const T: Record<StripId, StripTool> = {
   keyframe: { id: "keyframe", icon: "keyframe", label: "strip.keyframe", key: "clip.keyframeAtPlayhead" },
 };
 
-/** Nothing selected: the global tools. A clip selected: a way back, then the tools of that clip. Edit is in both (it is the Details sheet). */
+/** Nothing selected: the global tools. A clip selected: a compact way back, then the tools of that clip. Edit is in both (it is the Details sheet). */
 export function stripTools(sel: { count: number; linked: boolean; overlay: boolean }): StripTool[] {
   if (sel.count === 0) return [T.media, ...(sel.overlay ? [T.overlay] : []), T.split, T.canvas, T.edit];
-  return [T.back, T.edit, T.split, T.speed, T.crop, T.duplicate, T.delete, ...(sel.linked ? [T.detach] : []), T.keyframe];
+  // Most-used first (UX r15 PHONE-6): Split and Delete are in the first visible slots; Back is a compact chevron, not a full slot.
+  return [T.back, T.split, T.delete, T.speed, T.edit, T.crop, T.duplicate, ...(sel.linked ? [T.detach] : []), T.keyframe];
 }
