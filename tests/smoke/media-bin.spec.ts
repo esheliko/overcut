@@ -6,6 +6,9 @@ import { resolve } from "node:path";
 const FIX = resolve("crates/media/tests/fixtures");
 const file = (n: string) => resolve(FIX, n);
 
+// The bin opens as a grid of big posters (UX r14); these checks measure the compact list, so they open it there. The grid has its own steps in ux-r14-c.spec.ts.
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => localStorage.setItem("overcut.binView", "list")); });
+
 async function ready(page: Page) {
   await page.goto("/");
   await expect(page.getByTestId("engine")).toHaveAttribute("data-backend", "wasm", { timeout: 30_000 });

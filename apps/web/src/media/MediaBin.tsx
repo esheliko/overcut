@@ -7,6 +7,7 @@ import { formatBytes, formatDuration, iconForKind, offlineReason } from "./plan"
 import { ACCEPT, BIN_DRAG_TYPE, fromFileList, hasHandlePicker, pickWithHandles, type Source } from "./sources";
 import type { BinItem } from "./useMediaBin";
 import { useProjectStore } from "../store/projectStore";
+import "./media.css";
 
 type Props = {
   items: BinItem[];
@@ -49,7 +50,7 @@ export function useImportPicker(onImport: (s: Source[]) => void, testId = "media
   return { open, field };
 }
 
-function Card({ item, tags, onTimeline, onAdd, onAddOverlay, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onAddOverlay" | "onRemove" | "onRelink">) {
+function Card({ item, tags, onTimeline, uses, onAdd, onAddOverlay, onRemove, onRelink, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; uses: number; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onAddOverlay" | "onRemove" | "onRelink">) {
   const { t } = useI18n();
   const ready = item.status === "ready";
   // The duration is a badge on the poster; the meta line keeps what does not fit there (size first, so a narrow panel cuts the codec, never the size). The full line is the tooltip.
@@ -79,8 +80,7 @@ function Card({ item, tags, onTimeline, onAdd, onAddOverlay, onRemove, onRelink,
         {item.status === "probing" && <span role="status">{t("media.reading")}</span>}
         {ready && (
           <span className="bin-line">
-            {/* "On the timeline" is a check mark in the meta line (its words stay for screen readers and as the tooltip): one line less per card */}
-            {onTimeline && <span className="bin-on-timeline" data-testid="bin-on-timeline" title={t("media.onTimeline")}><Icon name="check" size={14} aria-hidden="true" /><span className="sr-only">{t("media.onTimeline")}</span></span>}
+            {onTimeline && <span className="bin-on-timeline" data-testid="bin-on-timeline" title={t("media.onTimeline")}><Icon name="check" size={12} strokeWidth={3} aria-hidden="true" /><span className="bin-on-label">{t("media.onTimeline")}{uses > 1 ? ` ×${uses}` : ""}</span></span>}
             <span className="bin-meta" title={tooltip}>{meta}</span>
           </span>
         )}
@@ -163,7 +163,17 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
   const { open, field } = useImportPicker(onImport);
   const project = useProjectStore((s) => s.project);
   /** Media already placed on a timeline: its card offers no "+" (adding it again only duplicates the clip). */
-  const onTimeline = useMemo(() => new Set((project?.sequences ?? []).flatMap((q) => q.tracks.flatMap((tr) => tr.clips.map((c) => c.media)))), [project]);
+  const uses = useMemo(() => {
+    // How many times each media is used: its picture clips (the sound that came with a video is not a second use); a sound-only media counts its audio clips.
+    const video = new Map<string, number>();
+    const audio = new Map<string, number>();
+    for (const q of project?.sequences ?? []) for (const tr of q.tracks) for (const c of tr.clips) { const m = tr.kind === "video" ? video : audio; m.set(c.media, (m.get(c.media) ?? 0) + 1); }
+    const m = new Map(audio);
+    for (const [id, n] of video) m.set(id, n);
+    return m;
+  }, [project]);
+  const [viewPref, setViewState] = useState<"list" | "grid">(() => { try { return localStorage.getItem("overcut.binView") === "list" ? "list" : "grid"; } catch { return "grid"; } });
+  const setView = (v: "list" | "grid") => { setViewState(v); try { localStorage.setItem("overcut.binView", v); } catch { /* private mode: the choice just is not remembered */ } };
   const [filter, setFilter] = useState<BinFilter>(DEFAULT_FILTER);
   const [editing, setEditing] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -172,9 +182,11 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
   const shown = viewBin(items, meta, { ...filter, tag: activeTag, query });
   const filtersOn = filter.kind !== DEFAULT_FILTER.kind || activeTag !== "" || filter.sort !== DEFAULT_FILTER.sort; // shown on the toggle, so a hidden filter is not forgotten
   const editItem = editing ? items.find((i) => i.id === editing) : undefined;
-  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onTimeline={onTimeline.has(i.id)} onAdd={onAdd} onAddOverlay={onAddOverlay} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
+  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onTimeline={uses.has(i.id)} uses={uses.get(i.id) ?? 0} onAdd={onAdd} onAddOverlay={onAddOverlay} onRemove={onRemove} onRelink={onRelink} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
   const pending = shown.filter((i) => !meta.has(i.id));
   const settled = shown.filter((i) => meta.has(i.id));
+  const long = settled.length > WINDOW_FROM; // a long bin is the windowed list (only the rows in view exist in the DOM); posters in a grid would all be rendered
+  const view = long ? "list" : viewPref;
   if (items.length === 0) {
     return (
       <>
@@ -183,12 +195,13 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
           <span className="drop-icon"><Icon name="upload" size={30} /></span>
           <strong>{t("media.import")}</strong>
           <span>{t(typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches ? "media.importHint.touch" : "media.importHint")}</span>
+          <span className="drop-formats" aria-label={t("media.formats")}>{["MP4", "MOV", "WebM", "MP3", "WAV", "JPG", "PNG"].map((f) => <span key={f}>{f}</span>)}</span>
         </button>
       </>
     );
   }
   return (
-    <div className="bin">
+    <div className="bin" data-view={view}>
       {field}
       {/* Import and Filter and sort share one row, so the media starts higher in the panel */}
       <div className="bin-bar">
@@ -208,6 +221,7 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
         <span>{t("media.filterSort")}</span>
         {filtersOn && <span className="bin-on" data-testid="bin-filter-on">{t("media.filterOn")}</span>}
       </button>
+      {!long && <button className="bin-view-btn" aria-pressed={view === "list"} aria-label={t("media.view.list")} title={t("media.view.list")} onClick={() => setView(view === "list" ? "grid" : "list")} data-testid="bin-view-toggle"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></svg></button>}
       </div>
       {filterOpen && (
         <div id="bin-filter-panel" className="bin-filters" role="group" aria-label={t("media.filterSort")} data-testid="bin-filter-panel">
@@ -234,10 +248,10 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
       <p className="bin-count" role="status" data-testid="bin-count" data-quiet={!query && !filtersOn}>{t("media.count", { shown: settled.length, total: meta.size })}</p>
       {shown.length === 0 ? <p className="bin-none">{query ? t("media.noMatch", { query }) : t("media.noFilterMatch")}</p> : (
         <>
-          {pending.length > 0 && <ul className="bin-list" aria-label={t("media.list")}>{pending.map(card)}</ul>}
-          {settled.length > WINDOW_FROM
+          {pending.length > 0 && <ul className="bin-list" data-view={view} aria-label={t("media.list")}>{pending.map(card)}</ul>}
+          {long
             ? <Windowed items={settled} render={card} />
-            : settled.length > 0 && <ul className="bin-list" aria-label={t("media.list")}>{settled.map(card)}</ul>}
+            : settled.length > 0 && <ul className="bin-list" data-view={view} aria-label={t("media.list")}>{settled.map(card)}</ul>}
         </>
       )}
       {editItem && meta.has(editItem.id) && <TagsDialog item={editItem} tags={meta.get(editItem.id)!.tags} onTags={onTags} onClose={() => setEditing(null)} />}

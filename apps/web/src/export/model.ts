@@ -108,6 +108,24 @@ export function presetChoice(id: PresetId, src: Source): Choice {
   return { ...size, fps, format: "auto", quality: "high", ...(p.capBytes ? { capBytes: p.capBytes } : null) };
 }
 
+/** What a preset writes, as one comparable string: two presets with the same key give the same file for this project. */
+const presetKey = (c: Choice): string => [c.width, c.height, c.fps ?? "same", c.format, c.quality, c.capBytes ?? "nocap"].join("|");
+
+/**
+ * Presets that would give the same file for this project are one choice: the first of each group (in `ids` order) is shown, the others are listed
+ * under it (`same`). A 720p project exported as "YouTube 1080p" is just "Original" with another name, so offering both made the choice look real when it was not.
+ */
+export function mergePresets(ids: readonly PresetId[], src: Source): { id: PresetId; same: PresetId[] }[] {
+  const out: { id: PresetId; same: PresetId[]; key: string }[] = [];
+  for (const id of ids) {
+    const key = presetKey(presetChoice(id, src));
+    const hit = out.find((g) => g.key === key);
+    if (hit) hit.same.push(id);
+    else out.push({ id, same: [], key });
+  }
+  return out.map(({ id, same }) => ({ id, same }));
+}
+
 /** The same choice without a platform's size cap (any manual change makes it a custom choice). */
 export function withoutCap(c: Choice): Choice {
   const out = { ...c };

@@ -13,6 +13,10 @@ Source of truth: `apps/web/src/theme/tokens.css` (colours, type, radius, elevati
 - **Menus**: 44 px rows on touch, 32 px with a mouse (`pointer: fine`); shortcut keycaps right-aligned, hidden without a keyboard.
 - **Notices**: toast, saved-work notes and refusals share one surface and a status icon.
 
+- **Values** (Details panel, r14): a numeric property is a slider plus a scrubbable number with its unit and keyframe diamond; related values sit in collapsible sections with sticky headers and a per-section reset. A slider drag or key press is one undo step. On touch each value is one 44 px row.
+- **Media cards**: grid (16:9 poster, name under) or list, chosen with one toggle and remembered; "On the timeline" is a pill with a use count.
+- **Export**: tiles that give the same file for the project are merged and named on one tile; the dialog shows the output's frame, with the size and length prominent.
+
 ## Edge cases
 - Disabled controls are 0.5 opacity (icon buttons are pinned at 3:1 by the contrast test).
 - Canvas text uses `Inter`; `redrawWhenFontsLoad()` repaints the canvases once the faces are in.
