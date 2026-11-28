@@ -572,6 +572,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       switch (cmd.c) {
         case "clear": if (l.tool !== "select") { l.onCommand?.({ c: "tool", tool: "select" }); break; } if (l.selected.size) { setSelection(new Set()); l.onAnnounce?.({ key: "timeline.say.cleared" }); } break;
         case "selectAll": setSelection(new Set(l.scene.id)); l.onAnnounce?.({ key: "timeline.say.selectedCount", values: { count: l.scene.clipCount } }); break;
+        case "focus": canvas.current?.focus(); break;
         case "markerEdit": {
           const m = l.scene.markers.find((x) => x.ticks === Math.round((fr.current / l.fps) * TICKS_PER_SECOND));
           if (m) l.onMarkerMenu?.(m.id, markerRect(m.id)); else l.onNotice?.({ key: "timeline.say.marker.none" });
@@ -626,6 +627,20 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
   };
   const execRef = useRef(exec);
   execRef.current = exec;
+  // The editor keys work wherever focus is (UX r15 DESK-4), not only with the canvas focused: a click on the preview, the bin or empty space must not turn + - 0 Ctrl+A Enter Esc [ ] and the
+  // arrows into silent keys. Controls that own a key (text fields, sliders, menus, dialogs, tabs, a button's Enter) keep it. 
+  useEffect(() => {
+    const on = (e: globalThis.KeyboardEvent) => {
+      if (e.defaultPrevented || e.target === canvas.current || isModifierKey(e.key)) return;
+      const el = e.target instanceof Element ? e.target : null;
+      if (el && el.closest("input:not([type=range]), select, textarea, [contenteditable=true], [role=slider], input[type=range], [role=menu], [role=menuitem], [role=listbox], [role=option], [role=tab], [role=dialog], [role=spinbutton], dialog, a, summary")) return;
+      if (el && (e.key === "Enter" || e.key === " ") && el.closest("button, [role=button]")) return;
+      const cmd = canvasCommand(e, live.current.selected.size > 0);
+      if (cmd) { e.preventDefault(); execRef.current(cmd); }
+    };
+    document.addEventListener("keydown", on); // document, bubble phase: after the elements' own handlers, before the window-level shortcut listeners
+    return () => document.removeEventListener("keydown", on);
+  }, []);
   useEffect(() => {
     const on = (e: Event) => execRef.current((e as CustomEvent<Command>).detail);
     window.addEventListener(COMMAND_EVENT, on);

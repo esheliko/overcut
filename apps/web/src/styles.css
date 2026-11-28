@@ -850,3 +850,9 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .tool-strip .tool:disabled { opacity: 0.4; }
 .tool-strip[data-mode="clip"] .tool:first-child { color: var(--fg); border-inline-end: 1px solid var(--line); border-radius: 0; margin-inline-end: 4px; }
 .tool-strip .tool:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: -2px; }
+
+/* UX r15 lane A: toolbar and menus */
+.tb-text { margin-inline-start: 6px; font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
+.tb-btn:has(> .tb-text) { width: auto; padding-inline: 10px; }
+@media (max-width: 1100px) { .tl-bar .tb-text { display: none; } .tl-bar .tb-btn:has(> .tb-text) { width: var(--target, 44px); padding-inline: 0; } }
+@media (hover: hover) { .menu-reason { display: none; } } /* a mouse gets the reason as the row's tooltip; a touch screen has no hover, so the line stays */

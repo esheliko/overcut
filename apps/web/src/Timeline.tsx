@@ -3,12 +3,14 @@ import type { Engine, Op, Project } from "@app/engine-client";
 import { importedMediaHost } from "./media/engine-host";
 import { FakeMediaHost, routeMedia } from "./media/host";
 import { MediaLayer } from "./timeline/media-layer";
+import { useImportPicker } from "./media/MediaBin";
+import type { Source } from "./media/sources";
 import { announce } from "./a11y/announcer";
 import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
-import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, unlinkOps } from "./timeline/edit";
+import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, linkOps, unlinkOps } from "./timeline/edit";
 import { closeGapOps, magneticTrimOps, onMagnetic, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { clipboardState } from "./commands/availability";
 import { COMMAND_EVENT, EXPORT_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
@@ -64,6 +66,8 @@ type Props = {
   onDropMedia?: (id: string, tick: number, track?: string) => void;
   /** "Add media at playhead" / "Add as overlay on a new track" (the palette, the More menu): the app picks the media (the bin's concern) and puts it at `tick`. */
   onAddMedia?: (overlay: boolean, tick: number) => void;
+  /** Files picked with the timeline's own "Import media" (Ctrl/Cmd+I, the palette, the + in the track column): the app imports them like any other pick. */
+  onImport?: (s: Source[]) => void;
 };
 
 const typing = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, select, textarea, [contenteditable=true]");
@@ -72,14 +76,13 @@ const KEYS = { rippleDel: "Shift+Del", closeGap: "Ctrl+Del", undo: "Ctrl+Z", red
 /** The history step name (lower case, "Undo <name>") for an edit, from the message that announces it. */
 const LABELS: Record<string, string> = { "timeline.say.split": "timeline.label.split", "timeline.say.deleted": "timeline.label.deleted", "timeline.say.moved": "timeline.label.moved",
   "timeline.say.nudged": "timeline.label.nudged", "timeline.say.trimmed": "timeline.label.trimmed", "timeline.say.duplicated": "timeline.label.duplicated",
-  "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed",
+  "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.linked": "timeline.label.linked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed",
   "timeline.say.laneMoved": "timeline.label.laneMoved",  "timeline.say.rippled": "timeline.label.rippled", "timeline.say.rolled": "timeline.label.rolled", "timeline.say.slipped": "timeline.label.slipped", "timeline.say.slid": "timeline.label.slid",
   "timeline.say.rippleDeleted": "timeline.label.rippleDeleted", "timeline.say.gapClosed": "timeline.label.gapClosed",
   "timeline.say.track.added": "timeline.label.track.added", "timeline.say.track.removed": "timeline.label.track.removed", "timeline.say.track.moved": "timeline.label.track.edited", "timeline.say.track.renamed": "timeline.label.track.edited",
   ...Object.fromEntries(TRACK_SAY_KEYS.map((k) => [k, "timeline.label.track.edited"])) };
 /** The first key of a registry command as shown to the user ("" when it has none). */
 const keyHint = (id: string): string => { const k = currentKeymap().get(id)?.[0]; return k ? chordLabel(k) : ""; };
-const tip = (label: string, keys: string) => label + " (" + keys + ")";
 const DONE = { undo: ["timeline.say.undo", "timeline.say.nothing.undo"], redo: ["timeline.say.redo", "timeline.say.nothing.redo"] } as const;
 const TOOL_ICON: Record<Tool, IconName> = { select: "toolSelect", ripple: "toolRipple", roll: "toolRoll", slip: "toolSlip", slide: "toolSlide" };
 const say = (key: string, values?: Say["values"]): Say => ({ key, values });
@@ -87,7 +90,9 @@ const say = (key: string, values?: Say["values"]): Say => ({ key, values });
 const HistoryDialog = lazy(() => import("./timeline/EditDialogs").then((m) => ({ default: m.HistoryDialog })));
 const TimingDialog = lazy(() => import("./timeline/EditDialogs").then((m) => ({ default: m.TimingDialog })));
 
-export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf, readyIds = "", onDropMedia, onAddMedia }: Props) {
+const NOOP_IMPORT = (): void => undefined;
+
+export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END_FRAME, engine, fileOf, readyIds = "", onDropMedia, onAddMedia, onImport }: Props) {
   const { t } = useI18n();
   // The sample project uses synthetic media; imported files are decoded by the engine from the bin's files (placeholders while extracting or offline).
   const fileOfRef = useRef(fileOf);
@@ -212,6 +217,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       .then(() => { const span = clipSpan(store.getState().project, target.clip.id); if (span) announce(t("speed.announce", { speed: formatSpeed(x), ...span })); })
       .catch(() => onNotice(t("speed.failed")));
   }, [store, onNotice, t]);
+  const { open: openPicker, field: pickerField } = useImportPicker(onImport ?? NOOP_IMPORT, "timeline-media-input");
   const run = useCallback((cmd: Command) => {
     const { scene: sc, selected: sel } = live.current;
     const f = store.getState().playhead;
@@ -379,6 +385,24 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
         commit(plan.ops, plan.say);
         break;
       }
+      case "link": {
+        const r = linkOps(sc, mine, newClipId());
+        if (r.ops.length === 0) { const m = say(r.why === "linked" ? "timeline.say.alreadyLinked" : "timeline.say.linkNeeds"); speak(m); onNotice(t(m.key)); break; }
+        commit(r.ops, say("timeline.say.linked", { count: r.ops.length }));
+        break;
+      }
+      case "addTrack": {
+        const r = addTrack(sc, cmd.kind, newClipId());
+        commit(r.ops, r.say);
+        break;
+      }
+      case "toggle": {
+        const on = cmd.what === "snap" ? !snapStore.get() : !magneticStore.get();
+        (cmd.what === "snap" ? snapStore : magneticStore).set(on);
+        const m = say(cmd.what === "snap" ? (on ? "timeline.say.snap.on" : "timeline.say.snap.off") : on ? "timeline.say.magnetic.on" : "timeline.say.magnetic.off"); speak(m); onNotice(t(m.key));
+        break;
+      }
+      case "import": openPicker(); break;
       case "unlink": {
         const ops = unlinkOps(sc, mine);
         if (ops.length === 0) break;
@@ -387,7 +411,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       }
       default: break;
     }
-  }, [speak, commit, undoRedo, onNotice, t, setSelected, store, onAddMedia, setSpeed]);
+  }, [speak, commit, undoRedo, onNotice, t, setSelected, store, onAddMedia, setSpeed, openPicker]);
 
   const trackAction = useCallback((a: TrackAction) => {
     const sc = live.current.scene;
@@ -439,26 +463,28 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
   const oneRep = groupReps(scene, oneIdx); // a linked picture and sound are one clip to the timing dialog (its edit is mirrored onto the partner)
   const oneClip = oneRep.length === 1 && !scene.trackLocked[scene.clipTrack[oneRep[0]!]!] ? oneRep : null;
   const anyLinked = oneIdx.some((i) => scene.link[i]);
+  const canLink = !none && linkOps(scene, editable(scene, oneIdx), "x").ops.length > 0; // a picture and a sound, not yet one group
+  const showUnlink = anyLinked && !canLink;
   // A linked sound is selected with its picture: one click is one clip, so the count is clips, and "+ linked audio" says what came along.
   const clipCount = groupReps(scene, oneIdx).length;
   const withLinked = oneIdx.length > clipCount;
   useEffect(() => { if (dialog === "timing" && !oneClip) setDialog(null); }, [dialog, oneClip]);
   return (
     <section className="timeline" aria-label={t("timeline.label")} data-testid="panel-timeline">
+      {onImport && pickerField}
       <div className="tl-bar" data-testid="tl-bar">
         <div className="tl-group" role="toolbar" aria-label={t("timeline.edit")}>
           <ToolButton icon="undo" label={undoText} keys={KEYS.undo} disabled={off || !proj.canUndo} onClick={() => run({ c: "undo" })} />
           <ToolButton icon="redo" label={redoText} keys={KEYS.redo} disabled={off || !proj.canRedo} onClick={() => run({ c: "redo" })} />
           <span className="sep" aria-hidden="true" />
-          <ToolButton icon="split" label={t("timeline.split")} keys={KEYS.split} disabled={off} className="tl-op" onClick={() => run({ c: "split" })} />
+          <ToolButton icon="split" label={t("timeline.split")} text={t("timeline.split.short")} keys={KEYS.split} disabled={off} className="tl-op tl-split" testid="tl-split" onClick={() => run({ c: "split" })} />
           <ToolButton icon="trash" label={t("timeline.delete")} keys={KEYS.del} reason={t("timeline.why.select")} disabled={off || none} className="tl-op" onClick={() => run({ c: "delete" })} />
-          <ToolButton icon="rippleDelete" label={t("timeline.rippleDelete")} keys={KEYS.rippleDel} reason={t("timeline.why.select")} disabled={off || none} className="tl-op" testid="tl-ripple-delete" onClick={() => run({ c: "rippleDelete" })} />
           <ToolButton icon="duplicate" label={t("timeline.duplicate")} keys={KEYS.dup} reason={t("timeline.why.select")} disabled={off || none} className="tl-op" testid="tl-duplicate-btn" onClick={() => run({ c: "duplicate" })} />
           <span className="sep tl-op" aria-hidden="true" />
           <ToolButton icon="speed" label={t("timeline.speed")} reason={speedWhy} disabled={off || !!speedWhy} className="tl-op" testid="tl-speed" menu={{ open: menuOpen === "speed" }} onClick={(e) => openBar("speed", e.currentTarget)} />
-          <ToolButton icon="crop" label={t("timeline.crop")} reason={t("timeline.why.select")} disabled={off || none} className="tl-op" testid="tl-crop" onClick={() => requestDetails({ tab: "video", focus: "crop" })} />
-          <ToolButton icon="unlink" label={t("timeline.unlink")} reason={t("timeline.why.linked")} disabled={off || !anyLinked} className="tl-op" testid="tl-unlink-btn" onClick={() => run({ c: "unlink" })} />
-          {onAddMedia && <ToolButton icon="overlay" label={t("timeline.addMedia.overlay")} disabled={off} className="tl-op" testid="tl-overlay-btn" onClick={() => run({ c: "addMedia", overlay: true })} />}
+          {showUnlink
+            ? <ToolButton icon="unlink" label={t("timeline.unlink")} keys={keyHint("edit.link")} disabled={off} className="tl-op" testid="tl-unlink-btn" onClick={() => run({ c: "unlink" })} />
+            : <ToolButton icon="link" label={t("timeline.link")} keys={keyHint("edit.link")} reason={none ? t("timeline.why.select") : t("timeline.why.link")} disabled={off || !canLink} className="tl-op" testid="tl-link-btn" onClick={() => run({ c: "link" })} />}
           <span className="sep tl-op" aria-hidden="true" />
           <ToolButton icon={TOOL_ICON[tool]} label={t("timeline.tool.current", { tool: t(`timeline.tool.${tool}`) })} keys={keyHint(`tool.${tool}`)} pressed={tool !== "select" ? true : undefined} dataTool={tool} testid="tl-tool" menu={{ open: menuOpen === "tool" }} onClick={(e) => openBar("tool", e.currentTarget)} />
           <button className="tl-pick" aria-haspopup="menu" aria-expanded={menuOpen === "more"} data-testid="tl-more" title={t("timeline.more")} onClick={(e) => openBar("more", e.currentTarget)}>
@@ -479,33 +505,34 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           ]
           : menuOpen === "tool" ? TOOLS.map((k) => ({ id: k, label: t(`timeline.tool.${k}`), sub: t(`timeline.tool.${k}.sub`), hint: keyHint(`tool.${k}`), checked: tool === k, testid: `tl-tool-${k}`, onSelect: () => run({ c: "tool", tool: k }) }))
           : [
-            { id: "duplicate", section: t("timeline.more.clip"), label: t("timeline.duplicate"), hint: KEYS.dup, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-duplicate", onSelect: () => run({ c: "duplicate" }) },
-            { id: "copy", label: t("timeline.copy"), hint: KEYS.copy, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-copy", onSelect: () => run({ c: "copy" }) },
+            { id: "copy", section: t("timeline.more.clip"), label: t("timeline.copy"), hint: KEYS.copy, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-copy", onSelect: () => run({ c: "copy" }) },
             { id: "cut", label: t("timeline.cut"), hint: KEYS.cut, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-cut", onSelect: () => run({ c: "cut" }) },
             { id: "paste", label: t("timeline.paste"), hint: KEYS.paste, disabled: off || held.length === 0, reason: t("timeline.why.copied"), testid: "tl-paste", onSelect: () => run({ c: "paste" }) },
-            { id: "unlink", label: t("timeline.unlink"), disabled: off || !anyLinked, reason: t("timeline.why.linked"), testid: "tl-unlink", onSelect: () => run({ c: "unlink" }) },
             { id: "rdel", label: t("timeline.rippleDelete"), hint: KEYS.rippleDel, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-ripple-delete-menu", onSelect: () => run({ c: "rippleDelete" }) },
             { id: "gap", label: t("timeline.closeGap"), hint: KEYS.closeGap, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-close-gap", onSelect: () => run({ c: "closeGap" }) },
             { id: "timing", label: t("timeline.timing"), disabled: off || !oneClip, reason: t("timeline.why.one"), testid: "tl-timing", onSelect: () => setDialog("timing") },
-            { id: "history", disabled: off, label: t("timeline.history"), testid: "tl-history", onSelect: () => setDialog("history") },
-            ...(onAddMedia ? [
-              { id: "addm", section: t("timeline.more.media"), disabled: off, label: t("timeline.addMedia.atPlayhead"), testid: "tl-add-media", onSelect: () => run({ c: "addMedia", overlay: false }) },
-              { id: "addo", disabled: off, label: t("timeline.addMedia.overlay"), testid: "tl-add-overlay", onSelect: () => run({ c: "addMedia", overlay: true }) },
-            ] : []),
+            { id: "crop", label: t("timeline.crop"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-crop", onSelect: () => requestDetails({ tab: "video", focus: "crop" }) },
+            showUnlink
+              ? { id: "unlink", label: t("timeline.unlink"), hint: keyHint("edit.link"), disabled: off, testid: "tl-unlink", onSelect: () => run({ c: "unlink" }) }
+              : { id: "link", label: t("timeline.link"), hint: keyHint("edit.link"), disabled: off || !canLink, reason: none ? t("timeline.why.select") : t("timeline.why.link"), testid: "tl-link", onSelect: () => run({ c: "link" }) },
             { id: "addv", section: t("timeline.more.tracks"), disabled: off, label: t("timeline.track.addVideo"), testid: "track-add-video", onSelect: () => trackAction({ a: "add", kind: "video" }) },
             { id: "adda", disabled: off, label: t("timeline.track.addAudio"), testid: "track-add-audio", onSelect: () => trackAction({ a: "add", kind: "audio" }) },
             { id: "topts", label: t("timeline.track.optionsButton"), disabled: off || oneIdx.length === 0, reason: t("timeline.why.select"), testid: "tl-track-options", onSelect: () => openMenu({ kind: "track", track: scene.clipTrack[oneIdx[0]!]! }, bar!) },
-            { id: "mark", section: t("timeline.more.markers"), disabled: off, label: t("timeline.marker.add"), hint: keyHint("marker.add"), testid: "tl-marker-add", onSelect: () => run({ c: "marker" }) },
-            { id: "medit", label: t("timeline.marker.edit"), disabled: off || !scene.markers.some((m) => m.ticks === Math.round((store.getState().playhead * TICKS_PER_SECOND) / FPS)), reason: t("timeline.why.marker"), testid: "tl-marker-edit", onSelect: () => run({ c: "markerEdit" }) },
-            { id: "rin", label: t("timeline.range.in"), disabled: off, hint: keyHint("range.in"), testid: "tl-range-in", onSelect: () => run({ c: "range", what: "in" }) },
+            ...(onImport ? [{ id: "import", disabled: off, label: t("cmd.media.import"), hint: keyHint("media.import"), testid: "tl-import", onSelect: () => run({ c: "import" }) }] : []),
+            ...(onAddMedia ? [
+              { id: "addm", disabled: off, label: t("timeline.addMedia.atPlayhead"), testid: "tl-add-media", onSelect: () => run({ c: "addMedia", overlay: false }) },
+              { id: "addo", disabled: off, label: t("timeline.addMedia.overlay"), testid: "tl-add-overlay", onSelect: () => run({ c: "addMedia", overlay: true }) },
+            ] : []),
+            { id: "rin", section: t("timeline.more.markers"), label: t("timeline.range.in"), disabled: off, hint: keyHint("range.in"), testid: "tl-range-in", onSelect: () => run({ c: "range", what: "in" }) },
             { id: "rout", label: t("timeline.range.out"), disabled: off, hint: keyHint("range.out"), testid: "tl-range-out", onSelect: () => run({ c: "range", what: "out" }) },
             { id: "rplay", label: t("timeline.range.play"), disabled: off || scene.clipCount === 0, reason: t("timeline.why.clips"), hint: keyHint("range.play"), testid: "tl-range-play", onSelect: () => run({ c: "range", what: "play" }) },
             { id: "rloop", label: t("timeline.range.loop"), disabled: off || !scene.range, reason: t("timeline.why.range"), testid: "tl-range-loop", onSelect: () => run({ c: "range", what: "loop" }) },
             { id: "rclear", label: t("timeline.range.clear"), disabled: off || !scene.range, reason: t("timeline.why.range"), hint: keyHint("range.clear"), testid: "tl-range-clear", onSelect: () => run({ c: "range", what: "clear" }) },
-            { id: "zin", section: t("timeline.more.view"), label: t("timeline.zoomIn"), onSelect: () => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user") },
-            { id: "zout", label: t("timeline.zoomOut"), onSelect: () => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user") },
+            { id: "mark", label: t("timeline.marker.add"), disabled: off, hint: keyHint("marker.add"), testid: "tl-marker-add", onSelect: () => run({ c: "marker" }) },
+            { id: "medit", label: t("timeline.marker.edit"), disabled: off || !scene.markers.some((m) => m.ticks === Math.round((store.getState().playhead * TICKS_PER_SECOND) / FPS)), reason: t("timeline.why.marker"), testid: "tl-marker-edit", onSelect: () => run({ c: "markerEdit" }) },
+            { id: "zsel", section: t("timeline.more.view"), label: t("timeline.zoomSelection"), hint: keyHint("view.zoomSelection"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-zoom-selection", onSelect: () => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { c: "zoom", how: "selection" } })) },
             { id: "fit", label: t("timeline.fit"), hint: "0", testid: "tl-fit-menu", onSelect: fit },
-            { id: "zsel", label: t("timeline.zoomSelection"), hint: keyHint("view.zoomSelection"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-zoom-selection", onSelect: () => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { c: "zoom", how: "selection" } })) },
+            { id: "history", disabled: off, label: t("timeline.history"), testid: "tl-history", onSelect: () => setDialog("history") },
           ]} />}
       {dialog === "history" && <Suspense fallback={null}><HistoryDialog onClose={closeDialog} onJumped={(what) => { speak(say("history.jumped", { what })); onNotice(t("history.jumped", { what })); }} /></Suspense>}
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
@@ -536,12 +563,12 @@ const ZoomBar = memo(function ZoomBar({ onFit }: { onFit: () => void }) {
   const { t } = useI18n();
   const zoom = useSyncExternalStore(zoomStore.subscribe, zoomStore.get, zoomStore.get);
   return (
-    <label className="zoom">
-      <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomOut")} title={tip(t("timeline.zoomOut"), "-")} onClick={() => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user")}><Icon name="minus" size={18} /></button>
+    <div className="zoom" role="group" aria-label={t("timeline.zoom")}>
+      <ToolButton icon="minus" size={18} label={t("timeline.zoomOut")} keys="-" className="tl-wide" onClick={() => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user")} />
       <input type="range" min={0} max={1} step={0.005} value={ppsToSlider(zoom)} onChange={(e) => zoomStore.set(sliderToPps(Number(e.target.value)), "user")} aria-label={t("timeline.zoom")} />
-      <button type="button" className="icon-btn tl-wide" aria-label={t("timeline.zoomIn")} title={tip(t("timeline.zoomIn"), "+")} onClick={() => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user")}><Icon name="plus" size={18} /></button>
-      <button type="button" className="icon-btn tl-fit" aria-label={t("timeline.fit")} title={tip(t("timeline.fit"), "0")} data-testid="tl-fit" onClick={onFit}><Icon name="fit" size={18} /></button>
-    </label>
+      <ToolButton icon="plus" size={18} label={t("timeline.zoomIn")} keys="+" className="tl-wide" onClick={() => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user")} />
+      <ToolButton icon="fit" size={18} label={t("timeline.fit")} keys="0" className="tl-fit" testid="tl-fit" onClick={onFit} />
+    </div>
   );
 });
 

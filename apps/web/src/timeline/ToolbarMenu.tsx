@@ -75,9 +75,9 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
           <div key={it.id} role="none">
             {head}
             <button className="menu-row" role={radio ? "menuitemradio" : "menuitem"} aria-checked={radio ? !!it.checked : undefined} aria-disabled={it.disabled || undefined}
-              data-testid={it.testid} onClick={() => { if (it.disabled) return; it.onSelect(); onClose(); back(); }}>
+              title={why} data-testid={it.testid} onClick={() => { if (it.disabled) return; it.onSelect(); onClose(); back(); }}>
               {radio && <span className="menu-check" aria-hidden="true">{it.checked && <Icon name="check" size={16} />}</span>}
-              <span className="menu-label">{it.label}{why ? <small className="menu-why">{why}</small> : it.sub && <small className="menu-why">{it.sub}</small>}</span>
+              <span className="menu-label">{it.label}{why ? <small className="menu-why menu-reason">{why}</small> : it.sub && <small className="menu-why">{it.sub}</small>}</span>
               {it.hint && <kbd className="menu-hint">{it.hint}</kbd>}
             </button>
           </div>

@@ -7,7 +7,9 @@
 /** What a command does. Timeline commands carry the payload the timeline already understood before the registry existed. */
 export type Command =
   | { c: "palette" }
-  | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" } | { c: "unlink" }
+  | { c: "undo" } | { c: "redo" } | { c: "split" } | { c: "delete" } | { c: "selectAll" } | { c: "clear" } | { c: "pick" } | { c: "copy" } | { c: "cut" } | { c: "paste" } | { c: "duplicate" } | { c: "unlink" } | { c: "link" }
+  /** Add an empty video or audio track (UX r15); switch snapping or the magnetic main track on or off; open the file picker; put keyboard focus on the timeline. */
+  | { c: "addTrack"; kind: "video" | "audio" } | { c: "toggle"; what: "snap" | "magnetic" } | { c: "import" } | { c: "focus" }
   /** Ripple delete (pull the rest of the track in) and close the empty gap before the selection. */
   | { c: "rippleDelete" } | { c: "closeGap" }
   /** Pick the edit tool (the toolbar's), or edit the selection by whole frames: slip the source window, slide between neighbours, roll its end cut. */
@@ -81,6 +83,14 @@ export const COMMANDS: readonly CommandDef[] = [
   D("edit.duplicate", "global", ["Mod+D"], { c: "duplicate" }),
   /** No default key on m2 (a button in the timeline toolbar); registered so the palette and the remap list can reach it. */
   D("edit.unlink", "global", [], { c: "unlink" }),
+  /** Select a picture clip and a sound clip, then link them so they move, trim and delete together (UX r15). */
+  D("edit.link", "global", ["Mod+L"], { c: "link" }),
+  D("track.addVideo", "global", [], { c: "addTrack", kind: "video" }),
+  D("track.addAudio", "global", [], { c: "addTrack", kind: "audio" }),
+  D("view.snap", "global", ["Alt+S"], { c: "toggle", what: "snap" }),
+  D("view.magnetic", "global", ["Alt+G"], { c: "toggle", what: "magnetic" }),
+  D("media.import", "global", ["Mod+I"], { c: "import" }),
+  D("view.focusTimeline", "global", ["Alt+T"], { c: "focus" }),
   D("edit.split", "global", ["S"], { c: "split" }),
   D("edit.delete", "global", ["Delete", "Backspace"], { c: "delete" }),
 
