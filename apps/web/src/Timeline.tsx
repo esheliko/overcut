@@ -198,9 +198,8 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     zoomedFor.current = projectId;
     const saved = loadZoom(projectId);
     if (saved !== null) zoomStore.set(saved, "user");
-    else if (scene.clipCount > 0) fitTo("fit");
-    else zoomStore.set(40, "fit");
-  }, [projectId, scene.clipCount, fitTo]);
+    else zoomStore.set(40, "fit"); // never zoomed by hand: the default zoom (the existing auto-fit still widens it when clips outgrow the view)
+  }, [projectId]);
   useEffect(() => {
     if (projectId === null) return;
     let timer = 0;

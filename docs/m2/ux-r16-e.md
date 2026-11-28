@@ -14,7 +14,7 @@ Evidence: the round-16 audit reports (`desk`, `phone`, `first`). Behaviour: `doc
 | PHONE-5, r15 PHONE-13: back to the playhead | No way back after zooming or scrolling away. | A chip with an arrow at the edge the playhead is beyond; a tap centres it (no zoom change). Phone and desktop (`r16-e-chip-phone.png`, `r16-e-chip-desktop.png`). |
 | PHONE-10, r15 PHONE-17: press feedback | A touch on a clip showed nothing until the pick-up at 380 ms. | The clip lights up (wash and accent keyline) in the frame of the press; on touch a ring above the fingertip fills over the 380 ms pick-up, then the lifted ghost and the haptic tick follow. |
 | PHONE-9, r15 PHONE-20: frame step on hold | One step per click; holding moved 1 frame in 1.2 s. | Press steps once; held for 400 ms it repeats every 160 ms, accelerating to 33 ms, then steps of 2 and 4 frames. Touch and mouse. A keyboard activation steps once. |
-| PHONE-17: zoom after a reload | The zoom store is global and starts at 40 px/s: a reloaded project opened at 40 px/s. | A project opens fitted, or at the zoom set by hand in it (saved per project id 400 ms after a change, forgotten by Fit; blocked storage means fitted). |
+| PHONE-17: zoom after a reload | The zoom store is global and starts at 40 px/s: a reloaded project opened at 40 px/s. | A project opens at the default zoom (auto-fit still applies), or at the zoom set by hand in it (saved per project id 400 ms after a change, forgotten by Fit; blocked storage means the default zoom). |
 | Lane C note: short timeline with the Edit sheet open | With the phone sheet open the canvas can be ~120 px tall and the selected lane scrolled out of sight. | When the canvas gets shorter, the first selected clip's lane is scrolled into view. |
 
 ## Cost

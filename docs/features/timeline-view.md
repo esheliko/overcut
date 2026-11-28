@@ -94,6 +94,6 @@ Unit (`tests/unit/timeline-edit.test.ts`): snapping, move room, op order, track 
 - **Trim edge frame** (`trimPreview.ts`, `PreviewPanel.tsx`): while an edge is dragged the preview shows the frame under it (first frame for a start edge, last frame for an end edge, clamped to the clip as it is until the trim is committed), at most one seek per animation frame; the playhead does not move, and on release the preview returns to it.
 - **Back to the playhead**: when the playhead is out of view a chip (`.tl-ph-chip`, left or right by side, arrow) appears; a tap centres the playhead (no zoom change).
 - **Press feedback**: the clip under a pointer is lit (wash and accent keyline) in the frame of the press; on touch a ring above the fingertip fills over the 380 ms pick-up time (`PICKUP_MS`), then the lifted ghost and a haptic tick take over.
-- **Zoom after a reload**: a project opens fitted, or at the zoom set by hand in it (`localStorage` `overcut.zoom.<project id>`, written 400 ms after a change, removed by Fit). Blocked storage means fitted.
+- **Zoom after a reload**: a project opens at the default zoom (the existing auto-fit still widens it when clips outgrow the view), or at the zoom set by hand in it (`localStorage` `overcut.zoom.<project id>`, written 400 ms after a change, removed by Fit). Blocked storage means the default zoom.
 - **Short timeline** (phone Edit sheet): when the canvas gets shorter the first selected clip's lane is scrolled into view.
 
