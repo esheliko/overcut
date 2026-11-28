@@ -308,6 +308,15 @@
       "ripple": true
     },
     {
+      "op": "set_clip_audio",
+      "clip": "00000000000000000000000000000010",
+      "audio": {
+        "volume": 0.5,
+        "fade_in": 7056000,
+        "fade_out": 14112000
+      }
+    },
+    {
       "op": "add_marker",
       "sequence": "00000000000000000000000000000002",
       "marker": {

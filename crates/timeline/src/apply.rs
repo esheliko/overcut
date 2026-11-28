@@ -2,7 +2,7 @@
 
 use crate::op::{Inverse, Op};
 use app_model::{
-    Clip, ClipId, MediaId, MediaKind, Project, Rational, Time, Track, TrackId, TrackKind,
+    Clip, ClipAudio, ClipId, MediaId, MediaKind, Project, Rational, Time, Track, TrackId, TrackKind,
 };
 use std::fmt;
 
@@ -26,6 +26,8 @@ pub enum OpError {
     BadTransform,
     /// `DeleteKeyframe` / `MoveKeyframe` / `SetEasing` at a time that holds no key.
     NoKeyframe,
+    /// `SetClipAudio` with a volume outside `0..=2`, or a negative or non-finite value.
+    BadAudio,
     /// `MoveKeyframe` onto a time that already holds another key.
     KeyframeOccupied,
     /// The id of a new clip is already used by something in the document.
@@ -168,6 +170,9 @@ fn check_clip(p: &Project, track: &Track, c: &Clip) -> Result<(), OpError> {
     }
     c.end().ok_or(OpError::OutOfRange)?;
     c.transform.validate().map_err(|_| OpError::BadTransform)?;
+    if !c.audio.is_in_range() {
+        return Err(OpError::BadAudio);
+    }
     if let Some(len) = media.duration {
         let end_in_source = add(c.source_in, scaled(c.duration, c.speed)?)?;
         if end_in_source > len {
@@ -720,6 +725,16 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 transform: old,
             }]))
         }
+        Op::SetClipAudio { clip, audio } => {
+            let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;
+            unlocked(&p.sequences[loc.seq].tracks[loc.track])?;
+            let t = track_mut(p, loc.seq, loc.track);
+            if !audio.is_in_range() {
+                return Err(OpError::BadAudio);
+            }
+            let old = std::mem::replace(&mut t.clips[loc.clip].audio, audio);
+            Ok(Inverse(vec![Op::SetClipAudio { clip, audio: old }]))
+        }
         Op::SetKeyframe { clip, prop, key } => {
             let (loc, mut x) = key_target(p, clip, key.t)?;
             let old = x
@@ -837,13 +852,27 @@ pub fn apply(p: &mut Project, op: Op) -> Result<Inverse, OpError> {
                 speed: c.speed,
                 link: c.link.and(new_link),
                 transform: Box::new(c.transform.split_right(left_len)),
+                // The fade in stays with the left piece and the fade out goes with the right one; the cut itself has no fade.
+                audio: ClipAudio {
+                    fade_in: Time::ZERO,
+                    ..c.audio
+                },
             };
             let undo = restore_geometry(c);
+            let old_audio = c.audio;
             // Both halves lie inside the original, so they are valid whenever it was; no further checks needed.
             let t = track_mut(p, loc.seq, loc.track);
             t.clips[loc.clip].duration = left_len;
+            t.clips[loc.clip].audio.fade_out = Time::ZERO;
             t.clips.insert(loc.clip + 1, right);
-            Ok(Inverse(vec![Op::Delete { clip: new_id }, undo]))
+            let mut inv = vec![Op::Delete { clip: new_id }, undo];
+            if old_audio.fade_out != Time::ZERO {
+                inv.push(Op::SetClipAudio {
+                    clip,
+                    audio: old_audio,
+                });
+            }
+            Ok(Inverse(inv))
         }
         Op::TrimIn { clip, start } => {
             let loc = find_clip(p, clip).ok_or(OpError::UnknownClip(clip))?;

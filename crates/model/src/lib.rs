@@ -11,6 +11,7 @@
 //! Status: `time` (M1-001) and the document structs (M1-002, `docs/features/model.md`) are in; the `.overcut` container, migrations and relink fingerprints (M1-005, `docs/features/project-file.md`) are in `file`; ops and undo are `M1-003`.
 
 pub mod anim;
+pub mod audio;
 pub mod curve;
 pub mod file;
 pub mod ids;
@@ -20,6 +21,7 @@ pub mod time;
 pub mod transform;
 
 pub use anim::{AnimError, Animated, Easing, Keyframe};
+pub use audio::{ClipAudio, MAX_VOLUME};
 pub use file::{
     fingerprint, fingerprint_size, open_json, save_bytes, FileError, ProjectFile,
     FINGERPRINT_WINDOW,

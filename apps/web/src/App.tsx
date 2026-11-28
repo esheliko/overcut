@@ -28,6 +28,8 @@ import { SpeedSection } from "./inspector/Speed";
 import { DurationSection } from "./inspector/Duration";
 import { detailsKind, pickedClips, tabFor, tabLabelKey, tabsOf, type DetailTab } from "./inspector/detailsModel";
 import { useScrollCue } from "./inspector/scrollCue";
+import { AudioSection } from "./inspector/AudioSection";
+import { soundTarget } from "./inspector/audioModel";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
 import { CANVAS_EVENT } from "./inspector/Inspector";
@@ -147,7 +149,9 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
   const selection = useProjectStore((s) => s.selection);
   const picked = useMemo(() => pickedClips(project, selection), [project, selection]);
   const kind = detailsKind(picked);
-  const tabs = tabsOf(kind);
+  // A picture with its own sound also gets Audio (volume and fades land on its linked sound, r16 lane D).
+  const withSound = kind === "video" && soundTarget(project, selection)?.picture != null;
+  const tabs: readonly DetailTab[] = withSound ? ["video", "audio", "speed"] : tabsOf(kind);
   const first = useRef(takeDetailsRequest()); // a Speed or Crop request that opened this panel
   const [picks, setPicks] = useState<{ kind: string; tab: DetailTab | null }>({ kind, tab: first.current?.tab ?? null });
   // The default tab is picked per kind: a new kind of selection opens on its own first tab, never on the one the last selection left behind.
@@ -165,7 +169,8 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
     return () => window.removeEventListener(DETAILS_EVENT, on);
   });
   useEffect(() => { if (first.current?.focus === "crop") focusCrop(); first.current = null; }, []);
-  const tab = tabFor(kind, picks.kind === kind ? picks.tab : null);
+  const wanted = picks.kind === kind ? picks.tab : null;
+  const tab: DetailTab = wanted && tabs.includes(wanted) ? wanted : withSound ? "video" : tabFor(kind, wanted);
   const roving = useRovingTabindex(tabs.length, { rtl: dir === "rtl", onMove: (i) => setTab(tabs[i]!) });
   const body = useScrollCue<HTMLDivElement>();
   return (
@@ -180,7 +185,7 @@ function Details({ onCollapse }: { onCollapse?: () => void }) {
         </div>
       )}
       <div className="panel-body insp-body" ref={body}>
-        {tab === "speed" ? <SpeedSection /> : tab === "duration" ? <DurationSection /> : <Inspector />}
+        {tab === "speed" ? <SpeedSection /> : tab === "duration" ? <DurationSection /> : tab === "audio" && withSound ? <AudioSection /> : <Inspector />}
       </div>
       <div className="insp-fade" aria-hidden="true" />
     </>

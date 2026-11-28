@@ -32,6 +32,7 @@ import { globalCommand, type Command } from "./timeline/shortcuts";
 import { clampPps, fitPps, gut, ppsToSlider, shouldAutoFit, sliderToPps } from "./timeline/view";
 import { zoomStore } from "./timeline/zoomStore";
 import { clipMenuItems } from "./timeline/clipMenu";
+import { muteOps, mutableSounds } from "./inspector/audioModel";
 import { selectedVideoClip } from "./inspector/Inspector";
 import { opacityKeyOps } from "./inspector/keyframeModel";
 import { clipSpan, speedOps, speedTarget, toRational, SPEED_PRESETS, formatSpeed } from "./inspector/speedModel";
@@ -83,7 +84,7 @@ const KEYS = { rippleDel: "Shift+Del", closeGap: "Ctrl+Del", undo: "Ctrl+Z", red
 const LABELS: Record<string, string> = { "timeline.say.split": "timeline.label.split", "timeline.say.deleted": "timeline.label.deleted", "timeline.say.moved": "timeline.label.moved",
   "timeline.say.nudged": "timeline.label.nudged", "timeline.say.trimmed": "timeline.label.trimmed", "timeline.say.duplicated": "timeline.label.duplicated",
   "timeline.say.cut": "timeline.label.cut", "timeline.say.unlinked": "timeline.label.unlinked", "timeline.say.linked": "timeline.label.linked", "timeline.say.pasted": "timeline.label.pasted", "timeline.say.timed": "timeline.label.timed",
-  "timeline.say.laneMoved": "timeline.label.laneMoved",  "timeline.say.rippled": "timeline.label.rippled", "timeline.say.rolled": "timeline.label.rolled", "timeline.say.slipped": "timeline.label.slipped", "timeline.say.slid": "timeline.label.slid",
+  "timeline.say.laneMoved": "timeline.label.laneMoved", "timeline.say.volume": "timeline.label.volume", "timeline.say.fadeIn": "timeline.label.fade", "timeline.say.fadeOut": "timeline.label.fade",  "timeline.say.rippled": "timeline.label.rippled", "timeline.say.rolled": "timeline.label.rolled", "timeline.say.slipped": "timeline.label.slipped", "timeline.say.slid": "timeline.label.slid",
   "timeline.say.rippleDeleted": "timeline.label.rippleDeleted", "timeline.say.gapClosed": "timeline.label.gapClosed",
   "timeline.say.track.added": "timeline.label.track.added", "timeline.say.track.removed": "timeline.label.track.removed", "timeline.say.track.moved": "timeline.label.track.edited", "timeline.say.track.renamed": "timeline.label.track.edited",
   ...Object.fromEntries(TRACK_SAY_KEYS.map((k) => [k, "timeline.label.track.edited"])) };
@@ -223,6 +224,16 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       .then(() => { const span = clipSpan(store.getState().project, target.clip.id); if (span) announce(t("speed.announce", { speed: formatSpeed(x), ...span })); })
       .catch(() => onNotice(t("speed.failed")));
   }, [store, onNotice, t]);
+  /** "Mute clip" from the clip menu: the same edit as the Details Audio tab (volume 0 and back, remembering the level; one undo step). */
+  const toggleMute = useCallback(() => {
+    const sounds = mutableSounds(live.current.proj.project, live.current.selected);
+    const { ops, muting } = muteOps(sounds);
+    if (ops.length === 0) return;
+    const name = live.current.proj.project?.media.find((m) => m.id === sounds[0]!.media)?.name ?? "";
+    live.current.proj.apply(ops, undefined, t(muting ? "audio.muteUndoLabel" : "audio.unmuteUndoLabel"))
+      .then(() => announce(t(muting ? "timeline.say.muted" : "timeline.say.unmuted", { name })))
+      .catch(() => onNotice(t("timeline.say.failed")));
+  }, [onNotice, t]);
   const { open: openPicker, field: pickerField } = useImportPicker(onImport ?? NOOP_IMPORT, "timeline-media-input");
   const run = useCallback((cmd: Command) => {
     const { scene: sc, selected: sel } = live.current;
@@ -498,6 +509,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
   const showUnlink = anyLinked && !canLink;
   // A linked sound is selected with its picture: one click is one clip, so the count is clips, and "+ linked audio" says what came along.
   const clipCount = groupReps(scene, oneIdx).length;
+  const muteSounds = clipMenu ? mutableSounds(project, selected) : []; // only while the clip menu is open
   const withLinked = oneIdx.length > clipCount;
   useEffect(() => { if (dialog === "timing" && !oneClip) setDialog(null); }, [dialog, oneClip]);
   return (
@@ -577,13 +589,13 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       {dialog === "timing" && oneClip && <Suspense fallback={null}><TimingDialog scene={scene} clip={oneClip[0]!} fps={fps} onClose={closeDialog}
         onApply={(ops, field, name) => commit(mirrorTrims(scene, ops), say("timeline.say.timed", { field, name }))} /></Suspense>}
       {clipMenu && <ToolbarMenu name={t("timeline.clipMenu")} anchor={clipMenu} onClose={closeClipMenu} testid="tl-clip-menu"
-        items={clipMenuItems({ clips: clipCount, anyLinked, allLocked: oneIdx.length > 0 && editable(scene, oneIdx).length === 0, still: speedTarget(project, selected)?.still ?? false }).map((it) => {
+        items={clipMenuItems({ clips: clipCount, anyLinked, allLocked: oneIdx.length > 0 && editable(scene, oneIdx).length === 0, still: speedTarget(project, selected)?.still ?? false, sound: muteSounds.length > 0, muted: muteSounds.length > 0 && muteSounds.every((c) => (c.audio?.volume ?? 1) === 0) }).map((it) => {
           const speed = it.id.startsWith("speed:") ? Number(it.id.slice(6)) : null;
-          const label = speed !== null ? formatSpeed(speed) : it.id === "split" ? t("timeline.split") : it.id === "duplicate" ? t("timeline.duplicate") : it.id === "delete" ? t("timeline.delete") : it.id === "rippleDelete" ? t("timeline.rippleDelete") : t("timeline.unlink");
+          const label = speed !== null ? formatSpeed(speed) : it.id === "split" ? t("timeline.split") : it.id === "duplicate" ? t("timeline.duplicate") : it.id === "delete" ? t("timeline.delete") : it.id === "rippleDelete" ? t("timeline.rippleDelete") : it.id === "mute" ? t(muteSounds.length > 0 && muteSounds.every((c) => (c.audio?.volume ?? 1) === 0) ? "audio.unmute" : "audio.mute") : t("timeline.unlink");
           const hint = it.id === "split" ? KEYS.split : it.id === "duplicate" ? KEYS.dup : it.id === "delete" ? KEYS.del : it.id === "rippleDelete" ? KEYS.rippleDel : speed === 2 ? keyHint("clip.speed2x") : speed === 0.5 ? keyHint("clip.speedHalf") : speed === 1 ? keyHint("clip.speedNormal") : "";
           const cmd: Command | null = it.id === "split" ? { c: "split" } : it.id === "duplicate" ? { c: "duplicate" } : it.id === "delete" ? { c: "delete" } : it.id === "rippleDelete" ? { c: "rippleDelete" } : it.id === "unlink" ? { c: "unlink" } : null;
           return { id: it.id, section: it.id === "split" ? t("timeline.more.clip") : speed === SPEED_PRESETS[0] ? t("timeline.speed.section") : undefined, label, hint, disabled: it.disabled, reason: it.why ? t(`timeline.why.${it.why}`) : undefined,
-            testid: `tl-clip-${it.id.replace(":", "-")}`, onSelect: () => (cmd ? run(cmd) : setSpeed(speed!)) };
+            testid: `tl-clip-${it.id.replace(":", "-")}`, onSelect: () => (cmd ? run(cmd) : it.id === "mute" ? toggleMute() : setSpeed(speed!)) };
         })} />}
       {markerMenu && scene.markers.find((m) => m.id === markerMenu.id) && <MarkerMenu marker={scene.markers.find((m) => m.id === markerMenu.id)!} anchor={markerMenu.anchor} onAct={markerAction} onClose={closeMarkerMenu} />}
       {menu && <TrackMenu scene={scene} target={menu.target} anchor={menu.anchor} onAct={trackAction} onClose={closeMenu} />}

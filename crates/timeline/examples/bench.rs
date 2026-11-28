@@ -76,6 +76,7 @@ fn build(tracks_n: usize, per: i64) -> (Project, SeqIds, Vec<(usize, ClipId, i64
                 speed: Rational::new(1, 1).unwrap(),
                 link: None,
                 transform: Default::default(),
+                audio: Default::default(),
             };
             clip_ids.push((ti, c.id, k));
             track.clips.push(c);

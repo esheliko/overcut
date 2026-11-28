@@ -57,6 +57,7 @@ test("background: black by default, then blur and colour fill the empty bands; t
     await expect(p.getByTestId("canvas-bg-blur")).toBeVisible();
     await expect(p.getByTestId("canvas-bg-note")).toContainText("empty space");
     if (phone) {
+      await p.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running")); // settled: mid-slide boxes read 43.99997 px
       for (const id of ["canvas-bg-mode", "canvas-bg-blur", "canvas-apply"]) expect((await p.getByTestId(id).boundingBox())!.height, id).toBeGreaterThanOrEqual(44);
     }
   });
