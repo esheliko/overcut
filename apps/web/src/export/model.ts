@@ -234,6 +234,28 @@ export function etaSeconds(etaMs: number): number {
   return s > 60 ? Math.ceil(s / 5) * 5 : s;
 }
 
+/**
+ * The time left, smoothed (UX r16): the rate over the last 10 s is folded into a moving average (alpha 0.3, one fold per half second), and the finish time
+ * it implies can only move earlier, so the figure counts down and never climbs back up. Returns whole seconds (see `etaSeconds`) or null while there is no rate yet.
+ */
+export interface EtaState { samples: { at: number; f: number }[]; rate: number; deadline: number | null }
+export const newEta = (): EtaState => ({ samples: [], rate: 0, deadline: null });
+export function stepEta(s: EtaState, now: number, fraction: number): number | null {
+  const last = s.samples[s.samples.length - 1];
+  if (!last || now - last.at >= 500) {
+    s.samples.push({ at: now, f: fraction });
+    while (s.samples.length > 2 && now - s.samples[0]!.at > 10_000) s.samples.shift();
+    const first = s.samples[0]!;
+    if (now - first.at >= 3_000 && fraction > first.f) {
+      const inst = (fraction - first.f) / (now - first.at);
+      s.rate = s.rate > 0 ? 0.3 * inst + 0.7 * s.rate : inst;
+      const finish = now + (1 - fraction) / s.rate;
+      s.deadline = s.deadline === null ? finish : Math.min(s.deadline, finish);
+    }
+  }
+  return s.deadline === null ? null : etaSeconds(s.deadline - now);
+}
+
 // ---- the remembered choice ----
 export interface Remembered { preset: PresetId | "custom"; custom?: Choice }
 const KEY = "overcut.export";
@@ -349,4 +371,11 @@ export function describeFailure(e: unknown): string {
     add("stack", e.stack?.split("\n").slice(0, 6).join(" | "));
   } else add("error", String(e));
   return lines.join("\n");
+}
+
+/** Seconds of black for the gap warning: "18", "2.5", "0.4" (one decimal under 10 s, none above; never "0"). */
+export function formatGapSeconds(seconds: number): string {
+  if (seconds >= 10) return String(Math.round(seconds));
+  const r = Math.round(seconds * 10) / 10;
+  return String(r === 0 ? 0.1 : r);
 }

@@ -387,7 +387,7 @@ for (const p of PROFILES) {
   });
 }
 
-test("holding Shift after selecting a clip does not outline the whole timeline; Shift+click still toggles the clip", async ({ page }) => {
+test("holding Shift after selecting a clip does not outline the whole timeline; Shift+click selects a range, Ctrl+click toggles", async ({ page }) => {
   await page.goto("/?sample");
   await expect(page.locator("#tl-summary")).toContainText("2 tracks, 14 clips");
   const box = (await page.getByTestId("timeline-canvas").boundingBox())!;
@@ -399,5 +399,10 @@ test("holding Shift after selecting a clip does not outline the whole timeline; 
   expect(await stageFrame()).toBe("none"); // the keyboard focus frame must not appear for a bare modifier
   await page.mouse.click(box.x + dg + 108, box.y + 26 + 26);
   await page.keyboard.up("Shift");
-  await expect(page.getByTestId("tl-selected")).toHaveCount(0); // Shift+click on a selected clip still toggles it off
+  // r16 (DESK-10): Shift+click is a range select, so Shift+click on the anchor keeps it as a range of one.
+  await expect(page.getByTestId("tl-selected")).toHaveText("1 selected");
+  await page.keyboard.down("ControlOrMeta");
+  await page.mouse.click(box.x + dg + 108, box.y + 26 + 26);
+  await page.keyboard.up("ControlOrMeta");
+  await expect(page.getByTestId("tl-selected")).toHaveCount(0); // Ctrl/Cmd+click on a selected clip toggles it off
 });

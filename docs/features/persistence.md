@@ -42,3 +42,7 @@ The `.overcut` zip keeps its reserved `journal` entry unused: a zip cannot be ap
 
 ## Not covered / follow-ups
 Tauri commands are compile-checked by `desktop-check` only (no webview in CI). Raw IPC bodies instead of number arrays for large bytes. Multi-project list: done, `projects.md`; open/save-as is in the app menu (`canvas.md`). Folding the journal into the zip entry. Cached sync handle for appends.
+
+## M2 UX r16 (lane B): Save now and the project name
+- **Save now** (`App.tsx saveNow`): `session.whenDurable()` then `checkpoint()`; Ctrl/Cmd+S, the "Save" menu row and a click on the save chip all do it. The chip reads "Saved just now" for 2.5 s, then "Saved on this device". Autosave is unchanged; "Save project as..." is the file copy.
+- **Project name**: written to the library on input (400 ms pause), on Enter / Go and on blur, so a reload right after renaming keeps it.

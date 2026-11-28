@@ -154,7 +154,7 @@ export interface LanePlan { delta: number; to: number[]; fresh: number }
 
 /** Like `laneShift`, but a linked SOUND does not hold the picture back: the picture lands at the dropped time and each sound goes to its own track when it is free
  *  there, else the first unlocked audio track that is, else a new one (A2 ...): the same rule as a drop from the bin (`soundLane.ts`). Null when a picture does not fit. */
-export function lanePlan(scene: Scene, sel: readonly number[], flags: Uint8Array, mv: LaneMove, dx: number): LanePlan | null {
+export function lanePlan(scene: Scene, sel: readonly number[], flags: Uint8Array, mv: LaneMove, dx: number, vacate = false): LanePlan | null {
   const rest = sel.filter((i) => !mv.movers.includes(i));
   const sounds = scene.trackKind[mv.dest[0]!] === 0 && rest.every((i) => scene.trackKind[scene.clipTrack[i]!] === 1);
   if (!sounds) {
@@ -183,7 +183,9 @@ export function lanePlan(scene: Scene, sel: readonly number[], flags: Uint8Array
   const order = rest.map((i) => sel.indexOf(i)).sort((a, b) => scene.tStart[sel[a]!]! - scene.tStart[sel[b]!]!);
   for (const n of order) {
     const i = sel[n]!, s = scene.tStart[i]! + delta, e = s + scene.tDur[i]!;
-    const rows = [scene.clipTrack[i]!, ...audioRows, ...Array.from({ length: fresh }, (_, f) => scene.trackCount + f)];
+    const own = scene.clipTrack[i]!;
+    // `vacate` (a clip lifted off the magnetic main track): its sound leaves its old lane too, so the hole can close on both without the sounds drifting from their pictures.
+    const rows = [...(vacate ? [] : [own]), ...audioRows.filter((r) => !vacate || r !== own), ...Array.from({ length: fresh }, (_, f) => scene.trackCount + f)];
     let row = rows.find((r) => free(r, s, e));
     if (row === undefined) row = scene.trackCount + fresh++;
     to[n] = row;
