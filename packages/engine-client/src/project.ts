@@ -1,7 +1,7 @@
 import type { Project } from "./model.generated";
 
 /** Mirrors `app_model::SCHEMA_VERSION`; the browser smoke test opens a project made here in the real engine, so drift fails loudly. */
-export const PROJECT_SCHEMA_VERSION = 5;
+export const PROJECT_SCHEMA_VERSION = 6;
 
 /** A random 128-bit id as 32 lowercase hex chars (the wire form of every id). */
 export function newId(): string {

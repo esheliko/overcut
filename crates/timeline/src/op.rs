@@ -2,7 +2,7 @@
 //! id they create (the host supplies fresh ids), so applying the same op list to the same project is deterministic.
 
 use app_model::{
-    Background, Clip, ClipId, ClipTransform, Easing, Keyframe, LinkId, Marker, MarkerId,
+    Background, Clip, ClipAudio, ClipId, ClipTransform, Easing, Keyframe, LinkId, Marker, MarkerId,
     MarkerKind, MediaId, MediaRef, Rational, Resolution, SequenceId, Time, TimeRange, Track,
     TrackId, TransformProp,
 };
@@ -65,6 +65,9 @@ pub enum Op {
         clip: ClipId,
         transform: Box<ClipTransform>,
     },
+    /// Replace a clip's volume and fades (round 16, `docs/features/clip-audio.md`): volume `0..=2`, fades `>= 0` (`BadAudio` otherwise; fades longer
+    /// than the clip are shortened when played). One drag = many of these under one `History` key = one undo step; the inverse is the old value.
+    SetClipAudio { clip: ClipId, audio: ClipAudio },
     /// Add a keyframe to one animatable property of a clip's transform, or replace the key at the same clip-relative time (M2-004,
     /// `docs/features/keyframes.md`). Key times are `>= 0`; values are range-checked like `SetClipTransform` (`BadTransform`).
     /// Inverse: `SetKeyframe` of the key it replaced, else `DeleteKeyframe`.

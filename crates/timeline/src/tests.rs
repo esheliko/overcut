@@ -75,6 +75,7 @@ fn clip(ids: &mut SeqIds, media: MediaId, start: i64, source_in: i64, dur: i64) 
         speed: Rational::new(1, 1).unwrap(),
         link: None,
         transform: Default::default(),
+        audio: Default::default(),
     }
 }
 
@@ -178,6 +179,13 @@ enum Step {
         opacity: i8,
         crop: i8,
         flip: bool,
+    },
+    /// Round 16: volume and fades; out-of-range values (volume > 2, negative or too-long fades) must be refused and change nothing.
+    Audio {
+        clip: usize,
+        volume: i8,
+        fade_in: i8,
+        fade_out: i8,
     },
     /// M2-004: keyframe ops on a small time grid so keys collide, moves find keys and bad values (opacity outside 0..1) are refused.
     SetKey {
@@ -314,6 +322,8 @@ fn step() -> impl Strategy<Value = Step> {
         2 => (any::<usize>(), -8..8i8).prop_map(|(clip, delta)| Step::Slide { clip, delta }),
         3 => (any::<usize>(), -8..8i8, -2..8i8, -400..400i16, -2..12i8, -2..12i8, any::<bool>())
             .prop_map(|(clip, pos, scale, rot, opacity, crop, flip)| Step::Transform { clip, pos, scale, rot, opacity, crop, flip }),
+        2 => (any::<usize>(), -2..26i8, -1..14i8, -1..14i8)
+            .prop_map(|(clip, volume, fade_in, fade_out)| Step::Audio { clip, volume, fade_in, fade_out }),
         4 => (0..2usize, 0..3usize, -1..4i8, -4..8i8, any::<u8>())
             .prop_map(|(clip, prop, t, v, easing)| Step::SetKey { clip, prop, t, v, easing }),
         2 => (0..2usize, 0..3usize, 0..4i8, 0..4i8, prop::option::of(-2..6i8))
@@ -568,6 +578,19 @@ fn resolve(s: &Step, p: &Project, ids: &mut SeqIds) -> Option<Op> {
                 transform: Box::new(x),
             }
         }
+        Step::Audio {
+            clip,
+            volume,
+            fade_in,
+            fade_out,
+        } => Op::SetClipAudio {
+            clip: pick(clip)?.id,
+            audio: app_model::ClipAudio {
+                volume: f32::from(volume) / 10.0,
+                fade_in: t(i64::from(fade_in)),
+                fade_out: t(i64::from(fade_out)),
+            },
+        },
         Step::SetKey {
             clip,
             prop,
@@ -1687,7 +1710,7 @@ fn generator_applies_a_healthy_share_of_ops() {
     assert!(ok * 4 >= tried, "only {ok}/{tried} ops applied");
     assert_eq!(
         kinds.len(),
-        36,
+        37,
         "every op kind must succeed sometimes: {kinds:?}"
     );
 }
@@ -2014,6 +2037,7 @@ fn import_ops_add_media_and_set_the_sequence_format_and_undo() {
             speed: Rational::new(1, 1).unwrap(),
             link: None,
             transform: Default::default(),
+            audio: Default::default(),
         };
         h.apply(&mut p, Op::InsertClip { track: tr, clip: c }, None)
             .unwrap();
@@ -4575,4 +4599,130 @@ proptest! {
         apply_all(&mut p, &inv.0).unwrap();
         prop_assert_eq!(&p, &before);
     }
+}
+
+fn audio_of(p: &Project, id: ClipId) -> app_model::ClipAudio {
+    all_clips(p).into_iter().find(|c| c.id == id).unwrap().audio
+}
+
+#[test]
+fn set_clip_audio_sets_volume_and_fades_and_undoes_in_one_step() {
+    let (mut p, _, _, [a, ..], _) = row();
+    let want = app_model::ClipAudio {
+        volume: 0.5,
+        fade_in: t(2),
+        fade_out: t(3),
+    };
+    let after = do_undo(
+        &mut p,
+        Op::SetClipAudio {
+            clip: a,
+            audio: want,
+        },
+    );
+    assert_eq!(audio_of(&after, a), want);
+    assert!(audio_of(&p, a).is_default(), "undo restores the plain clip");
+    // A slider drag (same key) is one undo step.
+    let mut h = History::new();
+    for v in [60u8, 70, 80] {
+        let audio = app_model::ClipAudio {
+            volume: f32::from(v) / 100.0,
+            ..Default::default()
+        };
+        h.apply(&mut p, Op::SetClipAudio { clip: a, audio }, Some(7))
+            .unwrap();
+    }
+    assert_eq!(audio_of(&p, a).volume, 0.8);
+    assert!(h.undo(&mut p).unwrap());
+    assert!(audio_of(&p, a).is_default());
+    assert!(!h.can_undo());
+}
+
+#[test]
+fn set_clip_audio_refuses_what_is_out_of_range() {
+    let (mut p, _, _, [a, ..], _) = row();
+    let before = p.clone();
+    for bad in [
+        app_model::ClipAudio {
+            volume: 2.5,
+            ..Default::default()
+        },
+        app_model::ClipAudio {
+            volume: -0.5,
+            ..Default::default()
+        },
+        app_model::ClipAudio {
+            volume: f32::NAN,
+            ..Default::default()
+        },
+        app_model::ClipAudio {
+            fade_in: t(-1),
+            ..Default::default()
+        },
+    ] {
+        assert_eq!(
+            apply(
+                &mut p,
+                Op::SetClipAudio {
+                    clip: a,
+                    audio: bad
+                }
+            ),
+            Err(OpError::BadAudio)
+        );
+        assert_eq!(p, before);
+    }
+}
+
+#[test]
+fn split_gives_the_fade_in_to_the_left_and_the_fade_out_to_the_right_and_undo_restores_both() {
+    let (mut p, mut ids) = base();
+    let m = p.media[0].id;
+    let mut c = clip(&mut ids, m, 0, 0, 10);
+    c.audio = app_model::ClipAudio {
+        volume: 0.7,
+        fade_in: t(2),
+        fade_out: t(3),
+    };
+    let id = c.id;
+    p.sequences[0].tracks[0].clips = vec![c];
+    let new_id = ClipId::new(&mut ids);
+    let after = do_undo(
+        &mut p,
+        Op::Split {
+            clip: id,
+            at: t(5),
+            new_id,
+            new_link: None,
+        },
+    );
+    let (l, r) = (audio_of(&after, id), audio_of(&after, new_id));
+    assert_eq!((l.volume, l.fade_in, l.fade_out), (0.7, t(2), Time::ZERO));
+    assert_eq!((r.volume, r.fade_in, r.fade_out), (0.7, Time::ZERO, t(3)));
+}
+
+#[test]
+fn a_clip_with_audio_survives_the_file_round_trip_and_a_plain_one_writes_nothing() {
+    let (mut p, _, _, [a, b, _], _) = row();
+    apply(
+        &mut p,
+        Op::SetClipAudio {
+            clip: a,
+            audio: app_model::ClipAudio {
+                volume: 1.5,
+                fade_in: t(1),
+                fade_out: Time::ZERO,
+            },
+        },
+    )
+    .unwrap();
+    let json = serde_json::to_string(&p).unwrap();
+    assert_eq!(
+        json.matches("\"audio\":{").count(),
+        1,
+        "only the clip that has one writes it"
+    );
+    let back: Project = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, p);
+    assert!(audio_of(&back, b).is_default());
 }

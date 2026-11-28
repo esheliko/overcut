@@ -1,13 +1,14 @@
 import type { FrameDescription } from "../types";
 import type { MediaAudio } from "./media";
 import { sourceSample } from "./media";
+import { segmentGain } from "../audio-gain";
 import { ClipStretchCache, type Stretcher } from "../audio-stretch";
 
 export const CHANNELS = 2;
 
 /**
  * Sums the audio segments of one `evaluate` window into `out` (planar: channel 0 then channel 1, `frames` samples each, already zeroed).
- * Segments come from the engine (position, source start, speed, gain); decoding is the host's `MediaAudio`.
+ * Segments come from the engine (position, source start, speed, volume and fades); decoding is the host's `MediaAudio`.
  * Speed other than 1 plays the clip's pre-stretched audio (pitch kept, `ClipStretchCache`); without a stretcher, or for a clip too long to
  * hold, it picks the nearest source sample (pitch shifts). The result is clamped to [-1, 1].
  */
@@ -41,7 +42,7 @@ export class AudioMixer {
         for (let c = 0; c < CHANNELS; c++) {
           const src = clip[c] ?? clip[0]!;
           const base = c * frames + seg.out_start;
-          for (let j = 0; j < seg.len; j++) out[base + j] = (out[base + j] ?? 0) + (src[seg.clip_offset + j] ?? 0) * seg.gain;
+          for (let j = 0; j < seg.len; j++) out[base + j] = (out[base + j] ?? 0) + (src[seg.clip_offset + j] ?? 0) * segmentGain(seg, j);
         }
         continue;
       }
@@ -53,7 +54,7 @@ export class AudioMixer {
         const base = c * frames + seg.out_start;
         for (let j = 0; j < seg.len; j++) {
           const v = src[num === den ? j : Math.floor((j * num) / den)] ?? 0;
-          out[base + j] = (out[base + j] ?? 0) + v * seg.gain;
+          out[base + j] = (out[base + j] ?? 0) + v * segmentGain(seg, j);
         }
       }
     }
