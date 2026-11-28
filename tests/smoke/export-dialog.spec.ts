@@ -33,7 +33,7 @@ test("one click on Export (the smart default) makes a file and saves it", async 
   await expect(dialog).toBeVisible();
   // presets are big tappable chips; the default is the project's own size
   const chips = page.locator(".export-chip-choice");
-  await expect(chips).toHaveCount(8);
+  await expect(chips).toHaveCount(6); // eight presets; the 160x120 fixture cannot grow, so YouTube and Facebook write the same file as Original and are named on its tile (UX r14), not offered twice
   for (const c of await chips.all()) expect((await c.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(page.getByTestId("export-preset-original")).toBeChecked();
   await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
@@ -127,8 +127,9 @@ test("platform presets: picking Discord aims under its cap, labels the figure a 
   await page.getByTestId("export-preset-vertical").check({ force: true });
   await expect(page.getByText("placed inside this tall frame with black bars")).toBeVisible();
   await expect(page.getByTestId("export-cap-note")).toHaveCount(0);
-  await page.getByTestId("export-preset-facebook").check({ force: true });
-  await expect(page.getByTestId("export-preset-facebook")).toBeChecked();
+  await expect(page.getByTestId("export-preset-facebook")).toHaveCount(0); // the same file as Original here: merged, named on the Original tile
+  await expect(page.getByTestId("export-same-original")).toContainText("Facebook");
+  await page.getByTestId("export-preset-original").check({ force: true });
   await expect(page.getByTestId("export-cap-note")).toHaveCount(0); // no size cap claimed
   await page.getByTestId("export-preset-whatsapp").check({ force: true });
   await expect(page.getByTestId("export-cap-note")).toContainText("16 MB");

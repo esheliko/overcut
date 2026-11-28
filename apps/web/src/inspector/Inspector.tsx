@@ -1,9 +1,11 @@
-import { useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useId, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import type { Clip, ClipTransform, Fit, Op, Project } from "@app/engine-client";
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { useProjectStore, useStore } from "../store/projectStore";
 import { isIdentity, newGestureKey, setField, setFit, toggleFlip, valuesOf, RESET, rangeOf, type NumKey } from "./transformModel";
+import { SpeedSection } from "./Speed";
+import { speedTarget } from "./speedModel";
 import { EASING_CHOICES, PROPS_OF, easingId, easingOps, keyNear, keyState, neighbourKey, relativeTicks, setKeyOps, ticksPerFrame, ticksToFrame, toggleKeyOps, type EasingId } from "./keyframeModel";
 import { withKey } from "../commands/keymap";
 import { canvasSummary } from "../canvas";
@@ -60,19 +62,20 @@ export function useTransformEdit() {
 
 const NUM_KEYS: NumKey[] = ["position_x", "position_y", "scale_x", "scale_y", "rotation", "opacity", "crop_left", "crop_top", "crop_right", "crop_bottom"];
 const PCT = 100;
-interface FieldDef { key: NumKey; label: string; unit: "%" | "°"; mul: number; step: number }
+/** `smin`/`smax`: the slider's everyday range in display units (the number field still accepts the whole engine range). */
+interface FieldDef { key: NumKey; label: string; unit: "%" | "°"; mul: number; step: number; smin: number; smax: number }
 const FIELDS: FieldDef[] = [
-  { key: "position_x", label: "inspector.x", unit: "%", mul: PCT, step: 1 },
-  { key: "position_y", label: "inspector.y", unit: "%", mul: PCT, step: 1 },
-  { key: "scale_x", label: "inspector.scale", unit: "%", mul: PCT, step: 5 },
-  { key: "rotation", label: "inspector.rotation", unit: "°", mul: 1, step: 1 },
-  { key: "opacity", label: "inspector.opacity", unit: "%", mul: PCT, step: 5 },
+  { key: "position_x", label: "inspector.x", unit: "%", mul: PCT, step: 1, smin: -100, smax: 100 },
+  { key: "position_y", label: "inspector.y", unit: "%", mul: PCT, step: 1, smin: -100, smax: 100 },
+  { key: "scale_x", label: "inspector.scale", unit: "%", mul: PCT, step: 5, smin: 1, smax: 400 },
+  { key: "rotation", label: "inspector.rotation", unit: "°", mul: 1, step: 1, smin: -180, smax: 180 },
+  { key: "opacity", label: "inspector.opacity", unit: "%", mul: PCT, step: 5, smin: 0, smax: 100 },
 ];
 const CROPS: FieldDef[] = [
-  { key: "crop_left", label: "inspector.cropLeft", unit: "%", mul: PCT, step: 1 },
-  { key: "crop_top", label: "inspector.cropTop", unit: "%", mul: PCT, step: 1 },
-  { key: "crop_right", label: "inspector.cropRight", unit: "%", mul: PCT, step: 1 },
-  { key: "crop_bottom", label: "inspector.cropBottom", unit: "%", mul: PCT, step: 1 },
+  { key: "crop_left", label: "inspector.cropLeft", unit: "%", mul: PCT, step: 1, smin: 0, smax: 95 },
+  { key: "crop_top", label: "inspector.cropTop", unit: "%", mul: PCT, step: 1, smin: 0, smax: 95 },
+  { key: "crop_right", label: "inspector.cropRight", unit: "%", mul: PCT, step: 1, smin: 0, smax: 95 },
+  { key: "crop_bottom", label: "inspector.cropBottom", unit: "%", mul: PCT, step: 1, smin: 0, smax: 95 },
 ];
 const FITS: Fit[] = ["contain", "cover", "stretch"];
 
@@ -85,14 +88,31 @@ function Diamond({ filled }: { filled: boolean }): ReactNode {
   );
 }
 
-/** Transform of the selected clip: numeric fields with keyframe controls, then crop / flip / fit, reset. Every field editing session (focus to blur) is one undo step. */
+/** Details of the selected clip: collapsible sections (Transform, Opacity, Crop & flip, Speed), each value a slider plus a scrubbable number with its keyframe diamond. Every field editing session (focus to blur, or one slider drag) is one undo step. */
 export function Inspector(): ReactNode {
   const { t } = useI18n();
   const project = useProjectStore((s) => s.project);
   const selection = useProjectStore((s) => s.selection);
   const clip = selectedVideoClip(project, selection);
-  if (!clip || !project) return <><p className="insp-empty">{t("inspector.none")}</p>{project && <ProjectInfo project={project} />}</>;
-  return <InspectorFields clip={clip} rate={project.sequences[0]!.frame_rate} />;
+  if (clip && project) return <InspectorFields clip={clip} rate={project.sequences[0]!.frame_rate} />;
+  const picked = selection.size === 0 || !project ? [] : project.sequences[0]?.tracks.flatMap((tr) => tr.clips.filter((c) => selection.has(c.id)).map((c) => ({ c, kind: tr.kind }))) ?? [];
+  if (picked.length > 1) {
+    const all = new Set(picked.map((p) => p.kind));
+    const state = all.size === 1 && all.has("audio") ? "audio" : "multi";
+    return <EmptyCard testId="insp-multi" icon="duplicate" title={t("inspector.multi", { count: picked.length })} text={t(state === "audio" ? "inspector.multiAudio" : "inspector.multiHint")} />;
+  }
+  if (picked.length === 1) return <EmptyCard testId="insp-audio" icon="audio" title={t("inspector.audio")} text={t("inspector.audioHint")} />;
+  return <>{project ? <ProjectInfo project={project} /> : <p className="insp-empty">{t("inspector.none")}</p>}</>;
+}
+
+function EmptyCard({ icon, title, text, testId }: { icon: "duplicate" | "audio"; title: string; text: string; testId: string }): ReactNode {
+  return (
+    <div className="insp-state" data-testid={testId}>
+      <span className="insp-state-ic" aria-hidden="true"><Icon name={icon} size={22} /></span>
+      <strong>{title}</strong>
+      <p>{text}</p>
+    </div>
+  );
 }
 
 /** Nothing selected: what the project is, so the Details panel is never an empty column. */
@@ -102,12 +122,15 @@ function ProjectInfo({ project }: { project: Project }) {
   if (!seq) return null;
   const frames = Math.round((timelineEnd(project) * seq.frame_rate.num) / (TICKS_PER_SECOND * seq.frame_rate.den));
   return (
+    <>
+    <p className="insp-empty insp-pick">{t("inspector.none")}</p>
     <dl className="insp-info" data-testid="insp-project-info">
       <div><dt>{t("inspector.info.canvas")}</dt><dd>{canvasSummary(seq.resolution, seq.frame_rate)}</dd></div>
       <div><dt>{t("inspector.info.background")}</dt><dd data-testid="insp-background">{t(`canvas.bg.${seq.background?.mode ?? "black"}`)}</dd></div>
       <div><dt>{t("inspector.info.length")}</dt><dd>{timecodeHMS(frames, seq.frame_rate)}</dd></div>
       <div><dt>{t("inspector.info.clips")}</dt><dd>{clipCount(project)}</dd></div>
     </dl>
+    </>
   );
 }
 
@@ -116,6 +139,8 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
   const { t } = useI18n();
   const store = useStore();
   const readOnly = useProjectStore((s) => s.readOnly);
+  const project = useProjectStore((s) => s.project);
+  const selection = useProjectStore((s) => s.selection);
   const pad = 2 * ticksPerFrame(rate); // two frames of margin keep the "on a key" tolerance exact next to the clip
   // Follows the playhead frame by frame only when a property is animated (its value, key state and neighbours change with time). Otherwise the fields only
   // need "is the playhead on the clip", so the selector answers 0 / -1 and the form stays put during playback (a key click reads the exact time itself).
@@ -259,6 +284,26 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
         >
           <Diamond filled={state === "on"} />
         </button>
+        <input
+          type="range"
+          className="insp-slider"
+          data-testid={`insp-slider-${f.key}`}
+          aria-label={name}
+          disabled={readOnly}
+          min={f.smin}
+          max={f.smax}
+          step={f.step >= 5 ? 1 : f.step}
+          value={Math.min(f.smax, Math.max(f.smin, shown))}
+          style={{ "--p": `${((Math.min(f.smax, Math.max(f.smin, shown)) - f.smin) / (f.smax - f.smin)) * 100}%`, "--z": `${((0 - f.smin) / (f.smax - f.smin)) * 100}%` } as CSSProperties}
+          // One drag (or one key press) is one undo step: edits share a gesture key from press to release.
+          onPointerDown={() => { key.current = newGestureKey(); }}
+          onPointerUp={() => { key.current = undefined; }}
+          onPointerCancel={() => { key.current = undefined; }}
+          onKeyDown={() => { key.current = newGestureKey(); }}
+          onKeyUp={() => { key.current = undefined; }}
+          onBlur={() => { key.current = undefined; setClamped(null); }}
+          onChange={(e) => typed(Number(e.currentTarget.value))}
+        />
         <span className="insp-note" role="status" aria-live="polite" data-testid={`insp-note-${f.key}`}>{clamped?.key === f.key ? clamped.text : ""}</span>
         {state !== "none" && (
           <div className="insp-sub">
@@ -287,34 +332,80 @@ function InspectorFields({ clip, rate }: { clip: NonNullable<ReturnType<typeof s
       </div>
     );
   };
+  const byKey = (k: NumKey) => FIELDS.find((f) => f.key === k) ?? CROPS.find((f) => f.key === k)!;
+  const atDef = (keys: NumKey[]) => keys.every((k) => Math.abs(v[k] - DEFAULT_OF[k]) < 1e-9);
+  const resetKeys = (keys: NumKey[], extra?: Partial<ClipTransform>) => {
+    let n: ClipTransform = tr ?? {};
+    for (const k of keys) n = setField(n, k, DEFAULT_OF[k]);
+    if (keys.includes("scale_x")) n = setField(n, "scale_y", 1);
+    setClamped(null);
+    edit(clip.id, { ...n, ...extra });
+  };
+  const animatedAny = [...FIELDS, ...CROPS].some((f) => tr?.[PROPS_OF[f.key]![0]!]?.keys?.length);
+  const cropKeys = CROPS.map((f) => f.key);
+  const speed = speedTarget(project, selection);
   return (
-    <div className="insp" data-testid="inspector-fields" data-anim={[...FIELDS, ...CROPS].some((f) => tr?.[PROPS_OF[f.key]![0]!]?.keys?.length) || undefined}>
+    <div className="insp insp-sections" data-testid="inspector-fields" data-anim={animatedAny || undefined}>
       {!onClip && (
         <div className="insp-hint" data-testid="insp-offclip">
           <p>{t("inspector.offClip")}</p>
           <button type="button" onClick={goToClip} data-testid="insp-goto-clip">{t("inspector.goToClip")}</button>
         </div>
       )}
-      {FIELDS.map(field)}
-      <details className="insp-more">
-        <summary data-testid="insp-more">{t("inspector.more")}</summary>
-        <div className="insp-more-body">
-          {CROPS.map(field)}
-          <div className="insp-row" role="group" aria-label={t("inspector.fit")}>
-            {FITS.map((f) => (
-              <button key={f} aria-pressed={(tr?.fit ?? "contain") === f} disabled={readOnly} onClick={() => edit(clip.id, setFit(tr, f))} data-testid={`insp-fit-${f}`}>{t(`inspector.fit.${f}`)}</button>
-            ))}
-          </div>
-          <div className="insp-row">
-            <button aria-pressed={!!tr?.flip_h} disabled={readOnly} onClick={() => edit(clip.id, toggleFlip(tr, "h"))} data-testid="insp-flip-h">{t("inspector.flipH")}</button>
-            <button aria-pressed={!!tr?.flip_v} disabled={readOnly} onClick={() => edit(clip.id, toggleFlip(tr, "v"))} data-testid="insp-flip-v">{t("inspector.flipV")}</button>
-          </div>
+      <Section id="transform" title={t("inspector.sec.transform")} onReset={() => resetKeys(["position_x", "position_y", "scale_x", "rotation"])} resetOff={readOnly || atDef(["position_x", "position_y", "scale_x", "rotation"])}>
+        {(["position_x", "position_y", "scale_x", "rotation"] as NumKey[]).map((k) => field(byKey(k)))}
+      </Section>
+      <Section id="opacity" title={t("inspector.opacity")} onReset={() => resetKeys(["opacity"])} resetOff={readOnly || atDef(["opacity"])}>
+        {field(byKey("opacity"))}
+      </Section>
+      <Section id="crop" title={t("inspector.more")} testId="insp-more" startClosed onReset={() => resetKeys(cropKeys, { fit: "contain", flip_h: false, flip_v: false })} resetOff={readOnly || (atDef(cropKeys) && !tr?.flip_h && !tr?.flip_v && (tr?.fit ?? "contain") === "contain")}>
+        {CROPS.map(field)}
+        <div className="insp-row" role="group" aria-label={t("inspector.fit")}>
+          {FITS.map((f) => (
+            <button key={f} aria-pressed={(tr?.fit ?? "contain") === f} disabled={readOnly} onClick={() => edit(clip.id, setFit(tr, f))} data-testid={`insp-fit-${f}`}>{t(`inspector.fit.${f}`)}</button>
+          ))}
         </div>
-      </details>
+        <div className="insp-row">
+          <button aria-pressed={!!tr?.flip_h} disabled={readOnly} onClick={() => edit(clip.id, toggleFlip(tr, "h"))} data-testid="insp-flip-h">{t("inspector.flipH")}</button>
+          <button aria-pressed={!!tr?.flip_v} disabled={readOnly} onClick={() => edit(clip.id, toggleFlip(tr, "v"))} data-testid="insp-flip-v">{t("inspector.flipV")}</button>
+        </div>
+      </Section>
+      {speed && !speed.still && (
+        <Section id="speed" title={t("details.tab.speed")} startClosed>
+          <SpeedSection />
+        </Section>
+      )}
       <div className="insp-row">
         <button disabled={readOnly || isIdentity(tr)} onClick={() => edit(clip.id, RESET)} data-testid="insp-reset">{t("inspector.reset")}</button>
       </div>
     </div>
+  );
+}
+
+// Which sections the person opened or closed, kept while the selection changes (module state: the panel remounts on every new selection).
+const openState = new Map<string, boolean>();
+
+/** A collapsible group of values: a sticky header (title, optional reset, chevron) over its fields. Closed sections are not rendered, so they cost nothing. */
+function Section({ id, title, testId, startClosed, onReset, resetOff, children }: { id: string; title: string; testId?: string; startClosed?: boolean; onReset?: () => void; resetOff?: boolean; children: ReactNode }): ReactNode {
+  const { t } = useI18n();
+  const [open, setOpenState] = useState(() => openState.get(id) ?? !startClosed);
+  const body = useId();
+  const toggle = () => setOpenState((o) => { openState.set(id, !o); return !o; });
+  return (
+    <section className="insp-sec" data-open={open} data-testid={`insp-sec-${id}`}>
+      <header className="insp-sec-h">
+        <button type="button" className="insp-sec-t" aria-expanded={open} aria-controls={body} data-testid={testId} onClick={toggle}>
+          <Icon name="chevronDown" size={16} />
+          <span>{title}</span>
+        </button>
+        {onReset && (
+          <button type="button" className="insp-kbtn insp-sec-reset" data-testid={`insp-secreset-${id}`} aria-label={t("inspector.sec.reset", { name: title })} title={t("inspector.sec.reset", { name: title })} disabled={resetOff} onClick={onReset}>
+            <Icon name="reset" size={16} />
+          </button>
+        )}
+      </header>
+      {open && <div id={body} className="insp-sec-b">{children}</div>}
+    </section>
   );
 }
 

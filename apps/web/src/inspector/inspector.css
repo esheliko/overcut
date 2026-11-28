@@ -82,3 +82,66 @@
 .insp-field input[type="number"]:focus { cursor: text; }
 .insp-field input[type="number"]::-webkit-inner-spin-button, .insp-field input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .th-body:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* ---- r14 lane C: grouped sections, slider + number, clear states ---- */
+.insp-sections { gap: 0; padding: 0 0 var(--space-4, 16px); }
+.insp-sec { border-block-end: 1px solid var(--line); }
+.insp-sec-h { position: sticky; inset-block-start: 0; z-index: 3; display: flex; align-items: center; background: var(--surface); } /* sticks to the top of the scrolling panel body */
+.insp-sec-t { flex: 1; min-inline-size: 0; display: flex; align-items: center; gap: 8px; min-block-size: 44px; padding: 0 4px; border: 0; background: none; color: var(--fg); font: inherit; font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.02em; text-align: start; cursor: pointer; }
+.insp-sec-t svg { color: var(--muted); transition: transform var(--dur-fast) var(--ease-out); flex: none; }
+.insp-sec-t[aria-expanded="false"] svg { transform: rotate(-90deg); }
+[dir="rtl"] .insp-sec-t[aria-expanded="false"] svg { transform: rotate(90deg); }
+.insp-sec-t:hover { background: var(--surface-2); }
+.insp-sec-t:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.insp-sec-reset:disabled { visibility: hidden; }
+.insp-sec-b { display: grid; gap: 6px; padding: 2px 0 12px; animation: insp-open var(--dur-fast) var(--ease-out); }
+@keyframes insp-open { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .insp-sec-b { animation: none; } .insp-sec-t svg { transition: none; } }
+.insp-sec .insp { padding: 0; }
+
+/* A value: label and number on one line, the slider under it (the keyframe diamond and reset stay on the first line). */
+.insp-sec .insp-field { background: none; padding: 0 0 2px 4px; border-radius: 0; }
+.insp-sec .insp-fl { gap: 4px; }
+.insp-sec .insp-fl > .insp-name { color: var(--muted); font-size: var(--text-sm); }
+.insp-sec .insp-fl input { inline-size: 64px; min-block-size: 32px; padding: 0 6px; border-radius: var(--radius-xs); background: var(--surface-2); font-variant-numeric: tabular-nums; }
+.insp-sec .insp-fl input:focus { box-shadow: 0 0 0 2px var(--focus-ring); }
+.insp-sec .insp-fl em { inline-size: 1.1em; }
+.insp-field input.insp-slider { flex: 1 1 100%; order: 5; inline-size: 100%; margin: 0; padding: 0; block-size: 20px; min-block-size: 20px; background: none; appearance: none; -webkit-appearance: none; cursor: pointer; touch-action: pan-y; }
+.insp-slider::-webkit-slider-runnable-track { block-size: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) var(--p), var(--surface-3) var(--p)); }
+.insp-slider::-moz-range-track { block-size: 4px; border-radius: 2px; background: var(--surface-3); }
+.insp-slider::-moz-range-progress { block-size: 4px; border-radius: 2px; background: var(--accent); }
+.insp-slider::-webkit-slider-thumb { -webkit-appearance: none; inline-size: 16px; block-size: 16px; margin-block-start: -6px; border-radius: 50%; border: 0; background: var(--fg); box-shadow: 0 0 0 2px var(--surface), var(--elev-1); transition: transform var(--dur-instant); }
+.insp-slider::-moz-range-thumb { inline-size: 16px; block-size: 16px; border-radius: 50%; border: 0; background: var(--fg); box-shadow: 0 0 0 2px var(--surface); }
+.insp-slider:active::-webkit-slider-thumb { transform: scale(1.15); }
+.insp-slider:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
+.insp-slider:disabled { opacity: 0.4; cursor: default; }
+@media (pointer: coarse) { .insp-field input.insp-slider { block-size: 44px; min-block-size: 44px; } .insp-sec .insp-fl input { min-block-size: 44px; block-size: 44px; } .insp-sec .insp-fl input { inline-size: 72px; } }
+.insp-field .insp-sub { order: 6; }
+.insp[data-anim] .insp-field:not(:has(.insp-sub)) { padding-block-end: 0; }
+.insp-sec .insp-row { padding-block-start: 4px; }
+
+/* Clear states: nothing selected (project summary), several clips, an audio clip. */
+.insp-pick { padding: 12px 4px 4px; }
+.insp-state { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 16px; text-align: center; }
+.insp-state strong { color: var(--fg); font-size: var(--text-base); }
+.insp-state p { margin: 0; max-inline-size: 30ch; color: var(--muted); font-size: var(--text-sm); }
+.insp-state-ic { display: grid; place-items: center; inline-size: 48px; block-size: 48px; border-radius: 50%; background: var(--surface-3); color: var(--accent); }
+
+/* Compact on a mouse: 32 px rows (the slider under the number), 44 px targets on touch. */
+@media (pointer: fine) { .insp-sec .insp-fl { min-block-size: 32px; } .insp-sec .insp-fl input { min-block-size: 28px; } }
+/* Touch: one row per value, label | slider | number | diamond, so a whole section fits a short phone sheet. */
+@media (pointer: coarse) {
+  .insp-sec .insp-field { flex-wrap: wrap; align-items: center; column-gap: 6px; padding-inline: 4px 0; }
+  .insp-sec .insp-fl { display: contents; }
+  .insp-sec .insp-fl > .insp-name { order: 1; flex: 0 0 66px; min-inline-size: 0; }
+  .insp-sec .insp-field input.insp-slider { order: 2; flex: 1 1 90px; inline-size: auto; min-inline-size: 0; }
+  .insp-sec .insp-fl input { order: 3; flex: 0 0 52px; inline-size: 52px; }
+  .insp-sec .insp-fl > em { order: 4; flex: none; inline-size: 1em; }
+  .insp-sec .insp-fieldreset { order: 5; }
+  .insp-sec .insp-diamond { order: 6; }
+  .insp-sec .insp-note { order: 7; }
+  .insp-sec .insp-sub { flex-basis: 100%; }
+}
+
+/* Scrolling a control into view (Tab, find) must not leave it under the sticky section header or the sticky Reset bar. */
+.insp-body { scroll-padding-block: 52px 76px; }

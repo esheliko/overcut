@@ -10,8 +10,9 @@ import { useReturnFocus } from "../a11y/returnFocus";
 import { canShareFile, saveFile, shareFile } from "./deliver";
 import { getDesktop } from "../media/sources";
 import { OPENH264_HOST_URL, recordNetworkEvent } from "../privacy/networkLog";
-import { QUALITIES, PRESET_IDS, buildSettings, canOfferH264Download, desktopFormats, describeFailure, errorKey, formatLabelKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
+import { QUALITIES, PRESET_IDS, mergePresets, buildSettings, canOfferH264Download, desktopFormats, describeFailure, errorKey, formatLabelKey, formatNote, estimateBytes, etaSeconds, formatBytes, formatClock, fpsSteps, loadRemembered, outputFps, pickFormat, needsBars, presetChoice, presetHint, presetWarnings, resolutionSteps, saveName, saveRemembered, usableCustom, withoutCap, type Choice, type PresetId, type QualityId, type Source } from "./model";
 import type { ExportState } from "./useExport";
+import "./export.css";
 
 /** The glyph of each preset tile: its shape (landscape, tall, square) or what it is for. */
 const PRESET_ICON: Record<PresetId, IconName> = { original: "film", youtube: "ratioLandscape", vertical: "ratioPortrait", x: "video", facebook: "ratioSquare", whatsapp: "share", discord: "upload", small: "smallFile" };
@@ -42,6 +43,37 @@ export function prefetchExportProbe(src: Source): void {
 }
 
 
+/** A small still of the project as the preview shows it now (the picture on the playhead), or null when the preview has nothing to copy. One copy per dialog: the dialog is on top of it and it cannot change meanwhile. */
+function snapshotPreview(): string | null {
+  try {
+    const c = document.querySelector<HTMLCanvasElement>('[data-testid="preview-canvas"]');
+    if (!c || !c.width || !c.height) return null;
+    const out = document.createElement("canvas");
+    const w = Math.min(480, c.width);
+    out.width = w;
+    out.height = Math.max(1, Math.round((w * c.height) / c.width));
+    const g = out.getContext("2d");
+    if (!g) return null;
+    g.drawImage(c, 0, 0, out.width, out.height);
+    const px = g.getImageData(0, 0, Math.min(8, out.width), Math.min(8, out.height)).data;
+    if (!px.some((v, i) => i % 4 !== 3 && v !== 0) && !g.getImageData(out.width >> 1, out.height >> 1, 1, 1).data.some((v, i) => i % 4 !== 3 && v !== 0)) return null; // all black: nothing worth showing
+    return out.toDataURL("image/jpeg", 0.72);
+  } catch {
+    return null;
+  }
+}
+
+/** The output frame at its real shape (a 9:16 preset is tall), with the project's picture placed inside it as the export will place it (bars where the shape differs). */
+function PreviewFrame({ shot, width, height, badge, children }: { shot: string | null; width: number; height: number; badge?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="ex-frame" data-testid="export-frame" style={{ aspectRatio: `${width} / ${height}` }}>
+      {shot ? <img src={shot} alt="" draggable={false} /> : <Icon name="film" size={28} />}
+      {badge}
+      {children}
+    </div>
+  );
+}
+
 export interface DialogProps {
   src: Source;
   state: ExportState;
@@ -58,6 +90,7 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
   const ref = useRef<HTMLDialogElement>(null);
   const head = useRef<HTMLHeadingElement>(null);
   const running = state.phase === "running";
+  const [shot] = useState<string | null>(snapshotPreview);
   const lastSettings = useRef<ReturnType<typeof buildSettings> | null>(null);
   useReturnFocus();
 
@@ -77,10 +110,10 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
 
   let body: ReactNode;
   let title = t("export.title");
-  if (state.phase === "running") { title = t("export.running.title"); body = <Progress state={state} onCancel={onCancel} onTuck={onTuck} />; }
-  else if (state.phase === "done") { title = t("export.done.title"); body = <Done state={state} src={src} locale={locale} onClose={onClose} onAgain={onBack} />; }
+  if (state.phase === "running") { title = t("export.running.title"); body = <Progress state={state} src={src} shot={shot} onCancel={onCancel} onTuck={onTuck} />; }
+  else if (state.phase === "done") { title = t("export.done.title"); body = <Done state={state} src={src} shot={shot} locale={locale} onClose={onClose} onAgain={onBack} />; }
   else if (state.phase === "failed") { title = t("export.failed.title"); body = <Failed error={state.error} onRetry={() => lastSettings.current && start(lastSettings.current)} onBack={onBack} />; }
-  else body = <Setup src={src} locale={locale} onStart={start} />;
+  else body = <Setup src={src} shot={shot} locale={locale} onStart={start} />;
 
   return (
     <dialog ref={ref} className="export-dialog" aria-labelledby="export-title" data-testid="export-dialog" data-phase={state.phase} onCancel={(e) => { e.preventDefault(); dismiss(); }}>
@@ -94,7 +127,7 @@ export function Dialog({ src, state, locale, onStart, onCancel, onBack, onClose,
 }
 
 // ---- 1. settings ----
-function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(s: ReturnType<typeof buildSettings>): void }) {
+function Setup({ src, shot, locale, onStart }: { src: Source; shot: string | null; locale: string; onStart(s: ReturnType<typeof buildSettings>): void }) {
   const { t } = useI18n();
   const remembered = useMemo(() => loadRemembered(), []);
   const [preset, setPreset] = useState<PresetId | "custom">(() => (remembered.preset === "custom" && !usableCustom(remembered.custom, src) ? "original" : remembered.preset));
@@ -120,11 +153,16 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
   }, [keys, desktop, codecRev]);
   const formatsOf = (c: Choice) => formats[fmtKey(c.width, c.height, outputFps(c, src))];
   const ready = keys.every(([k]) => formats[k]);
-  const offered = PRESET_IDS.filter((id) => (formatsOf(presetChoice(id, src))?.options.length ?? 0) > 0);
+  const offeredAll = PRESET_IDS.filter((id) => (formatsOf(presetChoice(id, src))?.options.length ?? 0) > 0);
+  // Presets that write the same file for this project are one tile; the others are named on it. A remembered merged preset selects its tile.
+  const offeredKey = offeredAll.join(",");
+  const groups = useMemo(() => mergePresets(offeredKey ? (offeredKey.split(",") as PresetId[]) : [], src), [offeredKey, src]);
+  const offered = groups.map((g) => g.id);
+  const tileOf = (id: PresetId | "custom"): PresetId | "custom" => (id === "custom" ? id : groups.find((g) => g.id === id || g.same.includes(id))?.id ?? id);
 
   // A remembered preset this device cannot do any more: fall back to the first it can.
   const firstOffered = offered[0];
-  const stillOffered = preset === "custom" || offered.includes(preset);
+  const stillOffered = preset === "custom" || offeredAll.includes(preset);
   useEffect(() => {
     if (ready && !stillOffered && firstOffered) setPreset(firstOffered);
   }, [ready, stillOffered, firstOffered]);
@@ -142,6 +180,8 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
     onStart(buildSettings(choice, src, format));
   };
 
+  const ofps = outputFps(choice, src);
+  const outFps = ofps % 1 === 0 ? String(ofps) : ofps.toFixed(2);
   const fmtName = (o: ExportFormatOption) => t(formatLabelKey(o, Boolean(desktop)));
   const fps = src.fps % 1 === 0 ? String(src.fps) : src.fps.toFixed(2);
 
@@ -160,16 +200,29 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
   return (
     <>
       {notice}
-      <p className="export-summary" data-testid="export-summary">{t("export.summary", { size: `${src.width}×${src.height}`, fps, length: formatClock(src.seconds) })}</p>
+      <div className="ex-hero">
+        <PreviewFrame shot={shot} width={choice.width} height={choice.height} />
+        <div className="ex-hero-tx">
+          {format && (
+            <p className="export-estimate" data-testid="export-estimate" title={t("export.estimate", { size: formatBytes(estimateBytes(choice, src, format), locale), format: fmtName(format) })}>
+              <strong>{t("export.estimate.size", { size: formatBytes(estimateBytes(choice, src, format), locale) })}</strong>
+              <span className="ex-est-fmt">{fmtName(format)}</span>
+            </p>
+          )}
+          <p className="export-summary" data-testid="export-summary"><strong>{formatClock(src.seconds)}</strong><span>{shape(choice)} · {t("export.fps.value", { fps: outFps })}</span></p>
+          <p className="ex-source">{t("export.summary", { size: `${src.width}×${src.height}`, fps, length: formatClock(src.seconds) })}</p>
+        </div>
+      </div>
       <fieldset className="export-presets">
         <legend>{t("export.presets")}</legend>
-        {offered.map((id) => {
+        {groups.map(({ id, same }) => {
           const hint = presetHint(id, src, locale);
+          const alias = same.length ? t("export.preset.same", { names: same.map((o) => t(`export.preset.${o}`)).join(", ") }) : "";
           return (
-            <label key={id} className="export-chip-choice" data-checked={preset === id} title={`${t(`export.preset.${id}`)}: ${t(hint.key, hint.values)}`}>
-              <input type="radio" name="export-preset" value={id} checked={preset === id} onChange={() => pickPreset(id)} data-testid={`export-preset-${id}`} />
+            <label key={id} className="export-chip-choice" data-checked={tileOf(preset) === id} title={`${t(`export.preset.${id}`)}: ${t(hint.key, hint.values)}${alias ? `. ${alias}` : ""}`}>
+              <input type="radio" name="export-preset" value={id} checked={tileOf(preset) === id} onChange={() => pickPreset(id)} data-testid={`export-preset-${id}`} />
               <span className="ex-ic" aria-hidden="true"><Icon name={PRESET_ICON[id]} size={20} /></span>
-              <span className="ex-tx"><strong>{t(`export.preset.${id}`)}</strong><span>{t(hint.key, hint.values)}</span></span>
+              <span className="ex-tx"><strong>{t(`export.preset.${id}`)}</strong><span>{t(hint.key, hint.values)}</span>{alias && <span className="ex-same" data-testid={`export-same-${id}`}>{alias}</span>}</span>
               <span className="ex-check" aria-hidden="true"><Icon name="check" size={12} strokeWidth={3} /></span>
             </label>
           );
@@ -207,11 +260,6 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
         </div>
       </details>
 
-      {format && (
-        <p className="export-estimate" data-testid="export-estimate">
-          {t("export.estimate", { size: formatBytes(estimateBytes(choice, src, format), locale), format: fmtName(format) })}
-        </p>
-      )}
       {format && choice.capBytes !== undefined && <p className="export-note" data-testid="export-cap-note">{t("export.cap.aims", { cap: formatBytes(choice.capBytes, locale) })}</p>}
       {format && presetWarnings(preset, choice, src, format, locale).map((w) => <p key={w.key} className="export-note" role="status" data-testid={w.key === "export.warn.cap" ? "export-cap-warning" : "export-duration-warning"}>{t(w.key, w.values)}</p>)}
       {format?.warnings.map((w) => <p key={w} className="export-note" data-testid="export-warning">{t("export.warn.limited")}</p>)}
@@ -224,7 +272,7 @@ function Setup({ src, locale, onStart }: { src: Source; locale: string; onStart(
 }
 
 // ---- 2. progress ----
-function Progress({ state, onCancel, onTuck }: { state: Extract<ExportState, { phase: "running" }>; onCancel(): void; onTuck(): void }) {
+function Progress({ state, src, shot, onCancel, onTuck }: { state: Extract<ExportState, { phase: "running" }>; src: Source; shot: string | null; onCancel(): void; onTuck(): void }) {
   const { t, locale } = useI18n();
   const p = state.progress;
   const fraction = p?.fraction ?? 0;
@@ -237,6 +285,7 @@ function Progress({ state, onCancel, onTuck }: { state: Extract<ExportState, { p
   const left = eta === null ? t("export.eta.estimating") : eta >= 60 ? t("export.eta.minutes", { minutes: Math.ceil(eta / 60) }) : t("export.eta.seconds", { seconds: eta });
   return (
     <>
+      <div className="ex-stage"><PreviewFrame shot={shot} width={src.width} height={src.height}><span className="ex-frame-dim" aria-hidden="true" /></PreviewFrame></div>
       <div className="export-percent" data-testid="export-percent" aria-hidden="true">{finishing ? t("export.finishing") : new Intl.NumberFormat(locale, { style: "percent" }).format(Math.min(0.99, fraction) || 0)}</div>
       <div className="export-bar" role="progressbar" aria-label={t("export.running.title")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-valuetext={finishing ? t("export.finishing") : t("export.valuetext", { percent })} data-testid="export-progress">
         <span style={{ inlineSize: `${percent}%` }} />
@@ -303,7 +352,7 @@ function H264Notice({ codecs, onEnabled }: { codecs: DesktopCodecs; onEnabled():
 }
 
 // ---- 3. done ----
-function Done({ state, src, locale, onClose, onAgain }: { state: Extract<ExportState, { phase: "done" }>; src: Source; locale: string; onClose(): void; onAgain(): void }) {
+function Done({ state, src, shot, locale, onClose, onAgain }: { state: Extract<ExportState, { phase: "done" }>; src: Source; shot: string | null; locale: string; onClose(): void; onAgain(): void }) {
   const { t } = useI18n();
   const { result } = state;
   const file = useMemo(() => new File([state.file], saveName(result.fileName), { type: state.file.type }), [state.file, result.fileName]);
@@ -331,7 +380,7 @@ function Done({ state, src, locale, onClose, onAgain }: { state: Extract<ExportS
   useEffect(() => { if (note) announce(note); }, [note]);
   return (
     <>
-      <div className="export-ok" aria-hidden="true"><Icon name="check" size={28} /></div>
+      <div className="ex-stage"><PreviewFrame shot={shot} width={src.width} height={src.height} badge={<span className="export-ok" aria-hidden="true"><Icon name="check" size={22} /></span>} /></div>
       <dl className="export-facts" data-testid="export-done">
         <div><dt>{t("export.fact.file")}</dt><dd data-testid="export-filename">{file.name}</dd></div>
         <div><dt>{t("export.fact.size")}</dt><dd data-testid="export-filesize">{formatBytes(result.fileBytes, locale)}</dd></div>
