@@ -14,7 +14,8 @@ type Phase = { name: string; fps: number; p95Ms: number; maxMs: number; drawAvgM
 const q = (a: Float64Array, p: number) => a[Math.min(a.length - 1, Math.floor(a.length * p))]!;
 
 export function TimelineBench() {
-  const scene = useMemo(() => buildScene(fixtureProject({ tracks: 20, clipsPerTrack: 50 })), []);
+  // `&clips=100` runs the same script on a 100-clip project (10 tracks x 10); the default is the S8 project of 1000 clips on 20 tracks.
+  const scene = useMemo(() => { const n = Number(/clips=(\d+)/.exec(location.hash)?.[1] ?? 1000), tracks = n >= 1000 ? 20 : 10; return buildScene(fixtureProject({ tracks, clipsPerTrack: Math.max(1, Math.round(n / tracks)) })); }, []);
   const handle = useRef<CanvasHandle | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const edits = useRef<unknown[]>([]);

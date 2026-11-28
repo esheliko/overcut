@@ -3,7 +3,7 @@ import { memo, useCallback, useDeferredValue, useEffect, useRef, type KeyboardEv
 import { useI18n } from "../i18n";
 import { Icon } from "../icons";
 import { onThemeChange } from "../theme/tokens";
-import { DARK, drawBubble, drawPlayheadStrip, drawTimeline, HEAD_W, newOverlay, paletteFromCss, type Bubble, type DrawStats, type Overlay, type Palette } from "./draw";
+import { DARK, PICKUP_MS, drawBubble, drawPlayheadStrip, drawTimeline, HEAD_W, newOverlay, paletteFromCss, type Bubble, type DrawStats, type Overlay, type Palette } from "./draw";
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
 import { handleAt, hitTest, trackAtY } from "./hit";
 import { audioHit } from "./audioEdit";
@@ -107,7 +107,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
   const appliedSel = useRef<ReadonlySet<string> | null>(null);
   const resetPreview = () => {
     const o = ui.current;
-    o.ghosts = null; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null;
+    o.ghosts = null; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null; o.press.clip = -1;
     const f = flags.current;
     for (let i = 0; i < f.length; i++) if (f[i] === 2) f[i] = 1;
   };
@@ -149,16 +149,10 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       if (ctx) drawBubble(ctx, v, d, palette.current, b);
     }
   }, []);
-  /** The chip: scroll so the playhead sits in the middle of the clip area (one scroll, no zoom change). */
-  const toPlayhead = useCallback(() => {
-    const v = view.current, sec = fr.current / live.current.fps;
-    v.scrollX = Math.max(0, sec * v.pps - (v.width - gut(v)) / 2);
-    invalidate();
-    canvas.current?.focus({ preventScroll: true });
-  }, [invalidate]);
   /** Touch pan: the finger's movement since the last frame, applied once at the start of the next draw (P-16: one pan per frame, however many events arrived). */
   const panPend = useRef({ dx: 0, dy: 0 });
   const flushPan = useCallback(() => { const q = panPend.current; if (q.dx !== 0 || q.dy !== 0) { view.current.scrollX += q.dx; view.current.scrollY += q.dy; q.dx = 0; q.dy = 0; } }, []);
+  const drawAgain = useRef<() => void>(() => undefined);
   const draw = useCallback(() => {
     raf.current = 0;
     flushPan();
@@ -173,10 +167,12 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     // Test/diagnostic hook: how much real media has landed (smoke asserts imported clips leave the placeholder state).
     if (media) { c.dataset.waveTiles = String(media.waveforms.stats.tilesRendered); c.dataset.thumbs = String(media.thumbs.stats.generated + media.thumbs.stats.fromCache); }
     drawTimeline(ctx, l.scene, view.current, fr.current / l.fps, dpr.current, palette.current, stats.current, ui.current, media);
+    if (media?.fading && !raf.current) raf.current = requestAnimationFrame(drawAgain.current); // a thumbnail is fading in: one more frame (the flag clears when none is)
     paintPlayhead();
     const v = view.current, sig = seen.current;
     if (sig.pps !== v.pps || sig.x !== v.scrollX || sig.w !== v.width) { sig.pps = v.pps; sig.x = v.scrollX; sig.w = v.width; handle.current?.onView?.(); }
   }, [lengthSec, media, paintPlayhead, flushPan]);
+  drawAgain.current = draw;
   const invalidate = useCallback(() => { if (!raf.current) raf.current = requestAnimationFrame(draw); }, [draw]);
   /** Only the playhead layer changed (playback, the time bubble): the clips, ruler and thumbnails are not repainted. */
   const invalidatePlayhead = useCallback(() => {
@@ -184,6 +180,13 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     phRaf.current = requestAnimationFrame(() => { phRaf.current = 0; paintPlayhead(); });
   }, [paintPlayhead]);
 
+  /** The chip: scroll so the playhead sits in the middle of the clip area (one scroll, no zoom change). */
+  const toPlayhead = useCallback(() => {
+    const v = view.current, sec = fr.current / live.current.fps;
+    v.scrollX = Math.max(0, sec * v.pps - (v.width - gut(v)) / 2);
+    invalidate();
+    canvas.current?.focus({ preventScroll: true });
+  }, [invalidate]);
   // New waveform data or thumbnails: redraw.
   useEffect(() => { if (media) media.onChange = invalidate; }, [media, invalidate]);
 
@@ -453,10 +456,21 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     else if (g.k === "scrub") sec = fr.current / fps;
     bubble.current = sec >= 0 ? { sec, text: timecode(Math.round(sec * fps), fps) } : null;
     trimPreview.set(trimTo);
+    const pr = o.press; // press feedback (r16 PHONE-10): the clip under the finger lights up at once; a touch that can pick it up fills a ring over the long-press time
+    if (g.k === "press" && g.tapClip >= 0 && !g.lifted) {
+      if (pr.clip !== g.tapClip) { pr.clip = g.tapClip; pr.t0 = performance.now(); }
+      pr.x = g.sx; pr.y = g.sy; pr.ring = g.then === "pan";
+      if (pr.ring && !ringRaf.current) {
+        const step = () => { ringRaf.current = 0; if (ui.current.press.clip < 0 || !ui.current.press.ring) return; invalidate(); if (performance.now() - ui.current.press.t0 < PICKUP_MS + 40) ringRaf.current = requestAnimationFrame(step); };
+        ringRaf.current = requestAnimationFrame(step);
+      }
+    } else pr.clip = -1;
     setCursor(cursorFor(g));
     invalidate();
   };
   useEffect(() => () => trimPreview.set(null), []);
+  const ringRaf = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(ringRaf.current), []);
   const setCursor = (c: string) => { const el = canvas.current; if (el && el.style.cursor !== c) el.style.cursor = c; };
   const run = (r: { g: Gesture; fx: Effects }) => { gest.current = r.g; syncPreview(r.g); applyFx(r.fx); };
 
@@ -514,7 +528,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
         hold.current = 0;
         const lp = longPress(ctxNow(), gest.current);
         if (lp) { run(lp); haptic(); }
-      }, 380);
+      }, PICKUP_MS);
     }
     c.dataset.pointer = ""; // focus by pointer: no focus frame (keyboard focus shows it, see .tl-canvas:focus-visible)
     c.focus({ preventScroll: true });
