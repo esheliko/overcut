@@ -95,7 +95,7 @@ test("Details tabs follow the clip: a sound gets Audio (no Video), a photo gets 
   await page.getByTestId("duration-field").fill("2");
   await page.getByTestId("duration-field").press("Enter");
   await expect(page.getByTestId("duration-field")).toHaveValue("2");
-  await expect(page.getByTestId("timecode")).toContainText("/ 00:00:03:02"); // the photo (was 5 s) now lasts 2 s, after the 1.04 s sound it follows
+  await expect(page.getByTestId("timecode")).toContainText("/ 00:00:02:00"); // the photo (was 5 s) now lasts 2 s; it starts V1 at 0 (r16 lane A: a sound under it no longer pushes it later)
   await select("sound");
   await expect(tabs.getByRole("tab", { name: "Audio" })).toHaveAttribute("aria-selected", "true"); // not the Speed tab left by the last sound
 });
