@@ -405,6 +405,15 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
     const i = ui.trimClip;
     const a = ui.trimEnd ? scene.start[i]! : ui.trimSec, b = ui.trimEnd ? ui.trimSec : scene.end[i]!;
     ghost(ctx, v, p, scene.clipTrack[i]!, a, b, scene.trackKind[scene.clipTrack[i]!] === 1, `${scene.name[i]} · ${formatDur(b - a)}`);
+    const L = scene.link[i]; // linked partners follow the edge by the same amount (their bodies are hidden by the selection flag 2)
+    if (L) {
+      const d = ui.trimSec - (ui.trimEnd ? scene.end[i]! : scene.start[i]!);
+      for (let k = 0; k < scene.link.length; k++) {
+        if (k === i || scene.link[k] !== L) continue;
+        const ka = ui.trimEnd ? scene.start[k]! : scene.start[k]! + d, kb = ui.trimEnd ? scene.end[k]! + d : scene.end[k]!;
+        if (kb > ka) ghost(ctx, v, p, scene.clipTrack[k]!, ka, kb, scene.trackKind[scene.clipTrack[k]!] === 1, `${scene.name[k]} · ${formatDur(kb - ka)}`);
+      }
+    }
     if (ui.trimRight >= 0) ghost(ctx, v, p, scene.clipTrack[ui.trimRight]!, ui.trimSec, scene.end[ui.trimRight]!, scene.trackKind[scene.clipTrack[ui.trimRight]!] === 1); // a seam: the right clip follows the boundary
   }
 

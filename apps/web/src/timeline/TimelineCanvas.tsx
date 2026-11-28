@@ -389,6 +389,10 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     if (g.k !== "move") snapped.current = null;
     o.ghosts = null; o.ghostTracks = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
     markPreview(flags.current, g);
+    if (g.k === "trim") { // a linked partner (the clip's sound or picture) is trimmed by the same amount on release, so it previews with it (customer r15: the sound only jumped on release)
+      const sc = live.current.scene, L = sc.link[g.clip];
+      if (L) for (let i = 0; i < flags.current.length; i++) if (i !== g.clip && sc.link[i] === L) flags.current[i] = 2;
+    }
     if (g.k === "press" && g.lifted && g.tapClip >= 0) { o.ghosts = [g.tapClip]; o.ghostDSec = 0; } // a long press on touch lifts the clip: the same ghost a drag shows, so the pick-up is visible without a buzz
     else if (g.k === "move") {
       o.ghosts = g.sel; o.ghostDSec = g.delta / TICKS_PER_SECOND; o.ghostTracks = g.to; o.lane = g.mv ? g.track : -1;

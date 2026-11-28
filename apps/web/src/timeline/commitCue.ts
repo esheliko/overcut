@@ -10,7 +10,7 @@ export const CUE_MS = 280;
 /** Which edits get a cue: the announcement key of the finished edit -> its kind. */
 export const CUE_OF: Readonly<Record<string, CueKind>> = {
   "timeline.say.split": "split",
-  "timeline.say.trimmed": "trim",
+  // No cue for a trim (customer r15): the cue sits at the playhead, so after a pointer trim elsewhere it read as the playhead pulsing for no reason; the moved edge is feedback enough.
   "timeline.say.rippleDeleted": "ripple",
   "timeline.say.gapClosed": "gap",
   "timeline.say.pasted": "paste",
