@@ -128,7 +128,9 @@ export function insertOps(p: Project, media: MediaRef, probed: Probed, start: nu
   const ops: Op[] = [];
   if (media.kind === "audio") {
     if (!at) return null;
-    ops.push({ op: "insert_clip", track: at.id, clip: clip() });
+    // Like a video's sound: the first audio track that is free over the range, or a new one (music imported with videos lies under them, UX r15).
+    const snd = planSound(p, [{ start, end: start + duration, prefer: at.id }], ids);
+    ops.push(...snd.ops, { op: "insert_clip", track: snd.tracks[0]!, clip: clip() });
   } else {
     if (!vt) return null;
     const withSound = media.kind === "video" && probed.hasAudio;
