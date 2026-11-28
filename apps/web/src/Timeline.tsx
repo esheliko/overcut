@@ -29,7 +29,7 @@ import { currentKeymap } from "./commands/keymap";
 import { buildScene, TICKS_PER_SECOND } from "./timeline/scene";
 import { globalCommand, type Command } from "./timeline/shortcuts";
 import { clampPps, fitPps, gut, ppsToSlider, shouldAutoFit, sliderToPps } from "./timeline/view";
-import { zoomStore } from "./timeline/zoomStore";
+import { loadZoom, saveZoom, zoomStore } from "./timeline/zoomStore";
 import { clipMenuItems } from "./timeline/clipMenu";
 import { selectedVideoClip } from "./inspector/Inspector";
 import { opacityKeyOps } from "./inspector/keyframeModel";
@@ -185,6 +185,28 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     const v = h.view;
     if (shouldAutoFit({ prevClips: prev.clips, clips: scene.clipCount, prevEndSec: prev.end, endSec: scene.endSec, visibleEndSec: (v.scrollX + v.width - gut(v)) / v.pps, userZoomed: zoomStore.userZoomed() })) fitTo("auto");
   }, [project, scene, fitTo]);
+
+  // A project opens fitted to the width, or at the zoom the person chose in it (r16 PHONE-17): the zoom store is global and starts at 40 px/s, which is a few clips' width after a reload.
+  const projectId = project?.id ?? null;
+  const zoomedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (projectId === null) { zoomedFor.current = null; return; }
+    if (zoomedFor.current === projectId) return;
+    zoomedFor.current = projectId;
+    const saved = loadZoom(projectId);
+    if (saved !== null) zoomStore.set(saved, "user");
+    else if (scene.clipCount > 0) fitTo("fit");
+    else zoomStore.set(40, "fit");
+  }, [projectId, scene.clipCount, fitTo]);
+  useEffect(() => {
+    if (projectId === null) return;
+    let timer = 0;
+    const off = zoomStore.subscribe(() => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { if (zoomedFor.current === projectId) saveZoom(projectId, zoomStore.userZoomed() ? zoomStore.get() : null); }, 400);
+    });
+    return () => { off(); window.clearTimeout(timer); };
+  }, [projectId]);
 
   const commit = useCallback((ops: Op[], s: Say, after?: (out: { changed: boolean }) => void, at?: number) => {
     const p = live.current.proj;

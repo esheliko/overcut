@@ -1,6 +1,7 @@
 import type { Op } from "@app/engine-client";
 import { memo, useCallback, useDeferredValue, useEffect, useRef, type KeyboardEvent } from "react";
 import { useI18n } from "../i18n";
+import { Icon } from "../icons";
 import { onThemeChange } from "../theme/tokens";
 import { DARK, drawBubble, drawPlayheadStrip, drawTimeline, HEAD_W, newOverlay, paletteFromCss, type Bubble, type DrawStats, type Overlay, type Palette } from "./draw";
 import { describeClip, flagsOf, indicesOf, nearestClip, neighbour, type Say } from "./edit";
@@ -21,6 +22,7 @@ import { TICKS_PER_SECOND, type Scene } from "./scene";
 import type { Tool } from "./ripple";
 import { clamp, clampPps, clampScroll, decayVelocity, fitPps, GUTTER_COMPACT, GUTTER_WIDE, gut, LANE, RULER, timeToX, viewForRange, wheelZoomFactor, xToTime, zoomAt, zoomKeeping, type View } from "./view";
 import { zoomStore } from "./zoomStore";
+import { trimEdgeFrame, trimPreview } from "./trimPreview";
 import { magneticStore } from "./magneticStore";
 import { timecode } from "../timecode";
 
@@ -93,6 +95,8 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
   const pcv = useRef<HTMLCanvasElement>(null); // the time bubble's layer: a transparent canvas over the timeline, shown only while a bubble is
   const hcv = useRef<HTMLCanvasElement>(null); // the playhead: a thin strip painted once and moved with a CSS transform (it never repaints while panning, zooming or playing)
   const hclip = useRef<HTMLDivElement>(null); // clips the strip at the track-header column
+  const chip = useRef<HTMLButtonElement>(null); // "back to the playhead": shown at the edge the playhead is beyond (r16 PHONE-5)
+  const chipSide = useRef<"" | "left" | "right">("");
   const headSig = useRef({ h: 0, dpr: 0, pal: null as Palette | null, tx: NaN, vis: true, left: -1, bubble: false, bw: 0, bh: 0 });
   const bubble = useRef<Bubble | null>(null);
   const phRaf = useRef(0);
@@ -125,6 +129,8 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     }
     const px = timeToX(v, fr.current / live.current.fps);
     const vis = px >= g - 8 && px <= v.width + 8;
+    const side = live.current.scene.clipCount === 0 ? "" : px < g - 8 ? "left" : px > v.width + 8 ? "right" : "";
+    if (side !== chipSide.current && chip.current) { chipSide.current = side; chip.current.hidden = side === ""; chip.current.dataset.side = side; }
     if (vis !== sg.vis) { sg.vis = vis; h.style.visibility = vis ? "visible" : "hidden"; }
     if (vis) {
       const tx = Math.round((Math.round(px * 2) / 2 - g - HEAD_W / 2) * d) / d; // whole device pixels: the layer is moved, never resampled
@@ -142,6 +148,13 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       if (ctx) drawBubble(ctx, v, d, palette.current, b);
     }
   }, []);
+  /** The chip: scroll so the playhead sits in the middle of the clip area (one scroll, no zoom change). */
+  const toPlayhead = useCallback(() => {
+    const v = view.current, sec = fr.current / live.current.fps;
+    v.scrollX = Math.max(0, sec * v.pps - (v.width - gut(v)) / 2);
+    invalidate();
+    canvas.current?.focus({ preventScroll: true });
+  }, [invalidate]);
   /** Touch pan: the finger's movement since the last frame, applied once at the start of the next draw (P-16: one pan per frame, however many events arrived). */
   const panPend = useRef({ dx: 0, dy: 0 });
   const flushPan = useCallback(() => { const q = panPend.current; if (q.dx !== 0 || q.dy !== 0) { view.current.scrollX += q.dx; view.current.scrollY += q.dy; q.dx = 0; q.dy = 0; } }, []);
@@ -176,6 +189,17 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
   // Re-read the palette tokens and redraw when the theme changes.
   useEffect(() => onThemeChange(() => { if (canvas.current) { palette.current = paletteFromCss(canvas.current); invalidate(); } }), [invalidate]);
 
+  /** After the canvas got shorter: scroll vertically the least that shows the first selected clip's lane (r16 lane C note: the sheet leaves ~120 px). */
+  const keepLaneInView = () => {
+    const l = live.current, v = view.current;
+    if (l.selected.size === 0) return;
+    const j = indicesOf(l.scene, l.selected)[0];
+    if (j === undefined) return;
+    const y = RULER + l.scene.clipTrack[j]! * LANE - v.scrollY;
+    if (y < RULER) v.scrollY += y - RULER;
+    else if (y + LANE > v.height) v.scrollY += y + LANE - v.height;
+    v.scrollY = Math.max(0, v.scrollY);
+  };
   // Size the backing store to the element at the real device pixel ratio.
   useEffect(() => {
     const c = canvas.current!;
@@ -191,8 +215,10 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       view.current.gutter = compact ? GUTTER_COMPACT : GUTTER_WIDE;
       c.width = Math.round(w * dpr.current);
       c.height = Math.round(h * dpr.current);
+      const shrank = h < view.current.height;
       view.current.width = w;
       view.current.height = h;
+      if (shrank) keepLaneInView(); // a shorter canvas (the phone Edit sheet opening) must not push the selected clip's lane out of sight
       // Setting width / height clears the bitmap: repaint in the SAME frame (a ResizeObserver callback runs before the paint), or a splitter drag flashes black (UX r15 CUST-2).
       cancelAnimationFrame(raf.current);
       draw();
@@ -387,6 +413,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
   /** Mirrors the gesture into the painter's overlay. */
   const syncPreview = (g: Gesture) => {
     const o = ui.current;
+    let trimTo: number | null = null;
     if (g.k !== "move") snapped.current = null;
     o.ghosts = null; o.ghostTracks = null; o.ghostLabel = null; o.lane = -1; o.trimClip = -1; o.trimRight = -1; o.marquee = null; o.guideSec = null; o.trackDrag = null; o.markerDrag = g.k === "marker" && g.moved ? { id: g.id, sec: g.value / TICKS_PER_SECOND } : null;
     markPreview(flags.current, g);
@@ -402,6 +429,8 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
       snapped.current = g.guide ?? null;
     } else if (g.k === "trim") {
       o.trimClip = g.clip; o.trimEnd = g.edge === "end"; o.trimSec = g.value / TICKS_PER_SECOND;
+      const sc = live.current.scene;
+      if (sc.trackKind[sc.clipTrack[g.clip]!] === 0) trimTo = trimEdgeFrame(g.edge === "end" ? "end" : "start", o.trimSec, sc.start[g.clip]!, sc.end[g.clip]!, live.current.fps); // the picture under the dragged edge (DESK-15, PHONE-8)
     } else if (g.k === "tool") {
       const sc = live.current.scene, i = g.clip, d = g.delta / TICKS_PER_SECOND;
       if (g.tool === "ripple") { o.trimClip = i; o.trimEnd = g.edge === "end"; o.trimSec = (g.edge === "end" ? sc.end[i]! : sc.start[i]!) + d; }
@@ -420,9 +449,11 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     else if (g.k === "trim") sec = g.value / TICKS_PER_SECOND;
     else if (g.k === "scrub") sec = fr.current / fps;
     bubble.current = sec >= 0 ? { sec, text: timecode(Math.round(sec * fps), fps) } : null;
+    trimPreview.set(trimTo);
     setCursor(cursorFor(g));
     invalidate();
   };
+  useEffect(() => () => trimPreview.set(null), []);
   const setCursor = (c: string) => { const el = canvas.current; if (el && el.style.cursor !== c) el.style.cursor = c; };
   const run = (r: { g: Gesture; fx: Effects }) => { gest.current = r.g; syncPreview(r.g); applyFx(r.fx); };
 
@@ -722,6 +753,9 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
         }}
         onBlur={(e) => { delete e.currentTarget.dataset.pointer; }}
       />
+      <button ref={chip} type="button" className="tl-ph-chip" hidden data-side="" data-testid="tl-to-playhead" aria-label={t("timeline.toPlayhead")} title={t("timeline.toPlayhead")} onClick={toPlayhead} style={{ left: "var(--gutter-w, 60px)" }}>
+        <Icon name="chevronLeft" size={16} className="ph-l" /><span>{t("timeline.toPlayheadShort")}</span><Icon name="chevronRight" size={16} className="ph-r" />
+      </button>
       <div ref={hclip} className="tl-playhead-clip" aria-hidden="true"><canvas ref={hcv} className="tl-playhead-head" /></div>
       <canvas ref={pcv} className="tl-playhead-layer" aria-hidden="true" style={{ display: "none" }} />
       <p id="tl-summary" className="sr-only">{summary} {t("timeline.keys")}</p>

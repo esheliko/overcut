@@ -92,6 +92,8 @@
   "timeline.say.zoomedSelection": "Zoomed to the selection",
   "timeline.say.zoomNoSelection": "Select a clip to zoom to it",
   "timeline.playhead": "Timeline, playhead position",
+  "timeline.toPlayhead": "Back to the playhead",
+  "timeline.toPlayheadShort": "Playhead",
   "timeline.playheadText": "{seconds, plural, one {# second} other {# seconds}}",
   "theme.label": "Theme",
   "theme.row": "Theme: {theme}",
