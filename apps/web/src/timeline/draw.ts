@@ -9,6 +9,7 @@ import { formatSpeed } from "../inspector/speedModel";
 import { CUE_MS } from "./commitCue";
 import { mainTrack } from "./ripple";
 import { pictureGaps } from "./gaps";
+import { drawAudioHandles, drawAudioLines, newAudioPreview, type AudioPreview } from "./audioDraw";
 import { drawFilmstrip, drawWaveform, type MediaLayer } from "./media-layer";
 
 export interface Palette {
@@ -147,10 +148,12 @@ export interface Overlay {
   trackDrag: { from: number; to: number; y: number } | null;
   /** A marker being dragged along the ruler: its id and where it would land (seconds). */
   markerDrag: { id: string; sec: number } | null;
+  /** A volume line or fade handle being dragged: the clip and the values to show instead of the stored ones (`audioDraw.ts`). One record, mutated. */
+  audio: AudioPreview;
   /** The commit cue (commitCue.ts): where an edit landed and when it started (`performance.now()`); `t0 < 0` = none. One record, mutated, never reallocated. */
   cue: { sec: number; t0: number; kind: string };
 }
-export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, ghostLabel: null, lane: -1, newTrack: 0, marquee: null, guideSec: null, trackDrag: null, markerDrag: null, cue: { sec: 0, t0: -1, kind: "" } });
+export const newOverlay = (): Overlay => ({ selected: null, ghosts: null, ghostDSec: 0, ghostTracks: null, trimClip: -1, trimEnd: false, trimSec: 0, trimRight: -1, ghostLabel: null, lane: -1, newTrack: 0, marquee: null, guideSec: null, trackDrag: null, markerDrag: null, cue: { sec: 0, t0: -1, kind: "" }, audio: newAudioPreview() });
 
 const NO_UI: Overlay = newOverlay();
 
@@ -283,6 +286,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
       ctx.fillStyle = LABEL_FG;
       ctx.fillText(text, tx, y + LANE - 22, room);
     }
+    if (audio) drawAudioLines(ctx, scene, v, W, y, LANE, first, last, sel, ui.audio); // the volume line and the fade ramps (r16)
     ctx.globalAlpha = 1;
     // Pass 4: a locked lane is veiled (dimmed like a muted one); selection (r14): a 3 px accent border all round and white trim handles at both ends (the grab zone is wider than the
     // drawn handle: 16 px mouse, 44 px touch, see hit.ts). One path per layer for every selected clip of the lane, so "select all" on a busy timeline costs a handful of draw calls.
@@ -337,6 +341,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, scene: Scene, v: Vie
         }
       }
     }
+    if (audio && sel !== null && !scene.trackLocked[t]) drawAudioHandles(ctx, scene, v, W, y, first, last, sel, ui.audio, FONT_CLIP); // fade handles on the top edge, over the selection border
   }
 
   // Gaps in the picture (r15): where no video clip plays the export is black, so the main track shows those stretches hatched, never as plain empty lane.

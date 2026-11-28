@@ -27,6 +27,10 @@ export interface Scene {
   speedNum: Float64Array;
   speedDen: Float64Array;
   mediaDur: Float64Array;
+  /** Per clip: volume (linear, 1 = as recorded) and fade in / out in ticks (clip volume and fades, round 16). Only audio-track clips draw them. */
+  volume: Float64Array;
+  tFadeIn: Float64Array;
+  tFadeOut: Float64Array;
   /** Per track: locked (1) or not (0), and the track id. */
   trackLocked: Uint8Array;
   trackId: string[];
@@ -97,6 +101,9 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
     speedNum: new Float64Array(total),
     speedDen: new Float64Array(total),
     mediaDur: new Float64Array(total),
+    volume: new Float64Array(total),
+    tFadeIn: new Float64Array(total),
+    tFadeOut: new Float64Array(total),
     trackLocked: new Uint8Array(tracks.length),
     trackId: [],
     trackMuted: new Uint8Array(tracks.length),
@@ -141,6 +148,9 @@ export function buildScene(project: Project | null, sequence = 0): Scene {
       scene.speedNum[i] = c.speed?.num ?? 1;
       scene.speedDen[i] = c.speed?.den ?? 1;
       scene.mediaDur[i] = mediaLen.get(c.media) ?? 0;
+      scene.volume[i] = c.audio?.volume ?? 1;
+      scene.tFadeIn[i] = c.audio?.fade_in ?? 0;
+      scene.tFadeOut[i] = c.audio?.fade_out ?? 0;
       scene.media[i] = c.media;
       scene.link[i] = c.link ?? "";
       if (c.link) { const g = scene.linkGroups.get(c.link); if (g) g.push(i); else scene.linkGroups.set(c.link, [i]); }

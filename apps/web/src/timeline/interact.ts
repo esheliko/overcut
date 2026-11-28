@@ -6,6 +6,7 @@ import { clampN, describeClip, expandLinks, groupReps, laneChanger, laneOps, lan
 import { hopOps, planHop, snapMove } from "./arrange";
 import { snapPx } from "./snapStore";
 import { addTrackAt, handleAt, hitTest, trackAtY } from "./hit";
+import { audioDragOps, audioHit, audioSay, dragAudio, startAudioDrag, type AudioDrag } from "./audioEdit";
 import { headerPart, type HeaderPart } from "./header";
 import { frameTick, markerAt, moveMarkerPlan } from "./markers";
 import { reorderTrack, rowAt, toggleTrack } from "./tracks";
@@ -64,6 +65,8 @@ export type Gesture =
   /** An edit-tool drag (TL-04): ripple trim of `edge`, roll of the cut `cuts`, slip or slide of `clip`. `delta` is in timeline ticks, snapped to frames inside [lo, hi]. */
   | { k: "tool"; tool: "ripple" | "roll" | "slip" | "slide"; sx: number; clip: number; edge: Edge | null; cuts: [number, number][]; lo: number; hi: number; delta: number;
       /** A roll started by dragging the seam between two touching clips in the Select tool (#105): both clips are ghosted. */ seam?: boolean }
+  /** A drag of the volume line or a fade handle of the selected audio clip (`audioEdit.ts`): one `set_clip_audio` on release = one undo step. */
+  | ({ k: "audio" } & AudioDrag)
   | { k: "marquee"; x0: number; y0: number; x1: number; y1: number }
   /** Pointer is down on a track header: a tap on a switch flips it, a tap elsewhere opens the menu, a drag of the name (mouse) or a long press (touch) reorders. */
   | { k: "hdr"; track: number; part: HeaderPart; sx: number; sy: number; touch: boolean }
@@ -151,6 +154,8 @@ export function pointerDown(c: Ctx, e: PEvent): R {
   if (add) return { g: IDLE, fx: { addTrack: add } };
   const tl = toolDown(c, e);
   if (tl) return tl;
+  const ah = audioHit(scene, view, c.selFlags, e.x, e.y, touch); // the volume line and fade handles of a selected sound win over the trim zone at its corners
+  if (ah) return { g: { k: "audio", ...startAudioDrag(scene, ah, e.x, e.y) }, fx: NONE };
   const hd = handleAt(scene, view, c.selFlags, e.x, e.y, touch);
   if (hd && !scene.trackLocked[scene.clipTrack[hd.clip]!]) {
     const r = trimRange(scene, hd.clip, hd.edge);
@@ -233,6 +238,8 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
       const d = snapTo(scene, g.tool === "slip" ? -dx : dx, { lo: g.lo, hi: g.hi } as Range);
       return { g: { ...g, delta: d }, fx: NONE };
     }
+    case "audio":
+      return { g: { k: "audio", ...dragAudio(scene, g, view, e.x, e.y, slopOf(e)) }, fx: NONE };
     case "marquee":
       return { g: { ...g, x1: e.x, y1: e.y }, fx: NONE };
     case "hdr": {
@@ -287,6 +294,10 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
       if (g.value === g.orig) return { g: IDLE, fx: NONE };
       const ops = c.magnetic && onMagnetic(scene, g.clip) ? magneticTrimOps(scene, g.clip, g.edge, g.value) : linkedTrimOps(scene, g.clip, g.edge, g.value);
       return { g: IDLE, fx: { ops, say: { key: "timeline.say.trimmed", values: { edge: g.edge, name: scene.name[g.clip]! } } } };
+    }
+    case "audio": {
+      const ops = g.moved ? audioDragOps(scene, g) : null;
+      return { g: IDLE, fx: ops ? { ops, say: audioSay(scene, g) } : NONE };
     }
     case "tool": {
       // A slip dragged the way the footage has run out (e.g. the right half of a split, dragged later) clamps to 0: say so instead of doing nothing.

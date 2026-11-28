@@ -1726,7 +1726,7 @@ fn wire_format_matches_the_checked_in_contract() {
     let fixture: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let ops = fixture["ops"].as_array().unwrap();
-    assert_eq!(ops.len(), 36, "one example per Op variant");
+    assert_eq!(ops.len(), 37, "one example per Op variant");
     for raw in ops {
         let op: Op = serde_json::from_value(raw.clone()).unwrap_or_else(|e| panic!("{raw}: {e}"));
         assert_eq!(

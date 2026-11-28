@@ -63,8 +63,8 @@ test("lengths on the drag ghost read short", () => {
 
 test("clip context menu: rows and why a row is unavailable (T-03)", () => {
   const ids = (s: Parameters<typeof clipMenuItems>[0]) => clipMenuItems(s).map((i) => `${i.id}${i.disabled ? "!" : ""}`);
-  const one = { clips: 1, anyLinked: false, allLocked: false, still: false };
-  assert.deepEqual(ids(one), ["split", "duplicate", "delete", "rippleDelete", "unlink!", "speed:0.5", "speed:1", "speed:1.5", "speed:2"]);
+  const one = { clips: 1, anyLinked: false, allLocked: false, still: false, sound: true, muted: false };
+  assert.deepEqual(ids(one), ["split", "duplicate", "delete", "rippleDelete", "unlink!", "mute", "speed:0.5", "speed:1", "speed:1.5", "speed:2"]);
   assert.equal(clipMenuItems(one).find((i) => i.id === "unlink")!.why, "linked");
   assert.deepEqual(ids({ ...one, anyLinked: true }).filter((x) => x.startsWith("unlink")), ["unlink"]);
   const many = ids({ ...one, clips: 3 });
@@ -73,6 +73,9 @@ test("clip context menu: rows and why a row is unavailable (T-03)", () => {
   assert.equal(clipMenuItems({ ...one, still: true }).find((i) => i.id === "speed:2")!.why, "still");
   assert.ok(ids({ ...one, allLocked: true }).every((x) => x.endsWith("!") || x === "unlink!"), "a locked track: nothing can run");
   assert.equal(clipMenuItems({ ...one, clips: 0 }).find((i) => i.id === "split")!.why, "select");
+  // Mute clip (r16): offered for a sound, says why when the clip has none
+  assert.equal(clipMenuItems(one).find((i) => i.id === "mute")!.disabled, false);
+  assert.equal(clipMenuItems({ ...one, sound: false }).find((i) => i.id === "mute")!.why, "silent");
 });
 
 test("add media at playhead: the selected clip's media wins, else the newest ready card, else nothing (T-01)", () => {
