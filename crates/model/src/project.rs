@@ -1,6 +1,7 @@
 //! The project document: `Project -> Sequence -> Track -> Clip`, plus the media it references.
 //! Plain data. It is changed only by ops (ADR 0006, `app-timeline`), never directly by the UI.
 
+use crate::audio::ClipAudio;
 use crate::ids::{ClipId, LinkId, MarkerId, MediaId, ProjectId, SequenceId, TrackId};
 use crate::time::{Rational, Time};
 use crate::transform::ClipTransform;
@@ -10,7 +11,7 @@ use std::collections::HashSet;
 use std::fmt;
 
 /// Version of the document schema. Bump (and add a migration + fixture, M1-005) on any incompatible change.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Project {
@@ -235,6 +236,9 @@ pub struct Clip {
     /// Position, scale, rotation, crop, flip, opacity and fit (M2-003). The identity is the default and is not written.
     #[serde(default, skip_serializing_if = "transform_is_identity")]
     pub transform: Box<ClipTransform>,
+    /// Volume and fades (round 16, schema 6). The plain clip is the default and is not written.
+    #[serde(default, skip_serializing_if = "ClipAudio::is_default")]
+    pub audio: ClipAudio,
 }
 
 /// Boxed so a `Clip` (and every `Op` carrying one) stays small: a transform is a dozen animatable numbers.
@@ -481,6 +485,9 @@ impl Project {
         if c.transform.validate().is_err() {
             return bad("transform has a value that is not finite or out of range");
         }
+        if !c.audio.is_in_range() {
+            return bad("volume or fade is not finite or out of range");
+        }
         if c.start < prev_end {
             return Err(ModelError::Overlap {
                 track: t.id,
@@ -533,6 +540,7 @@ mod tests {
             speed: unit_speed(),
             link: None,
             transform: Default::default(),
+            audio: Default::default(),
         };
         let (c1, mut c2) = (clip(&mut ids, 0), clip(&mut ids, 3));
         // linked video + its own audio on the audio track
@@ -556,7 +564,7 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: Project = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
-        assert!(json.contains("\"schema_version\":5"));
+        assert!(json.contains("\"schema_version\":6"));
     }
 
     #[test]
@@ -619,8 +627,8 @@ mod tests {
             p.validate().unwrap_err()
         };
         assert!(matches!(
-            edit(&|p| p.schema_version = 6),
-            ModelError::UnsupportedVersion(6)
+            edit(&|p| p.schema_version = 7),
+            ModelError::UnsupportedVersion(7)
         ));
         assert!(matches!(
             edit(&|p| p.media.clear()),
@@ -636,6 +644,14 @@ mod tests {
         ));
         assert!(matches!(
             edit(&|p| p.sequences[0].tracks[0].clips[0].speed = Rational { num: 0, den: 1 }),
+            ModelError::BadClip { .. }
+        ));
+        assert!(matches!(
+            edit(&|p| p.sequences[0].tracks[0].clips[0].audio.volume = 3.0),
+            ModelError::BadClip { .. }
+        ));
+        assert!(matches!(
+            edit(&|p| p.sequences[0].tracks[0].clips[0].audio.fade_out = Time::from_ticks(-1)),
             ModelError::BadClip { .. }
         ));
         assert!(matches!(

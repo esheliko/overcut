@@ -228,6 +228,7 @@ mod tests {
                         speed: Rational::new(1, 1).unwrap(),
                         link: None,
                         transform: Default::default(),
+                        audio: Default::default(),
                     })
                     .collect(),
             })

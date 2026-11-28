@@ -91,15 +91,15 @@ test("VFR: frames are chosen by timestamp, not by index arithmetic", () => {
 
 test("audio mixing: gain, offsets, mono to stereo, speed, trimming and limiting", () => {
   const l = new Float32Array(8), r = new Float32Array(8);
-  mixSegment(l, r, { out_start: 2, len: 4, speed: { num: 1, den: 1 }, gain: 0.5 }, Float32Array.from([1, 1, 1, 1]), 1);
+  mixSegment(l, r, { out_start: 2, len: 4, speed: { num: 1, den: 1 }, gain: 0.5, fade_in: 0, fade_out: 0, clip_len: 0, clip_offset: 0 }, Float32Array.from([1, 1, 1, 1]), 1);
   assert.deepEqual([...l], [0, 0, 0.5, 0.5, 0.5, 0.5, 0, 0]);
   assert.deepEqual([...r], [...l]);
   const l2 = new Float32Array(4), r2 = new Float32Array(4);
-  mixSegment(l2, r2, { out_start: 0, len: 4, speed: { num: 1, den: 1 }, gain: 1 }, Float32Array.from([1, -1, 2, -2, 3, -3, 4, -4]), 2, 2);
+  mixSegment(l2, r2, { out_start: 0, len: 4, speed: { num: 1, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_offset: 0 }, Float32Array.from([1, -1, 2, -2, 3, -3, 4, -4]), 2, 2);
   assert.deepEqual([...l2], [0, 0, 3, 4]);
   assert.deepEqual([...r2], [0, 0, -3, -4]);
   const l3 = new Float32Array(2), r3 = new Float32Array(2);
-  mixSegment(l3, r3, { out_start: 0, len: 2, speed: { num: 2, den: 1 }, gain: 1 }, Float32Array.from([0, 1, 2, 3]), 1);
+  mixSegment(l3, r3, { out_start: 0, len: 2, speed: { num: 2, den: 1 }, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_offset: 0 }, Float32Array.from([0, 1, 2, 3]), 1);
   assert.deepEqual([...l3], [0, 2]);
   assert.equal(sourceSamplesFor({ len: 100, speed: { num: 3, den: 2 } }), 150);
   assert.equal(sampleAtTicks(TICKS_PER_SECOND, 48_000), 48_000);
@@ -112,11 +112,11 @@ test("audio mixing: gain, offsets, mono to stereo, speed, trimming and limiting"
 test("mixStretched adds the pre-stretched clip from clip_offset, scaled by gain, with skip and mono", () => {
   const l = new Float32Array(6);
   const r = new Float32Array(6);
-  mixStretched(l, r, { out_start: 1, len: 4, gain: 0.5, clip_offset: 2 }, [Float32Array.from([0, 0, 2, 4, 6, 8]), Float32Array.from([0, 0, -2, -4, -6, -8])]);
+  mixStretched(l, r, { out_start: 1, len: 4, gain: 0.5, fade_in: 0, fade_out: 0, clip_len: 0, clip_offset: 2 }, [Float32Array.from([0, 0, 2, 4, 6, 8]), Float32Array.from([0, 0, -2, -4, -6, -8])]);
   assert.deepEqual(Array.from(l), [0, 1, 2, 3, 4, 0]);
   assert.deepEqual(Array.from(r), [0, -1, -2, -3, -4, 0]);
   const m = new Float32Array(6);
   const m2 = new Float32Array(6);
-  mixStretched(m, m2, { out_start: 0, len: 2, gain: 1, clip_offset: 0 }, [Float32Array.from([1, 2])]);
+  mixStretched(m, m2, { out_start: 0, len: 2, gain: 1, fade_in: 0, fade_out: 0, clip_len: 0, clip_offset: 0 }, [Float32Array.from([1, 2])]);
   assert.deepEqual([Array.from(m), Array.from(m2)], [[1, 2, 0, 0, 0, 0], [1, 2, 0, 0, 0, 0]]);
 });

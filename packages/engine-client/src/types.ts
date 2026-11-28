@@ -1,5 +1,5 @@
 import type { ExportApi } from "./export/types";
-import type { Background, Clip, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId } from "./model.generated";
+import type { Background, Clip, ClipAudio, ClipId, ClipTransform, Easing, Fit, Keyframe, LinkId, Marker, MarkerId, MarkerKind, MediaId, MediaRef, Project, Rational, Resolution, SequenceId, Time, TimeRange, Track, TrackId } from "./model.generated";
 import type { Capabilities } from "./capabilities";
 import type { EditPatch } from "./patch";
 
@@ -261,6 +261,8 @@ export type Op =
   | { op: "set_link"; clip: ClipId; link: LinkId | null }
   /** Replace the clip's transform (position, scale, rotation, anchor, crop, flip, opacity, fit). One drag = many of these = one undo step. */
   | { op: "set_clip_transform"; clip: ClipId; transform: ClipTransform }
+  /** Replace the clip's volume and fades (round 16). One slider drag = many of these = one undo step. */
+  | { op: "set_clip_audio"; clip: ClipId; audio: ClipAudio }
   /** Add a keyframe to one animatable property, or replace the key at the same clip-relative time (M2-004, `docs/features/keyframes.md`). */
   | { op: "set_keyframe"; clip: ClipId; prop: TransformProp; key: Keyframe }
   /** Move the key at `from` to `to` (refused when another key is there) and optionally give it `value`. A drag = many of these = one undo step. */
@@ -426,7 +428,12 @@ export interface AudioSegment {
   /** Source time in ticks of the segment's first sample. */
   source_start: number;
   speed: { num: number; den: number };
+  /** The clip's volume (linear, 0..2). The fades come on top: `segmentGain`. */
   gain: number;
+  /** Fade in / out of the whole clip in samples (already shortened to fit) and the clip's length in samples. */
+  fade_in: number;
+  fade_out: number;
+  clip_len: number;
   /** The clip's first source tick and the source ticks it reads in all: the window the pitch-keeping stretch turns into the clip's length. */
   clip_source_in: number;
   clip_source_len: number;

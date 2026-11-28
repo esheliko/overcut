@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
 import type { Clip } from "@app/engine-client";
+import { AudioSection } from "./AudioSection";
 
 /**
- * THE SLOT for the sound controls of the Audio tab (Volume, Fade in, Fade out). UX r16 lane B makes the tab and renders this component under the
- * "Audio clip" card; lane D replaces this body with the real controls (a `Section` per control group, or plain rows in `.insp`), nothing else in
- * the Audio tab needs to change. `clips` are the selected sounds (one for the Audio tab of a single clip; several for a multi-sound selection).
+ * The sound controls of the Audio tab (Volume, Fade in, Fade out, Mute clip), rendered under the "Audio clip" card (UX r16 lanes B + D).
+ * `AudioSection` reads the selection itself (a sound, or the linked sound of a picture), so `clips` only says that there is something to show.
  */
 export function AudioControls({ clips }: { clips: readonly Clip[] }): ReactNode {
-  void clips;
-  return null;
+  return clips.length === 1 ? <AudioSection /> : null; // several sounds: Mute in the clip menu covers them; per-clip levels need one clip
 }

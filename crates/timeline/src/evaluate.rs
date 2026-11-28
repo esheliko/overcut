@@ -49,13 +49,37 @@ pub struct AudioSegment {
     pub source_start: Time,
     /// Source seconds per timeline second (the mixer resamples by this and the media rate).
     pub speed: Rational,
+    /// The clip's volume (linear, `0..=2`; `docs/features/clip-audio.md`). The fades come on top: see [`AudioSegment::gain_at`].
     pub gain: f32,
+    /// Fade in and fade out of the whole clip, in samples at the sequence rate (already shortened so both fit in `clip_len`).
+    pub fade_in: u32,
+    pub fade_out: u32,
+    /// Samples in the whole clip (not just this segment).
+    pub clip_len: u32,
     /// The clip's first source tick and the source ticks it reads in all (`duration * speed`): what a pitch-keeping stretcher turns into
     /// the clip's whole timeline length (`docs/features/speed.md`).
     pub clip_source_in: Time,
     pub clip_source_len: Time,
     /// Samples from the clip's first sample to this segment's first sample (0 when the segment starts with the clip).
     pub clip_offset: u32,
+}
+
+impl AudioSegment {
+    /// The gain of output sample `i` of this segment: the clip's volume times a **linear** fade envelope (a straight ramp of the level, 0 to 1
+    /// over `fade_in` samples from the clip's first sample, 1 to 0 over `fade_out` samples ending at its last). Preview and export both
+    /// apply exactly this (the TypeScript twin is `segmentGain` in `packages/engine-client/src/audio-gain.ts`; both are tested on the same table).
+    pub fn gain_at(&self, i: u32) -> f32 {
+        let k = self.clip_offset.saturating_add(i);
+        let mut e = 1.0f32;
+        if k < self.fade_in {
+            e = k as f32 / self.fade_in as f32;
+        }
+        let left = self.clip_len.saturating_sub(1).saturating_sub(k);
+        if left < self.fade_out {
+            e = e.min(left as f32 / self.fade_out as f32);
+        }
+        self.gain * e
+    }
 }
 
 /// Output of [`evaluate_into`]. Keep one and reuse it: the vectors are cleared, not reallocated.
@@ -97,6 +121,18 @@ fn ceil_sample(t: i64, rate: u32) -> i64 {
     let n = i128::from(t) * i128::from(rate);
     let d = i128::from(TICKS_PER_SECOND);
     i64::try_from(-((-n).div_euclid(d))).unwrap_or(i64::MAX)
+}
+
+/// A clip's fades in samples, shortened (in proportion) when together they are longer than the clip, which a trim after the fade was set can cause.
+fn fade_samples(a: &app_model::ClipAudio, rate: u32, clip_len: u32) -> (u32, u32) {
+    let conv = |t: Time| ceil_sample(t.ticks().max(0), rate).clamp(0, i64::from(u32::MAX)) as u64;
+    let (fi, fo) = (conv(a.fade_in), conv(a.fade_out));
+    let total = u64::from(clip_len);
+    if fi + fo <= total {
+        return (fi as u32, fo as u32);
+    }
+    let fi2 = fi * total / (fi + fo);
+    (fi2 as u32, (total - fi2).min(fo) as u32)
 }
 
 /// Evaluates `seq` at `t` and, when `audio_samples > 0`, the audio window `[t, t + audio_samples)` (in sequence samples).
@@ -181,11 +217,17 @@ pub fn evaluate_into(seq: &Sequence, t: Time, audio_samples: u32, out: &mut Fram
                     if a >= b {
                         continue;
                     }
+                    if c.audio.volume <= 0.0 {
+                        continue;
+                    }
                     let at = Time::from_sample_index(a, rate).unwrap_or(c.start);
                     let delta = (at.ticks() - c.start.ticks()).max(0);
                     let Some(source_start) = source_at(c.source_in, delta, c.speed) else {
                         continue;
                     };
+                    let first = ceil_sample(c.start.ticks(), rate);
+                    let clip_len = (ceil_sample(end_ticks(c), rate) - first).max(0) as u32;
+                    let (fade_in, fade_out) = fade_samples(&c.audio, rate, clip_len);
                     out.audio.push(AudioSegment {
                         track: track.id,
                         clip: c.id,
@@ -194,7 +236,10 @@ pub fn evaluate_into(seq: &Sequence, t: Time, audio_samples: u32, out: &mut Fram
                         len: (b - a) as u32,
                         source_start,
                         speed: c.speed,
-                        gain: 1.0,
+                        gain: c.audio.volume,
+                        fade_in,
+                        fade_out,
+                        clip_len,
                         clip_source_in: c.source_in,
                         clip_source_len: Time::from_ticks(
                             (i128::from(c.duration.ticks()) * i128::from(c.speed.num)
@@ -234,6 +279,7 @@ mod tests {
             speed,
             link: None,
             transform: Default::default(),
+            audio: Default::default(),
         }
     }
 
@@ -390,6 +436,81 @@ mod tests {
             w.audio[0].source_start,
             Time::from_ticks(11 * 14_700 - start)
         );
+    }
+
+    fn faded(volume: f32, fade_in_ticks: i64, fade_out_ticks: i64) -> Sequence {
+        let mut c = clip(1, 0, 0, SEC, one()); // one second = 48000 samples
+        c.audio = app_model::ClipAudio {
+            volume,
+            fade_in: Time::from_ticks(fade_in_ticks),
+            fade_out: Time::from_ticks(fade_out_ticks),
+        };
+        seq(Rational::FPS_30, &[c])
+    }
+
+    #[test]
+    fn volume_is_the_gain_and_a_muted_clip_leaves_no_segment() {
+        let w = evaluate(&faded(0.5, 0, 0), Time::ZERO, 100);
+        assert_eq!(
+            (w.audio[0].gain, w.audio[0].fade_in, w.audio[0].fade_out),
+            (0.5, 0, 0)
+        );
+        assert_eq!(w.audio[0].gain_at(0), 0.5);
+        assert_eq!(w.audio[0].gain_at(99), 0.5);
+        assert!(evaluate(&faded(0.0, 0, 0), Time::ZERO, 100)
+            .audio
+            .is_empty());
+        // plain clips are unchanged: gain 1, no fades
+        let plain = evaluate(
+            &seq(Rational::FPS_30, &[clip(1, 0, 0, SEC, one())]),
+            Time::ZERO,
+            100,
+        );
+        assert_eq!((plain.audio[0].gain, plain.audio[0].fade_in), (1.0, 0));
+    }
+
+    #[test]
+    fn fades_are_linear_ramps_from_the_clips_own_ends() {
+        // fade in 0.1 s = 4800 samples, fade out 0.25 s = 12000 samples, volume 2 (the fades scale the volume).
+        let s = faded(2.0, SEC / 10, SEC / 4);
+        let seg = evaluate(&s, Time::ZERO, 48_000).audio[0];
+        assert_eq!(
+            (seg.fade_in, seg.fade_out, seg.clip_len),
+            (4800, 12_000, 48_000)
+        );
+        assert_eq!(seg.gain_at(0), 0.0);
+        assert_eq!(seg.gain_at(2400), 1.0); // half way up: 2.0 * 0.5
+        assert_eq!(seg.gain_at(4800), 2.0);
+        assert_eq!(seg.gain_at(30_000), 2.0);
+        assert_eq!(seg.gain_at(48_000 - 12_000 - 1), 2.0);
+        assert!((seg.gain_at(48_000 - 6_001) - 1.0).abs() < 1e-3); // half way down
+        assert_eq!(seg.gain_at(47_999), 0.0);
+    }
+
+    #[test]
+    fn the_envelope_is_the_same_however_the_audio_is_cut_into_windows() {
+        let s = faded(1.0, SEC / 10, SEC / 10);
+        let whole = evaluate(&s, Time::ZERO, 48_000).audio[0];
+        // 480-sample windows (10 ms): every sample of every window must match the one big window.
+        for w in 0..100u32 {
+            let t = Time::from_sample_index(i64::from(w) * 480, 48_000).unwrap();
+            let seg = evaluate(&s, t, 480).audio[0];
+            for i in 0..480 {
+                assert_eq!(
+                    seg.gain_at(i),
+                    whole.gain_at(w * 480 + i),
+                    "window {w} sample {i}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fades_longer_than_the_clip_are_shortened_in_proportion() {
+        // A trim left 0.8 s + 0.8 s of fade on a 1 s clip: they share it 50 / 50 and never overlap.
+        let seg = evaluate(&faded(1.0, SEC * 8 / 10, SEC * 8 / 10), Time::ZERO, 10).audio[0];
+        assert_eq!(seg.fade_in + seg.fade_out, 48_000);
+        assert_eq!(seg.fade_in, 24_000);
     }
 
     #[test]

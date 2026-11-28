@@ -2,7 +2,7 @@
 
 /** Asks the shell to show a Details tab for the selected clip: the toolbar's Speed and Crop, the phone strip's Edit tools. `focus: "crop"` also puts the cursor on the first crop field. */
 export const DETAILS_EVENT = "overcut:details";
-export interface DetailsRequest { tab: "video" | "speed"; focus?: "crop" }
+export interface DetailsRequest { tab: "video" | "audio" | "speed"; focus?: "crop" }
 let pending: DetailsRequest | null = null;
 /** Ask for a Details tab. The panel may not be on screen yet (a phone sheet that is closed), so the request also waits for it: `takeDetailsRequest`. */
 export function requestDetails(d: DetailsRequest): void { pending = d; window.dispatchEvent(new CustomEvent(DETAILS_EVENT, { detail: d })); }

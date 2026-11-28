@@ -49,6 +49,7 @@ export async function openStretcher(): Promise<Stretcher> {
   return (await import("./wasm")).openWasmStretcher();
 }
 export { ClipStretchCache, MAX_STRETCH_SECONDS, type ReadPlanar, type Stretcher } from "./audio-stretch";
+export { segmentGain, type GainSegment } from "./audio-gain";
 export * from "./model.generated";
 export { codecName } from "./decode/errors";
 export { FINGERPRINT_WINDOW, fingerprintFile, fingerprintSize, relinkMedia, type Candidate, type RelinkResult, type Sliceable } from "./media";

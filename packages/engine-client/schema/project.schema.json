@@ -114,6 +114,10 @@
     "Clip": {
       "type": "object",
       "properties": {
+        "audio": {
+          "description": "Volume and fades (round 16, schema 6). The plain clip is the default and is not written.",
+          "$ref": "#/$defs/ClipAudio"
+        },
         "duration": {
           "description": "Length on the timeline (source length is `duration * speed`).",
           "$ref": "#/$defs/Time"
@@ -163,6 +167,25 @@
         "source_in",
         "duration"
       ]
+    },
+    "ClipAudio": {
+      "description": "Linear gain, fade in and fade out of one clip. `Default` is the plain clip (full level, no fades) and is not written.",
+      "type": "object",
+      "properties": {
+        "fade_in": {
+          "description": "Length of the rise from silence at the clip's start, in ticks (`>= 0`). Not written when 0.",
+          "$ref": "#/$defs/Time"
+        },
+        "fade_out": {
+          "description": "Length of the fall to silence at the clip's end, in ticks (`>= 0`). Not written when 0.",
+          "$ref": "#/$defs/Time"
+        },
+        "volume": {
+          "description": "Linear gain, `0..=MAX_VOLUME` (shown as 0-200%). 1 = as recorded; 0 = muted. Not written when 1.",
+          "type": "number",
+          "format": "float"
+        }
+      }
     },
     "ClipId": {
       "type": "string",

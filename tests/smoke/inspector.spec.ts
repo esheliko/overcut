@@ -133,6 +133,8 @@ test("phone Edit sheet at 320 px: the mini transport keeps 44 px buttons", async
   await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
   const strip = page.getByTestId("mini-transport");
   await expect(strip).toBeVisible();
+  // Measure once the sheet has settled: mid-slide its top sits on a fractional pixel and the box reads 43.99998 px.
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
   for (const b of await strip.getByRole("button").all()) {
     const r = (await b.boundingBox())!;
     expect(r.width).toBeGreaterThanOrEqual(44);
