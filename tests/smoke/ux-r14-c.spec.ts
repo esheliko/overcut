@@ -107,7 +107,7 @@ test("export dialog: preview frame, prominent size, merged presets, Export alway
   await expect(page.locator(".canvas")).toHaveAttribute("data-loaded", "true");
   await page.getByTestId("export-open").click();
   await expect(page.getByTestId("export-frame")).toBeVisible();
-  await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
+  await expect(page.getByTestId("export-estimate")).toContainText(/Up to about .* (MB|KB)/);
   // Presets that give the same file are one tile; the tile names the others, and every preset is still reachable.
   const tiles = await page.locator(".export-chip-choice").count();
   expect(tiles).toBeGreaterThan(1);

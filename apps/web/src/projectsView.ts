@@ -37,3 +37,16 @@ export function libraryView<T extends { archived?: number }>(entries: readonly T
   const archived = entries.filter(isArchived).length;
   return { shown: entries.filter((e) => isArchived(e) === (filter === "archived")), active: entries.length - archived, archived };
 }
+
+/**
+ * The name a new project gets so the list tells them apart: "Project 28 Nov", then "Project 28 Nov 2", "... 3" when that day's name is taken.
+ * `label` is the localized template with `{date}` (`projects.auto`).
+ */
+export function autoProjectName(taken: readonly string[], date: Date, locale: string, label = "Project {date}"): string {
+  let when: string;
+  try { when = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(date); } catch { when = date.toISOString().slice(5, 10); }
+  const base = label.replace("{date}", when);
+  const used = new Set(taken);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) if (!used.has(`${base} ${n}`)) return `${base} ${n}`;
+}

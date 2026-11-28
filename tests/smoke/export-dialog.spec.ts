@@ -36,7 +36,7 @@ test("one click on Export (the smart default) makes a file and saves it", async 
   await expect(chips).toHaveCount(6); // eight presets; the 160x120 fixture cannot grow, so YouTube and Facebook write the same file as Original and are named on its tile (UX r14), not offered twice
   for (const c of await chips.all()) expect((await c.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(page.getByTestId("export-preset-original")).toBeChecked();
-  await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
+  await expect(page.getByTestId("export-estimate")).toContainText(/Up to about .* (MB|KB)/);
   // R11: a tile's hint says what the preset does (size cap, black bars): it wraps, it is never cut off by an ellipsis.
   const cut = await page.locator(".ex-tx span").evaluateAll((els) => els.filter((e) => e.scrollHeight > e.clientHeight + 1 || getComputedStyle(e).whiteSpace === "nowrap").map((e) => e.textContent));
   expect(cut).toEqual([]);
@@ -73,7 +73,7 @@ test("a chosen preset is remembered, and Advanced shows a live size", async ({ p
   await page.getByText("Advanced").click();
   await expect(page.getByTestId("export-quality")).toBeVisible();
   await page.getByTestId("export-quality").selectOption("low"); // the 160x120 fixture is at the minimum bitrate, so the figure cannot move here; scaling is a unit test
-  await expect(est).toContainText(/About .* (MB|KB)/);
+  await expect(est).toContainText(/Up to about .* (MB|KB)/);
   await expect(page.getByTestId("export-preset-small")).not.toBeChecked(); // an Advanced change makes it a custom choice
   await page.getByTestId("export-preset-small").check({ force: true }); // picking the chip again resets Advanced to the preset
   await expect(page.getByTestId("export-quality")).toHaveValue("medium");
@@ -121,7 +121,7 @@ test("platform presets: picking Discord aims under its cap, labels the figure a 
   await expect(page.getByTestId("export-preset-discord")).toBeChecked();
   await expect(page.locator(".export-chip-choice", { has: page.getByTestId("export-preset-discord") })).toContainText("Aims under 10 MB");
   await expect(page.getByTestId("export-cap-note")).toContainText(/Aims to stay under 10 MB.*target/);
-  await expect(page.getByTestId("export-estimate")).toContainText(/About .* (MB|KB)/);
+  await expect(page.getByTestId("export-estimate")).toContainText(/Up to about .* (MB|KB)/);
   await expect(page.getByTestId("export-cap-warning")).toHaveCount(0); // a short clip fits
   // The 160x120 fixture is not 9:16, so the TikTok chip says it adds bars and shows the note when chosen.
   await page.getByTestId("export-preset-vertical").check({ force: true });
