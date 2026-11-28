@@ -22,7 +22,8 @@ import { canvasSummary, hasPicture } from "./canvas";
 import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
 import { ProjectStore, ProjectStoreProvider, useProjectStore } from "./store/projectStore";
-import { Inspector } from "./inspector/Inspector";
+import { Inspector, selectedVideoClip } from "./inspector/Inspector";
+import { ticksPerFrame, ticksToFrame } from "./inspector/keyframeModel";
 import { SpeedSection } from "./inspector/Speed";
 import { Timeline } from "./Timeline";
 import { AccentPicker, InstallItem, ScrubPrepItem } from "./AppearanceInstall";
@@ -586,6 +587,7 @@ function Editor({ store }: { store: ProjectStore }) {
   // ---- the projects list (PM-06, docs/features/projects.md) ----
   const refreshList = async () => { const l = await (await getRegistry()).list(); setList(l); return l; };
   const openEntry = (e: { id: string; name: string }) => {
+    setFromEditor(false);
     setName(e.name || null);
     clean.current = null;
     setOfflineHidden(false);
@@ -655,6 +657,7 @@ function Editor({ store }: { store: ProjectStore }) {
     await flushTouch("leaving");
     try { await refreshList(); } catch (e) { return fail("projects.failed", e); }
     setToast(null); // a message about the editor ("Nothing to split here") must not follow the user to the projects list
+    if (openId) { cameFrom.current = { id: openId, name: name ?? "" }; setFromEditor(true); }
     setOpenId(null);
   };
   const homeTask = async (run: () => Promise<void>) => {
@@ -732,19 +735,34 @@ function Editor({ store }: { store: ProjectStore }) {
     const opening = id !== tool || !sheet;
     setSheet(id === tool ? !sheet : true);
     setTool(id);
+    if (id === "edit") { setEditTab("video"); if (opening) seekIntoSelection(); }
     if (opening) setDetent(id === "edit" ? "peek" : "half"); // Edit starts small so the picture and the timeline stay in view
   };
   const closeSheet = useCallback(() => setSheet(false), []);
+  const [editTab, setEditTab] = useState<"video" | "speed" | "crop">("video"); // which Details tab the phone strip's button opened (it highlights that button)
+  /** Edit, Speed and Crop change the picture: when the playhead is not on the selected clip the preview shows something else, so the playhead moves onto the clip (UX r15 PHONE-5). */
+  const seekIntoSelection = useCallback(() => {
+    const st = store.getState();
+    const clip = selectedVideoClip(st.project, st.selection);
+    const rate = st.project?.sequences[0]?.frame_rate;
+    if (!clip || !rate) return;
+    const now = st.playhead * ticksPerFrame(rate);
+    if (now >= clip.start && now < clip.start + clip.duration) return;
+    store.setPlayhead(Math.max(0, ticksToFrame(clip.start, rate)));
+  }, [store]);
   // The toolbar's Speed and Crop and the phone strip's: show Details where this layout keeps it (the docked column, the tablet's tool panel, the phone's sheet).
   useEffect(() => {
-    const open = () => {
+    const open = (e: Event) => {
+      const d = (e as CustomEvent<DetailsRequest>).detail;
+      setEditTab(d?.focus === "crop" ? "crop" : d?.tab === "speed" ? "speed" : "video");
+      seekIntoSelection();
       if (wide) { setInspCollapsed(false); return; }
       setTool("edit");
       if (roomy) setLibCollapsed(false); else { setSheet(true); setDetent("peek"); }
     };
     window.addEventListener(DETAILS_EVENT, open);
     return () => window.removeEventListener(DETAILS_EVENT, open);
-  }, [wide, roomy, setInspCollapsed, setLibCollapsed]);
+  }, [wide, roomy, setInspCollapsed, setLibCollapsed, seekIntoSelection]);
   // WCAG 2.4.11 Focus Not Obscured: on a phone the open tool sheet is drawn over the timeline. When keyboard focus moves from the sheet to a control it
   // would cover, the sheet steps aside (closes) instead of leaving focus on something nobody can see.
   useEffect(() => {
@@ -771,6 +789,12 @@ function Editor({ store }: { store: ProjectStore }) {
     if (back?.isConnected && (!here || here === document.body || here.closest(".library"))) back.focus({ preventScroll: true });
   }, [sheet, roomy]);
   useBackClose(!roomy && sheet, closeSheet); // phone: Back / swipe-back closes the sheet before it leaves the editor
+  // Back steps out one level at a time and never drops the person out of the app mid-edit: clip selected -> deselect, sheet open -> close it, Projects -> back to the editor (UX r15 PHONE-8).
+  const hasSelection = useProjectStore((s) => s.selection.size > 0);
+  useBackClose(!roomy && hasSelection && openId !== null, () => store.setSelection(new Set()));
+  const cameFrom = useRef<{ id: string; name: string } | null>(null); // the project the person left through "Projects": Back returns to it
+  const [fromEditor, setFromEditor] = useState(false);
+  useBackClose(fromEditor && openId === null, () => { const e = cameFrom.current; if (e) openEntry(e); });
   useKeyboardInset(true); // the sheet and the dialogs ride above the on-screen keyboard (--kb)
   const activeId = wide && tool === "edit" ? "media" : tool;
   const active = TOOLS.find((x) => x.id === activeId && shown(x)) ?? TOOLS[0]!;
@@ -814,7 +838,7 @@ function Editor({ store }: { store: ProjectStore }) {
       </header>
 
       <main className="workspace" ref={workspaceRef} data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined} data-lib={roomy && libCollapsed ? "collapsed" : undefined} data-insp={inspCollapsed ? "collapsed" : undefined}>
-        {!roomy && !showHome && <ToolStrip mediaOpen={sheet && active.id === "media"} editOpen={sheet && active.id === "edit"} canOverlay={openId !== null} onMedia={() => pick("media")} onEdit={() => pick("edit")} onCanvas={() => setDialog("canvas")} />}
+        {!roomy && !showHome && <ToolStrip mediaOpen={sheet && active.id === "media"} editOpen={sheet && active.id === "edit"} editTab={editTab} canOverlay={openId !== null} onMedia={() => pick("media")} onEdit={() => pick("edit")} onCanvas={() => setDialog("canvas")} />}
         {roomy && !railHidden && <nav className="tools" aria-label={t("tools.nav")}>
           {rail.map((x) => (
             <button key={x.id} className="tool" aria-pressed={activeId === x.id && (roomy || sheet)} onClick={() => pick(x.id)}>
