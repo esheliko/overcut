@@ -12,7 +12,7 @@ import { snapPx } from "./snapStore";
 import { applySelect, edgeSpeed, IDLE, longPress, markPreview, sameLayout, pointerDown, pointerMove, pointerUp, scrolled, scrollsAtEdge, type Effects, type Gesture, type PEvent } from "./interact";
 import type { MediaLayer } from "./media-layer";
 import { canvasCommand, isModifierKey, type Command } from "./shortcuts";
-import { markerAt } from "./markers";
+import { jumpTarget, markerAt } from "./markers";
 import { COMMAND_EVENT } from "../commands/palette";
 import { toolCursor } from "./cursors";
 import { CUE_MS, onCue } from "./commitCue";
@@ -303,7 +303,7 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     l.onFrame(clamp(Math.round(xToTime(view.current, x) * l.fps), 0, l.endFrame));
   };
   const stopFling = () => { cancelAnimationFrame(gesture.current.fling); gesture.current.fling = 0; };
-  const ctxNow = () => ({ scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, tool: live.current.tool, magnetic: magneticStore.get(), playhead: Math.round((fr.current / live.current.fps) * TICKS_PER_SECOND) });
+  const ctxNow = () => ({ anchor: anchor.current, scene: live.current.scene, view: view.current, selected: live.current.selected, selFlags: flags.current, tool: live.current.tool, magnetic: magneticStore.get(), playhead: Math.round((fr.current / live.current.fps) * TICKS_PER_SECOND) });
   /** Drag from the media bin: a guide line shows where the card will land (snapped), the drop puts it there. */
   const dropAt = (e: React.DragEvent) => {
     const l = live.current;
@@ -360,9 +360,10 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
     const r = canvas.current!.getBoundingClientRect(), v = view.current, m = live.current.scene.markers.find((x) => x.id === id);
     return new DOMRect(r.left + (m ? timeToX(v, m.sec) : gut(v)) - 12, r.top, 24, RULER);
   };
+  const anchor = useRef<string | null>(null);
   const applyFx = (fx: Effects) => {
     const l = live.current;
-    if (fx.select) setSelection(applySelect(l.selected, fx.select, l.scene));
+    if (fx.select) { setSelection(applySelect(l.selected, fx.select, l.scene)); if (!fx.select.keepAnchor && fx.select.ids.length > 0) anchor.current = fx.select.ids[0]!; } // the range select (Shift+click) starts from the last plainly clicked clip
     if (fx.seek !== undefined) l.onFrame(clamp(Math.round(fx.seek * l.fps), 0, l.endFrame));
     if (fx.menu !== undefined) l.onTrackMenu?.(fx.menu, headerRect(fx.menu));
     if (fx.markerMenu !== undefined) l.onMarkerMenu?.(fx.markerMenu, markerRect(fx.markerMenu));
@@ -608,6 +609,12 @@ export function TimelineCanvas({ scene, fps, frame: frameProp = 0, playhead, end
           if (sel.length === 0) break;
           const j = neighbour(l.scene, cmd.dir === "left" || cmd.dir === "up" ? sel[0]! : sel[sel.length - 1]!, cmd.dir);
           selectClip(j);
+          break;
+        }
+        case "jump": {
+          const at = jumpTarget(l.scene, Math.round((fr.current / l.fps) * TICKS_PER_SECOND), cmd.to);
+          if (at === null) { const m = { key: cmd.to.endsWith("Cut") ? "timeline.say.jump.noCut" : "timeline.say.jump.noMarker" }; l.onAnnounce?.(m); l.onNotice?.(m); break; }
+          l.onFrame(clamp(Math.round((at / TICKS_PER_SECOND) * l.fps), 0, l.endFrame));
           break;
         }
         case "step": {

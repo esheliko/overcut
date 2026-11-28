@@ -935,3 +935,15 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .menu-chev { flex: none; color: var(--muted); transition: transform var(--dur-fast); }
 .menu-row[aria-expanded="true"] .menu-chev { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .menu-chev { transition: none; } }
+/* UX r16 (DESK-11): the marker menu is short with a mouse, so it fits under the ruler and never reaches up over the transport: colours in one row, the name and Rename side by side. Touch keeps 44 px targets. */
+@media (pointer: fine) {
+  .marker-menu .marker-swatches { grid-template-columns: repeat(9, 1fr); gap: 0; padding: 0 6px 4px; }
+  .marker-menu .marker-swatches .swatch { inline-size: auto; block-size: 32px; min-height: 32px; min-width: 0; }
+  .marker-menu .swatch-dot { width: 18px; height: 18px; }
+  .marker-menu .tl-rename { grid-template-columns: 1fr auto; align-items: end; }
+  .marker-menu .tl-rename label { grid-column: 1; }
+  .marker-menu .tl-rename input { min-height: 32px; }
+  .marker-menu .menu-group { display: none; } /* the swatches carry their own names and the group label */
+  .marker-menu .tl-rename .menu-row { grid-column: 2; min-height: 32px; }
+  .marker-menu .menu-row { min-height: 32px; }
+}

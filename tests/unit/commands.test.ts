@@ -33,7 +33,7 @@ test("the default keys resolve exactly as the shortcuts did before the registry"
   assert.equal(id({ key: "ArrowRight", shiftKey: true }, "canvas", false), "view.secondForward");
   assert.equal(id({ key: "ArrowRight", altKey: true }, "canvas", true), "playhead.forward");
   assert.equal(id({ key: "ArrowLeft", altKey: true, shiftKey: true }, "canvas", false), "playhead.back30");
-  assert.equal(id({ key: "ArrowDown" }, "canvas", false), "view.tracksDown");
+  assert.equal(id({ key: "ArrowDown" }, "canvas", false), "view.nextCut"); // UX r16: Down jumps to the next edit point (it used to scroll the tracks)
   assert.equal(id({ key: ">", code: "Period", shiftKey: true }, "canvas", true), "clip.nudgeForward10");
   assert.equal(id({ key: "≥", code: "Period", altKey: true }, "canvas", true), "clip.trimEndForward");
   assert.equal(id({ key: "<", code: "Comma", altKey: true, shiftKey: true }, "canvas", true), "clip.trimStartBack");

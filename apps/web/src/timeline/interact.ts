@@ -10,7 +10,7 @@ import { headerPart, type HeaderPart } from "./header";
 import { frameTick, markerAt, moveMarkerPlan } from "./markers";
 import { reorderTrack, rowAt, toggleTrack } from "./tracks";
 import { TICKS_PER_SECOND as TPS, type Scene } from "./scene";
-import { cutAt, magneticTrimOps, onMagnetic, rippleRange, rippleTrimOps, rollCuts, rollOps, rollRangeAll, slideOps, slideRange, slipOps, slipRange, snapTo, type Range, type Tool } from "./ripple";
+import { cutAt, leavesHole, liftCloseOps, magneticTrimOps, onMagnetic, rippleRange, rippleTrimOps, rollCuts, rollOps, rollRangeAll, slideOps, slideRange, slipOps, slipRange, snapTo, type Range, type Tool } from "./ripple";
 import { gut, LANE, RULER, xToTime, type View } from "./view";
 
 export type PointerKind = "mouse" | "touch" | "pen";
@@ -27,9 +27,26 @@ export interface Ctx {
   tool?: Tool;
   /** Magnetic main track (UX r15): trims on the lowest video track ripple, so no gap opens or stays. Off when absent. */
   magnetic?: boolean;
+  /** The clip last picked by a plain click (the anchor of a Shift+click range); null or gone: Shift+click behaves as Ctrl+click. */
+  anchor?: string | null;
+}
+
+/** Clips a Shift+click selects: from the `anchor` clip to the clicked one `to` on the same track, or, across tracks, every clip within the time range the two span
+ *  (as editors do). Locked tracks are skipped. Null when there is no anchor to start from. */
+export function rangeSelect(scene: Scene, anchor: string | null | undefined, to: number): number[] | null {
+  const a = anchor ? scene.id.indexOf(anchor) : -1;
+  if (a < 0 || a >= scene.clipCount) return null;
+  const out: number[] = [];
+  if (scene.clipTrack[a] === scene.clipTrack[to]) {
+    for (let i = Math.min(a, to); i <= Math.max(a, to); i++) out.push(i);
+    return scene.trackLocked[scene.clipTrack[to]!] ? [] : out;
+  }
+  const s = Math.min(scene.tStart[a]!, scene.tStart[to]!), e = Math.max(scene.tStart[a]! + scene.tDur[a]!, scene.tStart[to]! + scene.tDur[to]!);
+  for (let i = 0; i < scene.clipCount; i++) if (!scene.trackLocked[scene.clipTrack[i]!] && scene.tStart[i]! < e && scene.tStart[i]! + scene.tDur[i]! > s) out.push(i);
+  return out;
 }
 export interface Effects {
-  select?: { mode: "set" | "toggle" | "add"; ids: string[] };
+  select?: { mode: "set" | "toggle" | "add"; ids: string[]; /** A range select (Shift+click) keeps its anchor, so the next one starts from the same clip. */ keepAnchor?: boolean };
   /** Seek the playhead to this many seconds. */
   seek?: number;
   /** Edits to apply as ONE undo step. */
@@ -168,6 +185,9 @@ export function pointerDown(c: Ctx, e: PEvent): R {
     const id = scene.id[h.clip]!;
     const was = c.selected.has(id);
     const mod = e.shift || e.additive;
+    // Shift+click: the range from the anchor clip to this one (Ctrl/Cmd+click toggles one clip, below).
+    const range = e.shift && !e.additive ? rangeSelect(scene, c.anchor, h.clip) : null;
+    if (range && range.length > 0) return { g: { k: "press", sx: e.x, sy: e.y, then: "none", tapClip: h.clip, collapse: false, clearOnTap: false }, fx: { select: { mode: "set", ids: range.map((i) => scene.id[i]!), keepAnchor: true }, say: { key: "timeline.say.selectedCount", values: { count: groupReps(scene, range).length } } } };
     const press = (then: "move" | "pan" | "none", collapse: boolean): Gesture => ({ k: "press", sx: e.x, sy: e.y, then, tapClip: h.clip, collapse, clearOnTap: false });
     if (mod) return { g: press(was ? "none" : "move", false), fx: { select: { mode: "toggle", ids: [id] } } };
     // Touch (CapCut model, UX r15 D6): a drag on a clip body ALWAYS scrolls the timeline, selected or not; moving a clip needs a long press (longPress).
@@ -209,7 +229,7 @@ export function pointerMove(c: Ctx, g: Gesture, e: PEvent): R {
       if (t >= 0) {
         const mv = laneChanger(scene, g.sel, t);
         if (mv) {
-          const plan = lanePlan(scene, g.sel, c.selFlags, mv, dx);
+          const plan = lanePlan(scene, g.sel, c.selFlags, mv, dx, !!c.magnetic && leavesHole(scene, mv.movers));
           if (plan !== null) return { g: { ...g, delta: plan.delta, track: t, mv, plan, to: plan.to, hop: 0, guide: null }, fx: NONE };
         }
       }
@@ -279,7 +299,7 @@ export function pointerUp(c: Ctx, g: Gesture, e: PEvent): R {
     case "move": {
       if (g.delta === 0 && !g.mv) return { g: IDLE, fx: NONE };
       if (g.hop) return { g: IDLE, fx: { ops: hopOps(scene, g.sel, g.hop), say: { key: "timeline.say.moved", values: { count: groupReps(scene, g.sel).length, name: scene.name[g.sel[0]!]! } } } };
-      const ops = g.mv ? laneOps(scene, g.sel, g.mv, g.delta, g.plan ?? undefined) : moveOps(scene, g.sel, g.delta);
+      const ops = g.mv ? [...laneOps(scene, g.sel, g.mv, g.delta, g.plan ?? undefined), ...(c.magnetic && g.plan ? liftCloseOps(scene, g.sel, g.plan.to) : [])] : moveOps(scene, g.sel, g.delta);
       const n = groupReps(scene, g.sel).length;
       return { g: IDLE, fx: { ops, say: { key: "timeline.say.moved", values: { count: n, name: scene.name[g.sel[0]!]! } } } };
     }

@@ -54,7 +54,43 @@ export function useImportPicker(onImport: (s: Source[]) => void, testId = "media
   return { open, field };
 }
 
-function Card({ item, tags, onTimeline, uses, selected, onSelect, onAdd, onAddOverlay, onRemove, onRelink, onAllow, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; uses: number; selected: boolean; onSelect: (id: string) => void; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onAddOverlay" | "onRemove" | "onRelink" | "onAllow">) {
+/** The keys of one bin card (it is the grid's single tab stop): arrows move to the neighbouring card (rows in a grid), Home/End jump, Enter adds to the timeline,
+ *  Shift+Enter adds as an overlay, T / the context-menu key / Shift+F10 edit tags. */
+function cardKey(e: React.KeyboardEvent<HTMLElement>, id: string, a: { onAdd: (id: string) => void; onAddOverlay?: (id: string) => void; onEditTags?: (id: string) => void }): void {
+  if (e.target !== e.currentTarget) return; // a button inside the card keeps its own keys
+  const k = e.key;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (k === "Enter") { e.preventDefault(); if (e.shiftKey && a.onAddOverlay) a.onAddOverlay(id); else a.onAdd(id); return; }
+  if (k === "ContextMenu" || (k === "F10" && e.shiftKey) || ((k === "t" || k === "T") && !e.shiftKey)) { if (a.onEditTags) { e.preventDefault(); a.onEditTags(id); } return; }
+  const to = binNeighbour(e.currentTarget, k);
+  if (to) { e.preventDefault(); to.focus(); to.scrollIntoView?.({ block: "nearest" }); }
+}
+
+/** The card a navigation key moves to from `from`, or null. Left/Right walk the cards; Up/Down go to the card in the same column of the next row (a list is one column), else the last/first card. */
+export function binNeighbour(from: HTMLElement, key: string): HTMLElement | null {
+  const root = from.closest(".bin") ?? from.parentElement;
+  const cards = Array.from(root?.querySelectorAll<HTMLElement>("[data-bin-id]") ?? []);
+  const at = cards.indexOf(from);
+  if (at < 0) return null;
+  if (key === "Home") return cards[0] ?? null;
+  if (key === "End") return cards[cards.length - 1] ?? null;
+  if (key === "ArrowLeft") return cards[at - 1] ?? null;
+  if (key === "ArrowRight") return cards[at + 1] ?? null;
+  if (key !== "ArrowUp" && key !== "ArrowDown") return null;
+  const r = from.getBoundingClientRect();
+  const step = key === "ArrowDown" ? 1 : -1;
+  let row: HTMLElement | null = null; // nearest card of another row, kept as the fallback for a short last row
+  for (let i = at + step; i >= 0 && i < cards.length; i += step) {
+    const b = cards[i]!.getBoundingClientRect();
+    if (Math.abs(b.top - r.top) < 2) continue;
+    if (!row) row = cards[i]!;
+    if (Math.abs(b.left - r.left) < Math.max(2, r.width / 2)) return cards[i]!;
+    if (Math.abs(b.top - row.getBoundingClientRect().top) >= 2) break; // gone past the next row without a match
+  }
+  return row;
+}
+
+function Card({ item, tags, onTimeline, uses, selected, stop, onSelect, onAdd, onAddOverlay, onRemove, onRelink, onAllow, onEditTags }: { item: BinItem; tags: readonly string[]; onTimeline: boolean; uses: number; selected: boolean; /** The one tab stop of the grid (roving tabindex): arrows move between cards, Enter adds, T edits tags. */ stop: boolean; onSelect: (id: string) => void; onEditTags?: (id: string) => void } & Pick<Props, "onAdd" | "onAddOverlay" | "onRemove" | "onRelink" | "onAllow">) {
   const { t } = useI18n();
   const ready = item.status === "ready";
   // The duration is a badge on the poster; the meta line keeps what does not fit there (size first, so a narrow panel cuts the codec, never the size). The full line is the tooltip.
@@ -75,7 +111,12 @@ function Card({ item, tags, onTimeline, uses, selected, onSelect, onAdd, onAddOv
       data-on={onTimeline || undefined}
       data-selected={selected || undefined}
       draggable={ready}
+      tabIndex={ready ? (stop ? 0 : -1) : undefined}
+      data-bin-id={ready ? item.id : undefined}
       onClick={ready ? () => onSelect(item.id) : undefined}
+      onDoubleClick={ready ? (e) => { if (!(e.target as Element).closest("button, a, summary")) onAdd(item.id); } : undefined}
+      onFocus={ready ? (e) => { if (e.target === e.currentTarget) onSelect(item.id); } : undefined}
+      onKeyDown={ready ? (e) => cardKey(e, item.id, { onAdd, onAddOverlay: item.kind !== "audio" ? onAddOverlay : undefined, onEditTags }) : undefined}
       onDragStart={(e) => { e.dataTransfer.setData(BIN_DRAG_TYPE, item.id); e.dataTransfer.effectAllowed = "copy"; }}
     >
       <span className="bin-thumb" aria-hidden="true">
@@ -107,9 +148,9 @@ function Card({ item, tags, onTimeline, uses, selected, onSelect, onAdd, onAddOv
         {needsPermission && onAllow && <button className="bin-link" onClick={onAllow} data-testid="bin-allow">{t("media.permission.allow")}</button>}
         {offline && !needsPermission && <button className="bin-link" onClick={() => onRelink(item.id)} aria-label={t("media.relinkNamed", { name: item.name })}>{t("media.relink")}</button>}
       </span>
-      {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span className="sr-only">{t("media.tags.editShort")}</span></button>}
-      {ready && onAddOverlay && item.kind !== "audio" && !onTimeline && <button className="bin-act bin-tag-btn bin-overlay-btn" aria-label={t("media.addOverlay", { name: item.name })} title={t("media.addOverlayShort")} onClick={() => onAddOverlay(item.id)} data-testid="bin-add-overlay"><Icon name="overlay" size={20} /></button>}
-      {ready && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
+      {onEditTags && <button className="bin-act bin-tag-btn" aria-label={t("media.tags.edit", { name: item.name })} title={t("media.tags.editShort")} tabIndex={-1} onClick={() => onEditTags(item.id)} data-testid="bin-tag-edit"><Icon name="tag" size={18} /><span className="sr-only">{t("media.tags.editShort")}</span></button>}
+      {ready && onAddOverlay && item.kind !== "audio" && !onTimeline && <button className="bin-act bin-tag-btn bin-overlay-btn" aria-label={t("media.addOverlay", { name: item.name })} title={t("media.addOverlayShort")} tabIndex={-1} onClick={() => onAddOverlay(item.id)} data-testid="bin-add-overlay"><Icon name="overlay" size={20} /></button>}
+      {ready && <button className="icon-btn bin-act" aria-label={t("media.add", { name: item.name })} title={t("media.addShort")} tabIndex={-1} onClick={() => onAdd(item.id)}><Icon name="plus" size={20} /></button>}
       {item.status === "unsupported" && <button className="icon-btn bin-act" aria-label={t("media.dismiss", { name: item.name })} onClick={() => onRemove(item.id)}><Icon name="close" size={18} /></button>}
     </li>
   );
@@ -232,7 +273,10 @@ export function MediaBin({ items, query, meta, onTags, onImport, onAdd, onAddOve
   const shown = viewBin(items, meta, { ...filter, tag: activeTag, query });
   const filtersOn = filter.kind !== DEFAULT_FILTER.kind || activeTag !== "" || filter.sort !== DEFAULT_FILTER.sort; // shown on the toggle, so a hidden filter is not forgotten
   const editItem = editing ? items.find((i) => i.id === editing) : undefined;
-  const card = (i: BinItem) => <Card key={i.id} item={i} tags={meta.get(i.id)?.tags ?? []} onTimeline={uses.has(i.id)} uses={uses.get(i.id) ?? 0} selected={selected === i.id} onSelect={setSelected} onAdd={onAdd} onAddOverlay={onAddOverlay} onRemove={onRemove} onRelink={onRelink} onAllow={onAllow} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
+  // Roving tabindex: the bin's cards are ONE tab stop (the card last focused, else the first ready one); arrows move between them.
+  const [rove, setRove] = useState<string | null>(null);
+  const stopId = (shown.some((i) => i.id === rove && i.status === "ready") ? rove : shown.find((i) => i.status === "ready")?.id) ?? null;
+  const card = (i: BinItem) => <Card key={i.id} item={i} stop={stopId === i.id} tags={meta.get(i.id)?.tags ?? []} onTimeline={uses.has(i.id)} uses={uses.get(i.id) ?? 0} selected={selected === i.id} onSelect={(id) => { setSelected(id); setRove(id); }} onAdd={onAdd} onAddOverlay={onAddOverlay} onRemove={onRemove} onRelink={onRelink} onAllow={onAllow} onEditTags={meta.has(i.id) ? setEditing : undefined} />;
   const pending = shown.filter((i) => !meta.has(i.id));
   const settled = shown.filter((i) => meta.has(i.id));
   const long = settled.length > WINDOW_FROM; // a long bin is the windowed list (only the rows in view exist in the DOM); posters in a grid would all be rendered

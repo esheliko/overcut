@@ -10,8 +10,8 @@ import { useI18n } from "./i18n";
 import { Icon } from "./icons";
 import { FPS, timecode } from "./timecode";
 import { copyClips, duplicateAt, planPlacement, selectedTrack, type Held } from "./timeline/clipboard";
-import { clampN, closeStartGap, deleteOps, laneStepOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, linkOps, unlinkOps } from "./timeline/edit";
-import { closeGapOps, magneticTrimOps, onMagnetic, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
+import { clampN, closeStartGap, deleteOps, expandLinks, groupReps, linkedTrimOps, mirrorTrims, type Say, editable, indicesOf, moveOps, moveRoom, newClipId, snapDelta, splitOps, splittable, trimRange, trimTarget, linkOps, unlinkOps } from "./timeline/edit";
+import { closeGapOps, laneStep, magneticTrimOps, newLaneKind, onMagnetic, rollCuts, rollRangeAll, rollOps, rippleDeleteOps, slideOps, slideRange, slipOps, slipRange, snapTo, TOOLS, type Tool } from "./timeline/ripple";
 import { clipboardState } from "./commands/availability";
 import { COMMAND_EVENT, EXPORT_EVENT, PALETTE_EVENT, PLAY_RANGE_EVENT } from "./commands/palette";
 import { addMarkerPlan, clearRangePlan, frameTick, loopPlan, markerAtTick, moveMarkerPlan, rangePlan } from "./timeline/markers";
@@ -217,7 +217,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
     const target = speedTarget(live.current.proj.project, live.current.selected), r = toRational(x);
     if (!target || target.still || !r) return;
     const label = t("speed.undoLabel");
-    live.current.proj.apply(speedOps(target.group, r, false), undefined, label)
+    live.current.proj.apply(speedOps(target.group, r, magneticStore.get()), undefined, label)
       .then(() => { const span = clipSpan(store.getState().project, target.clip.id); if (span) announce(t("speed.announce", { speed: formatSpeed(x), ...span })); })
       .catch(() => onNotice(t("speed.failed")));
   }, [store, onNotice, t]);
@@ -267,9 +267,24 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
       }
       case "lane": {
         if (mine.length === 0) { speak(locked ?? say("timeline.say.selectFirst")); break; }
-        const step = laneStepOps(sc, mine, cmd.dir);
-        if (!step) { const m = say("timeline.say.noLane"); speak(m); onNotice(t(m.key)); break; }
-        commit(step.ops, say("timeline.say.laneMoved", { track: sc.trackName[step.track]! }));
+        const mag = magneticStore.get();
+        const step = laneStep(sc, mine, cmd.dir, mag);
+        if (step) { commit(step.ops, say("timeline.say.laneMoved", { track: sc.trackName[step.track]! })); break; }
+        // Alt+Up on the top video lane (Alt+Down on the last audio lane) makes the lane, as dragging above it does: the new track and the move are ONE undo step.
+        const kind = newLaneKind(sc, mine, cmd.dir);
+        const proj0 = live.current.proj.project, seq0 = proj0?.sequences[0];
+        if (kind && proj0 && seq0) {
+          const add = addTrack(sc, kind, newClipId());
+          const made = add.ops[0];
+          if (made?.op === "add_track") {
+            const tracks = [...seq0.tracks];
+            tracks.splice(made.index, 0, made.track);
+            const sc2 = buildScene({ ...proj0, sequences: [{ ...seq0, tracks }, ...proj0.sequences.slice(1)] });
+            const moved = laneStep(sc2, indicesOf(sc2, new Set(mine.map((i) => sc.id[i]!))), cmd.dir, mag);
+            if (moved) { commit([...add.ops, ...moved.ops], say("timeline.say.laneMoved", { track: add.name })); break; }
+          }
+        }
+        { const m = say("timeline.say.noLane"); speak(m); onNotice(t(m.key)); }
         break;
       }
       case "hop": {
@@ -369,6 +384,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
         if (plan.skipped > 0) onNotice(t("timeline.say.pasteSkipped", { count: plan.skipped }));
         break;
       }
+      case "focus": case "jump": window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: cmd })); break; // the canvas owns focus and the playhead's view
       case "markerEdit": window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: cmd })); break; // the canvas knows where the marker's flag is
       case "marker": {
         const plan = addMarkerPlan(sc, tick, newClipId());

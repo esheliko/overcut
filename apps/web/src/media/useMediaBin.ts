@@ -1,7 +1,7 @@
 import { MediaDecodeError, fingerprintFile, fingerprintSize, newProject, type Editing, type Engine, type MediaKind, type Op, type Project } from "@app/engine-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { probeFile } from "./probe";
-import { STILL_SECONDS, TICKS, classify, destTracks, sentence, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
+import { TICKS, classify, landingStart, pictureEnd, sentence, clipCount, extOf, importOps, insertOps, mediaRef, newId, type Probed } from "./plan";
 import { allowAll, handleState, loadHandle, pathOf, saveHandle, type Source } from "./sources";
 import { useProjectStore, useStore } from "../store/projectStore";
 
@@ -42,7 +42,7 @@ export interface BinText {
   /** A file that was refused, shown where the person can see it (the Media sheet may have closed on a phone). */
   refused?: (message: string) => void;
   /** An import finished: what came in, and whether it was put on the timeline (else it is only in the bin and the person is told how to add it). */
-  result?: (r: { ids: string[]; names: string[]; placed: boolean }) => void;
+  result?: (r: { ids: string[]; names: string[]; placed: boolean; /** The imported items that are only in the bin (a video imported into a project that already has clips). */ binOnly: string[] }) => void;
 }
 
 /** Where an import goes. `place`: onto the timeline as well (a drop on the timeline); otherwise it lands there only when the timeline is empty. */
@@ -143,18 +143,19 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     return l;
   }, [engine]);
 
-  /** Ops for putting a media item on the timeline: `at` ticks, or after the last clip when that spot is taken. */
-  const timelineOps = useCallback(async (cur: Project, id: string, start: number | "end", track?: string): Promise<Op[] | null> => {
+  /** The playhead in ticks (the store keeps frames). */
+  const playheadTicks = useCallback((cur: Project): number => {
+    const r = cur.sequences[0]?.frame_rate ?? { num: 30, den: 1 };
+    return Math.round((store.getState().playhead * TICKS * r.den) / r.num);
+  }, [store]);
+
+  /** Ops for putting a media item on the timeline by the one landing rule (`landingStart`): a picture after the last picture on V1, sound at `start` or the playhead. */
+  const timelineOps = useCallback(async (cur: Project, id: string, start?: number, track?: string): Promise<Op[] | null> => {
     const ref = cur.media.find((m) => m.id === id);
     const l = ref && (await fileFor(id, ref.uri, ref.kind));
     if (!ref || !l) return null;
-    const len = ref.kind === "image" ? STILL_SECONDS * TICKS : ref.duration ?? 0;
-    // Dropped on a lane: free space is judged on the tracks the clip will really use (a drop on V2 must not be pushed to the end because V1 is busy there).
-    const { vt, at } = destTracks(cur, ref, track);
-    // A video's sound does not decide where the picture goes: it takes any free audio track, or a new one (see `insertOps`).
-    const used = (ref.kind === "audio" ? [at] : [vt]).flatMap((t) => (t ? [t.id] : []));
-    return insertOps(cur, ref, l.probed, start === "end" ? timelineEnd(cur) : placeAt(cur, start, len, used), undefined, track);
-  }, [fileFor]);
+    return insertOps(cur, ref, l.probed, landingStart(cur, ref, { start, playhead: playheadTicks(cur), track }), undefined, track);
+  }, [fileFor, playheadTicks]);
 
   const importSources = useCallback(async (sources: Source[], opts?: ImportOptions): Promise<void> => {
     if (sources.length === 0) return;
@@ -169,14 +170,18 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
         : { id: r.id, name: r.s.file.name, kind: "video", size: r.s.file.size, status: "unsupported", message: t.notMedia(r.s.file.name) }),
       ...all,
     ]);
-    // One rule everywhere: a file always lands in the bin; it also goes onto the timeline when the timeline is empty or the person dropped it there.
-    const emptyTimeline = clipCount(store.getState().project ?? (await ed.project())) === 0;
+    // One rule everywhere: a file always lands in the bin. Pictures also go on the timeline when it is empty or the person dropped them there; sound-only files
+    // (music) go on the timeline too when the project already has clips ("add music" is the headline task, FIRST-1). Where: `landingStart`.
+    const startProject = store.getState().project ?? (await ed.project());
+    const emptyTimeline = clipCount(startProject) === 0;
     const place = !!opts?.place || emptyTimeline;
-    // Pictures of a batch go one after another; sound-only files (music) start with the batch, under its pictures, as in CapCut (UX r15).
-    const batchStart = place ? timelineEnd(store.getState().project ?? (await ed.project())) : 0;
+    // Pictures of a batch go one after another at the end of V1 (sound never moves that point); sound-only files start with the batch, under its pictures,
+    // or at the playhead when the batch has no picture that goes on the timeline (UX r16).
+    const batchStart = place && rows.some((r) => r.kind && r.kind !== "audio") ? pictureEnd(startProject) : playheadTicks(startProject);
     const ids: string[] = [];
     const names: string[] = [];
     let placed = false;
+    const binOnly: string[] = [];
     let imported = 0;
     let refused = rows.filter((r) => !r.kind).length;
     for (const r of rows) {
@@ -195,11 +200,13 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           live.current.set(id, { file: s.file, probed: res.probed });
           // Every file of a drop onto an empty timeline (or onto the timeline) goes there in order; one undo step per file.
           const ops = importOps(cur, ref, res.probed);
-          if (place) {
+          const here = place || ref.kind === "audio";
+          if (here) {
             const withRef: Project = { ...cur, media: [...cur.media, ref] };
-            const put = insertOps(withRef, ref, res.probed, ref.kind === "audio" ? batchStart : timelineEnd(cur));
+            const put = insertOps(withRef, ref, res.probed, ref.kind === "audio" ? batchStart : landingStart(withRef, ref, { playhead: batchStart }));
             if (put) { ops.push(...put); placed = true; }
-          }
+            else binOnly.push(id);
+          } else binOnly.push(id);
           patch(id, { status: "ready", kind: res.probed.kind, durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
           await store.apply(ops, undefined, t.importLabel(s.file.name));
           imported++;
@@ -218,12 +225,12 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     }
     // Only what really came in, and never over the top of a refusal: a refused file announced why, and a count would replace that for a screen reader.
     if (imported > 0 && refused === 0) t.announce(t.imported(imported));
-    if (imported > 0) t.result?.({ ids, names, placed });
+    if (imported > 0) t.result?.({ ids, names, placed, binOnly: binOnly.filter((x) => ids.includes(x)) });
   }, [engine, ed, store, enqueue, patch]);
 
   importRef.current = importSources;
 
-  const addToTimeline = useCallback((id: string, start: number | "end" = "end", track?: string): Promise<boolean> => {
+  const addToTimeline = useCallback((id: string, start?: number, track?: string): Promise<boolean> => {
     if (!ed) return Promise.resolve(false);
     return enqueue(async () => {
       const ops = await timelineOps(store.getState().project ?? (await ed.project()), id, start, track);
