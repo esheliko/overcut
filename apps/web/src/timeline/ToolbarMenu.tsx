@@ -17,6 +17,8 @@ export interface MenuItem {
   disabled?: boolean;
   /** Radio / check state; omitted for a plain action. */
   checked?: boolean;
+  /** An on/off switch (menuitemcheckbox): its state is written at the end of the row ("On" / "Off") and picking it leaves the menu open so the change is seen. */
+  toggle?: boolean;
   testid?: string;
   onSelect(): void;
 }
@@ -61,7 +63,7 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
     if (e.key === "Tab") { e.preventDefault(); close(); }
   };
 
-  const radio = items.some((i) => i.checked !== undefined);
+  const radio = items.some((i) => i.checked !== undefined && !i.toggle);
   let section: string | undefined;
   return (
     <div ref={box} className={sheet ? "menu-pop tl-menu tl-sheet" : "menu-pop tl-menu"} role="menu" aria-label={name} data-testid={testid ?? "toolbar-menu"} onKeyDown={onKey}
@@ -74,10 +76,11 @@ export function ToolbarMenu({ name, items, anchor, onClose, testid }: Props) {
         return (
           <div key={it.id} role="none">
             {head}
-            <button className="menu-row" role={radio ? "menuitemradio" : "menuitem"} aria-checked={radio ? !!it.checked : undefined} aria-disabled={it.disabled || undefined}
-              title={why} data-testid={it.testid} onClick={() => { if (it.disabled) return; it.onSelect(); onClose(); back(); }}>
-              {radio && <span className="menu-check" aria-hidden="true">{it.checked && <Icon name="check" size={16} />}</span>}
+            <button className="menu-row" role={it.toggle ? "menuitemcheckbox" : radio ? "menuitemradio" : "menuitem"} aria-checked={it.toggle ? !!it.checked : radio ? !!it.checked : undefined} aria-disabled={it.disabled || undefined}
+              title={why} data-testid={it.testid} onClick={() => { if (it.disabled) return; it.onSelect(); if (!it.toggle) { onClose(); back(); } }}>
+              {radio && !it.toggle && <span className="menu-check" aria-hidden="true">{it.checked && <Icon name="check" size={16} />}</span>}
               <span className="menu-label">{it.label}{why ? <small className="menu-why menu-reason">{why}</small> : it.sub && <small className="menu-why">{it.sub}</small>}</span>
+              {it.toggle && <span className="menu-state" data-on={it.checked ? "true" : "false"}>{t(it.checked ? "timeline.toggle.on" : "timeline.toggle.off")}</span>}
               {it.hint && <kbd className="menu-hint">{it.hint}</kbd>}
             </button>
           </div>

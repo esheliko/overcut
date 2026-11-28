@@ -338,7 +338,9 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
     if (document.fullscreenElement) { void document.exitFullscreen().catch(() => undefined); return; }
     if (fsRef.current === "overlay") { setFs("off"); return; }
     // iPhone has no element fullscreen: a fixed overlay over the whole app does the same job.
-    if (el.requestFullscreen && document.fullscreenEnabled) el.requestFullscreen().catch(() => setFs("overlay"));
+    // A touch phone also takes the overlay (UX r15 D9): Chrome on Android shows a "press and hold to exit" notice over real fullscreen that covers the controls.
+    const phone = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches && Math.min(window.innerWidth, window.innerHeight) <= 500;
+    if (!phone && el.requestFullscreen && document.fullscreenEnabled) el.requestFullscreen().catch(() => setFs("overlay"));
     else setFs("overlay");
   }, []);
   const toggleLoop = useCallback(() => { const next = !loopRef.current; setLoop(next); announce(t(next ? "preview.loop.on" : "preview.loop.off")); }, [t]);

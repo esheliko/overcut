@@ -43,6 +43,8 @@ import { addTrack, removeTrack, renameTrack, reorderTrack, toggleTrack, TRACK_SA
 import { useProjectStore, useStore } from "./store/projectStore";
 /** Touch screens have nothing to drop files from: the empty-timeline hint only mentions what they can do. */
 /** The phone bar (<= 480 px) drops the zoom buttons and the clip tools, so the More menu carries them there; wider bars show them, and More does not repeat them (customer r15: "too long, I don't understand a thing there"). */
+/** The snapping and ripple switches leave the bar at 720 px and below (CSS); they come back as rows of the More menu. */
+const switchesInMenu = (): boolean => typeof matchMedia === "function" && matchMedia("(max-width: 720px)").matches;
 const narrowBar = (): boolean => typeof matchMedia === "function" && matchMedia("(max-width: 480px)").matches;
 const coarsePointer = (): boolean => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
@@ -466,6 +468,8 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
   const undoText = undoLabel && proj.canUndo ? t("timeline.undo.what", { what: undoLabel }) : t("timeline.undo");
   const redoText = redoLabel && proj.canRedo ? t("timeline.redo.what", { what: redoLabel }) : t("timeline.redo");
   const none = selected.size === 0;
+  const snapOn = useSyncExternalStore(snapStore.subscribe, snapStore.get, snapStore.get); // the More menu's switch rows (phones) read these
+  const rippleOn = useSyncExternalStore(magneticStore.subscribe, magneticStore.get, magneticStore.get);
   const still = !none && (speedTarget(project, selected)?.still ?? false);
   const speedWhy = none ? t("timeline.why.select") : still ? t("timeline.why.still") : undefined;
   const oneIdx = indicesOf(scene, selected);
@@ -544,6 +548,10 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
             ...(narrowBar() ? [
               { id: "zin", label: t("timeline.zoomIn"), hint: "+", onSelect: () => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user") },
               { id: "zout", label: t("timeline.zoomOut"), hint: "-", onSelect: () => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user") },
+            ] : []),
+            ...(switchesInMenu() ? [
+              { id: "snap", label: t("timeline.snap.row"), toggle: true, checked: snapOn, testid: "tl-snap-row", onSelect: () => snapStore.set(!snapOn) },
+              { id: "ripple", label: t("timeline.magnetic.row"), toggle: true, checked: rippleOn, testid: "tl-magnetic-row", onSelect: () => magneticStore.set(!rippleOn) },
             ] : []),
             { id: "history", disabled: off, label: t("timeline.history"), testid: "tl-history", onSelect: () => setDialog("history") },
           ]} />}

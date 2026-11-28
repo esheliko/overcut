@@ -338,17 +338,27 @@ h2, p { margin: 0; }
 }
 /* Small phones: the shape chip keeps only its icon so the row never overflows at 320 px */
 @container editor (max-width: 389px) { .ratio span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); } .ratio { padding: 0; justify-content: center; } .transport { gap: 0; } }
+/* The phone grab bar exists only in phone portrait (PhoneSplitter is rendered only there; this keeps it out of every other query). */
+.pv-split { display: none; }
 /* Phone portrait: the stage is as tall as its picture (no dead band above and below it) and the timeline gets everything else */
 @container editor (max-width: 719px) and (min-height: 501px) {
   .workspace { grid-template-rows: auto minmax(260px, 1fr) auto; }
   .stage-view { flex: none; container-type: inline-size; }
-  .canvas { width: min(100cqw, calc(38dvh * var(--ar, 1.78))); max-height: 38dvh; }
+  /* --pv-h is the picture's height: 38dvh by default, smaller when the project has 3+ tracks (they all fit), and whatever the grab bar (PhoneSplitter) sets. */
+  .workspace { --pv-h: 38dvh; }
+  .workspace[data-tracks="many"] { --pv-h: 26dvh; }
+  .canvas { width: min(100cqw, calc(var(--pv-h) * var(--ar, 1.78))); max-height: var(--pv-h); }
   .splitter, .panel-collapse { display: none; }
+  .pv-split { display: block; grid-area: timeline; align-self: start; justify-self: stretch; position: relative; z-index: 6; block-size: 44px; margin-block-start: -22px; touch-action: none; cursor: row-resize; border-radius: 6px; }
+  .pv-split > span { position: absolute; inset-block-start: 20px; inset-inline-start: 50%; inline-size: 48px; block-size: 4px; margin-inline-start: -24px; border-radius: 2px; background: var(--line-strong); opacity: 0.8; transition: background var(--dur-fast); }
+  .pv-split:active > span, .pv-split:focus-visible > span { background: var(--accent); }
+  .pv-split:focus-visible { outline: none; }
 }
 /* Short phones (320 x 640): a smaller picture and a smaller timeline minimum so the transport row is never pushed under the timeline */
 @container editor (max-width: 719px) and (min-height: 501px) and (max-height: 700px) {
   .workspace { grid-template-rows: auto minmax(190px, 1fr) auto; }
-  .canvas { width: min(100cqw, calc(30dvh * var(--ar, 1.78))); max-height: 30dvh; }
+  .workspace { --pv-h: 30dvh; }
+  .workspace[data-tracks="many"] { --pv-h: 22dvh; }
 }
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { .splitter { display: none; } .ratio span { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); } .ratio { padding: 0; justify-content: center; } }
 @keyframes slide-in { from { transform: translateX(-24px); opacity: 0; } }
@@ -911,3 +921,18 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .prep-track { stroke: var(--line-strong); }
 .prep-arc { stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray var(--dur-base) linear; }
 .stage:fullscreen .prep-ring, .stage[data-fs="overlay"] .prep-ring { display: none; }
+
+/* Phone app menu (UX r15 D8): ONE "Theme: Dark ›" row, the rest in a two-column grid, no group headings, no engine status; it fits in ~60 % of a 640 px phone without scrolling. */
+.menu-pop[data-compact] { display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 2px; min-inline-size: min(340px, calc(100vw - 16px)); }
+.menu-pop[data-compact] > .menu-full { grid-column: 1 / -1; }
+.menu-pop[data-compact] .menu-row, .menu-pop[data-compact] > a { min-height: 44px; padding-inline: 10px; gap: 8px; line-height: 1.2; font-size: var(--text-sm); }
+.menu-pop[data-compact] > .menu-status { min-height: 32px; }
+.menu-pop[data-compact] .menu-switch { grid-column: 1 / -1; min-height: 44px; padding-block: 0; align-items: center; }
+.menu-pop[data-compact] .menu-switch .menu-ic { margin-block-start: 0; }
+.menu-pop[data-compact] .menu-switch .menu-text { padding-block: 0; }
+.menu-pop[data-compact] .menu-switch .menu-hint { display: none; }
+.menu-pop[data-compact] .menu-sub { padding-inline-start: 18px; }
+.menu-grow { flex: 1; min-inline-size: 0; }
+.menu-chev { flex: none; color: var(--muted); transition: transform var(--dur-fast); }
+.menu-row[aria-expanded="true"] .menu-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .menu-chev { transition: none; } }

@@ -7,7 +7,8 @@ test("accent: pick a colour beside the theme, it applies at once, is remembered 
   await expect(html).toHaveAttribute("data-accent", "teal");
   // r15: the swatches sit with the theme (the theme popover; on small phones the theme rows of the menu), not in the menu's Preview section.
   const themeButton = page.getByTestId("theme-toggle");
-  if (await themeButton.isVisible()) await themeButton.click(); else await page.getByRole("button", { name: "Menu" }).click();
+  if (await themeButton.isVisible()) await themeButton.click();
+  else { await page.getByRole("button", { name: "Menu" }).click(); await page.getByTestId("menu-theme").click(); } // UX r15 D8: on a phone the theme is one row; the swatches show once it is open
   const picker = page.getByTestId("accent-picker");
   await expect(picker).toBeVisible();
   const swatches = picker.getByRole("menuitemradio");
