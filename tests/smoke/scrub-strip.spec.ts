@@ -69,8 +69,8 @@ test("a long-GOP clip gets a background scrub strip, then scrubs show a stand-in
   });
   await expect.poll(() => page.evaluate(async () => (await (window as unknown as { __overcutPreview: Hook }).__overcutPreview.strip()).media[0]?.state), { timeout: 120_000, intervals: [250] }).toBe("ready");
   const chip = await page.evaluate(() => (window as unknown as { __chip: string[] }).__chip);
-  expect(chip.length).toBeGreaterThan(0);
-  expect(chip[0]).toMatch(/^Preparing smooth scrubbing… \d+%$/);
+  // r15: the progress is a quiet ring in the player bar that appears only after ~0.9 s, so a fast build may finish before it shows; when it shows, it names the progress.
+  for (const c of chip) expect(c).toMatch(/^Preparing smooth scrubbing… \d+%$/);
   await expect(page.getByTestId("scrub-prep")).toHaveCount(0); // gone when done
   const built = await page.evaluate(() => (window as unknown as { __overcutPreview: Hook }).__overcutPreview.strip());
   expect(built.media[0]!.done).toBeGreaterThan(0);

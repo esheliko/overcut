@@ -95,6 +95,7 @@ test("Add as overlay on a new track selects the new clip, so it can be sized at 
   await expect(page.getByTestId("tl-selected")).toHaveCount(0);
   await page.getByTestId("tl-more").click();
   await page.getByTestId("tl-add-overlay").click();
+  await page.getByTestId("overlay-choice").first().click(); // UX r15: "Add as overlay" asks which media (a picker) instead of picking one itself
   await expect(page.locator("#tl-summary")).toContainText("2 clips", { timeout: 20_000 });
   await expect(page.getByTestId("tl-selected")).toHaveText(/1 clip \+ linked audio/);
 });
@@ -108,6 +109,7 @@ test("phone: the loop button and the time chip fade away while the on-canvas han
   const loop = page.getByTestId("loop-toggle"), tc = page.getByTestId("timecode");
   await page.getByTestId("tl-more").click();
   await page.getByTestId("tl-add-overlay").click(); // the new overlay is selected; on a phone its handles show while the Edit sheet is open
+  await page.getByTestId("overlay-choice").first().click(); // UX r15: chosen in the overlay picker
   await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
   await expect(page.locator(".canvas.framed")).toBeVisible();
   await expect(loop).toBeHidden();

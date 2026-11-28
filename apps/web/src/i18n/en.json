@@ -335,8 +335,8 @@
   "media.noMatch": "No media matches “{query}”.",
   "media.imported": "{count, plural, one {# file imported} other {# files imported}}",
   "media.err.notMedia": "{name} is not a video, audio or image file, so it was skipped.",
-  "media.err.unsupported": "{name} could not be imported ({ext}). {detail} Files that work everywhere: MP4 or MOV with H.264, WebM with VP9, M4A audio, JPG, PNG and WebP images.",
-  "media.err.failed": "{name} could not be read. The file may be damaged or still downloading. Try choosing it again.",
+  "media.err.unsupported": "Can't read {name}. It may be damaged, or {ext} isn't supported yet.",
+  "media.err.failed": "Can't read {name}. It may be damaged or not really a {ext} file.",
   "timeline.empty": "Drop or import media to start. Export turns on once the timeline has a clip.",
   "timeline.empty.touch": "Import media to start. Export turns on once there is a clip.",
   "export.needClip": "Add a clip to the timeline to export",
@@ -956,5 +956,15 @@
   "inspector.info.canvas": "Canvas",
   "inspector.info.background": "Background",
   "inspector.info.length": "Length",
-  "inspector.info.clips": "Clips"
+  "inspector.info.clips": "Clips",
+  "media.err.details": "Details",
+  "media.err.works": "Works everywhere: MP4 or MOV with H.264, WebM with VP9, M4A audio, JPG, PNG and WebP images.",
+  "media.addedToBin": "{count, plural, one {Added to Media} other {# files added to Media}}",
+  "media.permission.card": "Needs permission to open",
+  "media.permission.allow": "Allow access",
+  "media.permission.note": "{count, plural, one {# file needs} other {# files need}} your permission to open after the reload.",
+  "overlay.title": "Choose an overlay",
+  "overlay.hint": "It goes on a new track above, at the playhead.",
+  "overlay.none": "Import a video or photo first, then choose it here.",
+  "overlay.use": "Use {name} as the overlay"
 }

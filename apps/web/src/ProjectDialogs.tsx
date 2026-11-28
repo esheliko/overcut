@@ -69,6 +69,16 @@ export function CanvasDialog({ sequence, hasPicture, onApply, onClose }: { seque
   const num = (v: string): number => (v === "" ? 0 : Number(v.replace(/\D/g, "")) || 0);
   return (
     <Modal title={t("canvas.title")} titleId="canvas-title" testId="canvas-dialog" onClose={onClose}>
+      {/* The shape in one tap (UX r15 PHONE-10): a tile per ratio; tapping one applies it at once (Undo takes it back). The fields below are for the rest. */}
+      <div className="ratio-row" role="group" aria-label={t("canvas.shape")} data-testid="canvas-ratios">
+        {SHAPES.map((sh) => (
+          <button key={sh.id} type="button" className="ratio-tile" aria-pressed={c.shape === sh.id} aria-label={t(`canvas.shape.${sh.id}`)} data-testid={`canvas-ratio-${sh.id.replace(":", "x")}`}
+            onClick={() => { const next = canvasDialogOps(sequence, { ...c, shape: sh.id }, bg); if (next.length > 0) onApply(next); else onClose(); }}>
+            <span className="ratio-glyph" aria-hidden="true" style={{ aspectRatio: `${sh.w} / ${sh.h}`, inlineSize: sh.w >= sh.h ? 28 : undefined, blockSize: sh.w < sh.h ? 28 : undefined }} />
+            <span>{sh.id}</span>
+          </button>
+        ))}
+      </div>
       <div className="export-fields">
         <label>{t("canvas.shape")}
           <select value={c.shape} onChange={(e) => edit({ shape: e.target.value })} data-testid="canvas-shape">

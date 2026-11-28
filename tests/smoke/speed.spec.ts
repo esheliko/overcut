@@ -31,6 +31,7 @@ test("speed: presets and the field change the selected clip, undo reverts", asyn
   await expect(page.locator('.visually-hidden[role="status"]')).toContainText(/Speed 2×: .* to 0:0[0-9]\.\d\d/); // the status line reads the new span
   await expect(page.getByTestId("speed-message")).toHaveText("");
   // The pitch note is part of the panel's flow (it once floated off to the bottom of the window): it sits inside the viewport, under the "move later clips" row.
+  await page.getByTestId("speed-pitch").scrollIntoViewIfNeeded(); // r15: phone sheets peek low (the timeline stays visible), so the last row is one scroll away
   const [pitch, ripple, vp] = await Promise.all([page.getByTestId("speed-pitch").boundingBox(), page.getByTestId("speed-ripple").boundingBox(), page.evaluate(() => window.innerHeight)]);
   expect(pitch!.y).toBeGreaterThan(ripple!.y);
   expect(pitch!.y + pitch!.height).toBeLessThanOrEqual(vp);

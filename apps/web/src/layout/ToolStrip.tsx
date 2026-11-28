@@ -12,6 +12,8 @@ type Props = {
   mediaOpen: boolean;
   /** The Edit (Details) sheet is open. */
   editOpen: boolean;
+  /** Which Details tab the open sheet shows, so the button that opened it is the one highlighted (Edit, Speed or Crop). */
+  editTab?: "video" | "speed" | "crop";
   onMedia(): void;
   onEdit(): void;
   onCanvas(): void;
@@ -23,7 +25,7 @@ const send = (c: Command) => window.dispatchEvent(new CustomEvent(COMMAND_EVENT,
 
 /** The phone's bottom tool strip, CapCut style: icon above label, scrolls sideways, every target 44 px or more. With nothing selected it holds the global tools;
  *  with a clip selected it switches to that clip's tools and the first one steps back out (clears the selection). */
-export function ToolStrip({ mediaOpen, editOpen, onMedia, onEdit, onCanvas, canOverlay }: Props) {
+export function ToolStrip({ mediaOpen, editOpen, editTab = "video", onMedia, onEdit, onCanvas, canOverlay }: Props) {
   const { t } = useI18n();
   const store = useStore();
   const project = useProjectStore((s) => s.project);
@@ -36,7 +38,8 @@ export function ToolStrip({ mediaOpen, editOpen, onMedia, onEdit, onCanvas, canO
   const still = selection.size > 0 && (speedTarget(project, selection)?.still ?? false);
   const act: Record<StripId, () => void> = {
     media: onMedia,
-    edit: onEdit,
+    // Edit always opens the Video tab (never whatever Speed or Crop left behind); tapping it again closes the sheet.
+    edit: () => { if (editOpen && editTab === "video") onEdit(); else requestDetails({ tab: "video" }); },
     canvas: onCanvas,
     overlay: () => send({ c: "addMedia", overlay: true }),
     split: () => send({ c: "split" }),
@@ -51,10 +54,11 @@ export function ToolStrip({ mediaOpen, editOpen, onMedia, onEdit, onCanvas, canO
   return (
     <nav className="tools tool-strip" aria-label={t("tools.nav")} data-mode={selection.size > 0 ? "clip" : "global"} data-testid="tool-strip">
       {tools.map((x) => (
-        <button key={x.id} className="tool" data-testid={`strip-${x.id}`} aria-pressed={x.id === "media" ? mediaOpen : x.id === "edit" ? editOpen : undefined}
-          disabled={x.id === "speed" && still} aria-label={x.short ? t(x.label) : undefined} onClick={act[x.id]}>
+        <button key={x.id} className={x.iconOnly ? "tool tool-back" : "tool"} data-testid={`strip-${x.id}`}
+          aria-pressed={x.id === "media" ? mediaOpen : x.id === "edit" ? editOpen && editTab === "video" : x.id === "speed" ? editOpen && editTab === "speed" : x.id === "crop" ? editOpen && editTab === "crop" : undefined}
+          disabled={x.id === "speed" && still} aria-label={x.short || x.iconOnly ? t(x.label) : undefined} title={x.iconOnly ? t(x.label) : undefined} onClick={act[x.id]}>
           <Icon name={x.icon} size={24} />
-          <span>{t(x.short ?? x.label)}</span>
+          {!x.iconOnly && <span>{t(x.short ?? x.label)}</span>}
         </button>
       ))}
     </nav>

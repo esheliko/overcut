@@ -2,6 +2,11 @@
    720px+: tool rail | tool panel | preview over a full-width timeline. 1100px+: adds a details panel on the right. */
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
+/* r15 PHONE-14 / DESK-17: the editor is an app, not a page: no pull-to-refresh or rubber band, no 1 px page scroll, no double-tap zoom, no text selection on chrome. */
+html { overflow: hidden; overscroll-behavior: none; touch-action: manipulation; -webkit-touch-callout: none; }
+body { overscroll-behavior: none; }
+button, nav, header, .toast, .tl-drop, .stage, [role="toolbar"], [role="tablist"] { user-select: none; -webkit-user-select: none; }
+input, textarea, details code, .bin-error-details[open] > span, [contenteditable] { user-select: text; -webkit-user-select: text; }
 body { background: var(--bg); color: var(--fg); font: var(--text-base)/1.45 var(--font-sans); -webkit-tap-highlight-color: transparent; overflow: hidden; -webkit-font-smoothing: antialiased; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -107,7 +112,6 @@ h2, p { margin: 0; }
 .stage-view { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px 12px; container-type: size; background: var(--stage); } /* r14: the picture sits on the darkest surface, darker than the chrome */
 .canvas { position: relative; width: min(100cqw, calc(100cqh * var(--ar, 1.78))); max-height: 100cqh; display: grid; place-items: center; background: var(--stage); border-radius: 0; box-shadow: 0 0 0 1px var(--line); transition: width var(--dur-slow) ease, aspect-ratio var(--dur-slow) ease; }
 .preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: var(--stage); }
-.scrub-prep { position: absolute; bottom: 8px; inset-inline-start: 8px; max-width: calc(100% - 16px); padding: 2px 10px; border-radius: 999px; background: var(--surface-3); color: var(--muted); font: 500 12px/1.6 var(--font-ui, inherit); pointer-events: none; }
 .rate-badge { position: absolute; top: 8px; inset-inline-end: 8px; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--fg); font: 700 12px/1.6 var(--font-mono); direction: ltr; }
 .chip-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--fg); font-weight: 600; font-size: var(--text-sm); }
 .chip-btn:hover:not(:disabled) { background: var(--surface-3); border-color: var(--line-strong); }
@@ -158,11 +162,13 @@ h2, p { margin: 0; }
 .tl-menu-note { padding: 4px 12px 8px; margin: 0; }
 .tl-stage:has(.tl-canvas:focus-visible:not([data-pointer]))::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus-ring); } /* keyboard focus only: the shared 2 px ring in the focus token as an inset frame (an inset shadow is not drawn on a canvas itself; a11y r12: was 1 px at 50%, below the 3:1 / 2 px bar) */
 
-.toast { position: fixed; z-index: 40; left: 50%; top: calc(env(safe-area-inset-top) + var(--top, 52px) + 8px); transform: translate(-50%, -8px); width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface-3); color: var(--fg); box-shadow: var(--elev-2); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity var(--dur-toast) var(--ease-out), transform var(--dur-toast) var(--ease-out); }
+.toast { position: fixed; z-index: 40; left: 50%; bottom: var(--toast-bottom, calc(env(safe-area-inset-bottom) + 84px)); transform: translate(-50%, 8px); width: max-content; max-width: calc(100vw - 32px); padding: 10px 16px 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface-3); color: var(--fg); box-shadow: var(--elev-2); font-weight: 500; opacity: 0; pointer-events: none; transition: opacity var(--dur-toast) var(--ease-out), transform var(--dur-toast) var(--ease-out); }
 /* On the Projects home there is no timeline: the notice goes back to the bottom so it never covers the header buttons. */
-.editor.home-mode .toast { top: auto; bottom: calc(env(safe-area-inset-bottom) + 84px); transform: translate(-50%, 8px); }
+.editor.home-mode .toast { bottom: calc(env(safe-area-inset-bottom) + 84px); }
 .toast:not(:empty), .editor.home-mode .toast:not(:empty) { display: flex; align-items: center; gap: 10px; opacity: 1; transform: translate(-50%, 0); }
-/* The toast sits at the top of the picture, under the top bar: it never covers the timeline, its last lane or the transport (K-03). */
+/* The toast sits just above the timeline (App measures it into --toast-bottom): never on the picture being judged, never over a lane (K-03, UX r15 DESK-19). */
+.toast-act { pointer-events: auto; flex: none; min-height: 44px; margin-block: -10px; margin-inline: 4px -10px; padding: 0 12px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--accent); font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.toast-act:hover { background: var(--accent-soft); }
 /* One notice style (V-28): toast, saved-work notes, refusals share a surface, an elevation and a 16 px status icon (info by default, warning on a danger note). The icon is a mask, so it takes the colour of its role. */
 :is(.toast, .persist-note, .refusal-note)::before { content: ""; flex: none; align-self: center; inline-size: 16px; block-size: 16px; background: var(--accent); -webkit-mask: var(--notice-icon, var(--icon-info)) center / contain no-repeat; mask: var(--notice-icon, var(--icon-info)) center / contain no-repeat; }
 :is(.persist-note.danger, .refusal-note)::before { background: var(--danger); --notice-icon: var(--icon-warn); }
@@ -172,6 +178,7 @@ h2, p { margin: 0; }
 .persist-notes { position: fixed; z-index: 41; inset-inline: 16px; margin-inline: auto; bottom: calc(env(safe-area-inset-bottom) + 140px); width: max-content; max-width: calc(100vw - 32px); display: grid; gap: 8px; justify-items: center; }
 .persist-note { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: var(--radius-md); background: var(--surface-3); border: 1px solid var(--line); box-shadow: var(--elev-2); font-weight: 500; animation: toast-in var(--dur-toast) var(--ease-out); }
 .refusal-note { position: fixed; z-index: 41; inset-inline: 16px; margin-inline: auto; bottom: calc(env(safe-area-inset-bottom) + 140px); width: max-content; max-width: calc(100vw - 32px); display: flex; align-items: flex-start; gap: 10px; padding: 8px 8px 8px 12px; border-radius: var(--radius-md); background: var(--surface-3); border: 1px solid var(--danger); box-shadow: var(--elev-2); font-weight: 500; animation: toast-in var(--dur-toast) var(--ease-out); }
+.refusal-note li { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .refusal-note ul { margin: 0; padding: 6px 0 0; list-style: none; display: grid; gap: 6px; max-height: 40vh; overflow: auto; overflow-wrap: anywhere; }
 .refusal-note .icon-btn { flex: none; min-width: 44px; min-height: 44px; }
 .persist-note:has(.failure-details) { inline-size: calc(100vw - 32px); max-inline-size: 460px; }
@@ -316,7 +323,6 @@ h2, p { margin: 0; }
   .loop-btn { position: absolute; z-index: 3; inset-inline-end: 12px; inset-block-end: 60px; background: color-mix(in srgb, var(--stage) 55%, transparent); color: var(--stage-fg); border-radius: 50%; }
   .loop-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
   .rate-badge { inset-block-start: auto; inset-block-end: 8px; }
-  .scrub-prep { inset-block-end: auto; inset-block-start: 8px; } /* r14: the timecode chip owns the bottom-left corner on compact layouts */
 }
 /* Phone landscape: the picture runs to the bar's top edge, so the corner chips sit on it (not across its edge) */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { .loop-btn { inset-block-end: 80px; } .tc { inset-block-end: 82px; } }
@@ -847,6 +853,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .tool-strip .tool { scroll-snap-align: start; min-width: 64px; }
 @container editor (max-width: 719px) and (min-height: 501px) { .tool-strip { gap: 2px; padding-inline: 8px; } .tool-strip .tool { flex: 0 0 auto; max-inline-size: none; margin-inline: 0; min-width: 68px; } }
 .tool-strip .tool:disabled { opacity: 0.4; }
+.tool-strip .tool.tool-back { min-width: 44px; flex: 0 0 44px; padding-inline: 0; }
 .tool-strip[data-mode="clip"] .tool:first-child { color: var(--fg); border-inline-end: 1px solid var(--line); border-radius: 0; margin-inline-end: 4px; }
 .tool-strip .tool:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: -2px; }
 
@@ -860,3 +867,33 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .versions-save input { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--fg); }
 .versions-save input:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 1px; }
 .theme-pop .menu-sep { block-size: 1px; margin: 4px 8px; background: var(--line); }
+/* r15 PHONE-10: the canvas shape in one tap. */
+.ratio-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 6px; margin-block-end: 12px; }
+.ratio-tile { display: grid; justify-items: center; align-content: center; gap: 4px; min-block-size: 64px; padding: 6px 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-2); color: var(--fg); font-size: var(--text-sm); font-weight: 600; cursor: pointer; transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-instant); }
+.ratio-tile:hover { background: var(--surface-3); }
+.ratio-tile:active { transform: scale(0.96); }
+.ratio-tile[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.ratio-tile:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring); outline-offset: 2px; }
+.ratio-glyph { display: block; border: 2px solid currentColor; border-radius: 3px; }
+
+/* UX r15 FIRST-4 / FIRST-21: portrait tablet (720-1099 px wide, portrait). The tool panel above the preview is short, so the empty Media drop zone becomes one compact row (icon, words, formats) that is fully visible;
+   the timeline toolbar keeps a usable 72 px zoom slider (it no longer shrinks to a 20 px sliver) and, if it is still too wide, scrolls inside itself instead of clipping; the status chip leaves below 1100 px. */
+@container editor (min-width: 900px) and (max-width: 1099px) { .tl-sel { display: none; } } /* landscape tablet: the selection pill was cut off (FIRST-21); the 820 px layout keeps it (it fits, tl-tools.spec) */
+@container editor (min-width: 720px) and (max-width: 1099px) {
+  .zoom input { flex: none; inline-size: 72px; }
+  .tl-bar { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .tl-bar::-webkit-scrollbar { display: none; }
+}
+@container editor (min-width: 720px) and (max-width: 1099px) and (orientation: portrait) {
+  .library .dropzone-big { min-block-size: 0; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; text-align: start; gap: 4px 14px; padding: 12px 16px; }
+  .library .dropzone-big .drop-icon { inline-size: 44px; block-size: 44px; flex: none; }
+  .library .dropzone-big .drop-formats { margin-block-start: 0; justify-content: flex-start; flex-basis: 100%; }
+}
+
+/* r15: the smooth-scrubbing progress is a small ring in the player bar (appears after a delay, only above 0 %); a full-screen preview shows nothing but the picture and the bar. */
+.prep-ring { display: inline-grid; place-items: center; inline-size: 32px; block-size: 32px; color: var(--muted); animation: toast-in var(--dur-toast) var(--ease-out); }
+.prep-ring svg { transform: rotate(-90deg); }
+.prep-ring circle { fill: none; stroke-width: 3; }
+.prep-track { stroke: var(--line-strong); }
+.prep-arc { stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray var(--dur-base) linear; }
+.stage:fullscreen .prep-ring, .stage[data-fs="overlay"] .prep-ring { display: none; }

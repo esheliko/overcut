@@ -2,7 +2,7 @@ import { MediaDecodeError, fingerprintFile, fingerprintSize, newProject, type Ed
 import { useCallback, useEffect, useRef, useState } from "react";
 import { probeFile } from "./probe";
 import { STILL_SECONDS, TICKS, classify, destTracks, sentence, clipCount, extOf, importOps, insertOps, mediaRef, newId, placeAt, timelineEnd, type Probed } from "./plan";
-import { loadHandle, pathOf, saveHandle, type Source } from "./sources";
+import { allowAll, handleState, loadHandle, pathOf, saveHandle, type Source } from "./sources";
 import { useProjectStore, useStore } from "../store/projectStore";
 
 export type BinStatus = "probing" | "ready" | "unsupported" | "offline";
@@ -23,6 +23,10 @@ export interface BinItem {
   poster?: string;
   hasAudio?: boolean;
   uri?: string;
+  /** Offline, but the browser still holds the file's handle: it only needs the person's permission ("Allow access"), the file is not missing. */
+  needsPermission?: boolean;
+  /** For an `unsupported` card: the engine's own sentence, behind "Details" (the card itself keeps two short lines). */
+  details?: string;
 }
 
 /** Strings the hook needs (the UI passes `t`-built text so this file stays free of i18n). */
@@ -30,14 +34,19 @@ export interface BinText {
   notMedia: (name: string) => string;
   /** Codec or container the device cannot decode. `detail` is the engine's own sentence. */
   unsupported: (name: string, ext: string, detail: string) => string;
-  failed: (name: string) => string;
+  failed: (name: string, ext: string) => string;
   imported: (count: number) => string;
   /** What Undo / Redo call the import step of this file ("import of clip.mp4"). */
   importLabel: (name: string) => string;
   announce: (message: string) => void;
   /** A file that was refused, shown where the person can see it (the Media sheet may have closed on a phone). */
   refused?: (message: string) => void;
+  /** An import finished: what came in, and whether it was put on the timeline (else it is only in the bin and the person is told how to add it). */
+  result?: (r: { ids: string[]; names: string[]; placed: boolean }) => void;
 }
+
+/** Where an import goes. `place`: onto the timeline as well (a drop on the timeline); otherwise it lands there only when the timeline is empty. */
+export interface ImportOptions { place?: boolean }
 
 interface Live { file: File; probed: Probed }
 
@@ -58,7 +67,9 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
   const posters = useRef(new Set<string>());
   /** Files dropped before the project is open (the editing session starts asynchronously): imported as soon as it is. */
   const pending = useRef<Source[]>([]);
-  const importRef = useRef<(s: Source[]) => Promise<void>>(() => Promise.resolve());
+  const importRef = useRef<(s: Source[], o?: ImportOptions) => Promise<void>>(() => Promise.resolve());
+  /** Offline media the browser can reopen once the person allows it (see `allowAccess`). */
+  const permission = useRef(new Set<string>());
   const textRef = useRef(text);
   textRef.current = text;
   const nameRef = useRef(name);
@@ -91,7 +102,9 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
         setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, status: "ready", size: same.file.size } : i)));
         continue;
       }
-      const file = await loadHandle(m.uri);
+      const state = await handleState(m.uri);
+      if (state === "prompt") { permission.current.add(m.id); setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, needsPermission: true } : i))); continue; }
+      const file = state === "granted" ? await loadHandle(m.uri) : null;
       // A file found by its stored path must still be the same file (size from the fingerprint); otherwise it shows "Relink".
       const sameSize = !m.uri.startsWith("path:") || !m.hash || fingerprintSize(m.hash) === file?.size;
       if (file && sameSize) setItems((all) => all.map((i) => (i.id === m.id && i.status === "offline" ? { ...i, status: "ready", size: file.size } : i)));
@@ -143,7 +156,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     return insertOps(cur, ref, l.probed, start === "end" ? timelineEnd(cur) : placeAt(cur, start, len, used), undefined, track);
   }, [fileFor]);
 
-  const importSources = useCallback(async (sources: Source[]): Promise<void> => {
+  const importSources = useCallback(async (sources: Source[], opts?: ImportOptions): Promise<void> => {
     if (sources.length === 0) return;
     if (!engine || !ed) { pending.current.push(...sources); return; }
     const t = textRef.current;
@@ -156,7 +169,12 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
         : { id: r.id, name: r.s.file.name, kind: "video", size: r.s.file.size, status: "unsupported", message: t.notMedia(r.s.file.name) }),
       ...all,
     ]);
-    let added = 0;
+    // One rule everywhere: a file always lands in the bin; it also goes onto the timeline when the timeline is empty or the person dropped it there.
+    const emptyTimeline = clipCount(store.getState().project ?? (await ed.project())) === 0;
+    const place = !!opts?.place || emptyTimeline;
+    const ids: string[] = [];
+    const names: string[] = [];
+    let placed = false;
     let imported = 0;
     let refused = rows.filter((r) => !r.kind).length;
     for (const r of rows) {
@@ -173,21 +191,23 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
           const hash = await fingerprintFile(engine, s.file).catch(() => null); // 128 KiB read at most, however big the file
           const ref = mediaRef(id, s.file.name, uri, res.probed, hash);
           live.current.set(id, { file: s.file, probed: res.probed });
-          // The very first import goes straight onto the timeline (every file of that drop, in order); one undo step per file.
-          const first = cur.media.length === 0 && clipCount(cur) === 0;
+          // Every file of a drop onto an empty timeline (or onto the timeline) goes there in order; one undo step per file.
           const ops = importOps(cur, ref, res.probed);
-          if (first || added > 0) {
+          if (place) {
             const withRef: Project = { ...cur, media: [...cur.media, ref] };
-            const place = insertOps(withRef, ref, res.probed, timelineEnd(cur));
-            if (place) { ops.push(...place); added++; }
+            const put = insertOps(withRef, ref, res.probed, timelineEnd(cur));
+            if (put) { ops.push(...put); placed = true; }
           }
           patch(id, { status: "ready", kind: res.probed.kind, durationTicks: res.probed.durationTicks, width: res.probed.width, height: res.probed.height, codec: res.codec, poster: res.poster, hasAudio: res.probed.hasAudio, uri });
           await store.apply(ops, undefined, t.importLabel(s.file.name));
           imported++;
+          ids.push(id);
+          names.push(s.file.name);
         } catch (e) {
           const ext = extOf(s.file.name).toUpperCase();
-          const message = e instanceof MediaDecodeError && e.kind === "unsupported" ? t.unsupported(s.file.name, ext, sentence(e.message)) : t.failed(s.file.name);
-          patch(id, { status: "unsupported", message });
+          const unsupported = e instanceof MediaDecodeError && e.kind === "unsupported";
+          const message = unsupported ? t.unsupported(s.file.name, ext, sentence(e.message)) : t.failed(s.file.name, ext);
+          patch(id, { status: "unsupported", message, details: e instanceof Error ? sentence(e.message) : undefined });
           refused++;
           t.announce(message);
           t.refused?.(message);
@@ -196,6 +216,7 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
     }
     // Only what really came in, and never over the top of a refusal: a refused file announced why, and a count would replace that for a screen reader.
     if (imported > 0 && refused === 0) t.announce(t.imported(imported));
+    if (imported > 0) t.result?.({ ids, names, placed });
   }, [engine, ed, store, enqueue, patch]);
 
   importRef.current = importSources;
@@ -236,9 +257,31 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
       await saveHandle(uri, source.handle);
       if (uri !== ref.uri) await enqueue(() => store.apply({ op: "set_media", media: id, uri, hash: ref.hash ?? null }));
     }
-    patch(id, { status: "ready", size: file.size });
+    permission.current.delete(id);
+    patch(id, { status: "ready", size: file.size, needsPermission: false });
     return true;
   }, [engine, ed, store, enqueue, patch]);
+
+  /**
+   * "Allow access": the browser kept every file's handle but asks again after a reload. One click asks for all of them at once (every prompt starts
+   * inside this click, before any await), then the granted files come back ready. Resolves to how many came back and how many were waiting.
+   */
+  const allowAccess = useCallback((): Promise<{ done: number; total: number }> => {
+    const refs = (store.getState().project?.media ?? []).filter((m) => permission.current.has(m.id));
+    const asked = allowAll(refs.map((m) => m.uri));
+    return asked.then(async (granted) => {
+      let done = 0;
+      for (const m of refs) {
+        if (!granted.includes(m.uri)) continue;
+        const file = await loadHandle(m.uri);
+        if (!file) continue;
+        permission.current.delete(m.id);
+        patch(m.id, { status: "ready", size: file.size, needsPermission: false });
+        done++;
+      }
+      return { done, total: refs.length };
+    });
+  }, [store, patch]);
 
   /**
    * A reopened project's offline media, matched to the files the person picked by name (and size, from the fingerprint); each match is verified like
@@ -263,5 +306,5 @@ export function useMediaBin(engine: Engine | null, ed: Editing | null, opened: b
 
   /** Ids of the media whose file is readable now (ready cards), as a stable string: consumers re-request derived data when it changes. */
   const readyIds = items.filter((i) => i.status === "ready").map((i) => i.id).sort().join(",");
-  return { items, readyIds, importSources, addToTimeline, remove, relink, relinkMany, fileOf };
+  return { items, readyIds, importSources, addToTimeline, remove, relink, relinkMany, allowAccess, fileOf };
 }
