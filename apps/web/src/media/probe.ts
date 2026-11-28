@@ -8,11 +8,13 @@ export interface ProbeResult {
   codec: string;
   /** Object URL of a small JPEG, or `undefined` (audio, or no frame could be drawn). The caller revokes it. */
   poster?: string;
+  /** The same picture as a Blob, for the poster cache (no `fetch` of the object URL: the page's CSP only lets `fetch` reach itself). */
+  posterBlob?: Blob;
 }
 
 const POSTER_W = 320;
 
-async function jpegUrl(source: CanvasImageSource, w: number, h: number): Promise<string | undefined> {
+async function jpegUrl(source: CanvasImageSource, w: number, h: number): Promise<{ url: string; blob: Blob } | undefined> {
   const scale = Math.min(1, POSTER_W / Math.max(1, w));
   const cw = Math.max(1, Math.round(w * scale));
   const ch = Math.max(1, Math.round(h * scale));
@@ -23,7 +25,7 @@ async function jpegUrl(source: CanvasImageSource, w: number, h: number): Promise
   if (!ctx) return undefined;
   ctx.drawImage(source, 0, 0, cw, ch);
   const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, "image/jpeg", 0.72));
-  return blob ? URL.createObjectURL(blob) : undefined;
+  return blob ? { url: URL.createObjectURL(blob), blob } : undefined;
 }
 
 /** Stills never go through the decoder: the browser decodes them. */
@@ -35,8 +37,8 @@ async function probeImage(file: File): Promise<ProbeResult> {
     throw new MediaDecodeError("unsupported", `This browser cannot open ${extOf(file.name).toUpperCase() || "this"} images.`);
   }
   try {
-    const poster = await jpegUrl(bitmap, bitmap.width, bitmap.height);
-    return { probed: { kind: "image", durationTicks: null, width: bitmap.width, height: bitmap.height, hasAudio: false, hasVideo: true }, codec: extOf(file.name).toUpperCase(), poster };
+    const pic = await jpegUrl(bitmap, bitmap.width, bitmap.height);
+    return { probed: { kind: "image", durationTicks: null, width: bitmap.width, height: bitmap.height, hasAudio: false, hasVideo: true }, codec: extOf(file.name).toUpperCase(), poster: pic?.url, posterBlob: pic?.blob };
   } finally {
     bitmap.close();
   }
@@ -62,13 +64,13 @@ export async function probeFile(engine: Engine, file: File, kind: MediaKind): Pr
       hasAudio: !!a,
       hasVideo: !!v,
     };
-    let poster: string | undefined;
+    let pic: { url: string; blob: Blob } | undefined;
     if (v) {
       try {
         const f = await handle.videoFrame(0);
         try {
-          if (f.kind === "gpu") poster = await jpegUrl(f.frame, f.width, f.height);
-          else poster = await jpegUrl(await createImageBitmap(new ImageData(new Uint8ClampedArray(f.rgba), f.width, f.height)), f.width, f.height);
+          if (f.kind === "gpu") pic = await jpegUrl(f.frame, f.width, f.height);
+          else pic = await jpegUrl(await createImageBitmap(new ImageData(new Uint8ClampedArray(f.rgba), f.width, f.height)), f.width, f.height);
         } finally {
           f.release();
         }
@@ -76,7 +78,7 @@ export async function probeFile(engine: Engine, file: File, kind: MediaKind): Pr
         /* a card without a poster is fine; the clip itself still decodes later */
       }
     }
-    return { probed, codec: [v && codecLabel(v.codec), a && codecLabel(a.codec)].filter(Boolean).join(" + "), poster };
+    return { probed, codec: [v && codecLabel(v.codec), a && codecLabel(a.codec)].filter(Boolean).join(" + "), poster: pic?.url, posterBlob: pic?.blob };
   } finally {
     await handle.close();
   }
