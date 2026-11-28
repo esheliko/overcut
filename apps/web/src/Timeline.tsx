@@ -455,7 +455,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
           <ToolButton icon="crop" label={t("timeline.crop")} reason={t("timeline.why.select")} disabled={off || none} className="tl-op" testid="tl-crop" onClick={() => requestDetails({ tab: "video", focus: "crop" })} />
           <ToolButton icon="unlink" label={t("timeline.unlink")} reason={t("timeline.why.linked")} disabled={off || !anyLinked} className="tl-op" testid="tl-unlink-btn" onClick={() => run({ c: "unlink" })} />
           {onAddMedia && <ToolButton icon="overlay" label={t("timeline.addMedia.overlay")} disabled={off} className="tl-op" testid="tl-overlay-btn" onClick={() => run({ c: "addMedia", overlay: true })} />}
-          <span className="sep" aria-hidden="true" />
+          <span className="sep tl-op" aria-hidden="true" />
           <ToolButton icon={TOOL_ICON[tool]} label={t("timeline.tool.current", { tool: t(`timeline.tool.${tool}`) })} keys={keyHint(`tool.${tool}`)} pressed={tool !== "select" ? true : undefined} dataTool={tool} testid="tl-tool" menu={{ open: menuOpen === "tool" }} onClick={(e) => openBar("tool", e.currentTarget)} />
           <button className="tl-pick" aria-haspopup="menu" aria-expanded={menuOpen === "more"} data-testid="tl-more" title={t("timeline.more")} onClick={(e) => openBar("more", e.currentTarget)}>
             <span>{t("timeline.more")}</span><Icon name="chevronDown" size={14} className="tl-caret" />

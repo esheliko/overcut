@@ -316,6 +316,7 @@ h2, p { margin: 0; }
   .loop-btn { position: absolute; z-index: 3; inset-inline-end: 12px; inset-block-end: 60px; background: color-mix(in srgb, var(--stage) 55%, transparent); color: var(--stage-fg); border-radius: 50%; }
   .loop-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
   .rate-badge { inset-block-start: auto; inset-block-end: 8px; }
+  .scrub-prep { inset-block-end: auto; inset-block-start: 8px; } /* r14: the timecode chip owns the bottom-left corner on compact layouts */
 }
 /* Phone landscape: the picture runs to the bar's top edge, so the corner chips sit on it (not across its edge) */
 @container editor (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) { .loop-btn { inset-block-end: 80px; } .tc { inset-block-end: 82px; } }
@@ -766,7 +767,7 @@ kbd.menu-hint, .palette-row kbd { margin-inline-start: auto; flex: none; padding
 .stage:fullscreen .player-bar .chip-btn, .stage[data-fs="overlay"] .player-bar .chip-btn { background: color-mix(in srgb, var(--stage-fg) 14%, transparent); color: var(--stage-fg); border-color: transparent; }
 
 /* Details with nothing selected: the project's facts instead of an empty column */
-.insp-info { display: grid; gap: 8px; margin: 0; padding: 0 16px 16px; }
+.insp-info { display: grid; gap: 8px; margin: 0; padding: 0 4px 16px; /* r14: aligned with the "Select one video clip" line above it */ }
 .insp-info > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
 .insp-info dt { color: var(--muted); }
 .insp-info dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: end; }

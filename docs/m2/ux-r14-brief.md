@@ -27,3 +27,23 @@ The flows work, and 13 rounds of fixes made it correct and accessible. It still 
 | **C: Details, media and export** | `inspector/*`, `media/*`, `export/*` (dialog view), their CSS | **Details**: grouped sections (Transform, Opacity, Crop and flip, Speed) that collapse, each value a slider plus a scrubbable number with the keyframe diamond kept, and clear empty, multi-select and audio-clip states. **Media bin**: a thumbnail grid option, hover/press preview, a clear "used on timeline" badge, and drag to the timeline kept. **Export dialog**: presets that would give the same file for this project are merged ("Same as Original for this project"), it shows a preview frame, the size estimate is prominent, and the primary button is always visible. |
 
 Shared rules: tokens only (no raw colours in components). Each lane adds or updates a smoke step and keeps `tests/smoke/a11y.spec.ts` (axe, three themes, phone and desktop) at zero serious issues. Each lane writes a short `docs/m2/ux-r14-<lane>.md` (what changed, before → after, measured cost) and updates `docs/features/design-system.md` where a rule changes. Take before/after screenshots (desktop 1440x900 and phone 390x844, dark) with `node scripts/shot.mjs` or Playwright and attach them to the PR description as a list of what changed visually. Lanes touch different files. Where `styles.css` must change, keep the edits inside your own section and rebase on `m2` before you push.
+
+## Outcome (integration review, 2026-11-28)
+All three lanes merged into `m2`: B #252, C #253, A #251. Each lane's details, costs and what it left out are in `ux-r14-a-look.md`, `ux-r14-b-operate.md` and `ux-r14-c.md`.
+
+| | Before | After |
+|---|---|---|
+| Desktop | ![](img/r14-before-desktop.png) | ![](img/r14-after-desktop.png) |
+| Phone | ![](img/r14-before-phone.png) | ![](img/r14-after-phone.png) |
+
+Integration fixes in this PR (found by screenshotting the three lanes together at 1440x900, 1024x768 touch and 390x844 touch):
+- Phone: once the clip tools moved to the bottom strip, two dividers sat side by side in the top timeline bar. The divider before the tool picker now hides with the clip tools.
+- Phone: "Preparing smooth scrubbing… N%" sat on top of the timecode chip in the preview's bottom-left corner. On compact layouts it now goes at the top-left.
+- Tablet: the media grid column minimum of 132 px gave one oversized column in the 268 px panel. At 116 px the grid has two columns there and still shows big thumbnails on desktop.
+- Details (nothing selected): the project summary cards were inset 12 px more than the line above them. They are aligned now.
+
+Still open after r14 (follow-ups, not in this round):
+- A fixed centre playhead on the phone (issue #250): the scroll model needs a refactor first.
+- Per-kind lane heights (video taller than audio): needs a row-offset table that replaces `row * LANE` everywhere.
+- A freeze frame needs an engine operation (ADR + `app-timeline`). A hover-scrub of media posters needs a stored filmstrip per media.
+- Tooltips on the canvas-painted track headers.
