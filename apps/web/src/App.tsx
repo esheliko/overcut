@@ -17,7 +17,7 @@ import { capturePoster } from "./posterSource";
 import { createProject, deleteProject, duplicateProject, getRegistry, loadProjects, projectBytes, setArchived } from "./projects";
 import { isArchived, startScreen, autoProjectName } from "./projectsView";
 import { CanvasDialog, ConfirmDialog, PrivacyDialog } from "./ProjectDialogs";
-import { confirmBodyKey, toastDuration } from "./projectConfirm";
+import { ACTION_TOAST_MS, confirmBodyKey, toastDuration } from "./projectConfirm";
 import { canvasSummary, hasPicture } from "./canvas";
 import { nameOfFile, pickProjectFile, projectFileName, saveProjectBytes } from "./projectFile";
 import { PreviewPanel, sequenceView } from "./PreviewPanel";
@@ -55,7 +55,6 @@ import { MANY_TRACKS } from "./layout/split";
 import { SheetHandle } from "./layout/SheetHandle";
 import { ToolStrip } from "./layout/ToolStrip";
 import { DETAILS_EVENT, takeDetailsRequest, type DetailsRequest } from "./layout/toolStrip";
-import { MiniTransport } from "./layout/MiniTransport";
 import { useCollapsed } from "./layout/useCollapsed";
 import type { Detent } from "./layout/sheet";
 import { useMediaBin, type BinItem } from "./media/useMediaBin";
@@ -187,6 +186,7 @@ function AppMenu({ compact, theme, save, project }: { compact: boolean; theme: {
   useEffect(() => { if (!open) setThemeOpen(false); }, [open]);
   const ref = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  useBackClose(open, () => setOpen(false)); // r16 PHONE-2: Back closes the menu instead of leaving the app
   // A row that opens a dialog: focus goes to the menu button first, so the dialog returns focus there when it closes (the row itself is gone by then).
   const opening = (run: () => void) => () => { trigger.current?.focus({ preventScroll: true }); setOpen(false); run(); };
   // Desktop app: where projects are saved. The open project stays where it is; the new folder is used from the next start.
@@ -329,7 +329,7 @@ function Editor({ store }: { store: ProjectStore }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toastAct ? 7000 : toastDuration(toast)); // 3 s; longer text a little longer, never more than 5 s; 7 s when it offers an action
+    const t = setTimeout(() => setToast(null), toastAct ? ACTION_TOAST_MS : toastDuration(toast)); // 3 s; longer text a little longer, never more than 5 s; 5 s when it offers an action (r16 FIRST-8)
     return () => clearTimeout(t);
   }, [toast, toastAct, setToast]);
 
@@ -337,8 +337,10 @@ function Editor({ store }: { store: ProjectStore }) {
   // The toast sits just above the timeline (never on the picture, never over a lane): measured when it shows, because the timeline's height is the user's to change.
   useEffect(() => {
     if (!toast) return;
-    const sheetTop = document.querySelector<HTMLElement>('.library[data-open="true"][data-detent]')?.getBoundingClientRect().top; // a phone sheet covers the timeline: the toast rides above it
-    const top = sheetTop ?? document.querySelector<HTMLElement>(".timeline")?.getBoundingClientRect().top;
+    const sheetTop = document.querySelector<HTMLElement>('.workspace:not([data-sheet]) .library[data-open="true"][data-detent]')?.offsetTop; // offsetTop: the sheet's place without its slide-in transform // the Edit sheet leaves the timeline visible above it: the toast then rides above the timeline instead // a phone sheet covers the timeline: the toast rides above it
+    // Desktop and tablet: above the player bar (the strip right over the timeline toolbar), so it never covers the transport or a lane (r16 FIRST-8, DESK-8). Phone: above the sheet, or above the timeline.
+    const bar = document.querySelector<HTMLElement>(".preview .player-bar, .player-bar")?.getBoundingClientRect();
+    const top = sheetTop ?? (window.innerWidth > 480 && bar && bar.top > 0 ? bar.top : document.querySelector<HTMLElement>(".timeline")?.getBoundingClientRect().top);
     if (top && top > 0) document.documentElement.style.setProperty("--toast-bottom", `${Math.round(window.innerHeight - top + 8)}px`);
     else document.documentElement.style.removeProperty("--toast-bottom");
   }, [toast]);
@@ -848,7 +850,7 @@ function Editor({ store }: { store: ProjectStore }) {
         </div>
       </header>
 
-      <main className="workspace" ref={workspaceRef} data-tracks={(project?.sequences[0]?.tracks.length ?? 0) >= MANY_TRACKS ? "many" : undefined} data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined} data-lib={roomy && libCollapsed ? "collapsed" : undefined} data-insp={inspCollapsed ? "collapsed" : undefined}>
+      <main className="workspace" ref={workspaceRef} data-sheet={!roomy && sheet && active.id === "edit" ? detent : undefined} data-tracks={(project?.sequences[0]?.tracks.length ?? 0) >= MANY_TRACKS ? "many" : undefined} data-inspector={wide && DETAILS_READY} data-rail={railHidden ? "none" : undefined} data-lib={roomy && libCollapsed ? "collapsed" : undefined} data-insp={inspCollapsed ? "collapsed" : undefined}>
         {!roomy && !showHome && <ToolStrip mediaOpen={sheet && active.id === "media"} editOpen={sheet && active.id === "edit"} editTab={editTab} canOverlay={openId !== null} onMedia={() => pick("media")} onEdit={() => pick("edit")} onCanvas={() => setDialog("canvas")} />}
         {roomy && !railHidden && <nav className="tools" aria-label={t("tools.nav")}>
           {rail.map((x) => (
@@ -864,11 +866,10 @@ function Editor({ store }: { store: ProjectStore }) {
           {!roomy && sheet && <SheetHandle detent={detent} onDetent={setDetent} onClose={closeSheet} />}
           <button className="sheet-close icon-btn" aria-label={t("panel.close")} onClick={() => setSheet(false)}><Icon name="close" size={18} /></button>
           {roomy && libCollapsed && <button className="icon-btn panel-expand" aria-label={t("panel.expand", { panel: activeLabel })} title={t("panel.expand", { panel: activeLabel })} onClick={() => setLibCollapsed(false)} data-testid="panel-expand"><Icon name="chevronRight" size={18} /></button>}
-          {!roomy && sheet && active.id === "edit" && detent === "peek" && <MiniTransport playing={playing} />}
           {active.id === "edit" ? <Details /> : <Library tool={active} bin={binProps} onCollapse={() => setLibCollapsed(true)} />}
         </section>
 
-        {openId !== null ? <PreviewPanel missing={missingMedia} reopen={reopenIds} onRelink={binProps.onRelink} handlesOn={roomy || (sheet && active.id === "edit")} engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
+        {openId !== null ? <PreviewPanel missing={missingMedia} reopen={reopenIds} onRelink={binProps.onRelink} handlesOn engine={core} fileOf={media.fileOf} readyIds={media.readyIds} hasMedia={media.items.length > 0} onImport={binProps.onImport} playing={playing} onCanvas={() => setDialog("canvas")} onPlaying={setPlaying} pictureOf={(id) => { const m = media.items.find((x) => x.id === id); return m?.width && m?.height ? { width: m.width, height: m.height } : undefined; }} /> : <section className="stage" aria-label={t("preview.label")} data-testid="panel-preview"><div className="stage-view"><div className="canvas" style={{ aspectRatio: "1.78" }} /></div><div className="player-bar" /></section>}
 
         {wide && DETAILS_READY && (
           <section className="inspector" data-collapsed={inspCollapsed ? "true" : undefined} aria-label={t("details.title")} data-testid="panel-inspector">
@@ -876,7 +877,7 @@ function Editor({ store }: { store: ProjectStore }) {
             <Details onCollapse={() => setInspCollapsed(true)} />
           </section>
         )}
-        {roomy && <Splitter workspace={workspaceRef} />}
+        {roomy && <Splitter workspace={workspaceRef} tracks={project?.sequences[0]?.tracks.length ?? 2} />}
         {profile === "phone-portrait" && !showHome && openId !== null && <PhoneSplitter workspace={workspaceRef} />}
 
         <div className="tl-drop" data-over={tlOver} onDropCapture={() => setTlOver(false)} onDragOver={(e) => { if (e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); setTlOver(true); } }} onDragLeave={() => setTlOver(false)} onDrop={(e) => {

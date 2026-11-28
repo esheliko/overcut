@@ -44,6 +44,9 @@ test("library: archive and restore (with Undo and the Archived filter), export t
   // One "New project" action while there are projects: the accent header button; the big tile is only the empty state's call to action.
   await expect(page.getByTestId("projects-new")).toHaveCount(1);
   await expect(page.getByTestId("projects-new-tile")).toHaveCount(0);
+  // r16 FIRST-5: the first tile of the grid on tablet and desktop, the thumb-reach button on a phone, never a full-bleed bar.
+  if ((page.viewportSize()?.width ?? 0) > 700) { await expect(page.getByTestId("projects-new-first")).toBeVisible(); await expect(page.getByTestId("projects-new-fab")).toBeHidden(); }
+  else { await expect(page.getByTestId("projects-new-fab")).toBeVisible(); await expect(page.getByTestId("projects-new-first")).toBeHidden(); }
   // The header is one row at every width (R11): the product name stays visible (320 px excepted) and Import file keeps its accessible name even when it is icon-only.
   const head = page.locator(".home-head");
   expect((await head.boundingBox())!.height).toBeLessThan(76);

@@ -131,6 +131,49 @@ export function TransformHandles({ clip, canvas, picture, boxRef, rel, onEdit }:
     b.x += cmd.dx * cmd.px; b.y += cmd.dy * cmd.px;
     onEdit(setFields(tr, { position_x: b.v.position_x + b.x / canvas.width, position_y: b.v.position_y + b.y / canvas.height }), b.key);
   };
+  // Two fingers anywhere on the preview scale and rotate the selected picture (r16 PHONE-1). Capture-phase listeners on the stage view, because the handles stop their own events;
+  // the latest values and callback are read through a ref so the listeners are set up once per mounted gizmo.
+  const live = useRef({ v, tr, onEdit });
+  live.current = { v, tr, onEdit };
+  useEffect(() => {
+    const host = boxRef.current?.parentElement;
+    if (!host) return;
+    const fingers = new Map<number, { x: number; y: number }>();
+    let pinch: { d0: number; a0: number; v: ReturnType<typeof valuesOf>; key: number } | null = null;
+    const geom = () => { const [a, b] = [...fingers.values()]; return { d: Math.hypot(b!.x - a!.x, b!.y - a!.y) || 1, a: Math.atan2(b!.y - a!.y, b!.x - a!.x) }; };
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (fingers.size === 2) {
+        const g = geom();
+        pinch = { d0: g.d, a0: g.a, v: live.current.v, key: newGestureKey() };
+        drag.current = null; // the one-finger drag that came first ends: the pinch takes over
+        setGuides((x) => (x.x === undefined && x.y === undefined ? x : {}));
+      }
+    };
+    const move = (e: PointerEvent) => {
+      const f = fingers.get(e.pointerId);
+      if (!f) return;
+      f.x = e.clientX; f.y = e.clientY;
+      if (!pinch || fingers.size < 2) return;
+      e.stopPropagation(); // the picture's own drag must not also move it
+      const g = geom(), k = g.d / pinch.d0;
+      const deg = snapRotation(pinch.v.rotation + ((g.a - pinch.a0) * 180) / Math.PI, false);
+      live.current.onEdit(setFields(live.current.tr, { scale_x: pinch.v.scale_x * k, scale_y: pinch.v.scale_y * k, rotation: deg }), pinch.key);
+    };
+    const up = (e: PointerEvent) => { fingers.delete(e.pointerId); if (fingers.size < 2) pinch = null; };
+    const prevTouch = host.style.touchAction;
+    host.style.touchAction = "none"; // the browser must not take the two-finger gesture for page zoom
+    host.addEventListener("pointerdown", down, true);
+    host.addEventListener("pointermove", move, true);
+    host.addEventListener("pointerup", up, true);
+    host.addEventListener("pointercancel", up, true);
+    return () => {
+      host.style.touchAction = prevTouch;
+      host.removeEventListener("pointerdown", down, true); host.removeEventListener("pointermove", move, true);
+      host.removeEventListener("pointerup", up, true); host.removeEventListener("pointercancel", up, true);
+    };
+  }, [boxRef]);
   const end = () => { drag.current = null; setGuides((g) => (g.x === undefined && g.y === undefined ? g : {})); };
   const evt = { onPointerMove: move, onPointerUp: end, onPointerCancel: end };
   const pc = (x: number, total: number) => `${(x / total) * 100}%`;

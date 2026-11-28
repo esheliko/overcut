@@ -145,6 +145,7 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
   const store = useStore();
   const project = useProjectStore((s) => s.project);
   const selection = useProjectStore((s) => s.selection);
+  const tap = useRef<{ x: number; y: number } | null>(null); // where a touch began, to tell a tap from a drag
   const readOnly = useProjectStore((s) => s.readOnly);
   const editTransform = useTransformEdit();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -404,7 +405,13 @@ export function PreviewPanel({ engine, fileOf, readyIds, hasMedia, onImport, pla
 
   return (
     <section className="stage" ref={stageRef} data-fs={fs === "off" ? undefined : fs} data-handles={showHandles && !playing ? "on" : undefined} aria-label={t("preview.label")} data-testid="panel-preview">
-      <div className="stage-view">
+      <div className="stage-view" onPointerDown={(e) => { tap.current = e.isPrimary ? { x: e.clientX, y: e.clientY } : null; }} onPointerUp={(e) => {
+        // r16 PHONE-1: a tap outside the picture frame deselects the clip (touch and pen; a mouse click on the empty stage keeps its old meaning).
+        const t0 = tap.current; tap.current = null; // a second finger (pinch) or a drag is not a tap
+        if (!showHandles || e.pointerType === "mouse" || !e.isPrimary || !t0 || Math.hypot(e.clientX - t0.x, e.clientY - t0.y) > 10) return;
+        if ((e.target as HTMLElement).closest(".th, .tc, .loop-btn, .fs-btn, button")) return;
+        store.setSelection(new Set());
+      }}>
         <div ref={boxRef} className={showHandles && !playing ? "canvas framed" : "canvas"} style={{ ["--ar" as string]: ar, aspectRatio: String(ar) }} data-loaded={view.has} onDoubleClick={view.has ? toggleFullscreen : undefined}>
           <canvas ref={canvasRef} className="preview-canvas" data-testid="preview-canvas" aria-label={t("preview.canvas")} role="img" />
           {!view.has && (

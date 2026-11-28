@@ -44,7 +44,8 @@ import { useProjectStore, useStore } from "./store/projectStore";
 /** Touch screens have nothing to drop files from: the empty-timeline hint only mentions what they can do. */
 /** The phone bar (<= 480 px) drops the zoom buttons and the clip tools, so the More menu carries them there; wider bars show them, and More does not repeat them (customer r15: "too long, I don't understand a thing there"). */
 /** The snapping and ripple switches leave the bar at 720 px and below (CSS); they come back as rows of the More menu. */
-const switchesInMenu = (): boolean => typeof matchMedia === "function" && matchMedia("(max-width: 720px)").matches;
+const landscapePhone = (): boolean => typeof matchMedia === "function" && matchMedia("(orientation: landscape) and (max-height: 500px) and (max-width: 1000px)").matches; // r16 PHONE-11: its narrow bar keeps only undo, redo, tools, More and Fit
+const switchesInMenu = (): boolean => landscapePhone() || (typeof matchMedia === "function" && matchMedia("(max-width: 720px)").matches);
 const narrowBar = (): boolean => typeof matchMedia === "function" && matchMedia("(max-width: 480px)").matches;
 const coarsePointer = (): boolean => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
@@ -561,23 +562,23 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
               { id: "snap", section: t("timeline.more.edit"), label: t("timeline.snap.row"), toggle: true, checked: snapOn, testid: "tl-snap-row", onSelect: () => snapStore.set(!snapOn) },
               { id: "ripple", label: t("timeline.magnetic.row"), toggle: true, checked: rippleOn, testid: "tl-magnetic-row", onSelect: () => magneticStore.set(!rippleOn) },
             ] : []),
-            { id: "duplicate", section: t("timeline.more.clip"), label: t("timeline.duplicate"), hint: KEYS.dup, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-duplicate", onSelect: () => run({ c: "duplicate" }) },
-            { id: "copy", section: t("timeline.more.clip"), label: t("timeline.copy"), hint: KEYS.copy, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-copy", onSelect: () => run({ c: "copy" }) },
-            { id: "cut", label: t("timeline.cut"), hint: KEYS.cut, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-cut", onSelect: () => run({ c: "cut" }) },
-            { id: "paste", label: t("timeline.paste"), hint: KEYS.paste, disabled: off || held.length === 0, reason: t("timeline.why.copied"), testid: "tl-paste", onSelect: () => run({ c: "paste" }) },
-            { id: "rdel", label: t("timeline.rippleDelete"), hint: KEYS.rippleDel, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-ripple-delete-menu", onSelect: () => run({ c: "rippleDelete" }) },
-            { id: "gap", label: t("timeline.closeGap"), hint: KEYS.closeGap, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-close-gap", onSelect: () => run({ c: "closeGap" }) },
-            { id: "timing", label: t("timeline.timing"), disabled: off || !oneClip, reason: t("timeline.why.one"), testid: "tl-timing", onSelect: () => setDialog("timing") },
-            { id: "crop", label: t("timeline.crop"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-crop", onSelect: () => requestDetails({ tab: "video", focus: "crop" }) },
+            { id: "duplicate", section: t("timeline.more.clip"), label: t("timeline.duplicate"), hint: KEYS.dup, hidden: none, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-duplicate", onSelect: () => run({ c: "duplicate" }) },
+            { id: "copy", section: t("timeline.more.clip"), label: t("timeline.copy"), hint: KEYS.copy, hidden: none, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-copy", onSelect: () => run({ c: "copy" }) },
+            { id: "cut", label: t("timeline.cut"), hint: KEYS.cut, hidden: none, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-cut", onSelect: () => run({ c: "cut" }) },
+            { id: "paste", section: t("timeline.more.clip"), label: t("timeline.paste"), hint: KEYS.paste, disabled: off || held.length === 0, reason: t("timeline.why.copied"), testid: "tl-paste", onSelect: () => run({ c: "paste" }) },
+            { id: "rdel", label: t("timeline.rippleDelete"), hint: KEYS.rippleDel, hidden: none, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-ripple-delete-menu", onSelect: () => run({ c: "rippleDelete" }) },
+            { id: "gap", label: t("timeline.closeGap"), hint: KEYS.closeGap, hidden: none, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-close-gap", onSelect: () => run({ c: "closeGap" }) },
+            { id: "timing", label: t("timeline.timing"), hidden: !oneClip, disabled: off || !oneClip, reason: t("timeline.why.one"), testid: "tl-timing", onSelect: () => setDialog("timing") },
+            { id: "crop", label: t("timeline.crop"), hidden: none, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-crop", onSelect: () => requestDetails({ tab: "video", focus: "crop" }) },
             showUnlink
-              ? { id: "unlink", label: t("timeline.unlink"), hint: keyHint("edit.link"), disabled: off, testid: "tl-unlink", onSelect: () => run({ c: "unlink" }) }
-              : { id: "link", label: t("timeline.link"), hint: keyHint("edit.link"), disabled: off || !canLink, reason: none ? t("timeline.why.select") : t("timeline.why.link"), testid: "tl-link", onSelect: () => run({ c: "link" }) },
+              ? { id: "unlink", label: t("timeline.unlink"), hidden: none, hint: keyHint("edit.link"), disabled: off, testid: "tl-unlink", onSelect: () => run({ c: "unlink" }) }
+              : { id: "link", label: t("timeline.link"), hidden: none, hint: keyHint("edit.link"), disabled: off || !canLink, reason: none ? t("timeline.why.select") : t("timeline.why.link"), testid: "tl-link", onSelect: () => run({ c: "link" }) },
             { id: "addv", section: t("timeline.more.tracks"), disabled: off, label: t("timeline.track.addVideo"), testid: "track-add-video", onSelect: () => trackAction({ a: "add", kind: "video" }) },
             { id: "adda", disabled: off, label: t("timeline.track.addAudio"), testid: "track-add-audio", onSelect: () => trackAction({ a: "add", kind: "audio" }) },
-            { id: "topts", label: t("timeline.track.optionsButton"), disabled: off || oneIdx.length === 0, reason: t("timeline.why.select"), testid: "tl-track-options", onSelect: () => openMenu({ kind: "track", track: scene.clipTrack[oneIdx[0]!]! }, bar!) },
+            { id: "topts", label: t("timeline.track.optionsButton"), hidden: none, disabled: off || oneIdx.length === 0, reason: t("timeline.why.select"), testid: "tl-track-options", onSelect: () => openMenu({ kind: "track", track: scene.clipTrack[oneIdx[0]!]! }, bar!) },
             ...(onAddMedia ? [
               { id: "addm", disabled: off, label: t("timeline.addMedia.atPlayhead"), testid: "tl-add-media", onSelect: () => run({ c: "addMedia", overlay: false }) },
-              ...(narrowBar() ? [{ id: "addo", disabled: off, label: t("timeline.addMedia.overlay"), testid: "tl-add-overlay", onSelect: () => run({ c: "addMedia", overlay: true }) }] : []),
+              ...(narrowBar() || landscapePhone() ? [{ id: "addo", disabled: off, label: t("timeline.addMedia.overlay"), testid: "tl-add-overlay", onSelect: () => run({ c: "addMedia", overlay: true }) }] : []),
             ] : []),
             { id: "rin", section: t("timeline.more.markers"), label: t("timeline.range.in"), disabled: off, hint: keyHint("range.in"), testid: "tl-range-in", onSelect: () => run({ c: "range", what: "in" }) },
             { id: "rout", label: t("timeline.range.out"), disabled: off, hint: keyHint("range.out"), testid: "tl-range-out", onSelect: () => run({ c: "range", what: "out" }) },
@@ -586,7 +587,7 @@ export function Timeline({ playing, onNotice, onReady, fps = FPS, endFrame = END
             { id: "rclear", label: t("timeline.range.clear"), disabled: off || !scene.range, reason: t("timeline.why.range"), hint: keyHint("range.clear"), testid: "tl-range-clear", onSelect: () => run({ c: "range", what: "clear" }) },
             { id: "mark", label: t("timeline.marker.add"), disabled: off, hint: keyHint("marker.add"), testid: "tl-marker-add", onSelect: () => run({ c: "marker" }) },
             { id: "medit", label: t("timeline.marker.edit"), disabled: off || !scene.markers.some((m) => m.ticks === Math.round((store.getState().playhead * TICKS_PER_SECOND) / FPS)), reason: t("timeline.why.marker"), testid: "tl-marker-edit", onSelect: () => run({ c: "markerEdit" }) },
-            { id: "zsel", section: t("timeline.more.view"), label: t("timeline.zoomSelection"), hint: keyHint("view.zoomSelection"), disabled: off || none, reason: t("timeline.why.select"), testid: "tl-zoom-selection", onSelect: () => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { c: "zoom", how: "selection" } })) },
+            { id: "zsel", section: t("timeline.more.view"), label: t("timeline.zoomSelection"), hint: keyHint("view.zoomSelection"), hidden: none, disabled: off || none, reason: t("timeline.why.select"), testid: "tl-zoom-selection", onSelect: () => window.dispatchEvent(new CustomEvent(COMMAND_EVENT, { detail: { c: "zoom", how: "selection" } })) },
             ...(narrowBar() ? [
               { id: "zin", label: t("timeline.zoomIn"), hint: "+", onSelect: () => zoomStore.set(clampPps(zoomStore.get() * 1.25), "user") },
               { id: "zout", label: t("timeline.zoomOut"), hint: "-", onSelect: () => zoomStore.set(clampPps(zoomStore.get() / 1.25), "user") },
@@ -635,12 +636,12 @@ const ZoomBar = memo(function ZoomBar({ onFit }: { onFit: () => void }) {
 const SnapToggle = memo(function SnapToggle() {
   const { t } = useI18n();
   const on = useSyncExternalStore(snapStore.subscribe, snapStore.get, snapStore.get);
-  return <ToolButton icon="magnet" label={t("timeline.snap.tip")} pressed={on} className="tl-toggle" testid="tl-snap" onClick={() => snapStore.set(!on)} />;
+  return <ToolButton icon="magnet" label={t("timeline.snap.short")} tip={t("timeline.snap.tip")} pressed={on} className="tl-toggle" testid="tl-snap" onClick={() => snapStore.set(!on)} />;
 });
 
 /** Magnetic main track (UX r15): trimming or deleting on the lowest video track closes the gap. On by default, kept on this device; other tracks stay free. */
 const MagneticToggle = memo(function MagneticToggle() {
   const { t } = useI18n();
   const on = useSyncExternalStore(magneticStore.subscribe, magneticStore.get, magneticStore.get);
-  return <ToolButton icon="magnetTrack" label={t("timeline.magnetic.tip")} pressed={on} className="tl-toggle" testid="tl-magnetic" onClick={() => magneticStore.set(!on)} />;
+  return <ToolButton icon="magnetTrack" label={t("timeline.magnetic.row")} tip={t("timeline.magnetic.tip")} pressed={on} className="tl-toggle" testid="tl-magnetic" onClick={() => magneticStore.set(!on)} />;
 });
