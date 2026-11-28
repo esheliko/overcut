@@ -976,7 +976,7 @@
   "duration.undoLabel": "photo length",
   "duration.announce": "The photo now lasts {seconds} seconds.",
   "inspector.audio": "Audio clip",
-  "inspector.audioHint": "A sound has no picture to move or crop. Use the timeline toolbar to split, copy, delete or change its speed.",
+  "inspector.audioHint": "Set its volume and fades below. Split, copy or delete it from the timeline toolbar.",
   "inspector.addKey": "Add keyframe for {name}",
   "inspector.removeKey": "Remove keyframe for {name}",
   "inspector.prevKey": "Previous keyframe of {name}",

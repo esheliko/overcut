@@ -132,7 +132,7 @@ test("phone Edit sheet at 320 px: no duplicate Play row, and the picture and the
   await page.touchscreen.tap(box.x + dg + 68, box.y + 56);
   await page.getByRole("navigation", { name: "Tools" }).getByRole("button", { name: "Edit" }).click();
   await expect(page.getByTestId("mini-transport")).toHaveCount(0); // r16: the player bar is the only Play
-  await page.waitForTimeout(600); // the sheet slides in
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running")); // the sheet has slid in
   const sheetTop = (await page.locator('.library[data-open="true"]').boundingBox())!.y;
   const pic = (await page.locator(".canvas").boundingBox())!, tl = (await page.locator(".timeline").boundingBox())!;
   expect(pic.y + pic.height).toBeLessThanOrEqual(sheetTop + 1);
